@@ -5,7 +5,6 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
-    "install" : "scripts/install.js"
   },
   "dependencies": {
     "@xmldom/xmldom": ">=0.8.2"
