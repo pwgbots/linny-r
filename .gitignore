@@ -102,3 +102,15 @@ dist
 
 # TernJS port file
 .tern-port
+
+
+# Linny-R specific excludes
+# User directory
+user
+
+# Click-start scripts
+linny-r.bat
+linny-r.command
+
+# Desktop and other .ini files
+*.ini

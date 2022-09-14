@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<!--
+Linny-R is an executable graphical specification language for (mixed integer)
+linear programming (MILP) problems, especially unit commitment problems (UCP).
+The Linny-R language and tool have been developed by Pieter Bots at Delft
+University of Technology, starting in 2009. The project to develop a browser-
+based version started in 2017. See https://linny-r.org for more information.
+
+This HTML document (show-diff.html) is loaded into a new browser tab when the
+user clicks on the "Differences can be viewed here" link on the status line.
+It retrieves the HTML that was written to the browser's localStorage, and then
+displays it as part of this document.
+-->
+
+<!--
+Copyright (c) 2022 Delft University of Technology
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+-->
+<html lang="en-US">
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <title>Model comparison</title>
+  <link rel="shortcut icon" type="image/png" href="images/icon.png">
+  <script type="text/javascript">
+    function retrieveHTML() {
+      content = window.localStorage.getItem('linny-r-differences-A-B');
+      document.getElementById('main').innerHTML = content;
+    }
+  </script>
+  <style>
+    #main {
+      font-family: sans-serif;
+      font-size: 10pt;
+    }
+    table {border-collapse: collapse}
+    td {
+      vertical-align: top;
+      padding-right: 6px;
+    }
+    td.mc-added {color: #00e000}
+    td.mc-deleted {color: red}
+    td.mc-modified {color: blue}
+    td.mc-former {color: gray}
+    th {text-align: left}
+    span.eq {
+      color: white;
+      font-family: serif;
+      font-weight: bold;
+      font-style: italic;
+      background-color: purple;
+      padding: 1px;
+      border-radius: 3px;
+      margin-right: 4px;
+    }
+    span.mc-hilite {
+      background-color: yellow;
+      border-radius: 2px;
+      border: 0.5px solid orange;
+    }
+  </style>
+</head>
+<body id="main" onload="retrieveHTML();">
+  <div style="text-align: center; font-family: sans-serif; color:gray">
+    Retrieving report &mdash; please wait...
+  </div>
+</body>
+</html>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="32px" height="32px" xmlns="http://www.w3.org/2000/svg"
+     viewBox="24 32 232 231" preserveAspectRatio="xMidYMid">
+  <style>
+    path.roic {
+      stroke: #8264a0;
+      stroke-width: 1px;
+      stroke-linejoin: round;
+      stroke-opacity: 1;
+      opacity: 0.45;
+    }
+  </style>
+  <g id="fr00">
+    <path id="ABC0" class="roic" style="fill:#960041" d="M40 96L167 78L122 32z"></path>
+    <path id="ADE0" class="roic" style="fill:#ebebe1" d="M40 96L61 189L120 208z"></path>
+    <path id="AEB0" class="roic" style="fill:#fab8ea" d="M40 96L120 208L167 78z"></path>
+    <path id="ACD0" class="roic" style="fill:#3236c8" d="M40 96L122 32L61 189z"></path>
+    <path id="FBC0" class="roic" style="fill:#ebebe1" d="M215 160L167 78L122 32z"></path>
+    <path id="FDE0" class="roic" style="fill:#960041" d="M215 160L61 189L120 208z"></path>
+    <path id="FEB0" class="roic" style="fill:#3236c8" d="M215 160L120 208L167 78z"></path>
+    <path id="FCD0" class="roic" style="fill:#fab8ea" d="M215 160L122 32L61 189z"></path>
+  </g>
+</svg>

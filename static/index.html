@@ -1,0 +1,3088 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head id="doc-head">
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <title>Linny-R</title>
+
+<!--
+Linny-R is an executable graphical specification language for (mixed integer)
+linear programming (MILP) problems, especially unit commitment problems (UCP).
+The Linny-R language and tool have been developed by Pieter Bots at Delft
+University of Technology, starting in 2009. The project to develop a browser-
+based version started in 2017. See https://linny-r.org for more information.
+
+This HTML document (index.html) provides the browser-based GUI for editing and
+executing Linny-R models. See the <head> section for required JavaScript files.
+
+NOTE: One of these files (iro.js) is authored by James Daniel. This JS code
+implements the elegant color picker that appears in the Edit variable dialog
+of the Chart Manager.
+
+NOTE: The Linny-R model editor is implemented in JavaScript and will work
+"stand-alone" in modern web browsers. The model solver has been implemented as
+a server-side application, and requires a web server that will process the HTTP
+requests made by the virtual machine that translates a Linny-R model to MILP
+equations. Two such web servers have been implemented: one in PHP (for LAMPS
+production servers) and one in Python (for stand-alone computers). The Python
+implementation is made available via the Linny-R web site.
+-->
+
+<!--
+Copyright (c) 2017-2022 Delft University of Technology
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+-->
+
+  <link rel="shortcut icon" type="image/png" href="images/icon.png">
+  <script>
+    var
+      // NODE = false indicates that modules need not export their properties
+      NODE = false,
+      // Version number and release date
+      LINNY_R_VERSION = '1.1.0',
+      VERSION_RELEASE_DATE = '2022-09-14 17:00',
+      // Linny-R server hosting public channels
+      PUBLIC_LINNY_R_URL = 'https://sysmod.tbm.tudelft.nl/linny-r',
+      // Create the XML parser
+      XML_PARSER = new DOMParser();
+      // NOTE: global variables will be initialized when page has loaded
+      // The controller object (User Interface)
+      UI = null,
+      // The current model
+      MODEL = null,
+      // @@ TO DO: make an IO context STACK to permit nested modules 
+      IO_CONTEXT = null,
+      // Manager objects that will act as controller and/or viewer
+      X_EDIT = null,
+      MONITOR = null,
+      FILE_MANAGER = null,
+      DATASET_MANAGER = null,
+      CHART_MANAGER = null,
+      EXPERIMENT_MANAGER = null,
+      SENSITIVITY_ANALYSIS = null,
+      CONSTRAINT_EDITOR = null,
+      DOCUMENTATION_MANAGER = null,
+      RECEIVER = null,
+      REPOSITORY_BROWSER = null,
+      // Stack for undo/redo operations
+      UNDO_STACK = null,
+      // The virtual machine
+      VM = null;
+    
+    // Load audio files
+    var SOUNDS = {
+        notification: new Audio('sounds/notification.wav'),
+        warning: new Audio('sounds/warning.wav'),
+        error: new Audio('sounds/error.wav')
+      };
+      
+      
+    function loadLinnyR() {
+      // Ensures that the Linny-R HTML and scripts will be the latest version
+      // by reloading unless URL contains current time stamp truncated to 10 s
+      const d = new Date(),
+            t = Math.floor(d.getTime() / 10000), // getTime returns milliseconds
+            url = window.location.href;
+      if(url.indexOf('?x=' + t) < 0) {
+        // NOTE: URL may contain user user ID (e-mail address)
+        const split = url.split('?u='),
+              base = split[0],
+              userid = (split.length > 1 ? '&u=' + split[1] : '');
+        // NOTE: remove prior '?x=' cache buster if any
+        window.location.assign(base.split('?x=')[0] + '?x=' + t + userid);
+      } else {
+        // Reload the style sheet
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.type = 'text/css';
+        link.href = 'linny-r.css?x=' + t;
+        link.media = 'all';
+        document.getElementById('doc-head').appendChild(link);
+        // Reload the scripts in their proper sequence, i.e., such that all
+        // classes are initialized before their instances are created
+        loadScripts(['-config', '-model', '-ctrl', '-gui', '-vm', '-utils'], t);
+      }
+    }
+
+    function loadScripts(sl, t) {
+      if(sl.length == 0) {
+        // Initialize only after all scripts have loaded
+        initializeLinnyR();
+      } else {
+        const
+            s = sl.shift(),
+            head = document.getElementById('doc-head'),
+            script = document.createElement('script');
+        // NOTE: recursive call after script s has loaded
+        script.onload = () => {
+            console.log('Loaded script: linny-r' + s);
+            loadScripts(sl, t);
+          };
+        script.src= 'scripts/linny-r' + s + '.js?x=' + t;
+        head.appendChild(script);
+      }
+    }
+    
+    function checkForUpdates() {
+      UI.check_update_modal.element('reload-btn').style.display = 'none';
+      UI.check_update_modal.element('restart-btn').style.display = 'none';
+      fetch('auto-check')
+        .then((response) => response.text())
+        .then((data) => {
+            console.log('Version check:', data);
+            const info = data.split('|');
+            if(info.length > 1) {
+              UI.check_update_modal.element('msg').innerHTML = [
+                  '<a href="https://sysmod.tbm.tudelft.nl/linny-r/docs/?15" ',
+                  'target="_blank">Version <strong>',
+                  info[0], '</strong></a> released on ', info[1],
+                  ' can be installed.'].join('');
+              UI.check_update_modal.show();
+              UI.check_update_modal.element('buttons').style.display = 'block';
+            } else if(data.trim() !== 'up-to-date') {
+              UI.warn('Version check failed: "' + data + '"');
+            }
+          })
+        .catch((error) => UI.warn(UI.WARNING.NO_CONNECTION, error));
+    }
+    
+    function initializeLinnyR() {
+      // Protect user from unintentionally closing the browser
+      window.onbeforeunload = () => { return 'Exit Linny-R?'; };
+      // NOTE: first create UI and Documentation Manager to report messages
+      UI = new GUIController();
+      UI.addListeners();
+      DOCUMENTATION_MANAGER = new DocumentationManager();
+      // Create the virtual machine
+      VM = new VirtualMachine();
+      // Create the GUI-only objects
+      UNDO_STACK = new UndoStack();
+      X_EDIT = new ExpressionEditor();
+      ACTOR_MANAGER = new ActorManager();
+      EQUATION_MANAGER = new EquationManager();
+      FINDER = new Finder();
+      CONSTRAINT_EDITOR = new ConstraintEditor();  
+      // NOTE: Instantiate the GUI classes, not their superclasses
+      FILE_MANAGER = new GUIFileManager();
+      REPOSITORY_BROWSER = new GUIRepositoryBrowser();
+      DATASET_MANAGER = new GUIDatasetManager();
+      CHART_MANAGER = new GUIChartManager();
+      SENSITIVITY_ANALYSIS = new GUISensitivityAnalysis();
+      EXPERIMENT_MANAGER = new GUIExperimentManager();
+      MONITOR = new GUIMonitor();
+      RECEIVER = new GUIReceiver();
+      // Check for software updates only when running on local server
+      // NOTE: do this *after* GUI elements have been created, as the updater
+      // uses a dialog
+      if(!SOLVER.user_id) checkForUpdates();
+      // Initialize auto-saving function
+      AUTO_SAVE = new ModelAutoSaver();
+      // Create a new Linny-R model
+      UI.createNewModel();
+      // Connect the virtual machine (may prompt for password)
+      MONITOR.connectToServer();
+    }
+    
+  </script>
+  <script type="text/javascript" src="scripts/iro.min.js"></script>
+</head>
+<body onload="loadLinnyR();">
+  <!-- header shows top menu bar -->
+  <header>
+    <img id="static-icon" src="images/icon.svg">
+    <img id="linny-r-name" src="images/linny-r.svg">
+    <div id="linny-r-version-number"></div>
+    <div id="topbar">
+      <img id="new-btn" class="btn enab" src="images/new.png"
+           title="Create new model">
+      <img id="load-btn" class="btn enab" src="images/open.png"
+           title="Load model (Ctrl-L)">
+      <img id="settings-btn" class="btn enab" src="images/settings.png"
+           title="Change settings (Ctrl-V)">
+      <img id="save-btn" class="btn enab" src="images/save.png"
+           title="Save model (Ctrl-S)">
+      <img id="repository-btn" class="btn enab" src="images/repository.png"
+           title="Browse repositories (Ctrl-B)">
+      <img id="actors-btn" class="btn enab" src="images/actors.png"
+           title="Manage actors (Ctrl-A)">
+      <img id="dataset-btn" class="btn enab" src="images/dataset.png"
+           title="Manage datasets (Ctrl-D)">
+      <img id="equation-btn" class="btn enab" src="images/equation.png"
+           title="Manage equations (Ctrl-E)">
+      <img id="chart-btn" class="btn enab" src="images/chart.png"
+           title="Manage charts (Ctrl-O)">
+      <img id="sensitivity-btn" class="btn enab" src="images/sensitivity.png"
+           title="Sensitivity analysis (Ctrl-J)">
+      <img id="experiment-btn" class="btn enab" src="images/experiment.png"
+           title="Manage experiments (Ctrl-X)">
+      <a href="show-png.html" target="_blank"
+         style="text-decoration: none; outline: none">
+        <img id="diagram-btn" class="btn enab" src="images/diagram.png"
+           title="Render diagram as bitmap at 300 dpi (Ctrl-P)">
+      </a>
+      <img id="savediagram-btn" class="btn enab" src="images/save-diagram.png"
+           title="Download diagram as Scalable Vector Graphics (Ctrl-G)">
+      <img id="finder-btn" class="btn enab" src="images/find.png"
+           title="Find model elements by their name (Ctrl-F)">
+      <img id="monitor-btn" class="btn enab" src="images/monitor.png"
+           title="View solver monitor (Ctrl-M)">
+      <img id="receiver-btn" class="btn enab" src="images/receiver.png"
+           title="Listen for commands from local host (Ctrl-H)">
+      <img id="documentation-btn" class="btn enab" src="images/info.png"
+           title="View information and documentation (Ctrl-I)">
+    </div>
+    <!-- if diagram is not the TOP cluster, show a button to move up to the parent cluster -->
+    <div id="focal-cluster">
+      <img id="focal-black-box" class="btn" src="images/is-black-box.png"
+           title="This cluster is a &quot;black box&quot;" hidden>
+      <div id="focal-name"></div>
+      <img id="parent-btn" class="btn enab" src="images/parent.png"
+           title="View parent cluster (Ctrl-U)">
+      <img id="lift-btn" class="btn disab" src="images/lift.png"
+           title="Move selection to parent cluster">
+    </div>
+    <!-- solver host image -->
+    <div id="server-host" style="float: right">
+      <img id="host-logo" src="images/host-logo.png"
+           title="Solver host">
+    </div>
+  </header>
+  <!-- the main window pane shows the diagram (SVG image) -->
+  <main>
+    <div id="cc">
+      <svg id="svg-root" version="1.1" xmlns="http://www.w3.org/2000/svg"
+           xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve">
+      </svg>
+    </div>
+  </main>
+  <!-- the footer displays the status bar with X/Y coordinates, zoom in/out buttons, buttons for moving forward/backward
+       in time, and the status line that displays info, notifications, warnings, and error messages
+   -->
+  <footer>
+    <div id="set-up-progress">
+      <div id="set-up-progress-bar"></div>
+    </div>
+    <table id="statusbar">
+      <tr>
+        <td id="pos-x">X = 0</td>
+        <td id="pos-y">Y = 0</td>
+        <td>
+          <img id="zoomout-btn" class="sbtn senab" src="images/zoom-out.png">
+        </td>
+        <td id="zoom">100%</td>
+        <td id="zoom-sep">
+          <img id="zoomin-btn" class="sbtn senab" src="images/zoom-in.png">
+        </td>
+        <td>
+          <img id="stepback-btn" class="sbtn senab" src="images/back.png">
+        </td>
+        <td id="step">1</td>
+        <td id="step-sep">
+          <img id="stepforward-btn" class="sbtn senab" src="images/forward.png">
+        </td>
+        <td id="info-line" title="Status bar"></td>
+        <td id="autosave-sep">
+          <img id="autosave-btn" class="btn enab" src="images/restore.png">
+        </td>
+        <td id="recall-btn"
+          title="To view previous messages, open the information dialog (Ctrl-I)
+and move the cursor over the status bar">
+        </td>
+      </tr>
+    </table>
+  </footer>
+  <!-- the side bar holds buttons for editing the model (ADD, DELETE, UNDO, REDO) and for running it -->
+  <div id="sidebar">
+    <img id="process-btn" class="btn toggle enab" src="images/process.png"
+         title="Add process">
+    <img id="product-btn" class="btn toggle enab" src="images/product.png"
+         title="Add product">
+    <img id="link-btn" class="btn toggle enab" src="images/link.png"
+         title="Draw link">
+    <img id="constraint-btn" class="btn toggle enab" src="images/constraint.png"
+         title="Add composite constraint">
+    <img id="cluster-btn" class="btn toggle disab" src="images/cluster.png"
+         title="Add cluster">
+    <img id="note-btn" class="btn toggle enab sep" src="images/note.png"
+         title="Add note">
+    <img id="clone-btn" class="btn disab sep" src="images/clone.png"
+         title="Clone selection (Ctrl-C)">
+    <img id="delete-btn" class="btn disab sep" src="images/delete.png"
+         title="Delete">
+    <img id="undo-btn" class="btn enab" src="images/undo.png"
+         title="Undo (Ctrl-Z)">
+    <img id="redo-btn" class="btn disab" src="images/redo.png"
+         title="Redo (Ctrl-Y)">
+    <img id="solve-btn" class="btn enab" src="images/solve.png"
+         title="Run simulation (Ctrl-R)">
+    <img id="stop-btn" class="btn enab off" src="images/stop.png"
+         title="Stop solving (Ctrl-Q)">
+    <img id="reset-btn" class="btn enab off" src="images/reset.png"
+         title="Reset model (Ctrl-K)">
+  </div>
+  
+  <!-- these hidden DIVs help to output create files to the browser as "attachments" (downloads) --> 
+  <a id="xml-saver" target='_blank' hidden="hidden"></a>
+  <a id="svg-saver" target='_blank' hidden="hidden"></a>
+
+  <!-- the following hidden DIVs are dialog windows that are shown as "modals",
+       i.e., disabling all other functions -->
+
+  <!-- the LOGON dialog prompts for (optional) user name and password -->
+  <div id="logon-modal" class="modal">
+    <div id="logon-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Logon to server
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table style="width: 100%">
+        <tr>
+          <td>Mail address:</td>
+          <td>
+            <input id="logon-name" style="width: 221px"
+                   type="text" autocomplete="off">
+          </td>
+        </tr>
+        <tr>
+          <td>Password:</td>
+          <td>
+            <input id="logon-password" style="width: 219px"
+                   type="password" autocomplete="off">
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2">
+            <small>
+              No account yet?
+              Sign up <a href="solver" target="_blank">here</a>.
+            </small>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- the MODEL dialog prompts for (optional) model name and author name -->
+  <div id="model-modal" class="modal">
+    <div id="model-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        New model
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table style="width: 100%">
+        <tr>
+          <td>Name:</td>
+          <td>
+            <input id="model-name" style="width: 219px"
+                   type="text" autocomplete="off">
+          </td>
+        </tr>
+        <tr>
+          <td>Author:</td>
+          <td>
+            <input id="model-author" style="width: 219px"
+                   type="text" autocomplete="off">
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- the LOAD dialog prompts the user for a Linny-R model file on disk
+       to be loaded -->
+  <div id="load-modal" class="modal">
+    <div id="load-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Load model
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="load-xml-file" type="file">
+      <img id="load-autosaved-btn" class="btn enab" src="images/restore.png">
+    </div>
+  </div>
+    
+  <!-- the PASSWORD dialog prompts the user for a password -->
+  <div id="password-modal" class="modal">
+    <div id="password-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="password-action">Enter</span> password
+        <img class="cancel-btn" src="images/cancel.png">
+        <img id="password-ok-btn" class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="password-code" type="password">
+      <div id="password-strength-bar"></div>
+    </div>
+  </div>    
+    
+  <!-- the RESTORE dialog allows the user to restore an auto-saved model -->
+  <div id="restore-modal" class="modal">
+    <div id="restore-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="restore-dlg-title">Restore auto-saved model</span>
+        <img id="restore-cancel" class="cancel-btn" src="images/cancel.png">
+        <img id="restore-confirm" class="ok-btn" src="images/ok.png">
+      </div>
+      <div id="restore-scroll-area">
+        <table id="restore-table"></table>
+      </div>
+      <div id="auto-save-settings">
+        <label>Auto-save interval</label>
+        <input id="auto-save-minutes" type="text" autocomplete="off">
+        minutes <small>(0 = OFF)</small>
+        <label style="margin-left: 12px">Remove models after</label>
+        <input id="auto-save-hours" type="text" autocomplete="off">
+        hours
+        <img id="auto-save-clear-btn" class="btn enab" src="images/reset.png"
+             title="Remove all auto-saved models from local storage">
+      </div>
+      <div id="confirm-remove-models">
+        Really remove all auto-saved from local storage?
+        <strong>
+        <img id="autosave-do-remove" class="inline-ok-btn"
+             src="images/ok.png"> Yes
+        <img id="autosave-cancel" class="inline-cancel-btn"
+             src="images/cancel.png"> No
+        </strong>
+      </div>
+    </div>
+  </div>  
+  
+  <!-- the MODEL SETTINGS dialog allows the user to modify model parameters -->
+  <div id="settings-modal" class="modal">
+    <div id="settings-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Model settings
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+        <img class="info-btn" src="images/info.png"
+             title="View/edit the documentation for this model">
+      </div>
+      <table style="width: 100%; white-space: nowrap">
+        <tr>
+          <td>Name:</td>
+          <td><input id="settings-name" type="text" autocomplete="off"
+                     style="width:270px"></td>
+        </tr>
+        <tr>
+          <td>Author:</td>
+          <td><input id="settings-author" type="text" autocomplete="off"
+                     style="width:270px"></td>
+        </tr>
+      </table>
+      <table style="width:100%; white-space: nowrap">
+        <tr>
+          <td colspan="2">Default product unit:&nbsp;
+            <input id="settings-product-unit" type="text" autocomplete="off"
+                   style="width:45px;margin-right:19px">Currency unit:&nbsp;
+            <input id="settings-currency-unit" type="text" style="width:45px">
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0px">
+            <div id="settings-decimal-comma" class="box clear"></div>
+          </td>
+          <td style="padding-bottom:4px">
+            Use decimal <u>comma</u> when copying data to clipboard
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0px">
+            <div id="settings-align-to-grid" class="box clear"></div>
+          </td>
+          <td style="padding-bottom:4px">Snap to alignment grid with
+            <input id="settings-grid-pixels" type="text" autocomplete="off"
+                   style="width:35px;text-align:center"> pixels resolution
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2">Time step:&nbsp;
+            <input id="settings-time-scale" type="text" autocomplete="off"
+                   style="width:50px">
+            <select id="settings-time-unit"
+                    style="height:20px;font-size:12px;vertical-align:top">
+              <option value="year">year</option>
+              <option value="week">week</option>
+              <option value="day">day</option>
+              <option value="hour" selected="selected">hour</option>
+              <option value="minute">minute</option>
+              <option value="second">second</option>
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2">
+            Optimize from&nbsp;step&nbsp;t<sub><small>0</small></sub> = 
+            <input id="settings-period-start" type="text" autocomplete="off"
+                   style="width:50px">
+            &nbsp;&nbsp;to&nbsp;&nbsp;t<sub><small>N</small></sub> = 
+            <input id="settings-period-end" type="text" autocomplete="off"
+                   style="width:50px">
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2">Block length:&nbsp;
+            <input id="settings-block-length" type="text" autocomplete="off"
+                   style="width:50px"> &nbsp;&nbsp;Look-ahead:&nbsp;
+            <input id="settings-look-ahead" type="text" autocomplete="off"
+                   style="width:50px"> time steps
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2">Solver time limit:&nbsp;
+            <input id="settings-time-limit" type="text" autocomplete="off"
+                   style="width:35px;text-align:center"> seconds per block
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0px">
+            <div id="settings-cost-prices" class="box clear"></div>
+          </td>
+          <td style="padding-bottom:4px">Infer and display cost prices</td>
+        </tr>
+        <tr>
+          <td style="padding:0px">
+            <div id="settings-block-arrows" class="box clear"></div>
+          </td>
+          <td style="padding-bottom:4px">Show hidden flows as block arrows</td>
+        </tr>
+        <tr>
+          <td style="padding:0px">
+            <div id="settings-encrypt" class="box clear"></div>
+          </td>
+          <td style="padding-bottom:4px">
+            Encrypt with password
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- the REPOSITORY BROWSER dialog allows interaction with repositories -->
+  <div id="repository-dlg" class="inp-dlg">
+    <div id="repository-hdr" class="dragger dlg-title">Repository browser
+      <img id="repository-close-btn" class="close-btn" src="images/close.png">
+    </div>
+    <div id="repository-not-implemented">
+      <div style="margin-top: 20px">
+        Repositories have not (yet) been implemented on this server.
+      </div>
+    </div>
+    <div id="repository-pane">
+      <div id="repository-buttons">
+        <img id="repo-add-btn" class="btn enab" src="images/add.png"
+             title="Add repository">
+        <img id="repo-remove-btn" class="btn disab" src="images/remove.png"
+             title="Remove selected repository from list">
+        <img id="repo-access-btn" class="btn disab" src="images/access.png"
+             title="Obtain write access for this repository (requires a valid token)">
+        <img id="repo-include-btn" class="btn disab" src="images/module.png"
+             title="Include module in current model">
+        <img id="repo-load-btn" class="btn disab" src="images/open.png"
+             title="Load model from repository">
+        <img id="repo-store-btn" class="btn enab" src="images/store.png"
+             title="Store model as module in repository">
+        <img id="repo-black-box-btn" class="btn enab" src="images/black-box.png"
+             title="Store model as &quot;black-box&quot; module in repository">
+        <img id="repo-delete-btn" class="btn disab" src="images/delete.png"
+             title="Delete selected module from repository">
+      </div>
+      <select id="repository-selector">
+      </select>
+      <div id="modules-header">Modules in repository</div>
+      <div id="modules-scroll-area">
+        <table id="modules-table">
+        </table>
+      </div>
+      <div id="modules-count"></div>
+    </div>
+    <div id="repository-resize" class="resizer"></div>
+  </div>
+    
+  <!-- the ADD REPOSITORY dialog prompts for a repository name, URL and token -->
+  <div id="add-repository-modal" class="modal">
+    <div id="add-repository-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Register a repository
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table style="width:100%">
+        <tr>
+          <td>Name:</td>
+          <td>
+            <input id="add-repository-name" type="text" autocomplete="off"
+                   style="width:230px">
+          </td>
+        </tr>
+        <tr>
+          <td>https://</td>
+          <td>
+            <input id="add-repository-url" type="text" autocomplete="off"
+                   style="width:230px; font-size:12px;">
+          </td>
+        </tr>
+        <tr>
+          <td>Token:</td>
+          <td>
+            <input id="add-repository-token" type="text" autocomplete="off"
+                   placeholder="(optional - required only for write access)"
+                   style="width:230px; font-size:12px;">
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>  
+
+  <!-- the ACCESS REPOSITORY dialog prompts for a token -->
+  <div id="access-repository-modal" class="modal">
+    <div id="access-repository-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Access repository <div id="access-repository-name"></div>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table style="width:100%">
+        <tr>
+          <td>Token:</td>
+          <td>
+            <input id="access-repository-token" type="text" autocomplete="off"
+                   placeholder="(required for write access)"
+                   style="width:230px; font-size:12px;">
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>  
+
+  <!-- the STORE MODEL dialog suggests a file name and asks for OK -->
+  <div id="store-in-repository-modal" class="modal">
+    <div id="store-in-repository-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Store model in <span id="store-in-repository-name"></span>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table style="width:100%">
+        <tr>
+          <td>Module:</td>
+          <td>
+            <input id="store-in-repository-model-name"
+                   type="text" autocomplete="off"
+                   style="width:266px; font-size:12px;">
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2" style="font-size:10px">
+            <span style="font-size:11px; font-weight:bold">NOTE:</span>
+            By storing a model in this repository, you declare that you have
+            full copyright of this model, and that you make it available under the
+            <a href="https://creativecommons.org/licenses/by-sa/4.0"
+               target="_blank">
+            Creative Commons Attribution-ShareAlike (CC BY-SA) license</a>.
+            <img src="../images/by-sa.svg" style="height:21px; margin-top:3px"> 
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>  
+
+  <!-- the STORE BLACK-BOX MODEL dialog suggests a file name and asks for OK -->
+  <div id="store-bb-in-repository-modal" class="modal">
+    <div id="store-bb-in-repository-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Store model as "black box" in
+        <span id="store-bb-in-repository-name"></span>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table style="width:100%">
+        <tr>
+          <td>Module:</td>
+          <td>
+            <input id="store-bb-model-in-repository-name" type="text"
+                   autocomplete="off" style="width:266px; font-size:12px;">
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2" style="font-size:10px">
+            <span style="font-size:11px; font-weight:bold">NOTE:</span>
+            By storing a model in this repository, you declare that you have
+            full copyright of this model, and that you make it available under the
+            <a href="https://creativecommons.org/licenses/by-sa/4.0"
+               target="_blank">
+            Creative Commons Attribution-ShareAlike (CC BY-SA) license</a>.
+            <img src="../images/by-sa.svg" style="height:21px; margin-top:3px"> 
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>  
+
+  <!-- the INCLUDE dialog prompts for a prefix and parameter bindings -->
+  <div id="include-modal" class="modal">
+    <div id="include-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Include model <span id="include-name"></span> as cluster
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div style="margin:2px; background-color: Yellow">
+        <strong>NOTE:</strong> <em>This action cannot be undone!</em>
+      </div>
+      <div style="margin:2px">
+        <label>Cluster:</label>
+        <input id="include-prefix" type="text"
+               placeholder="(name must be unique)" autocomplete="off">
+      </div>
+      <div style="margin:2px">
+        <label>Actor:</label>
+        <input id="include-actor" type="text"
+               placeholder="(no actor)" autocomplete="off">
+      </div>
+      <div style="font-weight: bold; margin:4px 2px 2px 2px">
+        Parameter bindings:
+      </div>
+      <div id="include-scroll-area">
+      </div>
+    </div>
+  </div>  
+
+  <!-- the CONFIRM DELETE modal asks to confirm to delete module from repository -->
+  <div id="confirm-delete-from-repo-modal" class="modal">
+    <div id="confirm-delete-from-repo-dlg" class="inp-dlg">
+      <div class="dlg-title" style="background-color: #cc88b0">
+        Confirm delete
+      </div>
+      <div id="confirm-delete-from-repo-msg">
+        Really delete module
+        <span id="confirm-delete-from-repo-mod-name"></span>
+        from repository
+        <span id="confirm-delete-from-repo-name"></span>?
+      </div>
+      <div id="confirm-delete-from-repo-buttons">
+        <img class="ok-btn big-btn" src="images/ok.png">
+        Yes
+        <img class="cancel-btn big-btn" src="images/cancel.png">
+        No
+      </div>
+    </div>
+  </div>
+
+  <!-- the ACTOR dialog allows modification of the name and relative weight of a selected actor -->
+  <div id="actor-modal" class="modal">
+    <div id="actor-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Modify actor <span id="actor-span"></span>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table style="width: 100%">
+        <tr>
+          <td>Name:</td>
+          <td>
+            <input id="actor-name" type="text" autocomplete="off"
+              style="width:222px">
+          </td>
+          <td>
+            <div id="actor-io"
+                 title="Click to set/unset actor as model parameter">
+              &#10063;
+              <div id="actor-import">&darr;</div>
+              <div id="actor-export">&uarr;</div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td>Weight:</td>
+          <td>
+            <input id="actor-W" type="text" autocomplete="off"
+                   style="width:222px">
+          </td>
+          <td>
+            <img id="actor-W-x" class="sbtn enab" src="images/edit.png"
+                 title="Edit expression for actor weight">
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- The ACTORS (plural!) dialog displays a scrollable list of all actors;
+       clicking an actor will open the ACTOR dialog for that actor.
+       NOTE: Changes to this list are discarded if CANCEL is clicked.
+   -->
+  <div id="actors-modal" class="modal">
+    <div id="actors-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Actors
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div id="round-settings">
+        <div id="round-count-lbl"
+             title="Defining multiple rounds permits game-theoretic optimization">
+          Optimization in <span id="round-count">1 round</span>
+        </div>
+        <img id="add-round-btn" class="v-btn" src="images/add.png"
+             title="Add one more round">
+        <img id="delete-round-btn" class="v-btn" src="images/remove.png"
+             title="Delete selected round (click its column header to select)">
+        <div id="default-seq-div" title="Sequence of rounds when running this model">
+          <label>Sequence:</label>
+          <input id="default-sequence" type="text" autocomplete="off"
+                 placeholder="a (default)">
+        </div>
+        <div id="round-info-lbl">
+          <em>Checked actors can <strong>not</strong> change their production
+          levels in that round</em>&nbsp;&#8628;
+        </div>
+      </div>
+      <div id="actors-scroll-hdr">
+        <div id="actors-name-hdr">Actor name</div>
+        <div id="actors-weight-hdr"
+             title="Multiplier of actor cash flow in objective function
+&rarr; Set to 0 to disregard an actor's interest
+&rarr; Use conditional expression (e.g., R=3 ? 0 : 1) to differentiate between rounds">
+          Weight
+        </div>
+        <div id="rounds-hdr"
+             title="Click to select; Ctrl-click to check/uncheck for all actors">
+        </div>
+      </div>
+      <div id="actors-scroll">
+        <table id="actors-table" width="100%"></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTE: the following hidden DIVs implement dialogs for the buttons on
+       the side bar -->
+
+  <!-- the ADD PROCESS dialog prompts only for the process name and (optionally)
+       the name of the actor "owning" it -->
+  <div id="add-process-modal" class="modal">
+    <div id="add-process-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Add process
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table style="width: 100%">
+        <tr>
+          <td>Name:</td>
+          <td>
+            <input id="add-process-name" style="width:223px" type="text"
+                   autocomplete="off">
+          </td>
+        </tr>
+        <tr>
+          <td>Actor:</td>
+          <td>
+            <input id="add-process-actor-name" style="width:223px" type="text"
+                   autocomplete="off">
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- the ADD PRODUCT dialog prompts only for the product name and its unit of measure -->
+  <div id="add-product-modal" class="modal">
+    <div id="add-product-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Add product
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table style="width: 100%">
+        <tr>
+          <td>Name:</td>
+          <td colspan="3">
+            <input id="add-product-name"
+                   style="width:223px" type="text" autocomplete="off">
+          </td>
+        </tr>
+        <tr>
+          <td>Unit:</td>
+          <td>
+            <input id="add-product-unit"
+                   style="width:70px" type="text" autocomplete="off">
+          </td>
+          <td style="width:20px;padding:0px">
+            <div id="add-product-data" class="box clear">
+          </td>
+          <td style="white-space:nowrap">Data</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- the CLUSTER dialog prompts only for the process name and (optionally)
+       the name of the actor "owning" it
+       NOTE: this dialog is also used to *edit* these properties of an existing
+       cluster, as clusters have no other intrinsic properties (they merely
+       group other Linny-R entities)
+   -->
+  <div id="cluster-modal" class="modal">
+    <div id="cluster-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="cluster-action">Add</span> cluster
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table style="width: 100%">
+        <tr>
+          <td>Name:</td>
+          <td><input id="cluster-name" style="width:270px"
+                     type="text" autocomplete="off"></td>
+        </tr>
+        <tr>
+          <td>Actor:</td>
+          <td><input id="cluster-actor-name" style="width:270px"
+                     type="text" autocomplete="off"></td>
+        </tr>
+      </table>
+      <div id="cluster-options" hidden>
+        <div id="cluster-collapsed" class="box clear"></div>
+        <div style="display:inline-block; vertical-align:top;
+                    margin-right:15px; padding-top:3px">
+          Display as small square
+        </div>
+        <div id="cluster-ignore" class="box clear"></div>
+        <div style="display:inline-block; vertical-align:top;
+                    margin-right:15px; padding-top:3px">
+          Ignore
+        </div>
+        <div id="cluster-black-box" class="box clear"></div>
+        <div style="display:inline-block;vertical-align:top; padding-top:3px">
+          Black box
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- The NOTE dialog -- notes have no name as identifier => no input field
+       NOTE: this dialog is also used to *edit* an existing note
+   -->
+  <div id="note-modal" class="modal">
+    <div id="note-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="note-action">Add</span> note
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <textarea id="note-text" autocomplete="off" autocorrect="off"
+                autocapitalize="off"></textarea>
+      <div id="note-attr">
+        Color:
+        <input id="note-C" type="text" autocomplete="off"
+          title="0 = yellow (default), 1 = green, 2 = blue, 3 = purple, 4 = white, 5 = ALERT">
+        <img id="note-C-x" class="sbtn enab" src="images/edit.png"
+             title="Edit expression for note color"
+            style="margin-top: -3px">
+      </div>
+    </div>
+  </div>
+
+  <!--
+    The MODIFY LINK dialog allows specifying link properties. The names of the FROM and
+    TO nodes are set dynamically (as inner HTML). The proprties that can be changed are
+    the multiplier and the rate, and for "typical" links (product flows Q -> P) the
+    % allocated cost for the TO-node.
+
+    NOTE: links to "information products" can be defined to calculate the actual flow
+    by multiplying the rate with different variables:
+
+    The "actual flow" is calculated as rate * multiplier
+   -->
+  <div id="link-modal" class="modal">
+    <div id="link-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <!-- link arrow symbol depends on type of link: product => solid, data => dashed -->
+        Link X <span id="link-arrow-1">&#x279D;</span> Y:
+        <div id="link-from-name" title="FROM"></div>
+        <span id="link-arrow-2">&#x279D;</span>
+        <div id="link-to-name" title="TO"></div>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table style="width: 100%">
+        <tr id="link-multiplier-row">
+          <td style="vertical-align: baseline">
+            Multiplier:
+            <select id="link-multiplier" style="font-size: 9pt">
+              <option id="link-flow" selected="selected" value="0">
+                Level of X (no flow symbol)
+              </option>
+              <option id="link-throughput" value="1">
+                &rrarr; (throughput: the sum of all inflows of X)
+              </option>
+              <option id="link-increase" value="2">
+                &Delta; (increase: X[t] &minus; X[t-1])
+              </option>
+              <option id="link-sum" value="3">
+                &Sigma; (sum: the total of levels X[t-&delta;] through X[t])
+              </option>
+              <option id="link-mean" value="4">
+                &mu; (mean: the average level &Sigma;/(&delta;+1) )
+              </option>
+              <option id="link-startup" value="5">
+                &#x2B9D; (start-up: 1 if X[t-1] = 0 &and; X[t] > 0, otherwise 0)
+              </option>
+              <option id="link-on" value="6">
+                &plus; (positive: 1 if X[t] > 0, otherwise 0)
+              </option>
+              <option id="link-off" value="7">
+                0 (zero: 1 if X[t] = 0, otherwise 0)
+              </option>
+              <option id="link-shutdown" value="10">
+                &#x2B9F; (shut-down: 1 if X[t-1] > 0 &and; X[t] = 0, otherwise 0)
+              </option>
+              <option id="link-spinning" value="8">
+                &#x2934; (spinning reserve: UB - X[t] if X[t] > 0, otherwise 0)
+              </option>
+              <option id="link-first-commit" value="9">
+                &#10034; (first commit: 1 if X[t] > 0 &and; X[i] = 0 &forall; i &lt; t, otherwise 0)
+              </option>
+              <option id="link-peak-inc" value="11">
+                &#x2A39; (peak increase: X&#x302;[b] &minus; X&#x302;[b-1] if bt = 1, otherwise 0)
+              </option>
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            Rate (<span id="link-to-unit">unit</span>/<span id="link-from-unit">level</span>):
+            <input id="link-R" type="text" autocomplete="off">
+            <img id="link-R-x" class="sbtn enab"
+                 title="Edit expression for link rate" src="images/edit.png"
+                 style="margin-top: -3px">
+          </td>
+        </tr>
+        <tr id="link-output-row" hidden="hidden">
+          <td style="vertical-align: baseline">
+            Delay &delta;:
+            <input id="link-D" type="text" autocomplete="off">
+            <img id="link-D-x" class="sbtn enab"
+                 title="Edit expression for link delay" src="images/edit.png"
+                 style="margin-top: -3px">
+            <div id="link-output-soc">
+              Attributed share of cost:
+              <input id="link-share-of-cost" type="text" autocomplete="off">%
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- The constraint dialog allows specification of a constraint between two nodes.
+       The names of the constraining node FROM and the constrained node TO are set dynamically
+       (as inner HTML) along the X and Y axis, respectively.
+       A constraint defines how the RELATIVE upper and lower bounds of TO vary as a function of
+       RELATIVE level of FROM. Both nodes MUST therefore have a non-infinite upper bound.
+       The user defines constraints on the relative level of TO (scaled between 0 and 100% of its
+       upper bound) as a linear function of the relative level of FROM (likewise scaled to its
+       upper bound) by drawing one or more straight bound lines in the X-Y graph displayed by
+       this dialog.
+       NOTE: This dialog is "managed" by the single instance of class ConstraintEditor
+             (the global variable CONSTRAINT_EDITOR). This editor tracks all edits in its own
+             properties; a new instance of Constraint is created (or edits to an existing
+             instance become effectuated) only when OK is clicked.
+   -->
+  <div id="constraint-modal" class="modal">
+    <div id="constraint-dlg" class="inp-dlg">
+      <div class="dlg-title">Constraint X &DDotrahd; Y
+        <div style="display: inline-block; margin-left: 219px; margin-bottom: -7px">
+          <img class="cancel-btn" src="images/cancel.png">
+          <img class="ok-btn" src="images/ok.png"
+               style="margin-left: 4px; margin-bottom: 3px">
+        </div>
+      </div>
+      <div id="ce-button-bar">
+        <img id="add-point-btn" class="mbtn enab" src="images/add.png"
+             title="Add new point to selected bound line">
+        <img id="del-point-btn" class="mbtn disab"
+             title="Remove selected point from bound line" src="images/remove.png">
+        <img id="add-bl-btn" class="mbtn enab" title="Add new bound line"
+             style="margin-left: 10px" src="images/pwlf.png">
+        <!-- NOTE: values correspond to constants used by Virtual Machine -->
+        <select id="bl-type" title="Bound type">
+          <option value="1">&le;</option>
+          <option value="3" selected>=</option>
+          <option value="2">&ge;</option>
+        </select>
+        <img id="del-bl-btn" class="mbtn disab" src="images/delete.png"
+             title="Delete selected bound line">
+        <label>Selectors:</label>
+        <input id="bl-selectors" type="text" placeholder="(any)"
+               title="When specified, bound line will constrain only in matching experiment runs">
+      </div>
+      <div id="ce-y-label">% range of <span id="ce-to-name"></span></div>
+      <!-- NOTE: this is the div that will contain the chart's SVG image -->
+      <div id="ce-container"></div>
+      <div id="ce-x-label">% range of <span id="ce-from-name"></span></div>
+      <div id="ce-pos-x">X = 0</div>
+      <div id="ce-pos-y">Y = 0</div>
+      <div id="ce-point" title="Selected point"></div>
+      <div id="ce-equation" title="Equation for line segment"></div>
+      <div id="ce-bottom-div">
+        <div id="ce-no-slack-div"
+             title="Check to enforce bounds (Caution: this may make model infeasible)">
+          <div id="ce-no-slack" class="box clear"></div>
+          <div id="ce-no-slack-lbl">No slack</div>
+        </div>
+        <div id="ce-soc">
+          <label>Attributed share of cost:</label>
+          <select id="ce-soc-direct">
+            <option value="1">X&rarr;Y</option>
+            <option value="-1">Y&rarr;X</option>
+          </selector>
+          <input id="ce-share-of-cost" type="text" autocomplete="off"><label>%</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROCESS properties dialog -->
+  <div id="process-modal" class="modal">
+    <div id="process-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Process properties
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div id="process-name-lbl">Name:</div>
+      <input id="process-name" type="text" autocomplete="off">
+      <div id="process-actor-lbl">Actor:</div>
+      <input id="process-actor" type="text" autocomplete="off">
+      <div id="process-LB-lbl">Lower bound:</div>
+      <input id="process-LB" type="text" autocomplete="off">
+      <img id="process-LB-x" class="sbtn enab"  src="images/edit.png"
+           title="Edit expression for lower process bound">
+      <div id="process-UB-lbl">Upper bound:</div>
+      <input id="process-UB" type="text" autocomplete="off">
+      <img id="process-UB-x" class="sbtn enab" src="images/edit.png"
+           title="Edit expression for upper process bound">
+      <!-- "equal bounds" button is displayed middle-left of the two input fields -->
+      <div id="process-UB-equal" class="nebtn" title="Set equal bounds"></div>
+      <div id="process-IL-lbl">Initial level:</div>
+      <input id="process-IL" type="text" autocomplete="off">
+      <img id="process-IL-x" class="sbtn enab" src="images/edit.png"
+           title="Edit expression for initial production level">
+      <div id="process-int-div">
+        <div id="process-integer" class="box clear"></div>
+        <div id="process-int-lbl">Integer</div>
+      </div>
+      <div id="process-shut-down-div">
+        <div id="process-shut-down" class="box clear"></div>
+        <div id="process-shut-down-lbl">
+          Shut down if lower bound (>0) constrains
+        </div>
+      </div>
+      <div id="process-pace-div">
+        Level change frequency: 1/
+        <input id="process-pace" type="text" autocomplete="off">
+        time step(s)
+        <img id="process-pace-x" class="sbtn enab" src="images/edit.png"
+             title="Edit expression for level change frequency">
+      </div>
+      <div id="process-collapsed-div">
+        <div id="process-collapsed" class="box clear"></div>
+        <div id="process-collapsed-lbl">Display as small rectangle</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PRODUCT properties dialog -->
+  <div id="product-modal" class="modal">
+    <div id="product-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Product properties
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div id="product-name-lbl">Name:</div>
+      <input id="product-name" type="text" autocomplete="off">
+      <div id="product-unit-lbl">Unit:</div>
+      <input id="product-unit" type="text" autocomplete="off">
+      <div id="source" title="Source products may have level &lt; 0">
+        <div id="product-source" class="box clear"></div>
+        <div id="product-source-lbl">Source</div>
+      </div>
+      <div id="sink" title="Sink products may have level &gt; 0">
+        <div id="product-sink" class="box clear"></div>
+        <div id="product-sink-lbl">Sink</div>
+      </div>
+      <div id="stock"
+           title="Stock products aggregate their inflows and outflows over time">
+        <div id="product-stock" class="box clear"></div>
+        <div id="product-stock-lbl">Stock</div>
+      </div>
+      <div id="data"
+           title="Data products aggregate information on processes and products">
+        <div id="product-data" class="box clear"></div>
+        <div id="product-data-lbl">Data</div>
+      </div>
+      <div id="product-LB-lbl">Lower bound:</div>
+      <input id="product-LB" type="text" autocomplete="off">
+      <img id="product-LB-x" class="sbtn enab" src="images/edit.png"
+           title="Edit expression for lower product bound">
+      <div id="product-UB-lbl">Upper bound:</div>
+      <input id="product-UB" type="text" autocomplete="off">
+      <img id="product-UB-x" class="sbtn enab" src="images/edit.png"
+           title="Edit expression for upper product bound">
+      <!-- "equal bounds" button is displayed middle-left of the two input fields -->
+      <div id="product-UB-equal" class="nebtn" title="Set equal bounds"></div>
+      <div id="product-IL-lbl">Initial level:</div>
+      <input id="product-IL" type="text" autocomplete="off">
+      <img id="product-IL-x" class="sbtn enab" src="images/edit.png"
+           title="Edit expression for initial stock level">
+      <div id="product-P-div">
+        <div id="product-P-lbl">
+          Price
+          <small>(<span id="product-currency"></span>/<span id="product-P-unit"></span>)</small>:
+        </div>
+        <input id="product-P" type="text" autocomplete="off">
+        <img id="product-P-x" class="sbtn enab" src="images/edit.png"
+             title="Edit expression for product market price">
+      </div>
+      <div id="product-int-div">
+        <div id="product-integer" class="box clear"></div>
+        <div id="product-int-lbl">Integer</div>
+      </div>
+      <div id="product-no-slack-div"
+           title="Check to enforce bounds (Caution: this may make model infeasible)">
+        <div id="product-no-slack" class="box clear"></div>
+        <div id="product-no-slack-lbl">No slack</div>
+      </div>
+      <div id="product-no-links-div">
+        <div id="product-no-links" class="box clear"></div>
+        <div id="product-no-links-lbl">Hide related links</div>
+      </div>
+      <div id="product-io" title="Click to set/unset as model parameter">
+        &#10063;
+        <div id="product-import">&darr;</div>
+        <div id="product-export">&uarr;</div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- The CLONE dialog prompts for a prefix -->
+  <div id="clone-modal" class="modal">
+    <div id="clone-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Clone selection <span id="clone-count"></span>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div style="font-size: 11px; margin: 2px">
+        Prefix + actor should result in unique new names
+        for selected processes and clusters.<br>
+        <em>Products will NOT be cloned unless a prefix is specified.</em>
+      </div>
+      <table style="width: 100%">
+        <tr>
+          <td>Prefix:</td>
+          <td>
+            <input id="clone-prefix" type="text" autocomplete="off">
+          </td>
+        </tr>
+        <tr>
+          <td>Actor:</td>
+          <td>        
+            <input id="clone-actor" type="text" autocomplete="off">
+          </td>
+        </tr>
+      </table>
+      <div>
+        <div id="clone-renumbering" class="box clear"></div>
+        <div style="display:inline-block; vertical-align:top; margin-top:3px"
+             title="NOTE: This applies only to selected processes and products">
+          Use incremental numbering where possible
+        </div>
+      </div>
+    </div>
+  </div>  
+
+  <!-- The MOVE modal asks to confirm to move node to focal cluster -->
+  <div id="move-modal" class="modal">
+    <div id="move-dlg" class="inp-dlg">
+      <div class="dlg-title" style="background-color: #cc88b0">
+        Confirm move
+      </div>
+      <div id="move-msg">
+        Really move <span id="move-node-type"></span>
+        <em><span id="move-node-name"></span></em>
+        from cluster <strong><span id="move-from-cluster"></span></strong>
+        to this cluster?
+      </div>
+      <div id="move-buttons">
+        <img class="ok-btn big-btn" src="images/ok.png">
+        Yes
+        <img class="cancel-btn big-btn" src="images/cancel.png">
+        No
+      </div>
+    </div>
+  </div>
+
+  <!-- REPLACE PRODUCT dialog -->
+  <div id="replace-modal" class="modal">
+    <div id="replace-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Replace <div id="replace-product-name"></div>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div style="margin: 0 0 2px 2px; width: 100%">
+        <label>Replace by:</label>
+        <select id="replace-by-name"></select>
+        <div id="replace-option"
+             title="When checked, only the links shown in this diagram will be redirected">
+          <div id="replace-local" class="box clear"></div>
+          <div style="display: inline-block">(locally)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+      
+
+  <!-- EXPRESSION EDITOR dialog -->
+  <div id="expression-modal" class="modal">
+    <div id="expression-dlg" class="inp-dlg">
+      <div class="dlg-title">Editing expression for
+        <div id="expression-property"></div>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+        <img class="info-btn" src="images/info.png">
+      </div>
+      <div id="variable-bar">
+        <select id="variable-obj">
+          <option value="0" selected="selected">Process</option>
+          <option value="1">Product</option>
+          <option value="2">Cluster</option>
+          <option value="3">Link</option>
+          <option value="4">Constraint</option>
+          <option value="5">Actor</option>
+          <option value="6">Dataset</option>
+          <option value="7">Equation</option>
+        </select>
+        <select id="variable-name"></select>
+        <select id="variable-attr"></select>
+        <button id="variable-insert">Insert</button>
+      </div>
+      <textarea id="expression-text" autocomplete="off" autocorrect="off"
+                autocapitalize="off" spellcheck="false"></textarea>
+      <div id="expression-status">&nbsp;</div>
+      <div id="expression-info">
+      </div>
+    </div>
+  </div>
+
+
+  <!-- the DATASET MANAGER dialog allows definition of datasets -->
+  <div id="dataset-dlg" class="inp-dlg">
+    <div id="dataset-hdr" class="dragger dlg-title">Dataset manager
+      <img id="dataset-close-btn" class="close-btn" src="images/close.png">
+    </div>
+    <div id="dataset-buttons">
+      <img id="ds-new-btn" class="btn enab" src="images/new.png"
+           title="New dataset">
+      <img id="ds-data-btn" class="btn disab" src="images/dataset.png"
+           title="Edit time series of selected dataset">
+      <img id="ds-rename-btn" class="btn disab" src="images/rename.png"
+           title="Rename selected dataset">
+      <img id="ds-clone-btn" class="btn disab" src="images/clone.png"
+           title="Clone selected dataset">
+      <img id="ds-delete-btn" class="btn disab" src="images/delete.png"
+           title="Delete selected dataset"
+           style="position: absolute; right: 2px">
+    </div>
+    <div id="dataset-header">
+      Datasets
+      <img id="ds-filter-btn" class="btn enab" src="images/filter.png"
+           title="Filter on name">
+    </div>
+    <div id="ds-filter-bar">
+      <input id="ds-filter-text" type="text"
+             placeholder="(name filtering pattern)"
+             title="Pattern may contain logical & (AND), | (OR) and ^ (NOT)">
+    </div>
+    <div id="dataset-scroll-area">
+      <table id="dataset-table">
+      </table>
+    </div>
+    <div id="dataset-properties">
+      <div>Default = <span id="dataset-default">0</span></div>
+      <div>N =
+        <span id="dataset-count">0</span>
+        <span id="dataset-special"></span>
+      </div>
+      <div id="dataset-stats">
+        <div>Range:
+          <span id="dataset-min"></span>&hellip;<span id="dataset-max"></span>
+        </div>
+        <div>&mu; = <span id="dataset-mean"></span>,
+          &sigma; = <span id="dataset-stdev"></span>
+        </div>
+      </div>
+      <div id="dataset-blackbox" class="off"
+           title="Click to set/unset dataset as &quot;black-boxed&quot;">
+        &#x25FC;
+      </div>
+      <img id="dataset-outcome" src="images/outcome.png"
+           title="Click to consider/ignore dataset expressions as experiment outcome">
+      <div id="dataset-io"
+           title="Click to set/unset dataset as model parameter">
+        &#10063;
+        <div id="dataset-import">&darr;</div>
+        <div id="dataset-export">&uarr;</div>
+      </div>
+    </div>
+    <div id="dataset-separator"></div>
+    <div id="dataset-modif-header">(no dataset selected)</div>
+    <div id="dataset-modif-ds-name"></div>
+    <div id="dataset-modif-titles">
+      <span>Selector</span>
+      <span style="margin-left: 35px">Expression</span>
+    </div>
+    <div id="dataset-modif-scroll-area">
+      <table id="dataset-modif-table">
+      </table>
+    </div>
+    <div id="dataset-modif-buttons">
+      <img id="ds-add-modif-btn" class="btn enab"
+           src="images/add-selector.png" title="Add new selector">
+      <img id="ds-rename-modif-btn" class="btn disab" src="images/rename.png"
+           title="Rename selected modifier">
+      <img id="ds-edit-modif-btn" class="btn disab"
+           src="images/edit.png" title="Edit expression of selected modifier">
+      <img id="ds-delete-modif-btn" class="btn disab"
+           src="images/delete.png" title="Delete selected modifier"
+           style="margin-left: 20px">
+    </div>
+    <div id="dataset-resize" class="resizer"></div>
+  </div>
+
+  <!-- the NEW DATASET dialog prompts for the name of a new dataset -->
+  <div id="new-dataset-modal" class="modal">
+    <div id="new-dataset-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Name of new dataset
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="new-dataset-name" type="text" autocomplete="off">
+    </div>
+  </div>
+
+  <!-- the RENAME DATASET dialog prompts for the new name of a dataset -->
+  <div id="rename-dataset-modal" class="modal">
+    <div id="rename-dataset-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Rename dataset
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="rename-dataset-name" type="text" autocomplete="off">
+    </div>
+  </div>
+
+  <!-- the NEW SELECTOR dialog prompts for a new selector for a dataset -->
+  <div id="new-selector-modal" class="modal">
+    <div id="new-selector-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        New dataset modifier
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="new-selector-name" type="text"
+             title="Can contain only alphanumerical characters, +, -, and %
+NOTE: * and ? will be interpreted as wildcards" 
+             maxlength="10" autocomplete="off">
+      <div id="new-selector-label">(1 to 10 characters)</div>
+    </div>
+  </div>
+
+  <!-- the RENAME SELECTOR dialog prompts for a new selector name -->
+  <div id="rename-selector-modal" class="modal">
+    <div id="rename-selector-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Rename dataset modifier
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="rename-selector-name" type="text"
+             title="Can contain only alphanumerical characters, +, -, and %" 
+             maxlength="10" autocomplete="off">
+      <div id="rename-selector-label">(1 to 10 characters)</div>
+    </div>
+  </div>
+
+  <!-- the SERIES dialog presents the properties of the time series
+       data of the selected dataset, including a text area for copy/paste
+       of numbers while showing the line count and checking for correct
+       number format
+   -->
+  <div id="series-modal" class="modal">
+    <div id="series-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Edit time series
+        <img class="ok-btn" src="images/ok.png">
+        <img class="cancel-btn" src="images/cancel.png">
+      </div>
+      <div id="series-default-lbl">Default value:</div>
+      <input id="series-default" type="text" autocomplete="off">
+      <div id="series-periodic" class="box clear"></div>
+      <div id="series-periodic-lbl">Periodic</div>
+      <div id="series-array" class="box clear"></div>
+      <div id="series-array-lbl">Array</div>
+      <div id="series-no-time-msg">
+        Arrays ignore time dimension
+      </div>
+      <div id="series-time-step-lbl">Time step:</div>
+      <input id="series-time-scale" type="text" autocomplete="off">
+      <select id="series-time-unit">
+        <!-- options are added by DATASET_MANAGER -->
+      </select>
+      <div id="series-method-lbl">Method:</div>
+      <select id="series-method">
+        <!-- options are added by DATASET_MANAGER -->
+      </select>
+      <div id="series-remote">
+      <input id="series-url" type="text"
+             placeholder="(URL or path on local host)"> </div>
+      <div id="series-data-lbl">Series data:</div>
+      <textarea id="series-data" autocomplete="off"
+          autocorrect="off" autocapitalize="off" spellcheck="false">
+      </textarea>
+      <div id="series-line">
+        Line <span id="series-line-number">1</span>
+        (of <span id="series-line-count">1</span>)
+      </div>
+    </div>
+  </div>
+
+
+  <!-- the EQUATION dialog allows definition of equations -->
+  <div id="equation-dlg" class="inp-dlg">
+    <div id="equation-hdr" class="dragger dlg-title">Equation manager
+      <img id="equation-close-btn" class="close-btn" src="images/close.png">
+    </div>
+    <div id="equation-buttons">
+      <img id="eq-new-btn" class="btn enab" src="images/new.png"
+           title="New equation">
+      <img id="eq-rename-btn" class="btn disab" src="images/rename.png"
+           title="Rename selected equation">
+      <img id="eq-edit-btn" class="btn disab" src="images/edit.png"
+           title="Edit selected equation">
+      <img id="eq-delete-btn" class="btn disab" src="images/delete.png"
+           title="Delete selected equation">
+    </div>
+    <div id="equation-scroll-area">
+      <table id="equation-table">
+      </table>
+    </div>
+    <div id="equation-resize" class="resizer"></div>
+  </div>
+
+  <!-- the NEW EQUATION dialog prompts for the name of a new equation -->
+  <div id="new-equation-modal" class="modal">
+    <div id="new-equation-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Name of new equation
+        <img class="cancel-btn" src="images/cancel.png"">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="new-equation-name" type="text" autocomplete="off">
+    </div>
+  </div>
+
+  <!-- the RENAME EQUATION dialog prompts for the new name of an equation -->
+  <div id="rename-equation-modal" class="modal">
+    <div id="rename-equation-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Rename equation
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="rename-equation-name" type="text" autocomplete="off">
+    </div>
+  </div>
+
+
+  <!-- the CHART dialog allows definition of charts and displays them -->
+  <div id="chart-dlg" class="inp-dlg">
+    <div id="chart-hdr" class="dragger dlg-title">Chart manager
+      <div id="chart-experiment-info"></div>
+      <img id="chart-close-btn" class="close-btn" src="images/close.png">
+    </div>
+    <div id="chart-control-panel">
+      <div id="chart-buttons">
+        <img id="chart-rename-btn" class="btn enab" src="images/rename.png"
+             title="Rename selected chart">
+        <img id="chart-clone-btn" class="btn enab" src="images/clone.png"
+             title="Clone selected chart">
+        <img id="chart-results-btn" class="btn enab" src="images/experiment.png"
+             title="Show chart for experiment results (if any)">
+        <img id="chart-delete-btn" class="btn enab" src="images/delete.png"
+             title="Delete selected chart" style="margin-left: 105px">
+      </div>
+      <select id="chart-selector">
+        <!-- options are added by the chart manager -->
+      </select>
+      <div id="chart-histogram" class="box clear"></div>
+      <div id="chart-histogram-lbl">As histogram</div>
+      <div id="chart-histogram-options">
+        <label>with</label>
+        <select id="histogram-bins" dir="rtl">
+          <option value="5">5</option>
+          <option value="10">10</option>
+          <option value="15">15</option>
+          <option value="20">20</option>
+          <option value="30">30</option>
+          <option value="40">40</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+        <label>bins</label>
+      </div>
+      <div id="chart-title" class="box clear"></div>
+      <div id="chart-title-lbl">With title</div>
+      <div id="chart-legend-lbl">Legend:</div>
+      <select id="chart-legend">
+        <!-- options are added by the chart manager -->
+      </select>
+      <div id="chart-variables-header">
+        Variables:
+        <div id="chart-variable-buttons">
+          <img id="chart-add-variable-btn" class="btn enab"
+               src="images/add.png"
+               title="Add variable (Shift-click to add a new equation)">
+          <img id="chart-variable-up-btn" class="btn disab"
+               src="images/up.png" style="margin-left: 4px"
+               title="Move selected variable up in list">
+          <img id="chart-variable-down-btn" class="btn disab"
+               src="images/down.png"
+               title="Move selected variable down in list">
+          <img id="chart-edit-variable-btn" class="btn disab"
+               src="images/edit.png" style="margin-left: 4px"
+               title="Edit selected variable">
+          <img id="chart-delete-variable-btn" class="btn disab"
+               src="images/remove.png" style="margin-left: 4px"
+               title="Delete selected variable">
+        </div>
+      </div>
+      <div id="chart-variables">
+        <table id="chart-variables-table">
+        </table>
+      </div>
+    </div>
+    <div id="chart-display-panel">
+      <!-- NOTE: the scroller scrolls when the container is "stretched" -->
+      <div id="chart-svg-scroller">
+        <div id="chart-svg-container">
+          <!-- NOTE: this is the div that will contain the chart's SVG image -->
+          <div id="chart-svg"></div>
+        </div>
+      </div>
+      <div id="chart-table-panel" hidden="hidden"></div>
+      <div id="chart-toggle-chevron" title="Hide control panel">&laquo;</div>
+      <div id="chart-display-buttons">
+        <img id="chart-stats-btn" class="btn enab" src="images/stats.png"
+             title="Show descriptive statistics">
+        <img id="chart-copy-stats-btn" class="btn enab"
+             src="images/stats-to-clpbrd.png"
+             title="Copy descriptive statistics to clipboard">
+        <img id="chart-copy-data-btn" class="btn enab"
+             src="images/data-to-clpbrd.png"
+             title="Copy series data to clipboard">
+        <div id="table-only-buttons">
+          <img id="chart-copy-table-btn" class="btn enab"
+               src="images/table-to-clpbrd.png"
+               title="Copy table to clipboard (as HTML)">
+        </div>
+        <div id="chart-only-buttons">
+          <img id="chart-save-btn" class="btn enab" src="images/save-chart.png"
+               title="Save chart diagram">
+          <a id="chart-render-btn" href="show-png.html" target="_blank"
+             style="margin-left: 4px; text-decoration: none; outline: none">
+            <img class="btn enab" src="images/chart.png"
+                 title="Render chart diagram as PNG"
+                 style="height: 20px; width: 20px">
+          </a>
+          <img id="chart-widen-btn" class="btn enab" src="images/stretch.png"
+               title="Widen chart" style="margin-left: 24px">
+          <img id="chart-narrow-btn" class="btn enab" src="images/compress.png"
+               title="Narrow chart">
+        </div>
+      </div>
+      <div id="chart-time-step">t = 0</div>
+    </div>
+    <div id="chart-resize" class="resizer"></div>
+  </div>
+
+  <!-- the VARIABLE dialog allows formatting a chart variable -->
+  <div id="variable-modal" class="modal">
+    <div id="variable-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <div id="variable-dlg-name"></div>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div style="padding: 4px; width: 100px">
+        <div id="variable-color-div">
+          <div style="display:inline-block; vertical-align:top">Color:</div>
+          <div id="variable-color"></div>
+        </div>
+        <div id="variable-scale-div" style="margin-top: 3px">
+          <div style="display:inline-block; vertical-align:top; margin-top: 2px">
+            Scale by:
+          </div>
+          <input id="variable-scale" type="text" autocomplete="off">
+        </div>
+        <div id="variable-width-div" style="margin: 4px 4px 8px 0px">
+          <div style="display:inline-block; vertical-align:top; margin-top: 2px">
+            Line width:
+          </div>
+          <input id="variable-width" type="text" autocomplete="off">
+        </div>
+        <div id="variable-stacked-div" style="margin: -2px -2px">
+          <div id="variable-stacked" class="box clear"></div>
+          <div style="display:inline-block; vertical-align:top; margin-top: 3px">
+            Stacked area
+          </div>
+        </div>
+      </div>
+      <div id="color-picker"></div>
+      <div id="change-equation-btns">
+        <img id="chart-rename-equation-btn" class="btn enab"
+             src="images/rename.png" title="Rename equation">
+        <img id="chart-edit-equation-btn" class="btn enab"
+             src="images/edit.png" style="margin-left: 4px"
+             title="Edit equation">
+      </div>
+    </div>
+  </div>
+
+  <!-- the ADD VARIABLE dialog allows selecting a variable to add to the chart -->
+  <div id="add-variable-modal" class="modal">
+    <div id="add-variable-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Add variable
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <select id="add-variable-obj">
+        <option value="0" selected="selected">Process</option>
+        <option value="1">Product</option>
+        <option value="2">Cluster</option>
+        <option value="3">Link</option>
+        <option value="4">Constraint</option>
+        <option value="5">Actor</option>
+        <option value="6">Dataset</option>
+        <option value="7">Equation</option>
+      </select>
+      <select id="add-variable-name"></select>
+      <select id="add-variable-attr"></select>
+    </div>
+  </div>
+  
+  <!-- the RENAME CHART dialog prompts for the new title for a chart -->
+  <div id="rename-chart-modal" class="modal">
+    <div id="rename-chart-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Rename chart
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="new-chart-title" type="text" autocomplete="off">
+    </div>
+  </div>
+
+  <!-- the SENSITIVITY dialog allows sensitivity analysis -->
+  <div id="sensitivity-dlg" class="inp-dlg">
+    <div id="sensitivity-hdr" class="dragger dlg-title">Sensitivity analysis
+      <img id="sensitivity-close-btn" class="close-btn" src="images/close.png">
+    </div>
+    <div id="sensitivity-control-panel">
+      <div id="sa-base" title="Dataset modifier selectors for base scenario">
+        Base:
+        <input id="sa-base-selectors" type="text" autocomplete="off"
+               placeholder="(no selectors)">
+      </div>
+      <div id="sa-delta" title="Relative change in parameter value">
+        Delta:
+        <input id="sensitivity-delta" type="text" autocomplete="off">
+        <span id="sa-percent">%</span>
+      </div>
+      <div id="sa-p-header">
+        Parameters:
+        <div id="sa-p-btns">
+          <img id="sa-p-add-btn" class="v-btn" src="images/add.png"
+               title="Add parameter">
+          <img id="sa-p-up-btn" class="v-btn v-disab"
+               src="images/up.png" style="margin-left: 4px"
+               title="Move selected parameter up in list">
+          <img id="sa-p-down-btn" class="v-btn v-disab"
+               src="images/down.png"
+               title="Move selected parameter down in list">
+          <img id="sa-p-delete-btn" class="v-btn" src="images/remove.png"
+               title="Delete selected parameter">
+        </div>
+      </div>
+      <div id="sa-p-scroll-area">
+        <table id="sa-p-table"></table>
+      </div>
+      <div id="sa-o-header">
+        Outcomes:
+        <div id="sa-o-btns">
+          <img id="sa-o-add-btn" class="v-btn" src="images/add.png"
+               title="Add outcome">
+          <img id="sa-o-up-btn" class="v-btn v-disab"
+               src="images/up.png" style="margin-left: 4px"
+               title="Move selected outcome up in list">
+          <img id="sa-o-down-btn" class="v-btn v-disab"
+               src="images/down.png"
+               title="Move selected outcome down in list">
+          <img id="sa-o-delete-btn" class="v-btn" src="images/remove.png"
+               title="Delete selected outcome">
+        </div>
+      </div>
+      <div id="sa-o-scroll-area">
+        <table id="sa-o-table">
+        </table>
+      </div>
+    </div>
+    <div id="sensitivity-display-panel">
+      <div id="sa-toggle-chevron" title="Hide control panel">&laquo;</div>
+      <div id="sa-display-top-bar">
+        <div id="sa-control-buttons">
+          <img id="sa-start-btn" class="btn disab" src="images/solve.png"
+               title="Start analysis">
+          <img id="sa-pause-btn" class="btn enab off" src="images/pause.png"
+               title="Pause analysis">
+          <img id="sa-stop-btn" class="btn enab off" src="images/stop.png"
+               title="Stop analysis">
+          <img id="sa-reset-btn" class="btn enab off" src="images/reset.png"
+               title="Clear results">
+        </div>
+        <div id="sa-progress"></div>
+        <div id="sa-statistic">
+          <label>Statistic:</label>
+          <select id="sensitivity-statistic">
+            <option title="Count" value="N">N</option>
+            <option title="Mean" value="mean" selected="selected">&mu;</option>
+            <option title="Standard deviation" value="sd">&sigma;</option>
+            <option title="Sum" value="sum">&Sigma;</option>
+            <option title="Lowest value" value="min">MIN</option>
+            <option title="Highest value" value="max">MAX</option>
+            <option title="Non-zero count" value="nz">&ne;0</option>
+            <option title="Exception count" value="except">&#9888;</option>
+            <option title="Value at final time step" value="last">&#10132;</option>
+          </select>
+        </div>
+      </div>
+      <div id="sa-scroll-area">
+        <table id="sa-table">
+        </table>
+      </div>
+      <div id="sa-bottom-bar">
+        <div id="sa-abs-rel" title="Toggle absolute/relative change">%</div>
+        <div id="sa-rb-scale" class="color-scale blue-to-red"></div>
+        <div id="sa-no-scale" class="color-scale no-colors"></div>
+        <img id="sa-copy-btn" class="btn enab" src="images/table-to-clpbrd.png"
+             title="Copy table to clipboard (as HTML)">
+        <img id="sa-copy-data-btn" class="btn enab"
+             src="images/data-to-clpbrd.png" title="Copy data to clipboard">
+      </div>
+      <div id="sa-outcome-name"></div>
+    </div>
+    <div id="sensitivity-resize" class="resizer"></div>
+  </div>
+
+  <!-- the ADD SA VARIABLE dialog allows selecting a variable as parameter
+       or outcome for sensitivity analysis -->
+  <div id="add-sa-variable-modal" class="modal">
+    <div id="add-sa-variable-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Add <span id="add-sa-variable-type">parameter/outcome</span>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <select id="add-sa-variable-obj">
+        <option value="0" selected="selected">Process</option>
+        <option value="1">Product</option>
+        <option id="add-sa-variable-cluster" value="2">Cluster</option>
+        <option value="3">Link</option>
+        <option value="4">Constraint</option>
+        <option value="5">Actor</option>
+        <option value="6">Dataset</option>
+        <option id="add-sa-variable-equation" value="7">Equation</option>
+      </select>
+      <select id="add-sa-variable-name">
+      </select>
+      <select id="add-sa-variable-attr">
+      </select>
+    </div>
+  </div>
+
+
+  <!-- the EXPERIMENT dialog is the GUI of the Experiment manager -->
+  <div id="experiment-dlg" class="inp-dlg">
+    <div id="experiment-hdr" class="dragger dlg-title">Experiment manager
+      <img id="experiment-close-btn" class="close-btn" src="images/close.png">
+    </div>
+    <div id="experiment-design">
+      <div id="experiment-buttons">
+        <img id="xp-new-btn" class="btn enab" src="images/new.png"
+             title="New experiment">
+        <img id="xp-rename-btn" class="btn disab" src="images/rename.png"
+             title="Rename selected experiment">
+        <img id="xp-view-btn" class="btn disab" src="images/table.png"
+             title="View selected experiment">
+        <img id="xp-reset-btn" class="btn enab off" src="images/reset.png"
+             title="Clear results for selected experiment">
+        <img id="xp-delete-btn" class="btn disab" src="images/delete.png"
+             style="position: absolute; right: 2px"
+             title="Delete selected experiment">
+      </div>
+      <div id="experiment-header">Experiments</div>
+      <div id="experiment-scroll-area">
+        <table id="experiment-table">
+        </table>
+      </div>
+      <div id="experiment-properties">
+        <div id="experiment-combi-count"></div>
+        <div id="experiment-dim-count"></div>
+      </div>
+      <div id="experiment-separator"></div>
+      <div id="experiment-default-message">
+        To define a meaningful experiment, a model must feature at least
+        one outcome dataset, or a graph having one or more variables.
+      </div>
+      <div id="experiment-params-header">(no experiment selected)</div>
+      <div id="experiment-params-div">
+        <div id="experiment-d-header">Dimensions:
+          <div id="experiment-d-btns">
+            <img id="xp-d-add-btn" class="v-btn" src="images/add.png"
+                 title="Add dimension">
+            <img id="xp-d-up-btn" class="v-btn" src="images/up.png"
+                 title="Move dimension up in list">
+            <img id="xp-d-down-btn" class="v-btn" src="images/down.png"
+                 title="Move dimension down in list">
+            <img id="xp-d-settings-btn" class="v-btn" src="images/settings.png"
+                 title="Edit model settings dimensions">
+            <img id="xp-d-actor-btn" class="v-btn" src="images/actors.png"
+                 title="Edit actor dimension">
+            <img id="xp-d-delete-btn" class="v-btn" src="images/remove.png"
+                 title="Remove selected dimension from list">
+          </div>
+        </div>
+        <div id="experiment-d-scroll-area">
+          <table id="experiment-dim-table">
+          </table>
+        </div>
+        <div id="experiment-c-header">Charts:
+          <img id="xp-c-add-btn" class="v-btn" src="images/add.png"
+               title="Add chart">
+            <img id="xp-c-delete-btn" class="v-btn" src="images/remove.png"
+                 title="Remove selected chart from list">
+        </div>
+        <div id="experiment-c-scroll-area">
+          <table id="experiment-chart-table">
+          </table>
+        </div>
+        <div id="experiment-filter" title="Selectors to exclude from this experiment">
+          Exclude:
+          <input id="experiment-exclude" type="text" autocomplete="off">
+        </div>
+        <img id="xp-ignore-btn" class="btn disab"
+             src="images/ignore.png" title="Select clusters to be ignored">
+        <div id="xp-ignore-count"></div>
+      </div>
+    </div>
+    <div id="experiment-viewer" hidden="hidden">
+      <div id="viewer-buttons">
+        <img id="xv-back-btn" class="btn enab" src="images/back.png"
+             title="Back to design mode">
+        <img id="xv-start-btn" class="btn enab" src="images/solve.png"
+             title="Start experiment">
+        <img id="xv-pause-btn" class="btn enab off" src="images/pause.png"
+             title="Pause experiment">
+        <img id="xv-stop-btn" class="btn enab off" src="images/stop.png"
+             title="Stop experiment">
+      </div>
+      <div id="viewer-selectors">
+        <label>Variable:</label>
+        <select id="viewer-variable" style="margin-right: 10px">
+        </select>
+        <label>Statistic:</label>
+        <select id="viewer-statistic">
+          <option title="Count" value="N">N</option>
+          <option title="Mean" value="mean" selected="selected">&mu;</option>
+          <option title="Standard deviation" value="sd">&sigma;</option>
+          <option title="Sum" value="sum">&Sigma;</option>
+          <option title="Lowest value" value="min">MIN</option>
+          <option title="Highest value" value="max">MAX</option>
+          <option title="Non-zero count" value="nz">&ne;0</option>
+          <option title="Exception count" value="except">&#9888;</option>
+          <option title="Value at final time step" value="last">&#10132;</option>
+        </select>
+      </div>
+      <div id="viewer-bar">
+        <div id="viewer-title"></div>
+        <div id="viewer-progress"></div>
+      </div>
+      <div id="viewer-scroll-area">
+        <table id="viewer-table"></table>
+      </div>
+      <div id="viewer-spinners">
+        <label>Layout:</label>
+        <div id="xp-config-spinner" class="spinner" title="# configuration dimensions">
+          <div id="xp-cd-minus" class="spin-min">&minus;</div>
+          <div id="xp-cd-value" class="spin-val">0</div>
+          <div id="xp-cd-plus" class="spin-plus">&plus;</div>
+        </div>
+        <div id="xp-scen-spinner" class="spinner" title="# column scenario dimensions">
+          <div id="xp-sd-minus" class="spin-min">&minus;</div>
+          <div id="xp-sd-value" class="spin-val">0</div>
+          <div id="xp-sd-plus" class="spin-plus">&plus;</div>
+        </div>
+        <label>Scale:</label>
+        <select id="viewer-scale">
+          <option title="Values as computed"
+                  value="val" selected="selected">Values</option>
+          <option title="Difference with reference configuration"
+                  value="dif" style="background-color: orange">Difference</option>
+          <option title="Regret (difference with highest value in scenario)"
+                  value="reg">Regret (-)</option>
+          <option title="Computing time used by solver (in seconds)"
+                  value="sec">Solver time</option>
+        </select>
+        <div id="xv-rb-scale" class="color-scale blue-to-red"></div>
+        <div id="xv-br-scale" class="color-scale red-to-blue"></div>
+        <div id="xv-rg-scale" class="color-scale green-to-red"></div>
+        <div id="xv-gr-scale" class="color-scale red-to-green"></div>
+        <div id="xv-no-scale" class="color-scale no-colors"></div>
+        <img id="xv-copy-btn" class="btn enab" src="images/table-to-clpbrd.png"
+             title="Copy table to clipboard (as HTML)">
+      </div>
+    </div>
+    <div id="experiment-resize" class="resizer"></div>
+  </div>
+
+  <!-- the NEW dialog prompts for the name of a new experiment -->
+  <div id="xp-new-modal" class="modal">
+    <div id="xp-new-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Title of new experiment
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="xp-new-name" type="text" autocomplete="off">
+    </div>
+  </div>
+
+  <!-- the RENAME dialog prompts for the new name of an experiment -->
+  <div id="xp-rename-modal" class="modal">
+    <div id="xp-rename-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        New name for
+        <div class="sdsn"
+             style="width: 110px" id="xp-rename-former-name"></div>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="xp-rename-name" type="text" autocomplete="off">
+    </div>
+  </div>
+
+  <!-- the PARAMETER dialog prompts for a dataset or chart name -->
+  <div id="xp-parameter-modal" class="modal">
+    <div id="xp-parameter-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Add <span id="xp-parameter-type">parameter</span>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <select id="xp-parameter-select">
+      </select>
+    </div>
+  </div>
+
+  <!-- the SETTINGS dialog permits editing the model settings dimensions -->
+  <div id="xp-settings-modal" class="modal">
+    <div id="xp-settings-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Model settings dimensions
+        <img class="close-btn" src="images/close.png">
+      </div>
+      <div id="xp-settings-s-header">Selectors:
+        <img id="xp-settings-s-add-btn" class="v-btn" src="images/add.png"
+             title="Add selector">
+      </div>
+      <div id="xp-settings-s-scroll-area">
+        <table id="xp-settings-s-table">
+        </table>
+      </div>
+      <div id="xp-settings-d-header">Dimensions:
+        <img id="xp-settings-d-add-btn" class="v-btn" src="images/add.png"
+             title="Add dimension">
+      </div>
+      <div id="xp-settings-d-scroll-area">
+        <table id="xp-settings-d-table">
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- the SETTINGS SELECTOR dialog prompts for a selector + string -->
+  <div id="xp-settings-selector-modal" class="modal">
+    <div id="xp-settings-selector-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="xp-settings-selector-action">Edit</span>
+        model settings selector
+        <span id="xp-settings-selector-clear" class="sd-clear">
+          (clear settings field to remove)
+        </span>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div style="padding: 2px; white-space: nowrap">
+        <label>Selector:</label>
+        <input id="xp-settings-selector-code" type="text"
+               title="Max. 10 characters (only alphanumericals, +, -, and %)" 
+               maxlength="10" autocomplete="off">
+        <label>Settings:</label>
+        <input id="xp-settings-selector-string" type="text" autocomplete="off"
+               title="Can specifiy time step, simulation period, block length and look-ahead.
+Example: s=0.5h  t=1-480  b=24  l=24   (in this order: s t b l)">
+      </div>
+    </div>
+  </div>
+
+  <!-- the SETTINGS DIMENSION dialog prompts for a selector combination -->
+  <div id="xp-settings-dimension-modal" class="modal">
+    <div id="xp-settings-dimension-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="xp-settings-dimension-action">Edit</span>
+        model settings dimension
+        <span id="xp-settings-dimension-clear">(clear to remove)</span>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div style="padding: 2px; white-space: nowrap"
+           title="One or more model settings selectors, separated by spaces">
+        <label>Selectors:</label>
+        <input id="xp-settings-dimension-string" type="text" autocomplete="off">
+      </div>
+    </div>
+  </div>
+
+  <!-- the ACTOR DIMENSION dialog permits editing these dimensions -->
+  <div id="xp-actor-dimension-modal" class="modal">
+    <div id="xp-actor-dimension-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Actor dimension
+        <img class="close-btn" src="images/close.png">
+      </div>
+      <div id="xp-actor-dimension-header">Selectors:
+        <img id="xp-actor-dimension-add-btn" class="v-btn" src="images/add.png"
+             title="Add selector">
+      </div>
+      <div id="xp-actor-dimension-scroll-area">
+        <table id="xp-actor-dimension-table">
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- the ACTOR SELECTOR dialog prompts for a selector -->
+  <div id="xp-actor-selector-modal" class="modal">
+    <div id="xp-actor-selector-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="xp-actor-selector-action">Edit</span> actor selector
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div style="padding: 2px; white-space: nowrap">
+        <label>Selector:</label>
+        <input id="xp-actor-selector-code" type="text" autocomplete="off"
+               title="Max. 10 characters (only alphanumericals, +, -, and %)" 
+               maxlength="10">
+        <span id="xp-actor-selector-clear" class="sd-clear">
+          (clear to remove)
+        </span>
+      </div>
+      <div style="padding: 2px; white-space: nowrap">
+        <label>Rounds sequence:</label>
+        <input id="xp-actor-selector-rounds" type="text" autocomplete="off"
+               title="One or more round letters">
+      </div>
+    </div>
+  </div>
+
+  <!-- The "clusters to ignore" dialog displays a scrollable list of clusters
+       set to be ignored for specified selectors.
+       NOTE: Changes to this list are discarded if CANCEL is clicked.
+   -->
+  <div id="xp-clusters-modal" class="modal">
+    <div id="xp-clusters-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Clusters set to be ignored
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <select id="xp-clusters-select"></select>
+      <img id="xp-clusters-add-btn" src="images/add.png" class="btn enab"
+           title="Add cluster to list">
+      <div id="xp-clusters-no-list">
+        No clusters set to be ignored
+      </div>
+      <div id="xp-clusters-list">      
+        <div id="xp-clusters-scroll-hdr">
+          <div id="xp-clusters-name-hdr">Cluster</div>
+          <div id="xp-clusters-selectors-hdr">Selector(s)</div>
+        </div>
+        <div id="xp-clusters-scroll">
+          <table id="xp-clusters-table" width="100%"></table>
+        </div>
+        <div id="xp-clusters-selectors-div">
+          Selector(s):
+          <input id="xp-clusters-selectors" type="text">
+          <img id="xp-clusters-delete-btn" src="images/remove.png"
+               class="btn enab" title="Delete cluster from list">
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- the FINDER dialog allows searching for occurrence of entities -->
+  <div id="finder-dlg" class="inp-dlg">
+    <div id="finder-hdr" class="dragger dlg-title">
+      Find occurrences of entities <div id="finder-entity-imgs"></div>
+      <img id="finder-close-btn" class="close-btn" src="images/close.png">
+    </div>
+    <div id="finder-filter-bar">
+      <input id="finder-filter-text" type="text"
+             placeholder="(name filtering pattern)"
+             title="Pattern may contain logical & (AND), | (OR) and ^ (NOT)
+Limit search by starting with a type selector X?
+where X can be one or several of these letters: ABCDELPQ">
+    </div>
+    <div id="finder-scroll-area">
+      <table id="finder-table">
+      </table>
+    </div>
+    <div id="finder-status">
+      <span id="finder-count"></span> found
+    </div>
+    <img id="finder-copy-btn" class="btn enab"
+         src="images/table-to-clpbrd.png"
+         title="Copy entity attributes to clipboard">
+    <div id="finder-separator"></div>
+    <div id="finder-item-header">(no item selected)</div>
+    <div id="finder-item-scroll-area">
+      <table id="finder-item-table">
+      </table>
+    </div>
+    <div id="finder-expression-hdr">No expressions</div>
+    <div id="finder-expression-scroll-area">
+      <table id="finder-expression-table">
+      </table>
+    </div>
+    <div id="finder-resize" class="resizer"></div>
+  </div>
+
+  <!-- the MONITOR dialog shows solver progress and messages, and model equations -->
+  <div id="monitor-dlg" class="inp-dlg">
+    <div id="monitor-hdr" class="dragger dlg-title">Solver monitor
+      <img id="monitor-close-btn" class="close-btn" src="images/close.png">
+    </div>
+    <div id="monitor-tabs" class="tabs">
+      <div id="monitor-msg-tab" class="tab sel-tab"
+           title="Any text output from the MILP solver">
+        Messages
+      </div>
+      <div id="monitor-vbl-tab" class="tab"
+           title="Legend to variables (numbers are column indices in Simplex tableau)">
+        Variables
+      </div>
+      <div id="monitor-eqs-tab" class="tab"
+           title="Equations of the MILP problem submitted to the solver">
+        Equations
+      </div>
+    </div>
+    <textarea id="monitor-msg" autocomplete="off" autocorrect="off"
+        autocapitalize="off" spellcheck="false" hidden="hidden"></textarea>
+    <textarea id="monitor-vbl" autocomplete="off" autocorrect="off"
+        autocapitalize="off" spellcheck="false" hidden="hidden"></textarea>
+    <textarea id="monitor-eqs" autocomplete="off" autocorrect="off"
+        autocapitalize="off" spellcheck="false" hidden="hidden"></textarea>
+    <div id="monitor-blocks">1/1</div>
+    <div id="monitor-timer">00:00</div>
+    <div id="monitor-progress">
+      <div id="monitor-progress-bar"></div>
+    </div>
+    <div id="monitor-resize" class="resizer"></div>
+  </div>
+  
+  <!-- the CHANNEL dialog prompts for two paths: channel and call-back -->
+  <div id="channel-modal" class="modal">
+    <div id="channel-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Activate receiver
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div style="margin:3.5px">
+        <div>
+          Channel:<br>
+          <input id="channel-path" type="text" autocomplete="off"
+                 placeholder="(main)/channel">
+        </div>
+        <div>
+          Call-back command:<br>
+          <input id="channel-callback" type="text" placeholder="(optional)"
+                 autocomplete="off">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- the DOCUMENTATION dialog shows user comments and Linny-R docu-items -->
+  <div id="documentation-dlg" class="inp-dlg">
+    <div id="documentation-hdr" class="dragger dlg-title">
+      <div id="docu-item-title">Documentation</div>
+      <img id="documentation-close-btn" class="close-btn" src="images/close.png">
+    </div>
+    <div id="docu-container">
+      <div id="docu-viewer"></div>
+      <textarea id="docu-editor" autocomplete="off" autocorrect="off"
+          autocapitalize="off" hidden="hidden"></textarea>
+    </div>
+    <img id="docu-edit-btn" class="btn disab" src="images/edit.png"
+         title="Edit">
+    <img id="docu-copy-btn" class="btn enab"  src="images/info-to-clpbrd.png"
+         title="Copy documentation to clipboard">
+    <img id="docu-model-info-btn" class="btn enab"  src="images/model-info.png"
+         title="Show all model documentation">
+    <img id="compare-btn" class="btn enab"  src="images/compare.png"
+         title="Show differences between current model and some other model">
+    <img id="docu-save-btn" class="ok-btn" src="images/ok.png"
+         title="Save">
+    <img id="docu-cancel-btn" class="cancel-btn" src="images/cancel.png"
+         title="Cancel">
+    <img id="docu-info-btn" class="info-btn" src="images/info.png"
+         title="Markup conventions">
+    <img id="docu-resume-btn" class="close-btn" src="images/close.png"
+         title="Resume editing">
+    <div id="docu-symbols" title="Click to insert symbol in text">
+      <div class="docu-sym" id="docu-tail-1">&#x2919;</div>
+      <div class="docu-sym" id="docu-head">&#x21A3;</div>
+      <div class="docu-sym" id="docu-link">&#x2192;</div>
+      <div class="docu-sym" id="docu-constraint">&#x2911;</div>
+      <div class="docu-sym" id="docu-bi-constraint">&#x2194;</div>
+      <div class="docu-sym" id="docu-throughput">&#x2B86;</div>
+      <div class="docu-sym" id="docu-change">&#x0394;</div>
+      <div class="docu-sym" id="docu-sum">&#x3A3;</div>
+      <div class="docu-sym" id="docu-mean">&#x03BC;</div>
+      <div class="docu-sym" id="docu-startup">&#x2B9D;</div>
+      <div class="docu-sym" id="docu-shutdown">&#x2B9F;</div>
+      <div class="docu-sym" id="docu-spinning-reserve">&#x2934;</div>
+      <div class="docu-sym" id="docu-first-commit">&#x2732;</div>
+      <div class="docu-sym" id="docu-infinity">&#x221E;</div>
+      <div class="docu-sym" id="docu-undefined">&#x2047;</div>
+      <div class="docu-sym" id="docu-not-computed">&#x2BBF;</div>
+      <div class="docu-sym" id="docu-computing">&#x25A6;</div>
+      <div class="docu-sym" id="docu-warning">&#x26A0;</div>
+    </div>
+    <div id="docu-message-hint">
+      To view messages, <span style="font-style: normal">Shift</span>-move
+      cursor over status bar 
+    </div>
+    <div id="documentation-resize" class="resizer"></div>
+  </div>
+  
+  <!-- the PROMPT FOR COMPARISON dialog prompts the user for a Linny-R model
+       file on disk to be compared with the current model -->
+  <div id="comparison-modal" class="modal">
+    <div id="comparison-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Select model to compare with current model
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="comparison-xml-file" type="file">
+    </div>
+  </div>
+  
+  <!-- the CALL STACK modal shows the VM's expression call stack
+       when an error has occurred -->
+  <div id="call-stack-modal" class="modal">
+    <div id="call-stack-dlg" class="inp-dlg">
+      <div class="dlg-title" style="background-color: #cc88b0">
+        <div id="call-stack-error"></div>
+        <img id="call-stack-close-btn" class="close-btn" src="images/close.png">
+      </div>
+      <div id="call-stack-table"></div>
+    </div>
+  </div>
+  
+  <!-- the CHECK UPDATE modal notifies that an update is available -->
+  <div id="check-update-modal" class="modal">
+    <div id="check-update-dlg" class="inp-dlg">
+      <div class="dlg-title" style="background-color: #cc88b0">
+        Linny-R software update
+      </div>
+      <div id="check-update-msg"></div>
+      <div id="check-update-buttons">
+        <img class="ok-btn big-btn" src="images/ok.png">
+        Shut down server to install new version
+        <img class="cancel-btn big-btn" src="images/cancel.png">
+        Continue using current version
+      </div>
+    </div>
+  </div>
+  
+  <!--- rotating Linny-R logo icon -->
+  <div id="rotating-icon">
+    <div>
+      <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"
+           viewBox="24 32 232 231" preserveAspectRatio="xMidYMid">
+        <style>
+          path.roic {
+            stroke: #8264a0;
+            stroke-width: 1px;
+            stroke-linejoin: round;
+            stroke-opacity: 1;
+            opacity: 0.45;
+          }
+        </style>
+<g id="fr00">
+<path id="ABC0" class="roic" style="fill:#960041" d="M40 96L167 78L122 32z"></path>
+<path id="ADE0" class="roic" style="fill:#ebebe1" d="M40 96L61 189L120 208z"></path>
+<path id="AEB0" class="roic" style="fill:#fab8ea" d="M40 96L120 208L167 78z"></path>
+<path id="FEB0" class="roic" style="fill:#3236c8" d="M215 160L120 208L167 78z"></path>
+<path id="FBC0" class="roic" style="fill:#ebebe1" d="M215 160L167 78L122 32z"></path>
+<path id="FDE0" class="roic" style="fill:#960041" d="M215 160L61 189L120 208z"></path>
+<path id="FCD0" class="roic" style="fill:#fab8ea" d="M215 160L122 32L61 189z"></path>
+<path id="ACD0" class="roic" style="fill:#3236c8" d="M40 96L122 32L61 189z"></path>
+</g>
+<g id="fr01">
+<path id="ABC1" class="roic" style="fill:#960041" d="M45 96L172 77L115 32z"></path>
+<path id="ADE1" class="roic" style="fill:#ebebe1" d="M45 96L54 188L125 208z"></path>
+<path id="AEB1" class="roic" style="fill:#fab8ea" d="M45 96L125 208L172 77z"></path>
+<path id="FEB1" class="roic" style="fill:#3236c8" d="M212 161L125 208L172 77z"></path>
+<path id="FBC1" class="roic" style="fill:#ebebe1" d="M212 161L172 77L115 32z"></path>
+<path id="FCD1" class="roic" style="fill:#fab8ea" d="M212 161L115 32L54 188z"></path>
+<path id="FDE1" class="roic" style="fill:#960041" d="M212 161L54 188L125 208z"></path>
+<path id="ACD1" class="roic" style="fill:#3236c8" d="M45 96L115 32L54 188z"></path>
+</g>
+<g id="fr02">
+<path id="ABC2" class="roic" style="fill:#960041" d="M51 96L178 76L107 32z"></path>
+<path id="ADE2" class="roic" style="fill:#ebebe1" d="M51 96L48 187L131 208z"></path>
+<path id="AEB2" class="roic" style="fill:#fab8ea" d="M51 96L131 208L178 76z"></path>
+<path id="FEB2" class="roic" style="fill:#3236c8" d="M207 162L131 208L178 76z"></path>
+<path id="FBC2" class="roic" style="fill:#ebebe1" d="M207 162L178 76L107 32z"></path>
+<path id="FCD2" class="roic" style="fill:#fab8ea" d="M207 162L107 32L48 187z"></path>
+<path id="FDE2" class="roic" style="fill:#960041" d="M207 162L48 187L131 208z"></path>
+<path id="ACD2" class="roic" style="fill:#3236c8" d="M51 96L107 32L48 187z"></path>
+</g>
+<g id="fr03">
+<path id="ABC3" class="roic" style="fill:#960041" d="M57 96L184 75L100 32z"></path>
+<path id="ADE3" class="roic" style="fill:#ebebe1" d="M57 96L43 186L136 209z"></path>
+<path id="AEB3" class="roic" style="fill:#fab8ea" d="M57 96L136 209L184 75z"></path>
+<path id="FEB3" class="roic" style="fill:#3236c8" d="M201 163L136 209L184 75z"></path>
+<path id="FBC3" class="roic" style="fill:#ebebe1" d="M201 163L184 75L100 32z"></path>
+<path id="FCD3" class="roic" style="fill:#fab8ea" d="M201 163L100 32L43 186z"></path>
+<path id="FDE3" class="roic" style="fill:#960041" d="M201 163L43 186L136 209z"></path>
+<path id="ACD3" class="roic" style="fill:#3236c8" d="M57 96L100 32L43 186z"></path>
+</g>
+<g id="fr04">
+<path id="ABC4" class="roic" style="fill:#960041" d="M65 97L189 75L93 33z"></path>
+<path id="ADE4" class="roic" style="fill:#ebebe1" d="M65 97L39 185L142 208z"></path>
+<path id="AEB4" class="roic" style="fill:#fab8ea" d="M65 97L142 208L189 75z"></path>
+<path id="FEB4" class="roic" style="fill:#3236c8" d="M195 164L142 208L189 75z"></path>
+<path id="FBC4" class="roic" style="fill:#ebebe1" d="M195 164L189 75L93 33z"></path>
+<path id="FCD4" class="roic" style="fill:#fab8ea" d="M195 164L93 33L39 185z"></path>
+<path id="FDE4" class="roic" style="fill:#960041" d="M195 164L39 185L142 208z"></path>
+<path id="ACD4" class="roic" style="fill:#3236c8" d="M65 97L93 33L39 185z"></path>
+</g>
+<g id="fr05">
+<path id="ABC5" class="roic" style="fill:#960041" d="M73 98L193 74L87 34z"></path>
+<path id="ACD5" class="roic" style="fill:#3236c8" d="M73 98L87 34L36 184z"></path>
+<path id="ADE5" class="roic" style="fill:#ebebe1" d="M73 98L36 184L149 209z"></path>
+<path id="AEB5" class="roic" style="fill:#fab8ea" d="M73 98L149 209L193 74z"></path>
+<path id="FEB5" class="roic" style="fill:#3236c8" d="M186 164L149 209L193 74z"></path>
+<path id="FBC5" class="roic" style="fill:#ebebe1" d="M186 164L193 74L87 34z"></path>
+<path id="FCD5" class="roic" style="fill:#fab8ea" d="M186 164L87 34L36 184z"></path>
+<path id="FDE5" class="roic" style="fill:#960041" d="M186 164L36 184L149 209z"></path>
+</g>
+<g id="fr06">
+<path id="ABC6" class="roic" style="fill:#960041" d="M80 98L198 73L80 35z"></path>
+<path id="ACD6" class="roic" style="fill:#3236c8" d="M80 98L80 35L35 183z"></path>
+<path id="ADE6" class="roic" style="fill:#ebebe1" d="M80 98L35 183L153 209z"></path>
+<path id="AEB6" class="roic" style="fill:#fab8ea" d="M80 98L153 209L198 73z"></path>
+<path id="FEB6" class="roic" style="fill:#3236c8" d="M178 165L153 209L198 73z"></path>
+<path id="FBC6" class="roic" style="fill:#ebebe1" d="M178 165L198 73L80 35z"></path>
+<path id="FCD6" class="roic" style="fill:#fab8ea" d="M178 165L80 35L35 183z"></path>
+<path id="FDE6" class="roic" style="fill:#960041" d="M178 165L35 183L153 209z"></path>
+</g>
+<g id="fr07">
+<path id="ABC7" class="roic" style="fill:#960041" d="M88 99L201 73L74 35z"></path>
+<path id="ACD7" class="roic" style="fill:#3236c8" d="M88 99L74 35L34 181z"></path>
+<path id="ADE7" class="roic" style="fill:#ebebe1" d="M88 99L34 181L158 210z"></path>
+<path id="AEB7" class="roic" style="fill:#fab8ea" d="M88 99L158 210L201 73z"></path>
+<path id="FBC7" class="roic" style="fill:#ebebe1" d="M168 165L201 73L74 35z"></path>
+<path id="FCD7" class="roic" style="fill:#fab8ea" d="M168 165L74 35L34 181z"></path>
+<path id="FDE7" class="roic" style="fill:#960041" d="M168 165L34 181L158 210z"></path>
+<path id="FEB7" class="roic" style="fill:#3236c8" d="M168 165L158 210L201 73z"></path>
+</g>
+<g id="fr08">
+<path id="ABC8" class="roic" style="fill:#960041" d="M96 99L204 72L70 36z"></path>
+<path id="ACD8" class="roic" style="fill:#3236c8" d="M96 99L70 36L34 181z"></path>
+<path id="ADE8" class="roic" style="fill:#ebebe1" d="M96 99L34 181L163 210z"></path>
+<path id="AEB8" class="roic" style="fill:#fab8ea" d="M96 99L163 210L204 72z"></path>
+<path id="FBC8" class="roic" style="fill:#ebebe1" d="M156 165L204 72L70 36z"></path>
+<path id="FCD8" class="roic" style="fill:#fab8ea" d="M156 165L70 36L34 181z"></path>
+<path id="FDE8" class="roic" style="fill:#960041" d="M156 165L34 181L163 210z"></path>
+<path id="FEB8" class="roic" style="fill:#3236c8" d="M156 165L163 210L204 72z"></path>
+</g>
+<g id="fr09">
+<path id="ABC9" class="roic" style="fill:#960041" d="M104 99L206 71L66 37z"></path>
+<path id="ACD9" class="roic" style="fill:#3236c8" d="M104 99L66 37L35 180z"></path>
+<path id="ADE9" class="roic" style="fill:#ebebe1" d="M104 99L35 180L168 212z"></path>
+<path id="AEB9" class="roic" style="fill:#fab8ea" d="M104 99L168 212L206 71z"></path>
+<path id="FBC9" class="roic" style="fill:#ebebe1" d="M144 165L206 71L66 37z"></path>
+<path id="FCD9" class="roic" style="fill:#fab8ea" d="M144 165L66 37L35 180z"></path>
+<path id="FDE9" class="roic" style="fill:#960041" d="M144 165L35 180L168 212z"></path>
+<path id="FEB9" class="roic" style="fill:#3236c8" d="M144 165L168 212L206 71z"></path>
+</g>
+<g id="fr10">
+<path id="ABC10" class="roic" style="fill:#960041" d="M112 99L207 69L62 38z"></path>
+<path id="ACD10" class="roic" style="fill:#3236c8" d="M112 99L62 38L38 179z"></path>
+<path id="ADE10" class="roic" style="fill:#ebebe1" d="M112 99L38 179L171 212z"></path>
+<path id="AEB10" class="roic" style="fill:#fab8ea" d="M112 99L171 212L207 69z"></path>
+<path id="FBC10" class="roic" style="fill:#ebebe1" d="M132 166L207 69L62 38z"></path>
+<path id="FCD10" class="roic" style="fill:#fab8ea" d="M132 166L62 38L38 179z"></path>
+<path id="FDE10" class="roic" style="fill:#960041" d="M132 166L38 179L171 212z"></path>
+<path id="FEB10" class="roic" style="fill:#3236c8" d="M132 166L171 212L207 69z"></path>
+</g>
+<g id="fr11">
+<path id="ABC11" class="roic" style="fill:#960041" d="M120 99L207 68L59 39z"></path>
+<path id="ACD11" class="roic" style="fill:#3236c8" d="M120 99L59 39L40 178z"></path>
+<path id="ADE11" class="roic" style="fill:#ebebe1" d="M120 99L40 178L175 214z"></path>
+<path id="AEB11" class="roic" style="fill:#fab8ea" d="M120 99L175 214L207 68z"></path>
+<path id="FBC11" class="roic" style="fill:#ebebe1" d="M120 166L207 68L59 39z"></path>
+<path id="FCD11" class="roic" style="fill:#fab8ea" d="M120 166L59 39L40 178z"></path>
+<path id="FDE11" class="roic" style="fill:#960041" d="M120 166L40 178L175 214z"></path>
+<path id="FEB11" class="roic" style="fill:#3236c8" d="M120 166L175 214L207 68z"></path>
+</g>
+<g id="fr12">
+<path id="ABC12" class="roic" style="fill:#960041" d="M129 99L206 67L57 40z"></path>
+<path id="ACD12" class="roic" style="fill:#3236c8" d="M129 99L57 40L44 177z"></path>
+<path id="ADE12" class="roic" style="fill:#ebebe1" d="M129 99L44 177L178 214z"></path>
+<path id="AEB12" class="roic" style="fill:#fab8ea" d="M129 99L178 214L206 67z"></path>
+<path id="FBC12" class="roic" style="fill:#ebebe1" d="M108 166L206 67L57 40z"></path>
+<path id="FCD12" class="roic" style="fill:#fab8ea" d="M108 166L57 40L44 177z"></path>
+<path id="FDE12" class="roic" style="fill:#960041" d="M108 166L44 177L178 214z"></path>
+<path id="FEB12" class="roic" style="fill:#3236c8" d="M108 166L178 214L206 67z"></path>
+</g>
+<g id="fr13">
+<path id="ABC13" class="roic" style="fill:#960041" d="M137 98L204 66L57 42z"></path>
+<path id="ACD13" class="roic" style="fill:#3236c8" d="M137 98L57 42L49 176z"></path>
+<path id="ADE13" class="roic" style="fill:#ebebe1" d="M137 98L49 176L181 215z"></path>
+<path id="AEB13" class="roic" style="fill:#fab8ea" d="M137 98L181 215L204 66z"></path>
+<path id="FBC13" class="roic" style="fill:#ebebe1" d="M96 166L204 66L57 42z"></path>
+<path id="FCD13" class="roic" style="fill:#fab8ea" d="M96 166L57 42L49 176z"></path>
+<path id="FDE13" class="roic" style="fill:#960041" d="M96 166L49 176L181 215z"></path>
+<path id="FEB13" class="roic" style="fill:#3236c8" d="M96 166L181 215L204 66z"></path>
+</g>
+<g id="fr14">
+<path id="ABC14" class="roic" style="fill:#960041" d="M145 99L200 65L56 43z"></path>
+<path id="ACD14" class="roic" style="fill:#3236c8" d="M145 99L56 43L54 175z"></path>
+<path id="ADE14" class="roic" style="fill:#ebebe1" d="M145 99L54 175L183 216z"></path>
+<path id="AEB14" class="roic" style="fill:#fab8ea" d="M145 99L183 216L200 65z"></path>
+<path id="FBC14" class="roic" style="fill:#ebebe1" d="M85 165L200 65L56 43z"></path>
+<path id="FCD14" class="roic" style="fill:#fab8ea" d="M85 165L56 43L54 175z"></path>
+<path id="FDE14" class="roic" style="fill:#960041" d="M85 165L54 175L183 216z"></path>
+<path id="FEB14" class="roic" style="fill:#3236c8" d="M85 165L183 216L200 65z"></path>
+</g>
+<g id="fr15">
+<path id="ABC15" class="roic" style="fill:#960041" d="M153 99L197 64L56 44z"></path>
+<path id="ACD15" class="roic" style="fill:#3236c8" d="M153 99L56 44L58 174z"></path>
+<path id="ADE15" class="roic" style="fill:#ebebe1" d="M153 99L58 174L184 218z"></path>
+<path id="AEB15" class="roic" style="fill:#fab8ea" d="M153 99L184 218L197 64z"></path>
+<path id="FBC15" class="roic" style="fill:#ebebe1" d="M74 164L197 64L56 44z"></path>
+<path id="FCD15" class="roic" style="fill:#fab8ea" d="M74 164L56 44L58 174z"></path>
+<path id="FDE15" class="roic" style="fill:#960041" d="M74 164L58 174L184 218z"></path>
+<path id="FEB15" class="roic" style="fill:#3236c8" d="M74 164L184 218L197 64z"></path>
+</g>
+<g id="fr16">
+<path id="FCD16" class="roic" style="fill:#fab8ea" d="M63 164L57 45L65 174z"></path>
+<path id="ABC16" class="roic" style="fill:#960041" d="M161 99L192 62L57 45z"></path>
+<path id="ACD16" class="roic" style="fill:#3236c8" d="M161 99L57 45L65 174z"></path>
+<path id="ADE16" class="roic" style="fill:#ebebe1" d="M161 99L65 174L184 219z"></path>
+<path id="AEB16" class="roic" style="fill:#fab8ea" d="M161 99L184 219L192 62z"></path>
+<path id="FBC16" class="roic" style="fill:#ebebe1" d="M63 164L192 62L57 45z"></path>
+<path id="FDE16" class="roic" style="fill:#960041" d="M63 164L65 174L184 219z"></path>
+<path id="FEB16" class="roic" style="fill:#3236c8" d="M63 164L184 219L192 62z"></path>
+</g>
+<g id="fr17">
+<path id="FCD17" class="roic" style="fill:#fab8ea" d="M54 164L59 46L72 173z"></path>
+<path id="ABC17" class="roic" style="fill:#960041" d="M168 98L185 62L59 46z"></path>
+<path id="ACD17" class="roic" style="fill:#3236c8" d="M168 98L59 46L72 173z"></path>
+<path id="ADE17" class="roic" style="fill:#ebebe1" d="M168 98L72 173L184 219z"></path>
+<path id="AEB17" class="roic" style="fill:#fab8ea" d="M168 98L184 219L185 62z"></path>
+<path id="FBC17" class="roic" style="fill:#ebebe1" d="M54 164L185 62L59 46z"></path>
+<path id="FDE17" class="roic" style="fill:#960041" d="M54 164L72 173L184 219z"></path>
+<path id="FEB17" class="roic" style="fill:#3236c8" d="M54 164L184 219L185 62z"></path>
+</g>
+<g id="fr18">
+<path id="FDE18" class="roic" style="fill:#960041" d="M45 164L78 171L184 221z"></path>
+<path id="FCD18" class="roic" style="fill:#fab8ea" d="M45 164L62 47L78 171z"></path>
+<path id="ABC18" class="roic" style="fill:#960041" d="M176 98L178 61L62 47z"></path>
+<path id="ACD18" class="roic" style="fill:#3236c8" d="M176 98L62 47L78 171z"></path>
+<path id="ADE18" class="roic" style="fill:#ebebe1" d="M176 98L78 171L184 221z"></path>
+<path id="AEB18" class="roic" style="fill:#fab8ea" d="M176 98L184 221L178 61z"></path>
+<path id="FBC18" class="roic" style="fill:#ebebe1" d="M45 164L178 61L62 47z"></path>
+<path id="FEB18" class="roic" style="fill:#3236c8" d="M45 164L184 221L178 61z"></path>
+</g>
+<g id="fr19">
+<path id="FDE19" class="roic" style="fill:#960041" d="M39 163L85 171L183 223z"></path>
+<path id="FCD19" class="roic" style="fill:#fab8ea" d="M39 163L65 48L85 171z"></path>
+<path id="ABC19" class="roic" style="fill:#960041" d="M184 97L170 60L65 48z"></path>
+<path id="ACD19" class="roic" style="fill:#3236c8" d="M184 97L65 48L85 171z"></path>
+<path id="ADE19" class="roic" style="fill:#ebebe1" d="M184 97L85 171L183 223z"></path>
+<path id="AEB19" class="roic" style="fill:#fab8ea" d="M184 97L183 223L170 60z"></path>
+<path id="FBC19" class="roic" style="fill:#ebebe1" d="M39 163L170 60L65 48z"></path>
+<path id="FEB19" class="roic" style="fill:#3236c8" d="M39 163L183 223L170 60z"></path>
+</g>
+<g id="fr20">
+<path id="FDE20" class="roic" style="fill:#960041" d="M33 162L92 171L180 224z"></path>
+<path id="FCD20" class="roic" style="fill:#fab8ea" d="M33 162L68 49L92 171z"></path>
+<path id="ABC20" class="roic" style="fill:#960041" d="M190 97L160 60L68 49z"></path>
+<path id="ACD20" class="roic" style="fill:#3236c8" d="M190 97L68 49L92 171z"></path>
+<path id="ADE20" class="roic" style="fill:#ebebe1" d="M190 97L92 171L180 224z"></path>
+<path id="AEB20" class="roic" style="fill:#fab8ea" d="M190 97L180 224L160 60z"></path>
+<path id="FBC20" class="roic" style="fill:#ebebe1" d="M33 162L160 60L68 49z"></path>
+<path id="FEB20" class="roic" style="fill:#3236c8" d="M33 162L180 224L160 60z"></path>
+</g>
+<g id="fr21">
+<path id="FDE21" class="roic" style="fill:#960041" d="M28 161L99 171L177 225z"></path>
+<path id="FCD21" class="roic" style="fill:#fab8ea" d="M28 161L72 50L99 171z"></path>
+<path id="ABC21" class="roic" style="fill:#960041" d="M197 96L151 59L72 50z"></path>
+<path id="ACD21" class="roic" style="fill:#3236c8" d="M197 96L72 50L99 171z"></path>
+<path id="ADE21" class="roic" style="fill:#ebebe1" d="M197 96L99 171L177 225z"></path>
+<path id="AEB21" class="roic" style="fill:#fab8ea" d="M197 96L177 225L151 59z"></path>
+<path id="FBC21" class="roic" style="fill:#ebebe1" d="M28 161L151 59L72 50z"></path>
+<path id="FEB21" class="roic" style="fill:#3236c8" d="M28 161L177 225L151 59z"></path>
+</g>
+<g id="fr22">
+<path id="FDE22" class="roic" style="fill:#960041" d="M25 161L106 171L173 226z"></path>
+<path id="FCD22" class="roic" style="fill:#fab8ea" d="M25 161L76 51L106 171z"></path>
+<path id="ABC22" class="roic" style="fill:#960041" d="M201 95L140 59L76 51z"></path>
+<path id="ACD22" class="roic" style="fill:#3236c8" d="M201 95L76 51L106 171z"></path>
+<path id="ADE22" class="roic" style="fill:#ebebe1" d="M201 95L106 171L173 226z"></path>
+<path id="AEB22" class="roic" style="fill:#fab8ea" d="M201 95L173 226L140 59z"></path>
+<path id="FBC22" class="roic" style="fill:#ebebe1" d="M25 161L140 59L76 51z"></path>
+<path id="FEB22" class="roic" style="fill:#3236c8" d="M25 161L173 226L140 59z"></path>
+</g>
+<g id="fr23">
+<path id="FDE23" class="roic" style="fill:#960041" d="M24 160L114 171L168 227z"></path>
+<path id="FCD23" class="roic" style="fill:#fab8ea" d="M24 160L81 51L114 171z"></path>
+<path id="ABC23" class="roic" style="fill:#960041" d="M206 95L130 58L81 51z"></path>
+<path id="ACD23" class="roic" style="fill:#3236c8" d="M206 95L81 51L114 171z"></path>
+<path id="ADE23" class="roic" style="fill:#ebebe1" d="M206 95L114 171L168 227z"></path>
+<path id="AEB23" class="roic" style="fill:#fab8ea" d="M206 95L168 227L130 58z"></path>
+<path id="FBC23" class="roic" style="fill:#ebebe1" d="M24 160L130 58L81 51z"></path>
+<path id="FEB23" class="roic" style="fill:#3236c8" d="M24 160L168 227L130 58z"></path>
+</g>
+<g id="fr24">
+<path id="FDE24" class="roic" style="fill:#960041" d="M24 159L121 170L164 228z"></path>
+<path id="FCD24" class="roic" style="fill:#fab8ea" d="M24 159L86 52L121 170z"></path>
+<path id="ABC24" class="roic" style="fill:#960041" d="M210 94L119 58L86 52z"></path>
+<path id="ACD24" class="roic" style="fill:#3236c8" d="M210 94L86 52L121 170z"></path>
+<path id="ADE24" class="roic" style="fill:#ebebe1" d="M210 94L121 170L164 228z"></path>
+<path id="AEB24" class="roic" style="fill:#fab8ea" d="M210 94L164 228L119 58z"></path>
+<path id="FBC24" class="roic" style="fill:#ebebe1" d="M24 159L119 58L86 52z"></path>
+<path id="FEB24" class="roic" style="fill:#3236c8" d="M24 159L164 228L119 58z"></path>
+</g>
+<g id="fr25">
+<path id="FDE25" class="roic" style="fill:#960041" d="M24 158L129 170L157 230z"></path>
+<path id="FCD25" class="roic" style="fill:#fab8ea" d="M24 158L91 52L129 170z"></path>
+<path id="ACD25" class="roic" style="fill:#3236c8" d="M214 93L91 52L129 170z"></path>
+<path id="ADE25" class="roic" style="fill:#ebebe1" d="M214 93L129 170L157 230z"></path>
+<path id="AEB25" class="roic" style="fill:#fab8ea" d="M214 93L157 230L108 59z"></path>
+<path id="FBC25" class="roic" style="fill:#ebebe1" d="M24 158L108 59L91 52z"></path>
+<path id="FEB25" class="roic" style="fill:#3236c8" d="M24 158L157 230L108 59z"></path>
+<path id="ABC25" class="roic" style="fill:#960041" d="M214 93L108 59L91 52z"></path>
+</g>
+<g id="fr26">
+<path id="FDE26" class="roic" style="fill:#960041" d="M24 158L136 170L152 230z"></path>
+<path id="FCD26" class="roic" style="fill:#fab8ea" d="M24 158L96 53L136 170z"></path>
+<path id="ACD26" class="roic" style="fill:#3236c8" d="M216 93L96 53L136 170z"></path>
+<path id="ADE26" class="roic" style="fill:#ebebe1" d="M216 93L136 170L152 230z"></path>
+<path id="AEB26" class="roic" style="fill:#fab8ea" d="M216 93L152 230L98 60z"></path>
+<path id="FBC26" class="roic" style="fill:#ebebe1" d="M24 158L98 60L96 53z"></path>
+<path id="FEB26" class="roic" style="fill:#3236c8" d="M24 158L152 230L98 60z"></path>
+<path id="ABC26" class="roic" style="fill:#960041" d="M216 93L98 60L96 53z"></path>
+</g>
+<g id="fr27">
+<path id="FBC27" class="roic" style="fill:#ebebe1" d="M27 157L87 59L103 54z"></path>
+<path id="FDE27" class="roic" style="fill:#960041" d="M27 157L144 171L144 230z"></path>
+<path id="FCD27" class="roic" style="fill:#fab8ea" d="M27 157L103 54L144 171z"></path>
+<path id="ACD27" class="roic" style="fill:#3236c8" d="M216 92L103 54L144 171z"></path>
+<path id="ADE27" class="roic" style="fill:#ebebe1" d="M216 92L144 171L144 230z"></path>
+<path id="AEB27" class="roic" style="fill:#fab8ea" d="M216 92L144 230L87 59z"></path>
+<path id="FEB27" class="roic" style="fill:#3236c8" d="M27 157L144 230L87 59z"></path>
+<path id="ABC27" class="roic" style="fill:#960041" d="M216 92L87 59L103 54z"></path>
+</g>
+<g id="fr28">
+<path id="FBC28" class="roic" style="fill:#ebebe1" d="M30 156L77 60L108 53z"></path>
+<path id="FDE28" class="roic" style="fill:#960041" d="M30 156L152 171L137 230z"></path>
+<path id="FCD28" class="roic" style="fill:#fab8ea" d="M30 156L108 53L152 171z"></path>
+<path id="ACD28" class="roic" style="fill:#3236c8" d="M217 92L108 53L152 171z"></path>
+<path id="ADE28" class="roic" style="fill:#ebebe1" d="M217 92L152 171L137 230z"></path>
+<path id="AEB28" class="roic" style="fill:#fab8ea" d="M217 92L137 230L77 60z"></path>
+<path id="FEB28" class="roic" style="fill:#3236c8" d="M30 156L137 230L77 60z"></path>
+<path id="ABC28" class="roic" style="fill:#960041" d="M217 92L77 60L108 53z"></path>
+</g>
+<g id="fr29">
+<path id="FBC29" class="roic" style="fill:#ebebe1" d="M35 155L69 59L114 54z"></path>
+<path id="FDE29" class="roic" style="fill:#960041" d="M35 155L159 172L130 231z"></path>
+<path id="FCD29" class="roic" style="fill:#fab8ea" d="M35 155L114 54L159 172z"></path>
+<path id="ACD29" class="roic" style="fill:#3236c8" d="M216 91L114 54L159 172z"></path>
+<path id="ADE29" class="roic" style="fill:#ebebe1" d="M216 91L159 172L130 231z"></path>
+<path id="AEB29" class="roic" style="fill:#fab8ea" d="M216 91L130 231L69 59z"></path>
+<path id="FEB29" class="roic" style="fill:#3236c8" d="M35 155L130 231L69 59z"></path>
+<path id="ABC29" class="roic" style="fill:#960041" d="M216 91L69 59L114 54z"></path>
+</g>
+<g id="fr30">
+<path id="FBC30" class="roic" style="fill:#ebebe1" d="M40 155L60 60L120 53z"></path>
+<path id="FDE30" class="roic" style="fill:#960041" d="M40 155L166 172L122 231z"></path>
+<path id="FCD30" class="roic" style="fill:#fab8ea" d="M40 155L120 53L166 172z"></path>
+<path id="ACD30" class="roic" style="fill:#3236c8" d="M216 90L120 53L166 172z"></path>
+<path id="ADE30" class="roic" style="fill:#ebebe1" d="M216 90L166 172L122 231z"></path>
+<path id="AEB30" class="roic" style="fill:#fab8ea" d="M216 90L122 231L60 60z"></path>
+<path id="FEB30" class="roic" style="fill:#3236c8" d="M40 155L122 231L60 60z"></path>
+<path id="ABC30" class="roic" style="fill:#960041" d="M216 90L60 60L120 53z"></path>
+</g>
+<g id="fr31">
+<path id="FBC31" class="roic" style="fill:#ebebe1" d="M45 155L53 62L125 54z"></path>
+<path id="FDE31" class="roic" style="fill:#960041" d="M45 155L172 173L115 230z"></path>
+<path id="FCD31" class="roic" style="fill:#fab8ea" d="M45 155L125 54L172 173z"></path>
+<path id="ACD31" class="roic" style="fill:#3236c8" d="M212 89L125 54L172 173z"></path>
+<path id="ADE31" class="roic" style="fill:#ebebe1" d="M212 89L172 173L115 230z"></path>
+<path id="AEB31" class="roic" style="fill:#fab8ea" d="M212 89L115 230L53 62z"></path>
+<path id="FEB31" class="roic" style="fill:#3236c8" d="M45 155L115 230L53 62z"></path>
+<path id="ABC31" class="roic" style="fill:#960041" d="M212 89L53 62L125 54z"></path>
+</g>
+<g id="fr32">
+<path id="FBC32" class="roic" style="fill:#ebebe1" d="M51 154L47 63L132 53z"></path>
+<path id="FDE32" class="roic" style="fill:#960041" d="M51 154L178 174L107 230z"></path>
+<path id="FCD32" class="roic" style="fill:#fab8ea" d="M51 154L132 53L178 174z"></path>
+<path id="ACD32" class="roic" style="fill:#3236c8" d="M207 88L132 53L178 174z"></path>
+<path id="ADE32" class="roic" style="fill:#ebebe1" d="M207 88L178 174L107 230z"></path>
+<path id="AEB32" class="roic" style="fill:#fab8ea" d="M207 88L107 230L47 63z"></path>
+<path id="FEB32" class="roic" style="fill:#3236c8" d="M51 154L107 230L47 63z"></path>
+<path id="ABC32" class="roic" style="fill:#960041" d="M207 88L47 63L132 53z"></path>
+</g>
+<g id="fr33">
+<path id="FBC33" class="roic" style="fill:#ebebe1" d="M58 153L42 64L136 54z"></path>
+<path id="FDE33" class="roic" style="fill:#960041" d="M58 153L184 174L100 230z"></path>
+<path id="FCD33" class="roic" style="fill:#fab8ea" d="M58 153L136 54L184 174z"></path>
+<path id="ACD33" class="roic" style="fill:#3236c8" d="M202 87L136 54L184 174z"></path>
+<path id="ADE33" class="roic" style="fill:#ebebe1" d="M202 87L184 174L100 230z"></path>
+<path id="AEB33" class="roic" style="fill:#fab8ea" d="M202 87L100 230L42 64z"></path>
+<path id="FEB33" class="roic" style="fill:#3236c8" d="M58 153L100 230L42 64z"></path>
+<path id="ABC33" class="roic" style="fill:#960041" d="M202 87L42 64L136 54z"></path>
+</g>
+<g id="fr34">
+<path id="FBC34" class="roic" style="fill:#ebebe1" d="M65 152L39 65L142 53z"></path>
+<path id="FDE34" class="roic" style="fill:#960041" d="M65 152L189 175L92 230z"></path>
+<path id="FCD34" class="roic" style="fill:#fab8ea" d="M65 152L142 53L189 175z"></path>
+<path id="ACD34" class="roic" style="fill:#3236c8" d="M195 87L142 53L189 175z"></path>
+<path id="ADE34" class="roic" style="fill:#ebebe1" d="M195 87L189 175L92 230z"></path>
+<path id="AEB34" class="roic" style="fill:#fab8ea" d="M195 87L92 230L39 65z"></path>
+<path id="ABC34" class="roic" style="fill:#960041" d="M195 87L39 65L142 53z"></path>
+</g>
+<g id="fr35">
+<path id="FEB35" class="roic" style="fill:#3236c8" d="M72 152L86 228L36 67z"></path>
+<path id="FEB34" class="roic" style="fill:#3236c8" d="M65 152L92 230L39 65z"></path>
+<path id="FBC35" class="roic" style="fill:#ebebe1" d="M72 152L36 67L149 53z"></path>
+<path id="FDE35" class="roic" style="fill:#960041" d="M72 152L194 176L86 228z"></path>
+<path id="FCD35" class="roic" style="fill:#fab8ea" d="M72 152L149 53L194 176z"></path>
+<path id="ACD35" class="roic" style="fill:#3236c8" d="M187 86L149 53L194 176z"></path>
+<path id="ADE35" class="roic" style="fill:#ebebe1" d="M187 86L194 176L86 228z"></path>
+<path id="AEB35" class="roic" style="fill:#fab8ea" d="M187 86L86 228L36 67z"></path>
+<path id="ABC35" class="roic" style="fill:#960041" d="M187 86L36 67L149 53z"></path>
+</g>
+<g id="fr36">
+<path id="FEB36" class="roic" style="fill:#3236c8" d="M80 152L79 228L34 67z"></path>
+<path id="FBC36" class="roic" style="fill:#ebebe1" d="M80 152L34 67L153 52z"></path>
+<path id="FDE36" class="roic" style="fill:#960041" d="M80 152L198 177L79 228z"></path>
+<path id="FCD36" class="roic" style="fill:#fab8ea" d="M80 152L153 52L198 177z"></path>
+<path id="ACD36" class="roic" style="fill:#3236c8" d="M178 86L153 52L198 177z"></path>
+<path id="ADE36" class="roic" style="fill:#ebebe1" d="M178 86L198 177L79 228z"></path>
+<path id="AEB36" class="roic" style="fill:#fab8ea" d="M178 86L79 228L34 67z"></path>
+<path id="ABC36" class="roic" style="fill:#960041" d="M178 86L34 67L153 52z"></path>
+</g>
+<g id="fr37">
+<path id="FEB37" class="roic" style="fill:#3236c8" d="M88 151L75 227L33 68z"></path>
+<path id="FBC37" class="roic" style="fill:#ebebe1" d="M88 151L33 68L158 52z"></path>
+<path id="FDE37" class="roic" style="fill:#960041" d="M88 151L201 177L75 227z"></path>
+<path id="FCD37" class="roic" style="fill:#fab8ea" d="M88 151L158 52L201 177z"></path>
+<path id="ADE37" class="roic" style="fill:#ebebe1" d="M168 86L201 177L75 227z"></path>
+<path id="AEB37" class="roic" style="fill:#fab8ea" d="M168 86L75 227L33 68z"></path>
+<path id="ACD37" class="roic" style="fill:#3236c8" d="M168 86L158 52L201 177z"></path>
+<path id="ABC37" class="roic" style="fill:#960041" d="M168 86L33 68L158 52z"></path>
+</g>
+<g id="fr38">
+<path id="FEB38" class="roic" style="fill:#3236c8" d="M96 151L70 226L34 69z"></path>
+<path id="FBC38" class="roic" style="fill:#ebebe1" d="M96 151L34 69L163 51z"></path>
+<path id="FDE38" class="roic" style="fill:#960041" d="M96 151L204 179L70 226z"></path>
+<path id="FCD38" class="roic" style="fill:#fab8ea" d="M96 151L163 51L204 179z"></path>
+<path id="ADE38" class="roic" style="fill:#ebebe1" d="M156 85L204 179L70 226z"></path>
+<path id="AEB38" class="roic" style="fill:#fab8ea" d="M156 85L70 226L34 69z"></path>
+<path id="ACD38" class="roic" style="fill:#3236c8" d="M156 85L163 51L204 179z"></path>
+<path id="ABC38" class="roic" style="fill:#960041" d="M156 85L34 69L163 51z"></path>
+</g>
+<g id="fr39">
+<path id="FEB39" class="roic" style="fill:#3236c8" d="M103 151L66 225L35 71z"></path>
+<path id="FBC39" class="roic" style="fill:#ebebe1" d="M103 151L35 71L167 50z"></path>
+<path id="FDE39" class="roic" style="fill:#960041" d="M103 151L206 179L66 225z"></path>
+<path id="FCD39" class="roic" style="fill:#fab8ea" d="M103 151L167 50L206 179z"></path>
+<path id="ADE39" class="roic" style="fill:#ebebe1" d="M145 85L206 179L66 225z"></path>
+<path id="AEB39" class="roic" style="fill:#fab8ea" d="M145 85L66 225L35 71z"></path>
+<path id="ACD39" class="roic" style="fill:#3236c8" d="M145 85L167 50L206 179z"></path>
+<path id="ABC39" class="roic" style="fill:#960041" d="M145 85L35 71L167 50z"></path>
+</g>
+<g id="fr40">
+<path id="FEB40" class="roic" style="fill:#3236c8" d="M113 151L62 224L37 72z"></path>
+<path id="FBC40" class="roic" style="fill:#ebebe1" d="M113 151L37 72L171 49z"></path>
+<path id="FDE40" class="roic" style="fill:#960041" d="M113 151L208 181L62 224z"></path>
+<path id="FCD40" class="roic" style="fill:#fab8ea" d="M113 151L171 49L208 181z"></path>
+<path id="ADE40" class="roic" style="fill:#ebebe1" d="M132 85L208 181L62 224z"></path>
+<path id="AEB40" class="roic" style="fill:#fab8ea" d="M132 85L62 224L37 72z"></path>
+<path id="ACD40" class="roic" style="fill:#3236c8" d="M132 85L171 49L208 181z"></path>
+<path id="ABC40" class="roic" style="fill:#960041" d="M132 85L37 72L171 49z"></path>
+</g>
+<g id="fr41">
+<path id="FEB41" class="roic" style="fill:#3236c8" d="M120 151L59 223L40 73z"></path>
+<path id="FBC41" class="roic" style="fill:#ebebe1" d="M120 151L40 73L174 48z"></path>
+<path id="FDE41" class="roic" style="fill:#960041" d="M120 151L207 182L59 223z"></path>
+<path id="FCD41" class="roic" style="fill:#fab8ea" d="M120 151L174 48L207 182z"></path>
+<path id="ADE41" class="roic" style="fill:#ebebe1" d="M119 85L207 182L59 223z"></path>
+<path id="AEB41" class="roic" style="fill:#fab8ea" d="M119 85L59 223L40 73z"></path>
+<path id="ACD41" class="roic" style="fill:#3236c8" d="M119 85L174 48L207 182z"></path>
+<path id="ABC41" class="roic" style="fill:#960041" d="M119 85L40 73L174 48z"></path>
+</g>
+<g id="fr42">
+<path id="FEB42" class="roic" style="fill:#3236c8" d="M129 151L57 222L43 74z"></path>
+<path id="FBC42" class="roic" style="fill:#ebebe1" d="M129 151L43 74L178 48z"></path>
+<path id="FDE42" class="roic" style="fill:#960041" d="M129 151L206 184L57 222z"></path>
+<path id="FCD42" class="roic" style="fill:#fab8ea" d="M129 151L178 48L206 184z"></path>
+<path id="ADE42" class="roic" style="fill:#ebebe1" d="M107 85L206 184L57 222z"></path>
+<path id="AEB42" class="roic" style="fill:#fab8ea" d="M107 85L57 222L43 74z"></path>
+<path id="ACD42" class="roic" style="fill:#3236c8" d="M107 85L178 48L206 184z"></path>
+<path id="ABC42" class="roic" style="fill:#960041" d="M107 85L43 74L178 48z"></path>
+</g>
+<g id="fr43">
+<path id="FEB43" class="roic" style="fill:#3236c8" d="M137 152L56 221L48 75z"></path>
+<path id="FBC43" class="roic" style="fill:#ebebe1" d="M137 152L48 75L181 46z"></path>
+<path id="FDE43" class="roic" style="fill:#960041" d="M137 152L204 185L56 221z"></path>
+<path id="FCD43" class="roic" style="fill:#fab8ea" d="M137 152L181 46L204 185z"></path>
+<path id="ADE43" class="roic" style="fill:#ebebe1" d="M96 85L204 185L56 221z"></path>
+<path id="AEB43" class="roic" style="fill:#fab8ea" d="M96 85L56 221L48 75z"></path>
+<path id="ACD43" class="roic" style="fill:#3236c8" d="M96 85L181 46L204 185z"></path>
+<path id="ABC43" class="roic" style="fill:#960041" d="M96 85L48 75L181 46z"></path>
+</g>
+<g id="fr44">
+<path id="FEB44" class="roic" style="fill:#3236c8" d="M145 151L56 219L54 75z"></path>
+<path id="FBC44" class="roic" style="fill:#ebebe1" d="M145 151L54 75L184 45z"></path>
+<path id="FDE44" class="roic" style="fill:#960041" d="M145 151L201 186L56 219z"></path>
+<path id="FCD44" class="roic" style="fill:#fab8ea" d="M145 151L184 45L201 186z"></path>
+<path id="ADE44" class="roic" style="fill:#ebebe1" d="M84 85L201 186L56 219z"></path>
+<path id="AEB44" class="roic" style="fill:#fab8ea" d="M84 85L56 219L54 75z"></path>
+<path id="ACD44" class="roic" style="fill:#3236c8" d="M84 85L184 45L201 186z"></path>
+<path id="ABC44" class="roic" style="fill:#960041" d="M84 85L54 75L184 45z"></path>
+</g>
+<g id="fr45">
+<path id="FEB45" class="roic" style="fill:#3236c8" d="M153 152L56 218L58 76z"></path>
+<path id="FBC45" class="roic" style="fill:#ebebe1" d="M153 152L58 76L184 44z"></path>
+<path id="FDE45" class="roic" style="fill:#960041" d="M153 152L198 188L56 218z"></path>
+<path id="FCD45" class="roic" style="fill:#fab8ea" d="M153 152L184 44L198 188z"></path>
+<path id="ADE45" class="roic" style="fill:#ebebe1" d="M73 86L198 188L56 218z"></path>
+<path id="AEB45" class="roic" style="fill:#fab8ea" d="M73 86L56 218L58 76z"></path>
+<path id="ACD45" class="roic" style="fill:#3236c8" d="M73 86L184 44L198 188z"></path>
+<path id="ABC45" class="roic" style="fill:#960041" d="M73 86L58 76L184 44z"></path>
+</g>
+<g id="fr46">
+<path id="FEB46" class="roic" style="fill:#3236c8" d="M161 152L57 216L65 75z"></path>
+<path id="FBC46" class="roic" style="fill:#ebebe1" d="M161 152L65 75L184 43z"></path>
+<path id="FDE46" class="roic" style="fill:#960041" d="M161 152L192 189L57 216z"></path>
+<path id="FCD46" class="roic" style="fill:#fab8ea" d="M161 152L184 43L192 189z"></path>
+<path id="ADE46" class="roic" style="fill:#ebebe1" d="M62 86L192 189L57 216z"></path>
+<path id="AEB46" class="roic" style="fill:#fab8ea" d="M62 86L57 216L65 75z"></path>
+<path id="ACD46" class="roic" style="fill:#3236c8" d="M62 86L184 43L192 189z"></path>
+<path id="ABC46" class="roic" style="fill:#960041" d="M62 86L65 75L184 43z"></path>
+</g>
+<g id="fr47">
+<path id="FEB47" class="roic" style="fill:#3236c8" d="M168 152L59 216L72 78z"></path>
+<path id="FBC47" class="roic" style="fill:#ebebe1" d="M168 152L72 78L184 43z"></path>
+<path id="FDE47" class="roic" style="fill:#960041" d="M168 152L185 190L59 216z"></path>
+<path id="FCD47" class="roic" style="fill:#fab8ea" d="M168 152L184 43L185 190z"></path>
+<path id="ADE47" class="roic" style="fill:#ebebe1" d="M53 86L185 190L59 216z"></path>
+<path id="AEB47" class="roic" style="fill:#fab8ea" d="M53 86L59 216L72 78z"></path>
+<path id="ACD47" class="roic" style="fill:#3236c8" d="M53 86L184 43L185 190z"></path>
+<path id="ABC47" class="roic" style="fill:#960041" d="M53 86L72 78L184 43z"></path>
+</g>
+<g id="fr48">
+<path id="FEB48" class="roic" style="fill:#3236c8" d="M176 153L62 215L78 79z"></path>
+<path id="FBC48" class="roic" style="fill:#ebebe1" d="M176 153L78 79L184 41z"></path>
+<path id="ABC48" class="roic" style="fill:#960041" d="M45 86L78 79L184 41z"></path>
+<path id="FDE48" class="roic" style="fill:#960041" d="M176 153L179 191L62 215z"></path>
+<path id="FCD48" class="roic" style="fill:#fab8ea" d="M176 153L184 41L179 191z"></path>
+<path id="ADE48" class="roic" style="fill:#ebebe1" d="M45 86L179 191L62 215z"></path>
+<path id="AEB48" class="roic" style="fill:#fab8ea" d="M45 86L62 215L78 79z"></path>
+<path id="ACD48" class="roic" style="fill:#3236c8" d="M45 86L184 41L179 191z"></path>
+</g>
+<g id="fr49">
+<path id="FEB49" class="roic" style="fill:#3236c8" d="M184 154L64 214L85 79z"></path>
+<path id="FBC49" class="roic" style="fill:#ebebe1" d="M184 154L85 79L183 39z"></path>
+<path id="ABC49" class="roic" style="fill:#960041" d="M38 87L85 79L183 39z"></path>
+<path id="FDE49" class="roic" style="fill:#960041" d="M184 154L169 191L64 214z"></path>
+<path id="ADE49" class="roic" style="fill:#ebebe1" d="M38 87L169 191L64 214z"></path>
+<path id="AEB49" class="roic" style="fill:#fab8ea" d="M38 87L64 214L85 79z"></path>
+<path id="FCD49" class="roic" style="fill:#fab8ea" d="M184 154L183 39L169 191z"></path>
+<path id="ACD49" class="roic" style="fill:#3236c8" d="M38 87L183 39L169 191z"></path>
+</g>
+<g id="fr50">
+<path id="FEB50" class="roic" style="fill:#3236c8" d="M190 154L68 213L92 79z"></path>
+<path id="FBC50" class="roic" style="fill:#ebebe1" d="M190 154L92 79L180 38z"></path>
+<path id="ABC50" class="roic" style="fill:#960041" d="M33 88L92 79L180 38z"></path>
+<path id="FDE50" class="roic" style="fill:#960041" d="M190 154L160 191L68 213z"></path>
+<path id="ADE50" class="roic" style="fill:#ebebe1" d="M33 88L160 191L68 213z"></path>
+<path id="AEB50" class="roic" style="fill:#fab8ea" d="M33 88L68 213L92 79z"></path>
+<path id="FCD50" class="roic" style="fill:#fab8ea" d="M190 154L180 38L160 191z"></path>
+<path id="ACD50" class="roic" style="fill:#3236c8" d="M33 88L180 38L160 191z"></path>
+</g>
+<g id="fr51">
+<path id="FEB51" class="roic" style="fill:#3236c8" d="M196 154L72 212L100 79z"></path>
+<path id="FBC51" class="roic" style="fill:#ebebe1" d="M196 154L100 79L177 37z"></path>
+<path id="ABC51" class="roic" style="fill:#960041" d="M28 89L100 79L177 37z"></path>
+<path id="FDE51" class="roic" style="fill:#960041" d="M196 154L151 191L72 212z"></path>
+<path id="ADE51" class="roic" style="fill:#ebebe1" d="M28 89L151 191L72 212z"></path>
+<path id="AEB51" class="roic" style="fill:#fab8ea" d="M28 89L72 212L100 79z"></path>
+<path id="FCD51" class="roic" style="fill:#fab8ea" d="M196 154L177 37L151 191z"></path>
+<path id="ACD51" class="roic" style="fill:#3236c8" d="M28 89L177 37L151 191z"></path>
+</g>
+<g id="fr52">
+<path id="FEB52" class="roic" style="fill:#3236c8" d="M201 155L76 211L106 79z"></path>
+<path id="FBC52" class="roic" style="fill:#ebebe1" d="M201 155L106 79L173 36z"></path>
+<path id="ABC52" class="roic" style="fill:#960041" d="M25 90L106 79L173 36z"></path>
+<path id="FDE52" class="roic" style="fill:#960041" d="M201 155L140 191L76 211z"></path>
+<path id="ADE52" class="roic" style="fill:#ebebe1" d="M25 90L140 191L76 211z"></path>
+<path id="AEB52" class="roic" style="fill:#fab8ea" d="M25 90L76 211L106 79z"></path>
+<path id="FCD52" class="roic" style="fill:#fab8ea" d="M201 155L173 36L140 191z"></path>
+<path id="ACD52" class="roic" style="fill:#3236c8" d="M25 90L173 36L140 191z"></path>
+</g>
+<g id="fr53">
+<path id="FEB53" class="roic" style="fill:#3236c8" d="M206 156L80 210L114 79z"></path>
+<path id="FBC53" class="roic" style="fill:#ebebe1" d="M206 156L114 79L169 35z"></path>
+<path id="ABC53" class="roic" style="fill:#960041" d="M24 91L114 79L169 35z"></path>
+<path id="FDE53" class="roic" style="fill:#960041" d="M206 156L130 191L80 210z"></path>
+<path id="ADE53" class="roic" style="fill:#ebebe1" d="M24 91L130 191L80 210z"></path>
+<path id="AEB53" class="roic" style="fill:#fab8ea" d="M24 91L80 210L114 79z"></path>
+<path id="FCD53" class="roic" style="fill:#fab8ea" d="M206 156L169 35L130 191z"></path>
+<path id="ACD53" class="roic" style="fill:#3236c8" d="M24 91L169 35L130 191z"></path>
+</g>
+<g id="fr54">
+<path id="FEB54" class="roic" style="fill:#3236c8" d="M211 156L86 210L121 79z"></path>
+<path id="FBC54" class="roic" style="fill:#ebebe1" d="M211 156L121 79L164 34z"></path>
+<path id="ABC54" class="roic" style="fill:#960041" d="M23 91L121 79L164 34z"></path>
+<path id="ADE54" class="roic" style="fill:#ebebe1" d="M23 91L120 191L86 210z"></path>
+<path id="AEB54" class="roic" style="fill:#fab8ea" d="M23 91L86 210L121 79z"></path>
+<path id="FCD54" class="roic" style="fill:#fab8ea" d="M211 156L164 34L120 191z"></path>
+<path id="ACD54" class="roic" style="fill:#3236c8" d="M23 91L164 34L120 191z"></path>
+<path id="FDE54" class="roic" style="fill:#960041" d="M211 156L120 191L86 210z"></path>
+</g>
+<g id="fr55">
+<path id="FEB55" class="roic" style="fill:#3236c8" d="M214 157L91 209L130 79z"></path>
+<path id="FBC55" class="roic" style="fill:#ebebe1" d="M214 157L130 79L158 33z"></path>
+<path id="ABC55" class="roic" style="fill:#960041" d="M23 92L130 79L158 33z"></path>
+<path id="ADE55" class="roic" style="fill:#ebebe1" d="M23 92L108 191L91 209z"></path>
+<path id="AEB55" class="roic" style="fill:#fab8ea" d="M23 92L91 209L130 79z"></path>
+<path id="FCD55" class="roic" style="fill:#fab8ea" d="M214 157L158 33L108 191z"></path>
+<path id="ACD55" class="roic" style="fill:#3236c8" d="M23 92L158 33L108 191z"></path>
+<path id="FDE55" class="roic" style="fill:#960041" d="M214 157L108 191L91 209z"></path>
+</g>
+<g id="fr56">
+<path id="FEB56" class="roic" style="fill:#3236c8" d="M216 158L96 210L137 79z"></path>
+<path id="FBC56" class="roic" style="fill:#ebebe1" d="M216 158L137 79L152 32z"></path>
+<path id="ABC56" class="roic" style="fill:#960041" d="M24 93L137 79L152 32z"></path>
+<path id="ADE56" class="roic" style="fill:#ebebe1" d="M24 93L98 191L96 210z"></path>
+<path id="AEB56" class="roic" style="fill:#fab8ea" d="M24 93L96 210L137 79z"></path>
+<path id="FCD56" class="roic" style="fill:#fab8ea" d="M216 158L152 32L98 191z"></path>
+<path id="ACD56" class="roic" style="fill:#3236c8" d="M24 93L152 32L98 191z"></path>
+<path id="FDE56" class="roic" style="fill:#960041" d="M216 158L98 191L96 210z"></path>
+</g>
+<g id="fr57">
+<path id="FEB57" class="roic" style="fill:#3236c8" d="M217 158L103 209L144 79z"></path>
+<path id="FBC57" class="roic" style="fill:#ebebe1" d="M217 158L144 79L144 32z"></path>
+<path id="ABC57" class="roic" style="fill:#960041" d="M27 94L144 79L144 32z"></path>
+<path id="ADE57" class="roic" style="fill:#ebebe1" d="M27 94L88 191L103 209z"></path>
+<path id="AEB57" class="roic" style="fill:#fab8ea" d="M27 94L103 209L144 79z"></path>
+<path id="FCD57" class="roic" style="fill:#fab8ea" d="M217 158L144 32L88 191z"></path>
+<path id="ACD57" class="roic" style="fill:#3236c8" d="M27 94L144 32L88 191z"></path>
+<path id="FDE57" class="roic" style="fill:#960041" d="M217 158L88 191L103 209z"></path>
+</g>
+<g id="fr58">
+<path id="FEB58" class="roic" style="fill:#3236c8" d="M218 159L107 209L151 79z"></path>
+<path id="ABC58" class="roic" style="fill:#960041" d="M30 95L151 79L137 32z"></path>
+<path id="ADE58" class="roic" style="fill:#ebebe1" d="M30 95L77 191L107 209z"></path>
+<path id="AEB58" class="roic" style="fill:#fab8ea" d="M30 95L107 209L151 79z"></path>
+<path id="FBC58" class="roic" style="fill:#ebebe1" d="M218 159L151 79L137 32z"></path>
+<path id="FCD58" class="roic" style="fill:#fab8ea" d="M218 159L137 32L77 191z"></path>
+<path id="ACD58" class="roic" style="fill:#3236c8" d="M30 95L137 32L77 191z"></path>
+<path id="FDE58" class="roic" style="fill:#960041" d="M218 159L77 191L107 209z"></path>
+</g>
+<g id="fr59">
+<path id="FEB59" class="roic" style="fill:#3236c8" d="M217 160L114 208L158 79z"></path>
+<path id="ABC59" class="roic" style="fill:#960041" d="M35 96L158 79L130 32z"></path>
+<path id="ADE59" class="roic" style="fill:#ebebe1" d="M35 96L70 190L114 208z"></path>
+<path id="AEB59" class="roic" style="fill:#fab8ea" d="M35 96L114 208L158 79z"></path>
+<path id="FBC59" class="roic" style="fill:#ebebe1" d="M217 160L158 79L130 32z"></path>
+<path id="FCD59" class="roic" style="fill:#fab8ea" d="M217 160L130 32L70 190z"></path>
+<path id="ACD59" class="roic" style="fill:#3236c8" d="M35 96L130 32L70 190z"></path>
+<path id="FDE59" class="roic" style="fill:#960041" d="M217 160L70 190L114 208z"></path>
+</g>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

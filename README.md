@@ -52,7 +52,7 @@ When configuring Linny-R for a network environment where individual users each h
 you can instruct Linny-R to create the `user` directory in this work space by adding the argument `workspace=[path]` to the `node` command.
 
 The directory should contain this file `README.md`,
-the files `linny-r-server.js` and `linny-r-console.js` that will be run by Node.js,
+the files `server.js` and `console.js` that will be run by Node.js,
 and the sub-directory `static`. 
 After installation has been completed, it will have two more subdirectories `user` and `node_modules`,
 and a script file to facilitate (single click) launch: on a macOS machine the shell script `linny-r.command`,
@@ -66,7 +66,7 @@ The `static` directory should contain three HTML files:
 
 It should also contain the style sheet `linny-r.css` required by the GUI.
 
-The subdirectories of `static` contain files that are served to the browser by the script `linny-r-server.js` when it is running in Node.js. 
+The subdirectories of `static` contain files that are served to the browser by the script `server.js` when it is running in Node.js. 
 
 After installation has completed, the `Linny-R` directory should have this directory tree structure:
 
@@ -163,16 +163,16 @@ If you reach this stage, Linny-R will be able to run LP_solve.
 Open the Command Line Interface (CLI) of your computer.
 On macOS, this will be `Terminal`, on Windows `Command Prompt`. 
 
-At the CLI prompt, change to the main Linny-R directory that contains the file `linny-r-server.js`.
+At the CLI prompt, change to the main Linny-R directory that contains the file `server.js`.
 Then type:
 
-``node linny-r-server``
+``node server``
 
 The response should be something similar to:
 
 <pre>
 Node.js server for Linny-R version 1.0
-Node.js version: v18.4.0
+Node.js version: v18.9.0
 </pre>
 
 followed by some data on your Linny-R configuration. The last line will be something like:
@@ -275,7 +275,7 @@ and from there drag/drop the file `linny-r.icns` on the icon shown in the top le
 
 If you have not configured a "click-start" icon as described above, 
 you must start a modeling session with Linny-R by opening a CLI box,
-then change to the Linny-R directory, type `node linny-r-server.js`,
+then change to the Linny-R directory, type `node server`,
 open your browser, and then navigate to http://127.0.0.1:5050
 
 To shut down the server, click on the local host icon in the upper right corner of the Linny-R GUI in your browser.
@@ -291,7 +291,7 @@ The console-only version of Linny-R allows you to run a Linny-R model without a 
 This may be useful when you want run models from a script (shell script, Python, ...). 
 If you open a CLI box, change to the main Linny-R directory, and then type:
 
-``node linny-r-console``
+``node console``
 
 you will see the command line options that allow you to run models in various ways.
 
