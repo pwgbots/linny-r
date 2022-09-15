@@ -104,8 +104,6 @@ const SOLVER = new MILPSolver(SETTINGS, WORKSPACE);
 // Create launch script
 createLaunchScript();
 
-verifyScriptFiles();
-
 // Create the HTTP server
 const SERVER = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://127.0.0.1:' + SETTINGS.port);

@@ -39,10 +39,13 @@ The response should be the version number of Node.js, for example: v18.9.0.
 
 ### Installing Linny-R
 It is advisable to install Linny-R in a directory on your computer, not in a cloud. 
-In this installation guide, this directory is called `Linny-R`.
-At the command line, change to the Linny-R directory (if you are not there already) and type: 
+In this installation guide, the path to this directory is denoted by `PATH`,
+but on a Windows machine it will be something like `C:\Users\xyz\Documents\Linny-R`,
+and on a macOS machine probably `/Users/xyz/Linny-R`.
 
-``npm install linny-r``
+To install Linny-R in this directory, type at the command line prompt: 
+
+``npm install --prefix PATH linny-r``
 
 The Linny-R directory should now contain a new sub-directory `node_modules`, 
 and two JSON files `package.json` and `package-lock.json` that should **not** be removed,
@@ -68,10 +71,10 @@ It should also contain the style sheet `linny-r.css` required by the GUI.
 
 The subdirectories of `static` contain files that are served to the browser by the script `server.js` when it is running in Node.js. 
 
-After installation has completed, the `Linny-R` directory should have this directory tree structure:
+After installation has completed, the `PATH` directory should have this directory tree structure:
 
 <pre>
-Linny-R
+PATH
  |
  +- static
  |   |
