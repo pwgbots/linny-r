@@ -51,6 +51,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 -->
 
   <link rel="shortcut icon" type="image/png" href="images/icon.png">
+  <!-- NOTE: do not display the page until after software update check -->
+  <style>body { display: none; }</style>
   <script>
     var
       // NODE = false indicates that modules need not export their properties
@@ -141,8 +143,6 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     }
     
     function checkForUpdates() {
-      UI.check_update_modal.element('reload-btn').style.display = 'none';
-      UI.check_update_modal.element('restart-btn').style.display = 'none';
       fetch('auto-check')
         .then((response) => response.text())
         .then((data) => {

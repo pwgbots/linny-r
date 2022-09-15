@@ -39,27 +39,31 @@ The response should be the version number of Node.js, for example: v18.9.0.
 
 ### Installing Linny-R
 It is advisable to install Linny-R in a directory on your computer, not in a cloud. 
-In this installation guide, the path to this directory is denoted by `PATH`,
-but on a Windows machine it will be something like `C:\Users\xyz\Documents\Linny-R`,
+In this installation guide, the path to this directory is denoted by `WORKING_DIRECTORY`,
+but on a Windows machine you may choose something like `C:\Users\xyz\Documents\Linny-R`,
 and on a macOS machine probably `/Users/xyz/Linny-R`.
 
 To install Linny-R in this directory, type at the command line prompt: 
 
-``npm install --prefix PATH linny-r``
+``npm install --prefix WORKING_DIRECTORY linny-r``
 
-The Linny-R directory should now contain a new sub-directory `node_modules`, 
+WORKING_DIRECTORY should now contain a new sub-directory `node_modules`, 
 and two JSON files `package.json` and `package-lock.json` that should **not** be removed,
 or you will have to re-install Linny-R.
 
-When configuring Linny-R for a network environment where individual users each have their personal work space (e.g., a virtual drive U:),
-you can instruct Linny-R to create the `user` directory in this work space by adding the argument `workspace=[path]` to the `node` command.
-
-The directory should contain this file `README.md`,
-the files `server.js` and `console.js` that will be run by Node.js,
-and the sub-directory `static`. 
-After installation has been completed, it will have two more subdirectories `user` and `node_modules`,
+After installation has been completed, `WORKING_DIRECTORY` will also have a sub-directory `user`
 and a script file to facilitate (single click) launch: on a macOS machine the shell script `linny-r.command`,
 on a Windows machine the batch script `linny-r.bat`. 
+
+When configuring Linny-R for a network environment
+where individual users each have their personal work space (e.g., a virtual drive U:),
+you can instruct Linny-R to create the `user` directory in this work space
+by adding the argument `workspace=[path]` to the `node` command that you use to start the Linny-R server.
+
+The `node_modules` directory should contain two sub-directories: `@xmldom` and `linny-r`.
+The `linny-r` directory should contain this file `README.md`,
+the files `server.js` and `console.js` that will be run by Node.js,
+and the sub-directory `static`. 
 
 The `static` directory should contain three HTML files: 
 
@@ -71,20 +75,12 @@ It should also contain the style sheet `linny-r.css` required by the GUI.
 
 The subdirectories of `static` contain files that are served to the browser by the script `server.js` when it is running in Node.js. 
 
-After installation has completed, the `PATH` directory should have this directory tree structure:
+After installation has completed, `WORKING_DIRECTORY` should have this directory tree structure:
 
 <pre>
-PATH
+WORKING_DIRECTORY
  |
- +- static
- |   |
- |   +  fonts
- |   |
- |   +- images
- |   |
- |   +- scripts
- |   |
- |   +- sounds
+ +- node_modules
  |
  +- user
      |
@@ -98,7 +94,7 @@ PATH
      |
      +-solver 
 </pre>
-
+ 
 The sub-directories of the `user` directory are used by Linny-R to store files.
 
 * `channel` and `callback` will be used to interact with Linny-R via its *Receiver* 
@@ -141,7 +137,7 @@ How to do this is explained on the page "Installing LP_solve on a Mac" on the Li
 https://linny-r.info 
 
 When you have downloaded the file (just `lp_solve` for macOS, `lp_solve.exe` for Windows), 
-you must copy or move this file to the main Linny-R directory,
+you must copy or move this file to your `WORKING_DIRECTORY`,
 as this is where Linny-R will look for it when it does not find Gurobi.
 
 On a macOS machine, you must then make the file `lp_solve` executable.
@@ -164,12 +160,13 @@ If you reach this stage, Linny-R will be able to run LP_solve.
 ### Running Linny-R
 
 Open the Command Line Interface (CLI) of your computer.
-On macOS, this will be `Terminal`, on Windows `Command Prompt`. 
+On macOS, open `Terminal`, change to your `WORKING_DIRECTORY` and type:
 
-At the CLI prompt, change to the main Linny-R directory that contains the file `server.js`.
-Then type:
+``node node_modules/linny-r/server``
 
-``node server``
+On Windows, open `Command Prompt`, change to your `WORKING_DIRECTORY` and type:
+
+``node node_modules\linny-r\server``
 
 The response should be something similar to:
 
@@ -178,7 +175,8 @@ Node.js server for Linny-R version 1.0
 Node.js version: v18.9.0
 </pre>
 
-followed by some data on your Linny-R configuration. The last line will be something like:
+followed by some data on your Linny-R configuration.
+The last line will be something like:
 
 <pre>
 Listening at: http://127.0.0.1:5050
@@ -222,11 +220,11 @@ Solve block 1 a
 Optionally, you can add more arguments to the `node` command:
 
 <pre>
+dpi=[number]       to overrule the default resolution (300 dpi) for Inkscape 
 launch             to automatically launch Linny-R in your default browser
 port=[number]      to overrule the default port number (5050)
 solver=[name]      to overrule the default sequence (Gurobi, LP_solve)
 workspace=[path]   to overrule the default path for the user directory
-dpi=[number]       to overrule the default resolution (300 dpi) for Inkscape 
 </pre>
 
 ### Installing Inkscape
@@ -260,7 +258,7 @@ To facilitate start-up, you can create a shortcut icon on your desktop.
 On a Windows machine, change to your Linny-R folder, right-click on the batch file `linny-r.bat`,
 and select the *Create shortcut* option. 
 Then right-click on the shortcut file to edit its properties, and click the *Change Icon* button.
-The dialog that then appears will allow you to go to the sub-folder `static\images`,
+The dialog that then appears will allow you to go to the sub-folder `node_modules\linny-r\static\images`,
 where you should select the file `linny-r.ico`.
 Finally, rename the shortcut to `Linny-R` and move or copy it to your desktop.
 
@@ -270,7 +268,7 @@ On a macOS machine, open Terminal and change to your Linny-R directory, and then
 
 to make the script file executable.
 To set the icon, click on the icon of `linny-r.command` (which still is plain) and open the Info dialog by pressing ``Cmd+I``.
-Then open your Linny-R folder in the Finder, change to the sub-folder `static/images`, 
+Then open your Linny-R folder in the Finder, change to the sub-folder `node_modules/linny-r/static/images`, 
 and from there drag/drop the file `linny-r.icns` on the icon shown in the top left corner of the Info dialog.
 
 
@@ -292,9 +290,9 @@ In that case, you can stop Node.js by stopping the Terminal.
 
 The console-only version of Linny-R allows you to run a Linny-R model without a web browser.
 This may be useful when you want run models from a script (shell script, Python, ...). 
-If you open a CLI box, change to the main Linny-R directory, and then type:
+If you open a CLI box, change to your `WORKING_DIRECTORY`, and then type:
 
-``node console``
+``node node_modules/linny-r/console``  _(on Windows, use backslashes)_
 
 you will see the command line options that allow you to run models in various ways.
 

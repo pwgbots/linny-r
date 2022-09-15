@@ -39,15 +39,17 @@ SOFTWARE.
 
 const
     // The version number of this Linny-R server in Node.js
-    VERSION_NUMBER = '1.0.0',
+    VERSION_NUMBER = '1.1.2',
     
     // The URL of the official Linny-R website (with the most recent release)
     PUBLIC_LINNY_R_URL = 'https://sysmod.tbm.tudelft.nl/linny-r',
 
     // The current working directory (from where Node.js was started) is
     // assumed to be the main directory
-    MAIN_DIRECTORY = process.cwd(),
-
+    path = require('path'),
+    WORKING_DIRECTORY = process.cwd(),
+    MAIN_DIRECTORY = path.join(WORKING_DIRECTORY, 'node_modules', 'linny-r'),
+    
     // Get the required built-in Node.js modules
     child_process = require('child_process'),
     crypto = require('crypto'),
@@ -55,7 +57,6 @@ const
     http = require('http'),
     https = require('https'),
     os = require('os'),
-    path = require('path'),
 
     // Get the platform name (win32, macOS, linux) of the user's computer
     PLATFORM = os.platform();    
@@ -65,6 +66,7 @@ console.log('\nNode.js server for Linny-R version', VERSION_NUMBER);
 console.log('Node.js version:', process.version);
 console.log('Platform:', PLATFORM, '(' + os.type() + ')');
 console.log('Main directory:', MAIN_DIRECTORY);
+console.log('Working directory:', WORKING_DIRECTORY);
 
 // Only then require the Node.js modules that are not "built-in"
 
@@ -829,11 +831,11 @@ function receiver(res, sp) {
   let
       rpath = anyOSpath(sp.get('path') || ''),
       rfile = anyOSpath(sp.get('file') || '');
-  // Assume that path is relative tochannel directory unless it starts with
+  // Assume that path is relative to channel directory unless it starts with
   // a (back)slash or specifiess drive or volume
   if(!(rpath.startsWith(path.sep) || rpath.indexOf(':') >= 0 ||
-      rpath.startsWith(MAIN_DIRECTORY))) {
-    rpath = path.join(MAIN_DIRECTORY, rpath);
+      rpath.startsWith(WORKING_DIRECTORY))) {
+    rpath = path.join(WORKING_DIRECTORY, rpath);
   }
   // Verify that the channel path exists
   try {
@@ -1319,7 +1321,7 @@ function commandLineSettings() {
       preferred_solver: '',
       solver: '',
       solver_path: '',
-      user_dir: path.join(MAIN_DIRECTORY, 'user')
+      user_dir: path.join(WORKING_DIRECTORY, 'user')
     };
   for(let i = 2; i < process.argv.length; i++) {
     const lca = process.argv[i].toLowerCase();
@@ -1408,9 +1410,9 @@ function commandLineSettings() {
           'WARNING: Failed to access the Gurobi command line application');
     }
   }
-  // Check if lp_solve(.exe) exists in main directory
+  // Check if lp_solve(.exe) exists in working directory
   const
-      sp = path.join(MAIN_DIRECTORY,
+      sp = path.join(WORKING_DIRECTORY,
           'lp_solve' + (PLATFORM.startsWith('win') ? '.exe' : '')),
       need_lps = !settings.solver || settings.preferred_solver === 'lp_solve';
   try {
@@ -1516,17 +1518,17 @@ function createLaunchScript() {
       '# cd ',
       '',
       '# Then this command to launch the Linny-R server should work:',
-      'node server launch'
+      'node ' + path.join('node_modules', 'linny-r', 'server') + ' launch'
     ];
   let sp;
   if(PLATFORM.startsWith('win')) {
-    sp = path.join(MAIN_DIRECTORY, 'linny-r.bat');
+    sp = path.join(WORKING_DIRECTORY, 'linny-r.bat');
     lines[1] += 'C:\\path\\to\\main\\Linny-R\\directory';
   } else {
-    sp = path.join(MAIN_DIRECTORY, 'linny-r.command'); 
+    sp = path.join(WORKING_DIRECTORY, 'linny-r.command'); 
     lines[1] += '/path/to/main/Linny-R/directory';
   }
-  lines[2] = 'cd ' + MAIN_DIRECTORY;
+  lines[2] = 'cd ' + WORKING_DIRECTORY;
   try {
     try {
       fs.accessSync(sp);

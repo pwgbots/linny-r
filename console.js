@@ -41,31 +41,29 @@ SOFTWARE.
 // (this will make the "module" files linny-r-xxx.js export their properties)
 global.NODE = true;
 
-const VERSION_NUMBER = '1.0.0';
-    
-const MAIN_DIRECTORY = process.cwd();
-
-// Load the required Node.js modules
 const
+    VERSION_NUMBER = '1.1.2',
+    WORKING_DIRECTORY = process.cwd(),
+    path = require('path'),
+    MAIN_DIRECTORY = path.join(WORKING_DIRECTORY, 'node_modules', 'linny-r'),
+    // Load the required Node.js modules
     fs = require('fs'),
     os = require('os'),
-    path = require('path'),
-    readline = require('readline');
-
-// Get the platform name (win32, macOS, linux) of the user's computer
-const PLATFORM = os.platform();
+    readline = require('readline'),
+    // Get the platform name (win32, macOS, linux) of the user's computer
+    PLATFORM = os.platform();
 
 // Immediately output some configuration information to the console
 console.log('\nNode.js Linny-R console version', VERSION_NUMBER);
 console.log('Node.js version:', process.version);
 console.log('Platform:', PLATFORM, '(' + os.type() + ')');
 console.log('Main directory:', MAIN_DIRECTORY);
+console.log('Working directory:', WORKING_DIRECTORY);
 
-// Load the MILP solver (dependent on Node.js: `fs`, `os` and `path`)
-const MILPSolver = require('./static/scripts/linny-r-milp.js');
-    
-// Load the browser-compatible Linny-R scripts
 const
+    // Load the MILP solver (dependent on Node.js: `fs`, `os` and `path`)
+    MILPSolver = require('./static/scripts/linny-r-milp.js'),
+    // Load the browser-compatible Linny-R scripts
     config = require('./static/scripts/linny-r-config.js'),
     utils = require('./static/scripts/linny-r-utils.js'),
     vm = require('./static/scripts/linny-r-vm.js'),
@@ -681,7 +679,7 @@ function commandLineSettings() {
       preferred_solver: '',
       solver: '',
       solver_path: '',
-      user_dir: path.join(MAIN_DIRECTORY, 'user')
+      user_dir: path.join(WORKING_DIRECTORY, 'user')
     };
   let show_usage = process.argv.length < 3;
   for(let i = 2; i < process.argv.length; i++) {
@@ -812,7 +810,7 @@ function commandLineSettings() {
   }
   // Check if lp_solve(.exe) exists in main directory
   const
-      sp = path.join(MAIN_DIRECTORY,
+      sp = path.join(WORKING_DIRECTORY,
           'lp_solve' + (PLATFORM.startsWith('win') ? '.exe' : '')),
       need_lps = !settings.solver || settings.preferred_solver === 'lp_solve';
   try {
