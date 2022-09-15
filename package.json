@@ -4,7 +4,7 @@
   "description": "Executable graphical language with WYSIWYG editor for MILP models",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "@xmldom/xmldom": ">=0.8.2"
