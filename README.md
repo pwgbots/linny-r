@@ -24,7 +24,7 @@ via the official documentation site https://linny-r.info.
 Linny-R is developed as a JavaScript package, and requires that **Node.js** is installed on your computer. 
 Node.js can be downloaded from https://nodejs.org. 
 Make sure that you choose the correct installer for your computer.
-Linny-R is developed using the *current* release. Presently (September 2022) this is 18.9.0. 
+Linny-R is developed using the *current* release. Presently (October 2022) this is 18.10.0. 
 
 Run the installer and accept the default settings.
 There is **no** need to install the optional Tools for Native Modules.
@@ -35,12 +35,13 @@ Verify the installation by typing:
 
 ``node --version``
 
-The response should be the version number of Node.js, for example: v18.9.0.
+The response should be the version number of Node.js, for example: v18.10.0.
 
 ### Installing Linny-R
 It is advisable to install Linny-R in a directory on your computer, not in a cloud. 
 In this installation guide, the path to this directory is denoted by `WORKING_DIRECTORY`,
-but on a Windows machine you may choose something like `C:\Users\xyz\Documents\Linny-R`,
+so in all commands you should replace this with the actual directory path.
+On a Windows machine you may choose something like `C:\Users\xyz\Documents\Linny-R`,
 and on a macOS machine probably `/Users/xyz/Linny-R`.
 
 To install Linny-R in this directory, type at the command line prompt: 
@@ -51,16 +52,38 @@ WORKING_DIRECTORY should now contain a new sub-directory `node_modules`,
 and two JSON files `package.json` and `package-lock.json` that should **not** be removed,
 or you will have to re-install Linny-R.
 
-After installation has been completed, `WORKING_DIRECTORY` will also have a sub-directory `user`
-and a script file to facilitate (single click) launch: on a macOS machine the shell script `linny-r.command`,
-on a Windows machine the batch script `linny-r.bat`. 
-
-When configuring Linny-R for a network environment
+After installation has been completed, `WORKING_DIRECTORY` will also contain a script file
+to facilitate (single click) launch: on a macOS machine the shell script `linny-r.command`,
+on a Windows machine the batch script `linny-r.bat`. By default, this script file contains
+two commands: change to the Linny-R directory and then tell Node.js to launch the
+start the Linny-R server. When configuring Linny-R for a network environment
 where individual users each have their personal work space (e.g., a virtual drive U:),
-you can instruct Linny-R to create the `user` directory in this work space
-by adding the argument `workspace=[path]` to the `node` command that you use to start the Linny-R server.
+you must edit the script file, adding the argument `workspace=path/to/workspace` to the
+`node` command. This will instruct Linny-R to create the `user` directory in this workspace
+directory instead of the Linny-R directory.
 
-The `node_modules` directory should contain two sub-directories: `@xmldom` and `linny-r`.
+After installation has completed, `WORKING_DIRECTORY` should have this directory tree structure:
+
+<pre>
+WORKING_DIRECTORY
+ |
+ +-node_modules
+    |
+    +-@xmldom
+    |
+    +-linny-r
+       |
+       +-static
+          |
+          +-fonts
+          |
+          +-images
+          |
+          +-scripts
+          |
+          +-sounds
+</pre>
+
 The `linny-r` directory should contain this file `README.md`,
 the files `server.js` and `console.js` that will be run by Node.js,
 and the sub-directory `static`. 
@@ -73,35 +96,8 @@ The `static` directory should contain three HTML files:
 
 It should also contain the style sheet `linny-r.css` required by the GUI.
 
-The subdirectories of `static` contain files that are served to the browser by the script `server.js` when it is running in Node.js. 
-
-After installation has completed, `WORKING_DIRECTORY` should have this directory tree structure:
-
-<pre>
-WORKING_DIRECTORY
- |
- +- node_modules
- |
- +- user
-     |
-     +-callback 
-     |
-     +-channel 
-     |
-     +-diagrams 
-     |
-     +-modules 
-     |
-     +-solver 
-</pre>
- 
-The sub-directories of the `user` directory are used by Linny-R to store files.
-
-* `channel` and `callback` will be used to interact with Linny-R via its *Receiver* 
-* `diagrams` will be used to render Scalable Vector Graphics (SVG) files as Portable Network Graphics (PNG) using Inkscape (if installed)
-* `modules` will contain models stored in the `local host` *repository*
-* `solver` will contain the files that are exchanged with the Mixed Integer Linear Programming (MILP) solver
-  (the names of the files that will appear in this directory may vary, depending on the MILP-solver you use)
+The subdirectories of `static` contain files that are served to the browser by the script
+`server.js` when it is running in Node.js. 
 
 ### Configuring the MILP solver
 
@@ -214,6 +210,20 @@ Meanwhile, in the CLI, you should see a server log message like:
 <pre>
 Solve block 1 a
 </pre>
+
+#### User workspace
+
+The user workspace is created when the server is run for the first time.
+The sub-directories of this directory `user` are used by Linny-R to store files.
+
+* `channel` and `callback` will be used to interact with Linny-R via its *Receiver* 
+* `diagrams` will be used to render Scalable Vector Graphics (SVG) files as
+  Portable Network Graphics (PNG) using Inkscape (if installed)
+* `modules` will contain models stored in the `local host` *repository*
+* `solver` will contain the files that are exchanged with the Mixed Integer Linear Programming (MILP) solver
+  (the names of the files that will appear in this directory may vary, depending on the MILP-solver you use)
+
+
 
 #### Command line options
 
