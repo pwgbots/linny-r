@@ -5,7 +5,7 @@ The Linny-R language and tool have been developed by Pieter Bots at Delft
 University of Technology, starting in 2009. The project to develop a browser-
 based version started in 2017. See https://linny-r.org for more information.
 
-This NodeJS script (linny-r-node.js) provides a minimalist local host web server
+This NodeJS script (server.js) provides a minimalist local host web server
 (URL http://127.0.0.1:5050) that will serve the Linny-R GUI (HTML, CSS,
 and JavaScript files, and images), process the requests from the browser
 that pass the MILP equation model to the solver, and then return the solution
@@ -1535,7 +1535,9 @@ function createLaunchScript() {
     } catch(err) {
       // Only write the script content if the file it does not yet exist
       console.log('Creating launch script:', sp);
-      fs.writeFileSync(sp, lines.join(os.EOL), 'utf8');
+      let code = lines.join(os.EOL);
+      if(PLATFORM.startsWith('win')) code = code.replace('#', '::');
+      fs.writeFileSync(sp, code, 'utf8');
     }
   } catch(err) {
     console.log('WARNING: Failed to create launch script');

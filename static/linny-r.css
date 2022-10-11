@@ -218,8 +218,7 @@ main {
   padding: 2px;
   font: 7px sans-serif;
   font-style: oblique;
-  color: gray;
-  cursor: pointer;
+  color: #200030;
 }
 
 #topbar {
