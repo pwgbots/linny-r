@@ -49,6 +49,8 @@ SOFTWARE.
 
 const
     path = require('path'),
+    os = require('os'),
+    PLATFORM = os.platform(),
     WORKING_DIRECTORY = process.cwd(),
     lines = [
         '# The first line (without the comment symbol #) should be like this:',
