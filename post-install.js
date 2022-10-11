@@ -48,6 +48,7 @@ SOFTWARE.
 */
 
 const
+    fs = require('fs'),
     path = require('path'),
     os = require('os'),
     PLATFORM = os.platform(),
