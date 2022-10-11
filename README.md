@@ -160,31 +160,21 @@ If you reach this stage, Linny-R will be able to run LP_solve.
 
 ### Running Linny-R
 
-Open the Command Line Interface (CLI) of your computer.
-On macOS, open `Terminal`, change to your `WORKING_DIRECTORY` and type:
+Open the Command Line Interface (CLI) of your computer, change to your `WORKING_DIRECTORY` and type:
 
-``node node_modules/linny-r/server``
+``linny-r``
 
-On Windows, open `Command Prompt`, change to your `WORKING_DIRECTORY` and type:
-
-``node node_modules\linny-r\server``
-
-The response should be something similar to:
+This response should be something similar to:
 
 <pre>
 Node.js server for Linny-R version 1.0
-Node.js version: v18.9.0
+Node.js version: v18.10.0
+... etc.
 </pre>
 
-followed by some data on your Linny-R configuration.
-The last line will be something like:
-
-<pre>
-Listening at: http://127.0.0.1:5050
-</pre>
-
-Open your web browser and navigate to the given URL, which by default will be http://127.0.0.1:5050.
-The Linny-R GUI should then appear in your browser window, 
+Meanwhile, your default web browser should have opened a tab for the local server URL,
+which by default will be http://127.0.0.1:5050.
+The Linny-R GUI should show in your browser window, 
 while in the CLI you should see a long series of server log messages like:
 
 <pre>
