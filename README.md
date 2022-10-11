@@ -48,7 +48,7 @@ To install Linny-R in this directory, type at the command line prompt:
 
 ``npm install --prefix WORKING_DIRECTORY linny-r``
 
-WORKING_DIRECTORY should now contain a new sub-directory `node_modules`, 
+`WORKING_DIRECTORY` should now contain a new sub-directory `node_modules`, 
 and two JSON files `package.json` and `package-lock.json` that should **not** be removed,
 or you will have to re-install Linny-R.
 
