@@ -44,23 +44,17 @@ so in all commands you should replace this with the actual directory path.
 On a Windows machine you may choose something like `C:\Users\xyz\Documents\Linny-R`,
 and on a macOS machine probably `/Users/xyz/Linny-R`.
 
-To install Linny-R in this directory, type at the command line prompt: 
+To install Linny-R in this directory, first create it:
 
-``npm install --prefix WORKING_DIRECTORY linny-r``
+``mkdir WORKING_DIRECTORY``
 
-`WORKING_DIRECTORY` should now contain a new sub-directory `node_modules`, 
-and two JSON files `package.json` and `package-lock.json` that should **not** be removed,
-or you will have to re-install Linny-R.
+then change to it:
 
-After installation has been completed, `WORKING_DIRECTORY` will also contain a script file
-to facilitate (single click) launch: on a macOS machine the shell script `linny-r.command`,
-on a Windows machine the batch script `linny-r.bat`. By default, this script file contains
-two commands: change to the Linny-R directory and then tell Node.js to launch the
-start the Linny-R server. When configuring Linny-R for a network environment
-where individual users each have their personal work space (e.g., a virtual drive U:),
-you must edit the script file, adding the argument `workspace=path/to/workspace` to the
-`node` command. This will instruct Linny-R to create the `user` directory in this workspace
-directory instead of the Linny-R directory.
+``cd WORKING_DIRECTORY``
+
+and then type at the command line prompt: 
+
+``npm install --prefix . linny-r``
 
 After installation has completed, `WORKING_DIRECTORY` should have this directory tree structure:
 
@@ -84,11 +78,22 @@ WORKING_DIRECTORY
           +-sounds
 </pre>
 
+`WORKING_DIRECTORY` should contain two JSON files `package.json` and `package-lock.json`
+that should **not** be removed, or you will have to re-install Linny-R. It should also contain
+a script file to facilitate (single click) launch: on a macOS machine the shell script `linny-r.command`,
+on a Windows machine the batch script `linny-r.bat`. By default, this script file contains
+two commands: first change to the Linny-R directory and then tell Node.js to launch the
+start the Linny-R server.
+
+**NOTE:** When configuring Linny-R for a network environment where individual users
+each have their personal work space (e.g., a virtual drive U:), you must edit this script file,
+adding the argument `workspace=path/to/workspace` to the `node` command.
+This will instruct Linny-R to create the `user` directory in this workspace directory
+instead of the Linny-R directory.
+
 The `linny-r` directory should contain this file `README.md`,
 the files `server.js` and `console.js` that will be run by Node.js,
-and the sub-directory `static`. 
-
-The `static` directory should contain three HTML files: 
+and the sub-directory `static`. This `static` directory should contain three HTML files: 
 
 * `index.html` (the browser-based GUI) 
 * `show-png.html` (to render SVG diagrams as PNG images)
