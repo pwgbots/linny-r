@@ -4,7 +4,7 @@
   "description": "Executable graphical language with WYSIWYG editor for MILP models",
   "main": "server.js",
   "scripts": {
-    "postinstall": "post-install.js",
+    "postinstall": "node post-install.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
