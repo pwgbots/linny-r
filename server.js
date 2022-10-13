@@ -38,17 +38,11 @@ SOFTWARE.
 ///////////////////////////////////////////////////////////////////////////////
 
 const
-    // The version number of this Linny-R server in Node.js
-    VERSION_NUMBER = '1.1.2',
-    
-    // The URL of the official Linny-R website (with the most recent release)
-    PUBLIC_LINNY_R_URL = 'https://sysmod.tbm.tudelft.nl/linny-r',
-
     // The current working directory (from where Node.js was started) is
     // assumed to be the main directory
     path = require('path'),
     WORKING_DIRECTORY = process.cwd(),
-    MAIN_DIRECTORY = path.join(WORKING_DIRECTORY, 'node_modules', 'linny-r'),
+    MODULE_DIRECTORY = path.join(WORKING_DIRECTORY, 'node_modules', 'linny-r'),
     
     // Get the required built-in Node.js modules
     child_process = require('child_process'),
@@ -59,16 +53,57 @@ const
     os = require('os'),
 
     // Get the platform name (win32, macOS, linux) of the user's computer
-    PLATFORM = os.platform();    
+    PLATFORM = os.platform(),    
 
-// Immediately output some configuration information to the console
-console.log('\nNode.js server for Linny-R version', VERSION_NUMBER);
+    // Get version of the installed Linny-R package 
+    VERSION_INFO = getVersionInfo();
+    
+function getVersionInfo() {
+  // Reads version info from `package.json`
+  const info = {
+      current: 0,
+      current_time: 0,
+      latest: '0',
+      latest_time: 0,
+      up_to_date: false
+    };
+  try {
+    info.current = require('./package.json').version;
+  } catch(err) {
+    console.log('ERROR: Failed to read package.json');
+    console.log(err);
+    console.log('This indicates that Linny-R is not installed properly.');
+    process.exit();    
+  }
+  try {
+    const
+        json = child_process.execSync('npm show linny-r time version --json'),
+        obj = JSON.parse(json);
+    info.latest = obj.version;
+    info.latest_time = new Date(Date.parse(obj.time[info.latest]));
+    info.current_time = new Date(Date.parse(obj.time[info.current]));
+    info.up_to_date = info.current === info.latest;
+  } catch(err) {
+    // `latest` = 0 indicates that version check failed
+    info.latest = 0;
+  }
+  console.log('\nNode.js server for Linny-R version', info.current);
+  if(!info.latest) {
+    console.log('WARNING: Could not check for updates');
+  } else if(!info.up_to_date) {
+    console.log('UPDATE: Version ' + info.latest + ' was released on ' +
+        info.latest_time.toString());
+  }
+  return info;
+}
+
+// Output some configuration information to the console
 console.log('Node.js version:', process.version);
 console.log('Platform:', PLATFORM, '(' + os.type() + ')');
-console.log('Main directory:', MAIN_DIRECTORY);
+console.log('Module directory:', MODULE_DIRECTORY);
 console.log('Working directory:', WORKING_DIRECTORY);
 
-// Only then require the Node.js modules that are not "built-in"
+// Only now require the Node.js modules that are not "built-in"
 
 const
     { DOMParser } = checkNodeModule('@xmldom/xmldom');
@@ -83,12 +118,10 @@ function checkNodeModule(name) {
   }
 }
 
+
 // Load class MILPSolver
 const MILPSolver = require('./static/scripts/linny-r-milp.js');
 
-///////////////////////////////////////////////////////////////////////////////
-//                Code executed at start-up continues here                   //
-///////////////////////////////////////////////////////////////////////////////
 
 // Default settings are used unless these are overruled by arguments on the
 // command line. Possible arguments are:
@@ -135,54 +168,25 @@ if(SETTINGS.launch) {
         });
 }
 
-// Version check & update functionality
-// ====================================
-// This section of code implements server responses to requests made by the
-// browser immediately after loading the GUI page (`index.html`), or when the
-// user clicks on the link "Version ..." below the Linny-R logo in the upper
-// left corner of the GUI page.
+// Version check functionality
+// ===========================
+// This section of code implements server responses to the request made
+// by the browser immediately after loading the GUI page (`index.html`)
 
-const
+function autoCheck(res) {
+  // Serves a string with the current version number plus info on a
+  // newer release if this is available
+  let check = VERSION_INFO.current + '|';
+  if(VERSION_INFO.up_to_date) {
+    check += 'up-to-date';
+  } else {
+    check += VERSION_INFO.latest + '|' + VERSION_INFO.latest_time;
+  }
+  servePlainText(res, check);
+}
 
-VERSION_MESSAGE = `<!DOCTYPE html>
-<html lang="en-US">
-<head>
-  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
-  <title>Linny-R version information</title>
-  <link rel="shortcut icon" type="image/png" href="../images/icon.png">
-  <style>
-    body {
-      font-family: sans-serif;
-      font-size: 16px;
-    }
-    #linny-r-logo {
-      height: 40px;
-      margin-bottom: -10px;
-    }
-  </style>
-</head>
-<body>
-  <img id="linny-r-logo" src="../images/logo.png">
-  %1%
-</body>
-</html>`,
-
-NO_INTERNET_MESSAGE = `
-<h3>Version check failed</h3>
-<p>
-  No contact with the on-line Linny-R server --
-  please check your internet connection.
-</p>`,
-
-UP_TO_DATE_MESSAGE = `
-<h3>Version JS-%1% is up-to-date</h3>
-<p>Released on %2%</p>`,
-
-DOWNLOAD_MESSAGE = `
-<h3>Latest version is %1%</h3>
-<p>Released on %2%</p>`,
-
-SHUTDOWN_MESSAGE = `<!DOCTYPE html>
+// HTML page to show then the server is shut down by the user
+const SHUTDOWN_MESSAGE = `<!DOCTYPE html>
 <html lang="en-US">
 <head>
   <meta http-equiv="content-type" content="text/html; charset=UTF-8">
@@ -197,12 +201,14 @@ SHUTDOWN_MESSAGE = `<!DOCTYPE html>
 </head>
 <body>
   <h3>Linny-R server (127.0.0.1) is shutting down</h3>
-  <p>To upgrade and/or restart Linny-R, please switch to your
-      ${SETTINGS.cli_name} window and there at the prompt:
-  <p>To upgrade to a newer version of Linny-R, first type:</p>
+  <p>To restart Linny-R, switch to your ${SETTINGS.cli_name} window
+     and there at the prompt` +
+(VERSION_INFO.up_to_date ? '' : `
+  first type:</p>
   <p>&nbsp;&nbsp;<tt>npm update linny-r</tt><p>
-  <p>To restart the server, type:</p>
-  <p>&nbsp;&nbsp;<tt>node server</tt></p>
+  to upgrade to Linny-R version ${VERSION_INFO.latest}, and then`) +
+` type:</p>
+  <p>&nbsp;&nbsp;<tt>node node_modules\linny-r\server</tt></p>
   <p>
     Then switch back to this window, and click
     <button type="button"
@@ -212,104 +218,6 @@ SHUTDOWN_MESSAGE = `<!DOCTYPE html>
   </p>
 </body>
 </html>`;
-
-
-function compareVersions(v1, v2) {
-  // Robust comparison of version numbers
-  nrs1 = (v1 + '.0.0.0').split('.');
-  nrs2 = (v2 + '.0.0.0').split('.');
-  for(i = 0; i < 4; i++) {
-    nrs1[i] = nrs1[i].padStart(6, '0');
-    nrs2[i] = nrs2[i].padStart(6, '0');
-  }
-  v1 = nrs1.slice(0, 4).join('.');
-  v2 = nrs2.slice(0, 4).join('.');
-  if(v1 > v2) return 1;
-  if(v1 < v2) return -1;
-  return 0;
-}
-
-function checkVersion(res, version) {
-  // Check whether current version is the most recent
-  console.log('Check version:', version);
-  if(!version) {
-    serveHTML(res, '<h3>No version number specified</h3>');
-    return;
-  }
-  version = version.split('-').pop();
-  getTextFromURL(PUBLIC_LINNY_R_URL + '/check-version/?info',
-      // The `on_ok` function
-      (data, res) => {
-          const
-              info = data.split('|');
-          // Should be [version, release date]
-          if(info.length === 2) {
-            if(compareVersions(version, info[0]) >= 0) {
-              message = UP_TO_DATE_MESSAGE.replace(
-                  '%1%', info[0]).replace('%2%', info[1]);
-            } else {
-              message = DOWNLOAD_MESSAGE.replace(
-                  '%1%', info[0]).replace('%2%', info[1]);
-            }
-            serveHTML(res, VERSION_MESSAGE.replace('%1%', message));
-          }
-        },
-      // The `on_error` function
-      (error, res) => {
-          console.log(error);
-          serveHTML(res, NO_INTERNET_MESSAGE);
-        },
-      // The response object
-      res);
-}
-
-function autoCheck(res) {
-  // Compares the version number in the static file `index.html`
-  // with the version number in the corresponding file on the official
-  // Linny-R website, and serves a status string that indicates whether
-  // a newer release is available
-  const gpath = path.join(MAIN_DIRECTORY, 'static', 'index.html');
-  // Read the globals script
-  fs.readFile(gpath, 'utf8', (err, data) => {
-      let v_match = null;
-      if(err) {
-        console.log('WARNING: Failed to read file', gpath);
-      } else {
-        // Extract the version number
-        v_match = data.match(/LINNY_R_VERSION = '(.+?)'/);
-        if(!v_match) console.log('WARNING: No version number found');
-      }
-      if(!v_match) {
-        servePlainText(res,'no version');
-        return;
-      }
-      let version = v_match[1];
-      // Get the current `index.html` file from the official Linny-R server 
-      getTextFromURL(PUBLIC_LINNY_R_URL + '/check-version/?info',
-          // The `on_ok` function: compare versions and return status
-          (data, res) => {
-              let check = 'no match';
-              const
-                  info = data.split('|');
-              // Should be [version, release date]
-              if(info.length === 2) {
-                if(compareVersions(version, info[0]) >= 0) {
-                  check = 'up-to-date';
-                } else {
-                  check = info[0] + '|' + info[1];
-                }
-              }
-              servePlainText(res, check);
-            },
-          // The `on_error` function
-          (error, res) => {
-              console.log(error);
-              servePlainText(res, 'no match');
-            },
-          // The response object
-          res);       
-    });
-}
 
 // Repository functionality
 // ========================
@@ -1111,10 +1019,6 @@ function processRequest(req, res, cmd, data) {
     SERVER.close();
   } else if(cmd === '/auto-check') {
     autoCheck(res);
-  } else if(cmd === '/auto-update') {
-    autoUpdate(res);
-  } else if(cmd === '/check-version') {
-    checkVersion(res, (new URLSearchParams(data)).get('v'));
   } else if(cmd === '/repo/') {
     repo(res, new URLSearchParams(data));
   } else if(cmd === '/load-data/') {
@@ -1172,7 +1076,7 @@ function serveStaticFile(res, path) {
     console.log('Static file:', path);
     path = '/static' + path;
   }
-  fs.readFile(MAIN_DIRECTORY + path, (err, data) => {
+  fs.readFile(MODULE_DIRECTORY + path, (err, data) => {
       if(err) {
         console.log(err);
         res.writeHead(404);

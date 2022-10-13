@@ -76,7 +76,7 @@ try {
     // Only write the script content if the file it does not yet exist
     console.log('Creating launch script:', sp);
     let code = lines.join(os.EOL);
-    if(PLATFORM.startsWith('win')) code = code.replace('#', '::');
+    if(PLATFORM.startsWith('win')) code = code.replaceAll('#', '::');
     fs.writeFileSync(sp, code, 'utf8');
   }
 } catch(err) {

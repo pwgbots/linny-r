@@ -54,16 +54,17 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
   <!-- NOTE: do not display the page until after software update check -->
   <style>body { display: none; }</style>
   <script>
+    // Create global variables
     var
       // NODE = false indicates that modules need not export their properties
       NODE = false,
       // Version number and release date
-      LINNY_R_VERSION = '1.1.2',
-      VERSION_RELEASE_DATE = '2022-10-11 10:25',
+      LINNY_R_VERSION = '0',
+      VERSION_RELEASE_DATE = 0,
       // Linny-R server hosting public channels
       PUBLIC_LINNY_R_URL = 'https://sysmod.tbm.tudelft.nl/linny-r',
       // Create the XML parser
-      XML_PARSER = new DOMParser();
+      XML_PARSER = new DOMParser(),
       // NOTE: global variables will be initialized when page has loaded
       // The controller object (User Interface)
       UI = null,
@@ -86,14 +87,14 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       // Stack for undo/redo operations
       UNDO_STACK = null,
       // The virtual machine
-      VM = null;
+      VM = null,
     
     // Load audio files
-    var SOUNDS = {
-        notification: new Audio('sounds/notification.wav'),
-        warning: new Audio('sounds/warning.wav'),
-        error: new Audio('sounds/error.wav')
-      };
+      SOUNDS = {
+          notification: new Audio('sounds/notification.wav'),
+          warning: new Audio('sounds/warning.wav'),
+          error: new Audio('sounds/error.wav')
+        };
       
       
     function loadLinnyR() {
@@ -149,14 +150,17 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             console.log('Version check:', data);
             const info = data.split('|');
             if(info.length > 1) {
-              UI.check_update_modal.element('msg').innerHTML = [
-                  '<a href="https://sysmod.tbm.tudelft.nl/linny-r/docs/?15" ',
-                  'target="_blank">Version <strong>',
-                  info[0], '</strong></a> released on ', info[1],
-                  ' can be installed.'].join('');
-              UI.check_update_modal.show();
-              UI.check_update_modal.element('buttons').style.display = 'block';
-            } else if(data.trim() !== 'up-to-date') {
+              LINNY_R_VERSION = info[0];
+              if(info[1] !== 'up-to-date') {
+                UI.check_update_modal.element('msg').innerHTML = [
+                    '<a href="https://sysmod.tbm.tudelft.nl/linny-r/docs/?15" ',
+                    'target="_blank">Version <strong>',
+                    info[1], '</strong></a> released on ', info[2],
+                    ' can be installed.'].join('');
+                UI.check_update_modal.show();
+                UI.check_update_modal.element('buttons').style.display = 'block';
+              }
+            } else {
               UI.warn('Version check failed: "' + data + '"');
             }
           })

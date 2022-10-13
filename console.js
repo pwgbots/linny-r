@@ -42,22 +42,48 @@ SOFTWARE.
 global.NODE = true;
 
 const
-    VERSION_NUMBER = '1.1.2',
     WORKING_DIRECTORY = process.cwd(),
     path = require('path'),
-    MAIN_DIRECTORY = path.join(WORKING_DIRECTORY, 'node_modules', 'linny-r'),
+    MODULE_DIRECTORY = path.join(WORKING_DIRECTORY, 'node_modules', 'linny-r'),
     // Load the required Node.js modules
+    child_process = require('child_process'),
     fs = require('fs'),
     os = require('os'),
     readline = require('readline'),
     // Get the platform name (win32, macOS, linux) of the user's computer
-    PLATFORM = os.platform();
+    PLATFORM = os.platform(),
+    // Get version of the installed Linny-R package 
+    VERSION_INFO = getVersionInfo();
+    
+function getVersionInfo() {
+  // Reads version info from `package.json`
+  const info = {
+      current: 0,
+      current_time: 0,
+      latest: '0',
+      latest_time: 0,
+      up_to_date: false
+    };
+  try {
+    info.current = require('./package.json').version;
+  } catch(err) {
+    console.log('ERROR: Failed to read package.json');
+    console.log(err);
+    console.log('This indicates that Linny-R is not installed properly.');
+    process.exit();    
+  }
+  // NOTE: unlike the Linny-R server, the console does not routinely
+  // check whether version is up-to-date is optional because this is
+  // a time-consuming action that would reduce multi-run performance.
+  // See command line options (much further down)
+  console.log('\nLinny-R Console version', info.current);
+  return info;
+}
 
-// Immediately output some configuration information to the console
-console.log('\nNode.js Linny-R console version', VERSION_NUMBER);
+// Output some configuration information to the console
 console.log('Node.js version:', process.version);
 console.log('Platform:', PLATFORM, '(' + os.type() + ')');
-console.log('Main directory:', MAIN_DIRECTORY);
+console.log('Module directory:', MODULE_DIRECTORY);
 console.log('Working directory:', WORKING_DIRECTORY);
 
 const
@@ -86,6 +112,7 @@ Usage:  node console [options]
 Possible options are:
   channel=[identifier]  will start listening at the specified channel
                         (FUTURE OPTION)
+  check                 will report whether current version is up-to-date
   model=[path]          will load model file in [path]
   module=[name@repo]    will load model [name] from repository [repo]
                         (if @repo is blank, repository "local host" is used)
@@ -125,9 +152,8 @@ function checkNodeModule(name) {
 // XML-related functions defined in `linny-r-utils.js`
 global.XML_PARSER = new DOMParser();
 
-// @@TO DO: Check for Linny-R software updates
-// For now, simply set the version number 
-global.LINNY_R_VERSION = '1.1.0';
+// Set the current version number 
+global.LINNY_R_VERSION = VERSION_INFO.current;
 
 ///////////////////////////////////////////////////////////////////////////////
 //     Class definitions must precede instatiation of Linny-R components     //
@@ -675,17 +701,21 @@ function commandLineSettings() {
   // Sets default settings, and then checks the command line arguments
   const settings = {
       cli_name: (PLATFORM.startsWith('win') ? 'Command Prompt' : 'Terminal'),
-      run: false,
+      check: false,
       preferred_solver: '',
+      run: false,
       solver: '',
       solver_path: '',
-      user_dir: path.join(WORKING_DIRECTORY, 'user')
+      user_dir: path.join(WORKING_DIRECTORY, 'user'),
+      verbose: false
     };
   let show_usage = process.argv.length < 3;
   for(let i = 2; i < process.argv.length; i++) {
     const lca = process.argv[i].toLowerCase();
     if(lca === 'help' || lca === '?' || lca.startsWith('-')) {
       show_usage = true;
+    } else if(lca === 'check') {
+      settings.check = true;
     } else if(lca === 'run') {
       settings.run = true;
     } else if(lca === 'verbose') {
@@ -767,6 +797,8 @@ function commandLineSettings() {
     console.log(usage);
     process.exit();
   }
+  // Perform version check only if asked for
+  if(settings.check) checkForUpdates();
   // Check whether MILP solver(s) and Inkscape have been installed
   const path_list = process.env.PATH.split(path.delimiter);
   let gurobi_path = '',
@@ -874,6 +906,35 @@ function createWorkspace() {
   ws.repositories = path.join(SETTINGS.user_dir, 'repositories.cfg');
   // Return the updated workspace object
   return ws;
+}
+
+function checkForUpdates() {
+  // Check for newer version of the Node.js package `linny-r`
+  // NOTE: use `info` as shorthand for the global constant
+  const info = VERSION_INFO;
+  try {
+    const
+        json = child_process.execSync('npm show linny-r time version --json'),
+        obj = JSON.parse(json);
+    info.latest = obj.version;
+    info.latest_time = new Date(Date.parse(obj.time[info.latest]));
+    info.current_time = new Date(Date.parse(obj.time[info.current]));
+    info.up_to_date = info.current === info.latest;
+  } catch(err) {
+    // `latest` = 0 indicates that version check failed
+    info.latest = 0;
+  }
+  if(!info.latest) {
+    console.log('WARNING: Could not check for updates');
+  } else if(!info.up_to_date) {
+    console.log('UPDATE: Version ' + info.latest + ' was released on ' +
+        info.latest_time.toString());
+  } else {
+    console.log('Version ' + info.latest + ' is up-to-date (released on ' +
+        info.latest_time.toString() + ')');    
+  }
+  // Return TRUE if current version is the latest one
+  return info.up_to_date;
 }
 
 // Initialize the solver
