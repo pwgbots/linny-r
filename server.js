@@ -208,7 +208,7 @@ const SHUTDOWN_MESSAGE = `<!DOCTYPE html>
   <p>&nbsp;&nbsp;<tt>npm update linny-r</tt><p>
   to upgrade to Linny-R version ${VERSION_INFO.latest}, and then`) +
 ` type:</p>
-  <p>&nbsp;&nbsp;<tt>node node_modules\linny-r\server</tt></p>
+  <p>&nbsp;&nbsp;<tt>node node_modules\\linny-r\\server</tt></p>
   <p>
     Then switch back to this window, and click
     <button type="button"

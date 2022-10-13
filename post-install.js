@@ -52,21 +52,24 @@ const
     path = require('path'),
     os = require('os'),
     PLATFORM = os.platform(),
-    WORKING_DIRECTORY = process.cwd(),
+    mod_dir = path.join('node_modules', 'linny-r'),
+    // NOTE: working directory for this script is the *module* directory,
+    // which is two levels deeper than the actual working directory
+    WORKING_DIRECTORY = process.cwd().replace(path.sep + mod_dir, ''),
     lines = [
         '# The first line (without the comment symbol #) should be like this:',
         '# cd ',
         '',
         '# Then this command to launch the Linny-R server should work:',
-        'node ' + path.join('node_modules', 'linny-r', 'server') + ' launch'
+        `node ${mod_dir}${path.sep}server launch`
       ];
 let sp;
 if(PLATFORM.startsWith('win')) {
   sp = path.join(WORKING_DIRECTORY, 'linny-r.bat');
-  lines[1] += 'C:\\path\\to\\main\\Linny-R\\directory';
+  lines[1] += 'C:\\path\\to\\\\your\\Linny-R\\directory';
 } else {
   sp = path.join(WORKING_DIRECTORY, 'linny-r.command'); 
-  lines[1] += '/path/to/main/Linny-R/directory';
+  lines[1] += '/path/to/your/Linny-R/directory';
 }
 lines[2] = 'cd ' + WORKING_DIRECTORY;
 try {

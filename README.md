@@ -5,7 +5,8 @@
 <a href="https://en.wikipedia.org/wiki/Unit_commitment_problem_in_electrical_power_production" target="_blank">unit commitment problems</a> (UCP) and
 <a href="https://en.wikipedia.org/wiki/Generation_expansion_planning" target="_blank">generation expansion planning</a> (GEP).</p>
 
-The graphical language and WYSIWYG model editor are developed by **Pieter Bots** at Delft University of Technology.
+The graphical language and WYSIWYG model editor are developed by **Pieter Bots** at
+<a href="https://tudelft.nl" target="_blank">Delft University of Technology</a>.
  
 Originally implemented in Delphi Pascal, Linny-R is now developed in HTML+CSS+JavaScript
 so as to be platform-independent and 100% transparent open source (under the MIT license).
@@ -13,21 +14,21 @@ The software comprises a server that runs on Node.js, and a graphical user inter
 
 You can play with the most recent release of Linny-R on 
 <a href="https://sysmod.tbm.tudelft.nl/linny-r" target="_blank">this server hosted at TU Delft</a>.    
-Note that this server imposes restrictions on solver time and the total number of blocks it will solve per run.    
+Note that this server imposes restrictions on solver time and the total number of blocks it will solve per run.
 If you install Linny-R on your own machine, no such restrictions apply.
 
 Documentation for Linny-R is still scant, but it is growing. You can contribute yourself (in "wiki fashion")
-via the official documentation site https://linny-r.info.
+via the official documentation site <a href="https://linny-r.info" target="_blank">https://linny-r.info</a>.
 
 ### Installing Node.js
 
 Linny-R is developed as a JavaScript package, and requires that **Node.js** is installed on your computer. 
-Node.js can be downloaded from https://nodejs.org. 
+This software can be downloaded from <a href="https://nodejs.org" target="_blank">https://nodejs.org</a>. 
 Make sure that you choose the correct installer for your computer.
-Linny-R is developed using the *current* release. Presently (October 2022) this is 18.10.0. 
+Linny-R is developed using the _current_ release. Presently (October 2022) this is 18.10.0. 
 
 Run the installer and accept the default settings.
-There is **no** need to install the optional Tools for Native Modules.
+There is **no** need to install the optional _Tools for Native Modules_.
 
 Open the Command Line Interface (CLI) of your computer. 
 On macOS, this will be `Terminal`, on Windows `Command Prompt`. 
@@ -101,13 +102,13 @@ and the sub-directory `static`. This `static` directory should contain three HTM
 
 It should also contain the style sheet `linny-r.css` required by the GUI.
 
-The subdirectories of `static` contain files that are served to the browser by the script
+The sub-directories of `static` contain files that are served to the browser by the script
 `server.js` when it is running in Node.js. 
 
 ### Configuring the MILP solver
 
 Linny-R presently supports two MILP solvers: Gurobi  and LP_solve. 
-Gurobi is *considerably* more powerful than the open source LP_solve solver that has powered Linny-R since 2009,
+Gurobi is _considerably_ more powerful than the open source LP_solve solver that has powered Linny-R since 2009,
 but it requires a license.
 Academic licenses can be obtained by students and staff of eligible institutions. 
 
@@ -167,7 +168,7 @@ Open the Command Line Interface (CLI) of your computer, change to your `WORKING_
 This response should be something similar to:
 
 <pre>
-Node.js server for Linny-R version 1.0
+Node.js server for Linny-R version 1.1.8
 Node.js version: v18.10.0
 ... etc.
 </pre>
@@ -191,7 +192,7 @@ stating the name of the solver.
 You can then test the GUI by creating a simple model.
 Make one that has at least one process that outputs a product, 
 and this product must have a price or a set lower bound, otherwise the model will have no objective function.
-Then click on the *Solve* button at the bottom of the left-hand tool bar.
+Then click on the _Solve_ button at the bottom of the left-hand tool bar.
 The Linny-R icon in the upper left corner should start rotating, while the status bar at the bottom should display:
 
 <pre>
@@ -211,10 +212,10 @@ Solve block 1 a
 The user workspace is created when the server is run for the first time.
 The sub-directories of this directory `user` are used by Linny-R to store files.
 
-* `channel` and `callback` will be used to interact with Linny-R via its *Receiver* 
+* `channel` and `callback` will be used to interact with Linny-R via its _Receiver_ 
 * `diagrams` will be used to render Scalable Vector Graphics (SVG) files as
   Portable Network Graphics (PNG) using Inkscape (if installed)
-* `modules` will contain models stored in the `local host` *repository*
+* `modules` will contain models stored in the `local host` _repository_
 * `solver` will contain the files that are exchanged with the Mixed Integer Linear Programming (MILP) solver
   (the names of the files that will appear in this directory may vary, depending on the MILP-solver you use)
 
@@ -239,7 +240,7 @@ When you download a diagram, it will be saved as a .svg file.
 These files can be viewed and edited using Inkscape, an open source vector graphics editor. 
 
 As it may be tedious to first save a diagram as SVG and then render it manually as a bitmap image, 
-Linny-R features a *Render diagram as bitmap* button on the top toolbar, and on the bottom toolbar of the *Chart manager*.
+Linny-R features a *Render diagram as bitmap* button on the top toolbar, and on the bottom toolbar of the _Chart manager_.
 When you click it, Linny-R will send the image as SVG to the server. 
 The server script will save the SVG in the `user/diagrams` sub-directory, 
 and then try to execute an Inkscape command that will convert this SVG to a PNG image file in the same directory.
@@ -261,8 +262,8 @@ so you need to do this yourself.
 To facilitate start-up, you can create a shortcut icon on your desktop. 
 
 On a Windows machine, change to your Linny-R folder, right-click on the batch file `linny-r.bat`,
-and select the *Create shortcut* option. 
-Then right-click on the shortcut file to edit its properties, and click the *Change Icon* button.
+and select the _Create shortcut_ option. 
+Then right-click on the shortcut file to edit its properties, and click the _Change Icon_ button.
 The dialog that then appears will allow you to go to the sub-folder `node_modules\linny-r\static\images`,
 where you should select the file `linny-r.ico`.
 Finally, rename the shortcut to `Linny-R` and move or copy it to your desktop.
@@ -281,8 +282,7 @@ and from there drag/drop the file `linny-r.icns` on the icon shown in the top le
 
 If you have not configured a "click-start" icon as described above, 
 you must start a modeling session with Linny-R by opening a CLI box,
-then change to the Linny-R directory, type `node server`,
-open your browser, and then navigate to http://127.0.0.1:5050
+then change to the Linny-R directory and type `linny-r`.
 
 To shut down the server, click on the local host icon in the upper right corner of the Linny-R GUI in your browser.
 Alternatively, you can stop the server by repeatedly pressing ``Ctrl+C`` in the CLI box.
@@ -306,7 +306,8 @@ you will see the command line options that allow you to run models in various wa
 ### Troubleshooting problems
 
 If during any of the steps above you encounter problems, please try to diagnose them and resolve them yourself.
-You can find a lot of useful information on the Linny-R documentatio website: https://linny-r.info
+You can find a lot of useful information on the Linny-R documentatio website:
+<a href="https://linny-r.info" target="_blank">https://linny-r.info</a>.
 
 To diagnose a problem, always look in the CLI box where Node.js is running, 
 as informative server-side error messages will appear there.
