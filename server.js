@@ -197,24 +197,30 @@ const SHUTDOWN_MESSAGE = `<!DOCTYPE html>
       font-family: sans-serif;
       font-size: 15px;
     }
+    code {
+      background-color: black;
+      color: white;
+      padding: 2px;
+      border-radius: 5px;
+    }
   </style>
 </head>
 <body>
   <h3>Linny-R server (127.0.0.1) is shutting down</h3>
-  <p>To restart Linny-R, switch to your ${SETTINGS.cli_name} window
+  <p>To restart Linny-R, switch to your <em>${SETTINGS.cli_name}</em> window
      and there at the prompt` +
 (VERSION_INFO.up_to_date ? '' : `
   first type:</p>
-  <p>&nbsp;&nbsp;<tt>npm update linny-r</tt><p>
+  <p><code>npm update linny-r</code><p>
   to upgrade to Linny-R version ${VERSION_INFO.latest}, and then`) +
 ` type:</p>
-  <p>&nbsp;&nbsp;<tt>node node_modules\\linny-r\\server</tt></p>
+  <p><code>node node_modules\\linny-r\\server</code></p>
   <p>
-    Then switch back to this window, and click
+    Then switch back to this window, and click this
     <button type="button"
       onclick="window.location.href = 'http://127.0.0.1:${SETTINGS.port}';">
       Restart
-    </button>
+    </button> button.
   </p>
 </body>
 </html>`;
@@ -1389,6 +1395,7 @@ function createWorkspace() {
   }
   // Define the sub-directory paths
   const ws = {
+      autosave: path.join(SETTINGS.user_dir, 'autosave'),
       channel: path.join(SETTINGS.user_dir, 'channel'),
       callback: path.join(SETTINGS.user_dir, 'callback'),
       diagrams: path.join(SETTINGS.user_dir, 'diagrams'),

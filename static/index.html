@@ -58,9 +58,10 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     var
       // NODE = false indicates that modules need not export their properties
       NODE = false,
-      // Version number and release date
+      // Version number
       LINNY_R_VERSION = '0',
-      VERSION_RELEASE_DATE = 0,
+      // GitHub repository
+      GITHUB_REPOSITORY = 'https://github.com/pwgbots/linny-r',
       // Linny-R server hosting public channels
       PUBLIC_LINNY_R_URL = 'https://sysmod.tbm.tudelft.nl/linny-r',
       // Create the XML parser
@@ -151,16 +152,28 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             const info = data.split('|');
             if(info.length > 1) {
               LINNY_R_VERSION = info[0];
+              const v = 'Version ' + LINNY_R_VERSION;
+              // Update the "home page" of the documentation manager
+              DOCUMENTATION_MANAGER.about_linny_r =
+                  DOCUMENTATION_MANAGER.about_linny_r.replace(
+                      '[LINNY_R_VERSION]', v);
+              // Update the version number in the browser's upper left corner
+              document.getElementById('linny-r-version-number').innerHTML = v;
               if(info[1] !== 'up-to-date') {
+                // Inform user that newer version exists
                 UI.check_update_modal.element('msg').innerHTML = [
-                    '<a href="https://sysmod.tbm.tudelft.nl/linny-r/docs/?15" ',
+                    '<a href="', GITHUB_REPOSITORY,
+                    '/wiki/Linny-R-version-history" ',
+                    'title="Click to view version release notes" ',
                     'target="_blank">Version <strong>',
-                    info[1], '</strong></a> released on ', info[2],
+                    info[1], '</strong></a> released on ',
+                    info[2].substring(0, 21),
                     ' can be installed.'].join('');
                 UI.check_update_modal.show();
                 UI.check_update_modal.element('buttons').style.display = 'block';
               }
             } else {
+              // Invalid server response (should not occur, but just in case)
               UI.warn('Version check failed: "' + data + '"');
             }
           })

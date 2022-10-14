@@ -212,6 +212,7 @@ Solve block 1 a
 The user workspace is created when the server is run for the first time.
 The sub-directories of this directory `user` are used by Linny-R to store files.
 
+* `autosave` will contain models that have been _auto-saved_ 
 * `channel` and `callback` will be used to interact with Linny-R via its _Receiver_ 
 * `diagrams` will be used to render Scalable Vector Graphics (SVG) files as
   Portable Network Graphics (PNG) using Inkscape (if installed)
@@ -219,7 +220,10 @@ The sub-directories of this directory `user` are used by Linny-R to store files.
 * `solver` will contain the files that are exchanged with the Mixed Integer Linear Programming (MILP) solver
   (the names of the files that will appear in this directory may vary, depending on the MILP-solver you use)
 
-
+By default, the `user` directory is created in your `WORKING_DIRECTORY`.
+You can overrule this by specifying the path to another directory when you start the server.
+Note that doing this will create a new, empty workspace (the directories listed above)
+in the specified path. It will **not** affect or duplicate information from existing workspaces.
 
 #### Command line options
 

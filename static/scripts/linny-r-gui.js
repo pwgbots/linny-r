@@ -12873,7 +12873,7 @@ class DocumentationManager {
   <img src="images/logo.png" style="height:25px; margin-right: 8px">
   <div style="display: inline-block; min-height: 20px;
               vertical-align: top; padding-top: 8px">
-    ${LINNY_R_VERSION}
+    [LINNY_R_VERSION]
   </div>
 </div>
 <div style="font-family: serif; font-size: 12px">
