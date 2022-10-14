@@ -10,22 +10,19 @@ The graphical language and WYSIWYG model editor are developed by **Pieter Bots**
  
 Originally implemented in Delphi Pascal, Linny-R is now developed in HTML+CSS+JavaScript
 so as to be platform-independent and 100% transparent open source (under the MIT license).
-The software comprises a server that runs on Node.js, and a graphical user interface (GUI) that runs in any modern browser.
+The software comprises a server that runs on **Node.js**,
+and a graphical user interface (GUI) that runs in any modern browser.
 
-You can play with the most recent release of Linny-R on 
-<a href="https://sysmod.tbm.tudelft.nl/linny-r" target="_blank">this server hosted at TU Delft</a>.    
-Note that this server imposes restrictions on solver time and the total number of blocks it will solve per run.
-If you install Linny-R on your own machine, no such restrictions apply.
+User documentation for Linny-R is still scant, but it is growing. You can contribute yourself (in "wiki fashion")
+via the official user documentation site <a href="https://linny-r.info" target="_blank">https://linny-r.info</a>.
+Technical documentation will be developed on GitHub: https://github/pwgbots/linny-r/wiki
 
-Documentation for Linny-R is still scant, but it is growing. You can contribute yourself (in "wiki fashion")
-via the official documentation site <a href="https://linny-r.info" target="_blank">https://linny-r.info</a>.
-
-### Installing Node.js
+## Installing Node.js
 
 Linny-R is developed as a JavaScript package, and requires that **Node.js** is installed on your computer. 
 This software can be downloaded from <a href="https://nodejs.org" target="_blank">https://nodejs.org</a>. 
 Make sure that you choose the correct installer for your computer.
-Linny-R is developed using the _current_ release. Presently (October 2022) this is 18.10.0. 
+Linny-R is developed using the _current_ release. Presently (October 2022) this is 18.11.0. 
 
 Run the installer and accept the default settings.
 There is **no** need to install the optional _Tools for Native Modules_.
@@ -38,7 +35,7 @@ Verify the installation by typing:
 
 The response should be the version number of Node.js, for example: v18.10.0.
 
-### Installing Linny-R
+## Installing Linny-R
 It is advisable to install Linny-R in a directory on your computer, not in a cloud. 
 In this installation guide, the path to this directory is denoted by `WORKING_DIRECTORY`,
 so in all commands you should replace this with the actual directory path.
@@ -56,6 +53,8 @@ then change to it:
 and then type at the command line prompt: 
 
 ``npm install --prefix . linny-r``
+
+**NOTE:** The spacing around the dot is important.
 
 After installation has completed, `WORKING_DIRECTORY` should have this directory tree structure:
 
@@ -105,7 +104,7 @@ It should also contain the style sheet `linny-r.css` required by the GUI.
 The sub-directories of `static` contain files that are served to the browser by the script
 `server.js` when it is running in Node.js. 
 
-### Configuring the MILP solver
+## Configuring the MILP solver
 
 Linny-R presently supports two MILP solvers: Gurobi  and LP_solve. 
 Gurobi is _considerably_ more powerful than the open source LP_solve solver that has powered Linny-R since 2009,
@@ -158,12 +157,11 @@ Then return to Terminal and once more type `./lp_solve -h`.
 The response should then be a listing of all the command line options of LP_solve.
 If you reach this stage, Linny-R will be able to run LP_solve.
 
-
-### Running Linny-R
+## Running Linny-R
 
 Open the Command Line Interface (CLI) of your computer, change to your `WORKING_DIRECTORY` and type:
 
-``linny-r``
+``node node_modules/linny-r/server launch``
 
 This response should be something similar to:
 
@@ -207,7 +205,45 @@ Meanwhile, in the CLI, you should see a server log message like:
 Solve block 1 a
 </pre>
 
-#### User workspace
+To end a modeling session, you can shut down the server by clickicng on the local host icon
+in the upper right corner of the Linny-R GUI in your browser, confirm that you want to leave,
+and then close your browser (tab). If you do not shut down the server from the browser,
+you can also stop the server by repeatedly pressing ``Ctrl+C`` in the CLI box.
+
+## Command line options
+
+Optionally, you can add more arguments to the `node` command:
+
+<pre>
+dpi=[number]       to overrule the default resolution (300 dpi) for Inkscape 
+launch             to automatically launch Linny-R in your default browser
+port=[number]      to overrule the default port number (5050)
+solver=[name]      to overrule the default sequence (Gurobi, LP_solve)
+workspace=[path]   to overrule the default path for the user directory
+</pre>
+
+## Click-start for Linny-R
+
+To facilitate start-up, you can create a shortcut icon for Linny-R on your desktop. 
+
+On a Windows machine, open the _File Explorer_, select your Linny-R folder,
+right-click on the batch file `linny-r.bat`, and select the _Create shortcut_ option. 
+Then right-click on the shortcut file to edit its properties, and click the _Change Icon_ button.
+The dialog that then appears will allow you to go to the sub-folder `node_modules\linny-r\static\images`,
+where you should select the file `linny-r.ico`.
+Finally, rename the shortcut to `Linny-R` and move or copy it to your desktop.
+
+On a macOS machine, open _Terminal_ and change to your Linny-R directory, and then type:
+
+``chmod +x linny-r.command``
+
+to make the script file executable.
+To set the icon, open the folder that contains the file `linny-r.command`,
+click on its icon (which still is plain) and open the _Info dialog_ by pressing ``Cmd+I``.
+Then open your Linny-R folder in _Finder_, change to the sub-folder `node_modules/linny-r/static/images`, 
+and from there drag/drop the file `linny-r.icns` on the icon shown in the top left corner of the _Info dialog_.
+
+## User workspace
 
 The user workspace is created when the server is run for the first time.
 The sub-directories of this directory `user` are used by Linny-R to store files.
@@ -225,19 +261,7 @@ You can overrule this by specifying the path to another directory when you start
 Note that doing this will create a new, empty workspace (the directories listed above)
 in the specified path. It will **not** affect or duplicate information from existing workspaces.
 
-#### Command line options
-
-Optionally, you can add more arguments to the `node` command:
-
-<pre>
-dpi=[number]       to overrule the default resolution (300 dpi) for Inkscape 
-launch             to automatically launch Linny-R in your default browser
-port=[number]      to overrule the default port number (5050)
-solver=[name]      to overrule the default sequence (Gurobi, LP_solve)
-workspace=[path]   to overrule the default path for the user directory
-</pre>
-
-### Installing Inkscape
+## Installing Inkscape
 
 Linny-R creates its diagrams and charts as SVG images. 
 When you download a diagram, it will be saved as a .svg file.
@@ -261,41 +285,7 @@ On a macOS computer, Linny-R will look for Inkscape in /Applications/Inkscape.ap
 **NOTE:** The current installation wizard for Inkscape (version 1.2) does **not** add the application to the PATH variable,
 so you need to do this yourself.
 
-### Click-start for Linny-R
-
-To facilitate start-up, you can create a shortcut icon on your desktop. 
-
-On a Windows machine, change to your Linny-R folder, right-click on the batch file `linny-r.bat`,
-and select the _Create shortcut_ option. 
-Then right-click on the shortcut file to edit its properties, and click the _Change Icon_ button.
-The dialog that then appears will allow you to go to the sub-folder `node_modules\linny-r\static\images`,
-where you should select the file `linny-r.ico`.
-Finally, rename the shortcut to `Linny-R` and move or copy it to your desktop.
-
-On a macOS machine, open Terminal and change to your Linny-R directory, and then type:
-
-``chmod +x linny-r.command``
-
-to make the script file executable.
-To set the icon, click on the icon of `linny-r.command` (which still is plain) and open the Info dialog by pressing ``Cmd+I``.
-Then open your Linny-R folder in the Finder, change to the sub-folder `node_modules/linny-r/static/images`, 
-and from there drag/drop the file `linny-r.icns` on the icon shown in the top left corner of the Info dialog.
-
-
-### Normal use after installation
-
-If you have not configured a "click-start" icon as described above, 
-you must start a modeling session with Linny-R by opening a CLI box,
-then change to the Linny-R directory and type `linny-r`.
-
-To shut down the server, click on the local host icon in the upper right corner of the Linny-R GUI in your browser.
-Alternatively, you can stop the server by repeatedly pressing ``Ctrl+C`` in the CLI box.
-
-Pressing ``Ctrl+C`` in the Terminal window on a macOS machine may not stop the process.
-In that case, you can stop Node.js by stopping the Terminal.  
-
-
-### Using Linny-R console
+## Using Linny-R console
 
 The console-only version of Linny-R allows you to run a Linny-R model without a web browser.
 This may be useful when you want run models from a script (shell script, Python, ...). 
@@ -307,17 +297,17 @@ you will see the command line options that allow you to run models in various wa
 
 **NOTE: The console-only version is still in development, and does not provide all functions yet.**
 
-### Troubleshooting problems
+## Troubleshooting problems
 
 If during any of the steps above you encounter problems, please try to diagnose them and resolve them yourself.
-You can find a lot of useful information on the Linny-R documentatio website:
+You can find a lot of useful information on the Linny-R documentation website:
 <a href="https://linny-r.info" target="_blank">https://linny-r.info</a>.
 
 To diagnose a problem, always look in the CLI box where Node.js is running, 
 as informative server-side error messages will appear there.
 
 Then also look at the console window of your browser. 
-Most browsers offer a Web Developer Tools option via their application menu.
+Most browsers offer a _Web Developer Tools_ option via their application menu.
 This will allow you to view the browser console, which will display JavaScript errors in red font.
 
 If you've tried hard, but failed, you can try to contact Pieter Bots at ``p.w.g.bots@tudelft.nl``
