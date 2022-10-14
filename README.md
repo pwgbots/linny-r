@@ -168,7 +168,7 @@ Open the Command Line Interface (CLI) of your computer, change to your `WORKING_
 This response should be something similar to:
 
 <pre>
-Node.js server for Linny-R version 1.1.8
+Node.js server for Linny-R version 1.1.9
 Node.js version: v18.10.0
 ... etc.
 </pre>
