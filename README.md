@@ -15,7 +15,7 @@ and a graphical user interface (GUI) that runs in any modern browser.
 
 User documentation for Linny-R is still scant, but it is growing. You can contribute yourself (in "wiki fashion")
 via the official user documentation site <a href="https://linny-r.info" target="_blank">https://linny-r.info</a>.
-Technical documentation will be developed on GitHub: https://github/pwgbots/linny-r/wiki
+Technical documentation will be developed on GitHub: https://github.com/pwgbots/linny-r/wiki
 
 ## Installing Node.js
 
