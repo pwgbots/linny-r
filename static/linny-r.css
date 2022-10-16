@@ -705,7 +705,7 @@ img.del-asm-btn:hover {
 
 #auto-save-settings {
   position: absolute;
-  bottom: 2px;
+  bottom: 3px;
   left: 2px;
   width: calc(100% - 4px);
 }

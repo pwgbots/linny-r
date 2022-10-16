@@ -3054,9 +3054,10 @@ class GUIController extends Controller {
         // Recall button toggles the documentation dialog
         () => UI.buttons.documentation.dispatchEvent(new Event('click')));
     this.buttons.autosave.addEventListener('click',
-        () => AUTO_SAVE.showRestoreDialog());
+        // NOTE: TRUE indicates "show dialog after obtaining the model list"
+        () => AUTO_SAVE.getAutoSavedModels(true));
     this.buttons.autosave.addEventListener('mouseover',
-        () => AUTO_SAVE.checkForSavedModels());
+        () => AUTO_SAVE.getAutoSavedModels());
 
     // Make "stay active" buttons respond to Shift-click
     const
@@ -3282,7 +3283,7 @@ class GUIController extends Controller {
     // Undoable operations no longer apply!
     UNDO_STACK.clear();
     // Autosaving should start anew
-    AUTO_SAVE.setInterval();
+    AUTO_SAVE.setAutoSaveInterval();
     // Signal success or failure
     return loaded;
   }
@@ -4823,7 +4824,7 @@ class GUIController extends Controller {
     UNDO_STACK.clear();
     VM.reset();
     this.updateButtons();
-    AUTO_SAVE.setInterval();
+    AUTO_SAVE.setAutoSaveInterval();
   }
   
   addNode(type) {
@@ -6059,8 +6060,8 @@ class GUIMonitor {
 
 
 // CLASS GUIFileManager provides the GUI for loading and saving models and
-// diagrams and handles
-// the interaction with the MILP solver via POST requests to the server.
+// diagrams and handles the interaction with the MILP solver via POST requests
+// to the server.
 // NOTE: because the console-only monitor requires Node.js modules, this
 // GUI class does NOT extend its console-only counterpart
 class GUIFileManager {
@@ -6184,15 +6185,10 @@ class GUIFileManager {
     // Show "Load model" modal
     // @@TO DO: warn user if unsaved changes to current model
     UI.hideStayOnTopDialogs();
-    const
-        rbtn = document.getElementById('load-autosaved-btn'),
-        ml = AUTO_SAVE.savedModelList();
-    if(ml.length > 0) {
-      rbtn.title = pluralS(ml.length, 'auto-saved model');
-      rbtn.style.display = 'block';
-    } else {
-      rbtn.style.display = 'none';
-    }
+    // Update auto-saved model list; if not empty, this will display the
+    // "restore autosaved files" button
+    AUTO_SAVE.getAutoSavedModels();
+    // Show the "Load model" dialog
     UI.modals.load.show();
   }
 
@@ -6282,7 +6278,7 @@ class GUIFileManager {
     console.log('Encoded file size:', el.href.length);
     el.download = 'model.lnr';
     if(el.href.length > 25*1024*1024 &&
-        navigator.userAgent.search('Chrome' ) <= 0) {
+        navigator.userAgent.search('Chrome') <= 0) {
       UI.notify('Model file size exceeds 25 MB. ' +
           'If it does not download, store it in a repository');
     }
@@ -6317,47 +6313,55 @@ class GUIFileManager {
           console.log(err);
         });
   }
-  
-  saveToLocalStorage() {
-    // Store model identified by an identifier based on author name and
-    // model name
-    // (1) autosave is skipped while experiment is running, as it may interfere
-    //     with storing run results
-    // (2) action will overwrite earlier auto-saved version of this model
-    //     unless its name and/or author have been changed in the meantime
-    // (3) browser may be configured to prohibit local storage function,
-    //     and local storage space is limited (by browser settings)
-    if(MODEL.running_experiment) {
-      console.log('No autosaving while running an experiment');
-      return;
-    }
-    try {
-      // Store model XML string using its display name as key
-      const n = MODEL.displayName;
-      console.log('Autosaving', n);
-      window.localStorage.setItem(n, MODEL.asXML);
-      // Also store the timestamp for this operation
-      window.localStorage.setItem(AUTO_SAVE.time_prefix + n, Date.now());
-      // Remove the highlighting of the icon on the status bar
-      document.getElementById('autosave-btn').classList.remove('stay-activ');
-    } catch(err) {
-      UI.alert(`Failed to auto-save model: ${err}`);
-    }
+
+  loadAutoSavedModel(name) {  
+    fetch('autosave/', postData({
+          action: 'load',
+          file: name
+        }))
+      .then((response) => {
+          if(!response.ok) {
+            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
+          }
+          return response.text();
+        })
+      .then((data) => {
+          if(UI.postResponseOK(data)) UI.loadModelFromXML(data);
+        })
+      .catch((err) => UI.warn(UI.WARNING.NO_CONNECTION, err));
   }
 
-  loadFromLocalStorage(key) {
-    // Retrieve auto-saved model identified by `key`
-    // NOTE: browser may be configured to prohibit local storage function
-    try {
-      const
-          ls = window.localStorage,
-          xml = ls.getItem(key);
-      if(xml) UI.loadModelFromXML(xml);
-    } catch(err) {
-      UI.alert(`Failed to restore auto-saved model ${key}: ${err}`);
+  storeAutoSavedModel() {
+    // Stores the current model in the local auto-save directory
+    const bcl = document.getElementById('autosave-btn').classList;
+    if(MODEL.running_experiment) {
+      console.log('No autosaving while running an experiment');
+      bcl.remove('stay-activ');
+      return;
     }
+    fetch('autosave/', postData({
+          action: 'store',
+          file: REPOSITORY_BROWSER.asFileName(
+              (MODEL.name || 'no-name') + '_by_' +
+                  (MODEL.author || 'no-author')),
+          xml: MODEL.asXML
+        }))
+      .then((response) => {
+          if(!response.ok) {
+            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
+          }
+          return response.text();
+        })
+      .then((data) => {
+          UI.postResponseOK(data);
+          bcl.remove('stay-activ');
+        })
+      .catch((err) => {
+          UI.warn(UI.WARNING.NO_CONNECTION, err);
+          bcl.remove('stay-activ');
+        });
   }
-  
+
   renderDiagramAsPNG() {
     localStorage.removeItem('png-url');
     UI.paper.fitToSize();
@@ -6811,27 +6815,28 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
 } // END of class ExpressionEditor
 
 
-// CLASS ModelAutoSaver automatically saves the current model at regular time
-// intervals
-// NOTE: it seemed to be a good idea to do this in the browser's local storage,
-// but this breaks for large model files
-// @@TO DO: re-implement via POST requests to server
+// CLASS ModelAutoSaver automatically saves the current model at regular
+// time intervals in the user's `autosave` directory
 class ModelAutoSaver {
   constructor() {
     // Keep track of time-out interval of auto-saving feature
     this.timeout_id = 0;
-    this.time_prefix = '_A_S_T_$';
     this.interval = 10; // auto-save every 10 minutes
     this.period = 24; // delete models older than 24 hours
+    this.model_list = [];
     // Overwite defaults if settings still in local storage of browser
-    this.purgeSavedModels();
-    this.setInterval();
+    this.getSettings();
+    // Purge files that have "expired" 
+    this.getAutoSavedModels();
+    // Start the interval timer
+    this.setAutoSaveInterval();
     // Add listeners to GUI elements
     this.confirm_dialog = document.getElementById('confirm-remove-models');
     document.getElementById('auto-save-clear-btn').addEventListener('click',
         () => AUTO_SAVE.confirm_dialog.style.display = 'block');
     document.getElementById('autosave-do-remove').addEventListener('click',
-        () => AUTO_SAVE.removeSavedModels());
+        // NOTE: file name parameter /*ALL*/ indicates: delete all
+        () => AUTO_SAVE.getAutoSavedModels(true, '/*ALL*/'));
     document.getElementById('autosave-cancel').addEventListener('click',
         () => AUTO_SAVE.confirm_dialog.style.display = 'none');
     document.getElementById('restore-cancel').addEventListener('click',
@@ -6850,14 +6855,14 @@ class ModelAutoSaver {
             m = parseFloat(mh[0]),
             h = parseFloat(mh[1]);
         if(isNaN(m) || isNaN(h)) {
-          UI.warn('Invalid local auto-save settings');
+          UI.warn('Ignored invalid local auto-save settings');
         } else {
           this.interval = m;
           this.period = h;
         }
       }
     } catch(err) {
-      console.log('No auto-save:', err);
+      console.log('Local storage failed:', err);
     }  
   }
   
@@ -6866,8 +6871,10 @@ class ModelAutoSaver {
     try {
       window.localStorage.setItem('Linny-R-autosave',
           this.interval + '|' + this.period);
+      UI.notify('New auto-save settings stored in browser');
     } catch(err) {
       UI.warn('Failed to write auto-save settings to local storage');
+      console.log(err);
     }  
   }
   
@@ -6875,128 +6882,80 @@ class ModelAutoSaver {
     document.getElementById('autosave-btn').classList.add('stay-activ');
     // Use setTimeout to let browser always briefly show the active color
     // even when the model file is small and storing hardly takes time
-    setTimeout(() => FILE_MANAGER.saveToLocalStorage(), 300);
+    setTimeout(() => FILE_MANAGER.storeAutoSavedModel(), 300);
   }
   
-  setInterval() {
+  setAutoSaveInterval() {
     // Activate the auto-save feature (if interval is configured)
     if(this.timeout_id) clearInterval(this.timeout_id);
-    this.getSettings();
+    // NOTE: interval = 0 indicates "do not auto-save"
     if(this.interval) {
       // Interval is in minutes, so multiply by 60 thousand to get msec
       this.timeout_id = setInterval(
           () => AUTO_SAVE.saveModel(), this.interval * 60000);
     }
   }
-  
-  purgeSavedModels() {
-    // Remove all autosaved models that have been stored beyond the set period
-    try {
-      for(let key in window.localStorage) {
-        if(key.startsWith(this.time_prefix)) {
-          const
-              name = key.split(this.time_prefix)[1],
-              ts = parseInt(window.localStorage.getItem(key)),
-              now = Date.now();
-          if((now - ts) / 3600000 > this.period) {
-            window.localStorage.removeItem(name);
-            console.log('Purged model', name, 'from local storage');
-            // Also remove the timestamp item
-            window.localStorage.removeItem(key);
+
+  getAutoSavedModels(show_dialog=false, file_to_delete='') {
+    // Get list of auto-saved models from server (after deleting those that
+    // have been stored beyond the set period AND the specified file to
+    // delete (where /*ALL*/ indicates "delete all auto-saved files")
+    const pd = {action: 'purge', period: this.period};
+    if(file_to_delete) pd.to_delete = file_to_delete;
+    fetch('autosave/', postData(pd))
+      .then((response) => {
+          if(!response.ok) {
+            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
           }
-        }
-      }
-    } catch(err) {
-      console.log('No auto-save:', err);
-    }
-  }
-  
-  savedModelList() {
-    // Returns autosaved models as array of tuples [model name, time, file size]
-    // First purge outdated auto-saved models
-    this.purgeSavedModels();
-    const list = [];
-    try {
-      for(let key in window.localStorage) {
-        if(key.startsWith(this.time_prefix)) {
-          const
-              name = key.split(this.time_prefix)[1],
-              ts = parseInt(window.localStorage.getItem(key)),
-              // Retrieve the item to make sure it exists
-              xml = window.localStorage.getItem(name);
-          if(xml && xml.length > 100) {
-            let mdate = new Date();
-            mdate.setTime(ts);
-            const offset = mdate.getTimezoneOffset();
-            mdate = new Date(mdate.getTime() - (offset * 60 * 1000));
-            mdate = mdate.toISOString().split(':');
-            mdate = mdate[0].replace('T', ' ') + ':' + mdate[1];
-            list.push([name, mdate, UI.sizeInBytes(xml.length)]);
-          } else {
-            console.log('Autosaved model not found or invalid:', xml);
+          return response.text();
+        })
+      .then((data) => {
+          if(UI.postResponseOK(data)) {
+            try {
+              AUTO_SAVE.model_list = JSON.parse(data);
+            } catch(err) {
+              AUTO_SAVE.model_list = [];
+              UI.warn('Data on auto-saved models is not valid');
+            }
           }
-        }
-      }
-      // NOTE: sort models in reverse time order (most recent on top)
-      list.sort((a, b) => {
-          if(a[1] > b[1]) return -1;
-          if(a[1] < b[1]) return 1;
-          return 0;
-        });
-    } catch(err) {
-      console.log('No auto-save:', err);
-    }
-    return list;
+          // Update auto-save-related dialog elements
+          const
+              n = this.model_list.length,
+              ttl = pluralS(n, 'auto-saved model'),
+              rbtn = document.getElementById('load-autosaved-btn');
+          document.getElementById('autosave-btn').title = ttl;
+          rbtn.title = ttl;
+          rbtn.style.display = (n > 0 ? 'block' : 'none');
+          if(show_dialog) AUTO_SAVE.showRestoreDialog();
+        })
+      .catch((err) => {console.log(err); UI.warn(UI.WARNING.NO_CONNECTION, err);});
   }
-  
-  checkForSavedModels() {
-    const ml = this.savedModelList();
-    document.getElementById('autosave-btn').title =
-        pluralS(ml.length, 'auto-saved model');
-  }
-  
-  removeSavedModels() {
-    const ml = this.savedModelList();
-    for(let i = 0; i < ml.length; i++) {
-      const n = ml[i][0];
-      window.localStorage.removeItem(n);
-      window.localStorage.removeItem(this.time_prefix + n);
-    }
-    this.hideRestoreDialog(true);
-  }
-  
-  deleteSavedModel(n) {
-    window.localStorage.removeItem(n);
-    window.localStorage.removeItem(this.time_prefix + n);
-    const ml = this.savedModelList();
-    if(ml.length > 0) {
-      this.showRestoreDialog();
-    } else {
-      this.hideRestoreDialog(true);  
-    }
-  }
-  
+
   showRestoreDialog() {
     // Shows list of auto-saved models; clicking on one will load it
-    const ml = this.savedModelList();
+    // NOTE: hide "Load model" dialog in case it was showing
     document.getElementById('load-modal').style.display = 'none';
     // Contruct the table to select from
     let html = '';
-    for(let i = 0; i < ml.length; i++) {
-      const bytes = ml[i][2].split(' ');
+    for(let i = 0; i < this.model_list.length; i++) {
+      const
+          m = this.model_list[i],
+          bytes = UI.sizeInBytes(m.size).split(' ');
       html += ['<tr class="dataset" style="color: gray" ',
-          'onclick="FILE_MANAGER.loadFromLocalStorage(\'',
-          ml[i][0],'\');"><td class="restore-name">', ml[i][0], '</td><td>',
-          ml[i][1], '</td><td style="text-align: right">',
-          bytes[0], '</td><td>', bytes[1],
-          '</td><td><img class="del-asm-btn" src="images/delete.png" ',
-          'onclick="AUTO_SAVE.deleteSavedModel(\'',
-          ml[i][0], '\')"></td></tr>'].join('');
+          'onclick="FILE_MANAGER.loadAutoSavedModel(\'',
+          m.name,'\');"><td class="restore-name">', m.name, '</td><td>',
+          m.date.substring(1, 16).replace('T', ' '),
+          '</td><td style="text-align: right">',
+          bytes[0], '</td><td>', bytes[1], '</td><td style="width:15px">',
+          '<img class="del-asm-btn" src="images/delete.png" ',
+          'onclick="event.stopPropagation(); ',
+          'AUTO_SAVE.getAutoSavedModels(true, \'', m.name,
+          '\')"></td></tr>'].join('');
     }
     document.getElementById('restore-table').innerHTML = html;
     // Adjust dialog height (max-height will limit list to 10 lines)
     document.getElementById('restore-dlg').style.height =
-        (45 + 19 * ml.length) + 'px';
+        (48 + 19 * this.model_list.length) + 'px';
     document.getElementById('confirm-remove-models').style.display = 'none';
     // Fill text input fields with present settings
     document.getElementById('auto-save-minutes').value = this.interval;
@@ -7006,7 +6965,7 @@ class ModelAutoSaver {
       ttl = document.getElementById('restore-dlg-title'),
       sa = document.getElementById('restore-scroll-area'),
       btn = document.getElementById('auto-save-clear-btn');
-    if(ml.length) {
+    if(this.model_list.length) {
       ttl.innerHTML = 'Restore auto-saved model';
       sa.style.display = 'block';
       btn.style.display = 'block';
@@ -7037,10 +6996,10 @@ class ModelAutoSaver {
       if(!isNaN(h)) {
         // If valid, store in local storage of browser
         if(m !== this.interval || h !== this.period) {
-          UI.notify('New auto-save settings stored in browser');
           this.interval = m;
           this.period = h;
           this.setSettings();
+          this.setAutoSaveInterval();
         }
         document.getElementById('restore-modal').style.display = 'none';
         return;
@@ -8187,7 +8146,6 @@ class Repository {
   }
 
 } // END of class Repository
-
 
 //
 // Draggable & resizable dialogs

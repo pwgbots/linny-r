@@ -277,8 +277,9 @@ class Controller {
     // Returns `name` without the object-attribute separator |, backslashes,
     // and leading and trailing whitespace, and with all internal whitespace
     // reduced to a single space.
-    return name.replace(this.OA_SEPARATOR, ' ').replace(/\||\\/g, ' '
-      ).trim().replace(/\s\s+/g, ' ');
+    return name.replace(this.OA_SEPARATOR, ' ')
+        .replace(/\||\\/g, ' ').trim()
+        .replace(/\s\s+/g, ' ');
   }
   
   validName(name) {
@@ -519,8 +520,10 @@ class RepositoryBrowser {
   asFileName(s) {
     // Returns string `s` with whitespace converted to a single dash, and
     // special characters converted to underscores
-    return s.normalize('NFKD').trim().replace(/[\s\-]+/g, '-'
-      ).replace(/[^A-Za-z0-9_\-]/g, '_').trim('-_');
+    return s.normalize('NFKD').trim()
+        .replace(/[\s\-]+/g, '-')
+        .replace(/[^A-Za-z0-9_\-]/g, '_')
+        .replace(/^[\-\_]+|[\-\_]+$/g, '');
   }
   
   loadModuleAsModel() {

@@ -112,7 +112,7 @@ function rangeToList(str, max=0) {
 function dateToString(d) {
   // Returns date-time `d` in UTC format, accounting for time zone
   const offset = d.getTimezoneOffset();
-  d = new Date(d.getTime() - offset*60000);
+  d = new Date(d.getTime() - offset * 60000);
   return d.toISOString().split('T')[0];
 }
 

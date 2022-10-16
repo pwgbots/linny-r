@@ -225,10 +225,145 @@ const SHUTDOWN_MESSAGE = `<!DOCTYPE html>
 </body>
 </html>`;
 
+// Auto-save & restore model functionality
+// =======================================
+// For auto-save services, the Linny-R JavaScript application communicates with
+// the server via calls to the server like fetch('autosave/', x) where x is a JSON
+// object with at least the entry `action`, which can be one of the following:
+//  purge  remove all model files older than the set auto-save period
+//  store  write the property x.xml to the file with name x.name
+//  load   return the XML contents of the specified model file
+// Each action returns a JSON string that represents the actualized auto-save
+// settings (interval and perdiod) and list of auto-saved model data objects.
+// For each model: {name, file_name, size, time_saved}
+
+function asFileName(s) {
+  // Returns string `s` in lower case with whitespace converted to a single
+  // dash, special characters converted to underscores, and leading and
+  // trailing dashes and underscores removed
+  return s.normalize('NFKD').trim()
+      .replace(/[\s\-]+/g, '-')
+      .replace(/[^A-Za-z0-9_\-]/g, '_')
+      .replace(/^[\-\_]+|[\-\_]+$/g, '');
+}
+
+function autoSave(res, sp) {
+  // Processes all auto-save & restore commands
+  const action = sp.get('action').trim();
+  console.log('Auto-save action:', action);
+  if(['purge', 'load', 'store'].indexOf(action) < 0) {
+    // Invalid action => report error
+    return servePlainText(res, `ERROR: Invalid auto-save action: "${action}"`);
+  }
+  // Always purge the auto-save files before further action; this returns
+  // the list with model data objects
+  const data = autoSavePurge(res, sp);
+  // NOTE: if string instead of array, this string is an error message 
+  if(typeof data === 'string') return servePlainText(res, data);
+  // Perform load or store actions if requested
+  if(action === 'load') return autoSaveLoad(res, sp);
+  if(action === 'store') return autoSaveStore(res, sp);
+  // Otherwise, action was 'purge' => return the auto-saved model list
+  serveJSON(res, data);
+}
+
+function autoSavePurge(res, sp) {
+  // Deletes specified file(s) (if any) as well as all expired files,
+  // and returns list with data on remaining files as JSON string
+  const
+      now = new Date(),
+      p = sp.get('period'),
+      period = (p ? parseInt(p) : 24) * 3600000,
+      df = sp.get('to_delete'),
+      all = df === '/*ALL*/';
+  
+  // Get list of data on Linny-R models in `autosave` directory
+  data = [];
+  try {
+    const flist = fs.readdirSync(WORKSPACE.autosave);
+    for(let i = 0; i < flist.length; i++) {
+      const
+          pp = path.parse(flist[i]),
+          md = {name: pp.name},
+          fp = path.join(WORKSPACE.autosave, flist[i]);
+      // NOTE: only consider Linny-R model files (extension .lnr)
+      if(pp.ext === '.lnr') {
+        let dodel = all || pp.name === df;
+        if(!dodel) {
+          // Get file properties
+          const fstat = fs.statSync(fp);
+          md.size = fstat.size;
+          md.date = fstat.mtime;
+          // Also delete if file has expired
+          dodel = now - fstat.mtimeMs > period;
+        }
+        if(dodel) {
+          // Delete model file
+          try {
+            fs.unlinkSync(fp);
+          } catch(err) {
+            console.log('WARNING: Failed to delete', fp);
+            console.log(err);
+          }
+        } else {
+          // Add model data to the list
+          data.push(md);
+        }
+      }
+    }
+  } catch(err) {
+    console.log(err);
+    return 'ERROR: Auto-save failed -- ' + err.message;
+  }
+  return data;
+}
+
+function autoSaveLoad(res, sp) {
+  // Return XML content of specified file
+  const fn = sp.get('file');
+  if(fn) {
+    const fp = path.join(WORKSPACE.autosave, fn + '.lnr');
+    try {
+      data = fs.readFileSync(fp, 'utf8');
+    } catch(err) {
+      console.log(err);
+      data = 'WARNING: Failed to load auto-saved file: ' + err.message;
+    }
+  } else {
+    data = 'ERROR: No auto-saved file name';
+  }
+  servePlainText(res, data);
+}
+
+function autoSaveStore(res, sp) {
+  // Stores XML data under specified file name in the auto-save directory
+  let data = 'OK';
+  const fn = sp.get('file');
+  if(!fn) {
+    data = 'WARNING: No name for file to auto-save';
+  } else {
+    const xml = sp.get('xml');
+    // Validate XML as a Linny-R model
+    try {
+      const
+          parser = new DOMParser(),
+          doc = parser.parseFromString(xml, 'text/xml');
+          root = doc.documentElement;
+      // Linny-R models have a model element as root
+      if(root.nodeName !== 'model') throw 'XML document has no model element';
+      fs.writeFileSync(path.join(WORKSPACE.autosave, fn + '.lnr'), xml);
+    } catch(err) {
+      console.log(err);
+      data = 'ERROR: Not a Linny-R model to auto-save';
+    }
+  }
+  servePlainText(res, data);
+}
+
 // Repository functionality
 // ========================
 // For repository services, the Linny-R JavaScript application communicates with
-// the server via calls to the server like $.post('repo', x) where x is a JSON
+// the server via calls to the server like fetch('repo/', x) where x is a JSON
 // object with at least the entry `action`, which can be one of the following:
 //  id      return the repository URL (for this script: 'local host')
 //  list    return list with names of repositories available on the server
@@ -257,14 +392,7 @@ function repo(res, sp) {
   if(action === 'store') return repoStore(res, repo, file, sp.get('xml'));
   if(action === 'delete') return repoDelete(res, repo, file);
   // Fall-through: report error
-  servePlainText(res, `ERROR: Invalid action: "${action}"`);
-}
-
-function asFileName(s) {
-  // Returns string `s` with whitespace converted to a single dash, and special
-  // characters converted to underscores
-  s = s.trim().replace(/[\s\-]+/g, '-');
-  return s.replace(/[^A-Za-z0-9_\-]/g, '_');
+  servePlainText(res, `ERROR: Invalid repository action: "${action}"`);
 }
 
 function repositoryByName(name) {
@@ -607,7 +735,7 @@ function repoStore(res, rname, mname, mxml) {
         parser = new DOMParser(),
         doc = parser.parseFromString(mxml, 'text/xml');
         root = doc.documentElement;
-    // Linny-R model have a model element as root
+    // Linny-R models have a model element as root
     if(root.nodeName !== 'model') throw 'XML document has no model element';
     valid = true;
   } catch(err) {
@@ -1025,6 +1153,8 @@ function processRequest(req, res, cmd, data) {
     SERVER.close();
   } else if(cmd === '/auto-check') {
     autoCheck(res);
+  } else if(cmd === '/autosave/') {
+    autoSave(res, new URLSearchParams(data));
   } else if(cmd === '/repo/') {
     repo(res, new URLSearchParams(data));
   } else if(cmd === '/load-data/') {
