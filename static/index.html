@@ -212,6 +212,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       // NOTE: do this *after* GUI elements have been created, as the
       // updater uses a dialog
       if(!SOLVER.user_id) checkForUpdates();
+      if(!SOLVER.test()) alert('Solver not working');
       // Initialize auto-saving function
       AUTO_SAVE = new ModelAutoSaver();
       // Create a new Linny-R model
