@@ -203,7 +203,21 @@ function autoCheck(res) {
 }
 
 // HTML page to show then the server is shut down by the user
-const SHUTDOWN_MESSAGE = `<!DOCTYPE html>
+// NOTE: on a macOS machine, this is slightly more work
+const
+    OS_TEXT = (PLATFORM === 'darwin' ? [
+`<p>Close the <em>Terminal</em> window that shows
+  <tt>[Process Terminated]</tt> at the bottom.
+</p>`,
+`open <em>Terminal</em> again, change to your Linny-R directory by typing:
+</p>
+<p><code>cd ${WORKING_DIRECTORY}</code></p>
+<p>`
+      ] : [
+'',
+'switch to your <em>Command Prompt</em> window '
+      ]),
+    SHUTDOWN_MESSAGE = `<!DOCTYPE html>
 <html lang="en-US">
 <head>
   <meta http-equiv="content-type" content="text/html; charset=UTF-8">
@@ -223,9 +237,8 @@ const SHUTDOWN_MESSAGE = `<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <h3>Linny-R server (127.0.0.1) is shutting down</h3>
-  <p>To restart Linny-R, switch to your <em>${SETTINGS.cli_name}</em> window
-     and there at the prompt` +
+  <h3>Linny-R server (127.0.0.1) is shutting down</h3>` + OS_TEXT[0] + `
+  <p>To restart Linny-R, ` + OS_TEXT[1] + ` and then at the prompt` +
 (VERSION_INFO.up_to_date ? '' : `
   first type:</p>
   <p><code>npm update linny-r</code><p>

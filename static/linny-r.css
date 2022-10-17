@@ -37,6 +37,8 @@ body {
 
 body.waiting * { cursor: wait; }
 
+@charset UTF-8;
+
 @font-face {
   font-family: Lato;
   src: url(fonts/Lato-Regular.ttf);
@@ -3804,6 +3806,11 @@ select.i-param {
   font-family: monospace;
 }
 
+#confirm-delete-from-repo-msg {
+  height: calc(100% - 55px);  
+}
+
+
 /* the FINDER DIALOG allows lookup of occurrences of entities */
 #finder-dlg {
   display: none;
@@ -4326,7 +4333,6 @@ div.call-stack-expr {
 #confirm-delete-from-repo-msg,
 #check-update-msg {
   width: calc(100% - 8px);
-  height: calc(100% - 55px);
   margin: 3px;
   overflow: auto;
 }
