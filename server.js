@@ -162,10 +162,27 @@ if(SETTINGS.launch) {
   const cmd = (PLATFORM.startsWith('win') ? 'start' : 'open');
   child_process.exec(cmd + ' http://127.0.0.1:' + SETTINGS.port,
       (error, stdout, stderr) => {
-          console.log('NOTICE: Failed to launch GUI in browser');
-          console.log(stdout);
-          console.log(stderr);
+          if(error) {
+            console.log('NOTICE: Failed to launch GUI in browser');
+            console.log(error);
+            console.log(stdout);
+            console.log(stderr);
+          }
         });
+}
+
+// Server action logging functionality
+// ===================================
+// Only actions are logged to the console as with date and time;
+// error messages are not prefixed, so these are logged directly.
+
+function logAction(msg) {
+  // Log request processing to console with time-zone-aware date and time
+  const
+      t = new Date(),
+      tzt = new Date(t.getTime() - t.getTimezoneOffset()*60000),
+      dts = tzt.toISOString().substring(0, 19).replace('T', ' ');
+  console.log(`[${dts}] ${msg}`);
 }
 
 // Version check functionality
@@ -250,7 +267,7 @@ function asFileName(s) {
 function autoSave(res, sp) {
   // Processes all auto-save & restore commands
   const action = sp.get('action').trim();
-  console.log('Auto-save action:', action);
+  logAction('Auto-save action: ' + action);
   if(['purge', 'load', 'store'].indexOf(action) < 0) {
     // Invalid action => report error
     return servePlainText(res, `ERROR: Invalid auto-save action: "${action}"`);
@@ -378,7 +395,7 @@ function autoSaveStore(res, sp) {
 function repo(res, sp) {
   // Processes all repository commands
   const action = sp.get('action').trim();
-  console.log('Repository action:', action);
+  logAction('Repository action: ' + action);
   if(action === 'id') return repoID(res);
   if(action === 'list') return repoList(res);
   if(action === 'add') return repoAdd(res, sp);
@@ -829,7 +846,7 @@ function anyOSpath(p) {
 
 function loadData(res, url) {
   // Passed parameter is the URL or full path
-  console.log('Load data from', url);
+  logAction('Load data from ' + url);
   if(!url) servePlainText(res, 'ERROR: No URL or path');
   if(url.toLowerCase().startsWith('http')) {
     // URL => validate it, and then try to download its content as text
@@ -889,7 +906,7 @@ function receiver(res, sp) {
   }
   // Get the action from the search parameters
   const action = sp.get('action');
-  console.log('Receiver action:', action, rpath, rfile);
+  logAction(`Receiver action:  ${action} ${rpath} ${rfile}`);
   if(action === 'listen') {
     rcvrListen(res, rpath);
   } else if(action === 'abort') {
@@ -1042,7 +1059,7 @@ function rcvrCallBack(res, rpath, rfile, script) {
     }
   }
   if(cpath) {
-    console.log('Deleting',  file_type, ' file:', cpath);
+    logAction(`Deleting ${file_type} file: ${cpath}`);
     try {
       fs.unlinkSync(cpath);
     } catch(err) {
@@ -1058,7 +1075,7 @@ function rcvrCallBack(res, rpath, rfile, script) {
   }
   try {
     cmd = fs.readFileSync(path.join(WORKSPACE.callback, script), 'utf8');
-    console.log(`Executing callback command "${cmd}"`);
+    logAction(`Executing callback command "${cmd}"`);
     child_process.exec(cmd, (error, stdout, stderr) => {
         console.log(stdout);
         if(error) {
@@ -1205,11 +1222,11 @@ function serveStaticFile(res, path) {
   if(path === '/' || path === '') path = '/index.html';
   if(path.startsWith('/diagrams/')) {
     // Serve diagrams from the (main)/user/diagrams/ sub-directory 
-    console.log('Diagram:', path);
+    logAction('Diagram: ' + path);
     path = '/user' + path; 
   } else {
     // Other files from the (main)/static/ subdirectory
-    console.log('Static file:', path);
+    logAction('Static file: ' + path);
     path = '/static' + path;
   }
   fs.readFile(MODULE_DIRECTORY + path, (err, data) => {
@@ -1237,7 +1254,7 @@ function convertSVGtoPNG(req, res, sp) {
           (new Date()).toISOString().slice(0, 19).replace(/[\-\:]/g, ''),
       fp = path.join(WORKSPACE.diagrams, fn);
   // NOTE: use binary encoding for SVG file
-  console.log('Saving SVG file:', fp);
+  logAction('Saving SVG file: ' + fp);
   try {
     fs.writeFileSync(fp + '.svg', svg);
   } catch(error) {
@@ -1245,7 +1262,7 @@ function convertSVGtoPNG(req, res, sp) {
   }
   // Use Inkscape to convert SVG to the requested format
   if(SETTINGS.inkscape) {
-    console.log('Rendering image');
+    logAction('Rendering image');
     let
       cmd = SETTINGS.inkscape,
       svg = fp + '.svg';

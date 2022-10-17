@@ -176,6 +176,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
               // Invalid server response (should not occur, but just in case)
               UI.warn('Version check failed: "' + data + '"');
             }
+            // Schedule a new check 8 hours from now
+            setTimeout(checkForUpdates, 8*3600000);
+
           })
         .catch((error) => UI.warn(UI.WARNING.NO_CONNECTION, error));
     }
@@ -206,8 +209,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       MONITOR = new GUIMonitor();
       RECEIVER = new GUIReceiver();
       // Check for software updates only when running on local server
-      // NOTE: do this *after* GUI elements have been created, as the updater
-      // uses a dialog
+      // NOTE: do this *after* GUI elements have been created, as the
+      // updater uses a dialog
       if(!SOLVER.user_id) checkForUpdates();
       // Initialize auto-saving function
       AUTO_SAVE = new ModelAutoSaver();

@@ -4733,7 +4733,9 @@ class GUIController extends Controller {
       // Update global variable (and force display) only for "real" messages
       this.time_last_message = t;
       dt = this.message_display_time;
-      SOUNDS[type].play(); 
+      SOUNDS[type].play().catch(() => {
+          console.log('NOTICE: Sounds will only play after first user action');
+        });
       const
           now = [d.getHours(), d.getMinutes().toString().padStart(2, '0'),
               d.getSeconds().toString().padStart(2, '0')].join(':'),
