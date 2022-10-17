@@ -1631,6 +1631,8 @@ class VirtualMachine {
     // Initialize error counters (error count will be reset to 0 for each block)
     this.error_count = 0;
     this.block_issues = 0;
+    // NOTE: special tracking of potential solver license errors
+    this.license_expired = 0;
     // Reset solver result arrays
     this.round_times.length = 0;
     this.solver_times.length = 0;
@@ -4527,7 +4529,7 @@ class VirtualMachine {
   checkLicense() {
     // Compares license expiry date (if set) with current time, and notifies
     // when three days or less remain
-    if(this.license_expires) {
+    if(this.license_expires && this.license_expires.length) {
       // NOTE: expiry date has YYYY-MM-DD format
       const
           xds = this.license_expires[0].slice(-10).split('-'),
@@ -4583,6 +4585,9 @@ Solver status = ${json.status}`);
     }
     if(json.error) {
       const errmsg = 'Solver error: ' + json.error;
+      if(errmsg.indexOf('license') >= 0 && errmsg.indexOf('expired') >= 0) {
+        this.license_expired += 1;
+      }
       this.logMessage(bnr, errmsg);
       UI.alert(errmsg);
     }
@@ -4634,6 +4639,10 @@ Solver status = ${json.status}`);
       if(this.block_issues) UI.warn('Issues occurred in ' +
           pluralS(this.block_issues, 'block') +
           ' -- check messages in monitor');
+      if(this.license_expired > 0) {
+        // Special message to draw attention to this critical error
+        UI.alert('SOLVER LICENSE EXPIRED: Please check!');
+      }
       // Call back to the console (if callback hook has been set)
       if(this.callback) this.callback(this);
       return;

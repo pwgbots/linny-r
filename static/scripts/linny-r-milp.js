@@ -119,29 +119,6 @@ module.exports = class MILPSolver {
       this.id = '';
     }
   }
-  
-  test() {
-    // Tests whether solver is working; for Gurobi this means that
-    // the license must be valid.
-    try {
-      let spawn = null,
-          status = 0;
-      if(this.id === 'lp_solve') {
-        const
-            cmd = this.solve_cmd + ' -h',
-            options = {shell: true, stdio: 'ignore', windowsHide: true};
-        spawn = child_process.spawnSync(cmd,  options);
-      } else {          
-        const options = {windowsHide: true};
-        spawn = child_process.spawnSync(this.solver_path, [], options);
-      }
-      status = spawn.status;
-    } catch(err) {
-      status = -13;
-    }
-    console.log(`Solver test process status: ${status}`);
-    return status === 0;
-  }
 
   solveBlock(sp) {
     // Saves model file, executes solver, and returns results
