@@ -166,7 +166,7 @@ Open the Command Line Interface (CLI) of your computer, change to your `WORKING_
 This response should be something similar to:
 
 <pre>
-Node.js server for Linny-R version 1.1.9
+Node.js server for Linny-R version 1.1.11
 Node.js version: v18.11.0
 ... etc.
 </pre>
@@ -177,9 +177,9 @@ The Linny-R GUI should show in your browser window,
 while in the CLI you should see a long series of server log messages like:
 
 <pre>
-Static file: /index.html
-Static file: /scripts/iro.min.js
-Static file: /images/open.png
+[2022-10-17 14:55:37] Static file: /index.html
+[2022-10-17 14:55:37] Static file: /scripts/iro.min.js
+[2022-10-17 14:55:37] Static file: /images/open.png
 ... etc.
 </pre>
 
@@ -300,7 +300,7 @@ you will see the command line options that allow you to run models in various wa
 ## Troubleshooting problems
 
 If during any of the steps above you encounter problems, please try to diagnose them and resolve them yourself.
-You can find a lot of useful information on the Linny-R documentation website:
+You can find a lot of useful information on the Linny-R user documentation website:
 <a href="https://linny-r.info" target="_blank">https://linny-r.info</a>.
 
 To diagnose a problem, always look in the CLI box where Node.js is running, 
