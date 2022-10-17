@@ -1451,8 +1451,8 @@ class VirtualMachine {
     this.LM_PEAK_INC = 11; // Symbol: plus inside triangle ("peak-plus")
     // List of link multipliers that require binary ON/OFF variables
     this.LM_NEEDING_ON_OFF = [5, 6, 7, 8, 9, 10];
-    this.LM_SYMBOLS = ['', '\u21C9', '\u0394', '\u03A3', '\u03BC', '\u2B9D',
-        '+', '0', '\u2934', '\u2732', '\u2B9F', '\u2A39'];
+    this.LM_SYMBOLS = ['', '\u21C9', '\u0394', '\u03A3', '\u03BC', '\u25B2',
+        '+', '0', '\u2934', '\u2732', '\u25BC', '\u2A39'];
     
     // VM max. expression stack size
     this.MAX_STACK = 200;
@@ -1708,7 +1708,8 @@ class VirtualMachine {
     // Other special values are very big POSITIVE numbers, so start
     // comparing `n` with the highest value
     if(n >= this.COMPUTING) return [true, '\u25A6']; // Checkered square
-    if(n >= this.NOT_COMPUTED) return [true, '\u2BBF']; // Circled X
+    // NOTE: prettier circled bold X 2BBF does not display on macOS !!
+    if(n >= this.NOT_COMPUTED) return [true, '\u2297']; // Circled X
     if(n >= this.UNDEFINED) return [true, '\u2047']; // Double question mark ??
     if(n >= this.PLUS_INFINITY) return [true, '\u221E'];
     return [false, n];

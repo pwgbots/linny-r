@@ -206,7 +206,7 @@ function autoCheck(res) {
 // NOTE: on a macOS machine, this is slightly more work
 const
     OS_TEXT = (PLATFORM === 'darwin' ? [
-`<p>Close the <em>Terminal</em> window that shows
+`<p>You can close the <em>Terminal</em> window that shows
   <tt>[Process Terminated]</tt> at the bottom.
 </p>`,
 `open <em>Terminal</em> again, change to your Linny-R directory by typing:
