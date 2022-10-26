@@ -1236,13 +1236,13 @@ function serveStaticFile(res, path) {
   if(path.startsWith('/diagrams/')) {
     // Serve diagrams from the (main)/user/diagrams/ sub-directory 
     logAction('Diagram: ' + path);
-    path = '/user' + path; 
+    path = WORKING_DIRECTORY + '/user' + path;
   } else {
     // Other files from the (main)/static/ subdirectory
     logAction('Static file: ' + path);
-    path = '/static' + path;
+    path = MODULE_DIRECTORY + '/static' + path;
   }
-  fs.readFile(MODULE_DIRECTORY + path, (err, data) => {
+  fs.readFile(path, (err, data) => {
       if(err) {
         console.log(err);
         res.writeHead(404);
