@@ -171,7 +171,10 @@ class LinnyRModel {
   get legacyVersion() {
     // Return TRUE if the model as it has been loaded was not saved by
     // JavaScript Linny-R
-    return this.version.indexOf('JS-') < 0;
+    const
+        vnl = this.version.split('.'),
+        legacy = vnl[0] === '0' || (vnl[0] === '1' && vnl.length > 3);
+    return legacy;
   }
   
   get newProcessCode() {
@@ -7188,11 +7191,14 @@ class Link {
     this.relative_rate.text = xmlDecoded(
         nodeContentByTag(node, 'relative-rate'));
     this.flow_delay.text = xmlDecoded(nodeContentByTag(node, 'delay'));
-    // NOTE: default share-of-cost for links in legacy Linny-R was 100%;
-    //       this is dysfunctional in JS Linny-R => set to 0 if equal to 1
     this.share_of_cost = safeStrToFloat(
         nodeContentByTag(node, 'share-of-cost'), 0);
-    if(MODEL.legacyVersion && this.share_of_cost == 1) this.share_of_cost = 0;
+    if(MODEL.legacyVersion) {
+    // NOTE: default share-of-cost for links in legacy Linny-R was 100%;
+    //       this is dysfunctional in JS Linny-R => set to 0 if equal to 1
+      this.flow_delay.text = '0';
+      if(this.share_of_cost == 1) this.share_of_cost = 0;
+    }
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     if(IO_CONTEXT) {
       // Record that this link was included
