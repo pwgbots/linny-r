@@ -1407,6 +1407,10 @@ class VirtualMachine {
     // NOTE: below the "near zero" limit, a number is considered zero
     // (this is to timely detect division-by-zero errors)
     this.NEAR_ZERO = 1e-10;
+    // Use a specific constant smaller than near-zero to denote "no cost"
+    // to differentiate "no cost" form cost prices that really are 0
+    this.NO_COST = 0.987654321e-10;
+
     // NOTE: allow for an accuracy margin: stocks may differ 0.1%  from their
     // target without displaying them in red or blue to signal shortage or surplus
     this.SIG_DIF_LIMIT = 0.001;
@@ -1714,6 +1718,7 @@ class VirtualMachine {
     if(n >= this.NOT_COMPUTED) return [true, '\u2297']; // Circled X
     if(n >= this.UNDEFINED) return [true, '\u2047']; // Double question mark ??
     if(n >= this.PLUS_INFINITY) return [true, '\u221E'];
+    if(n === this.NO_COST) return [true, '\u00A2']; // c-slash (cent symbol)
     return [false, n];
   }
   

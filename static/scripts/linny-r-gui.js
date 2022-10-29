@@ -1471,7 +1471,7 @@ class Paper {
         // achieved by multiplying the "gap" being (lengths - heights)/2 by
         // (1 - |dy/l|). NOTE: we re-use the values of `th` and `tw`
         // computed in the previous block!
-        shift += th/2;
+        shift += th / 2;
         s = VM.sig4Dig(luc.share_of_cost * 100) + '%';
         bb = this.numberSize(s, 7);
         const sgap = (tw + bb.width + 3 - th - bb.height) / 2; 
@@ -1631,7 +1631,8 @@ class Paper {
           if(cp <= VM.MINUS_INFINITY || cp >= VM.PLUS_INFINITY) {
             s = VM.sig4Dig(cp);
           } else if(Math.abs(cp) <= VM.SIG_DIF_FROM_ZERO) {
-            s = '0';
+            // DO not display CP when it is "propagated" NO_COST
+            s = (cp === VM.NO_COST ? '' : '0');
           } else {
             // NOTE: use the absolute value of the flow, as cost is not affected by direction
             s = VM.sig4Dig(Math.abs(af) * soc * cp);

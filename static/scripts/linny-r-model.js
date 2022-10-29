@@ -168,15 +168,6 @@ class LinnyRModel {
     return olist;
   }
   
-  get legacyVersion() {
-    // Return TRUE if the model as it has been loaded was not saved by
-    // JavaScript Linny-R
-    const
-        vnl = this.version.split('.'),
-        legacy = vnl[0] === '0' || (vnl[0] === '1' && vnl.length > 3);
-    return legacy;
-  }
-  
   get newProcessCode() {
     // Return the next unused process code
     const n = this.next_process_number;
@@ -1994,6 +1985,15 @@ class LinnyRModel {
     // Initialize a model from the XML tree with `node` as root
     // NOTE: do NOT reset and initialize basic model properties when *including*
     // a module into the current model
+    // NOTE: obsolete XML nodes indicate: legacy Linny-R model
+    const legacy_model = (nodeParameterValue(node, 'view-options') +
+        nodeParameterValue(node, 'autosave') +
+        nodeParameterValue(node, 'look-ahead') +
+        nodeParameterValue(node, 'save-series') +
+        nodeParameterValue(node, 'show-lp') +
+        nodeParameterValue(node, 'optional-slack')).length > 0;
+    // Flag to set when legacy time series data are added 
+    this.legacy_datasets = false;
     if(!IO_CONTEXT) {
       this.reset();
       this.next_process_number = safeStrToInt(
@@ -2019,8 +2019,8 @@ class LinnyRModel {
       this.timeout_period = Math.max(0,
           safeStrToInt(nodeContentByTag(node, 'timeout-period')));
       // Legacy models have tag "optimization-period" instead of "block-length"
-      const bl_tag = (this.legacyVersion ?
-          'optimization-period' : 'block-length');
+      const bl_tag = nodeContentByTag(node, 'block-length') ||
+          nodeContentByTag(node, 'optimization-period'); 
       this.block_length = Math.max(1,
           safeStrToInt(nodeContentByTag(node, bl_tag)));
       this.start_period = Math.max(1,
@@ -2177,7 +2177,7 @@ class LinnyRModel {
     }
     // Clear the default (empty) equations dataset, or it will block adding it
     if(!IO_CONTEXT) {
-      this.datasets = {};
+      if(!this.legacy_datasets) this.datasets = {};
       this.equations_dataset = null;
     }
     // NOTE: keep track of datasets that load from URL or file
@@ -2322,7 +2322,7 @@ class LinnyRModel {
       // NOTE: links in legacy Linny-R models by default have 100% share-of-cost;
       // to minimize conversion effort, set SoC for SINGLE links OUT of processes
       // to 100%
-      if(this.legacyVersion) {
+      if(legacy_model) {
         for(let l in this.links) if(this.links.hasOwnProperty(l)) {
           l = this.links[l];
           // NOTE: preserve non-zero SoC values, as these have been specified
@@ -2707,6 +2707,36 @@ class LinnyRModel {
         links = [],
         constraints = [],
         can_calculate = true;
+    const
+        // NOTE: define local functions as constants
+        costAffectingConstraints = (p) => {
+            // Returns number of relevant contraints (see below) that
+            // can affect the cost price of product or process `p`
+            let n = 0;
+            for(let i = 0; i < constraints.length; i++) {
+              const c = constraints[i];
+              if((c.to_node === p && c.soc_direction === VM.SOC_X_Y) ||
+                  (c.from_node === p && c.soc_direction === VM.SOC_Y_X)) n++;
+            }
+            return n;
+          },
+        inputsFromProcesses = (p, t) => {
+            // Returns a tuple {n, nosoc, nz} where n is the number of input links
+            // from processes, nosoc the number of these that carry no cost,
+            // and nz the number of links having actual flow > 0
+            let tuple = {n: 0, nosoc: 0, nz: 0};
+            for(let i = 0; i < p.inputs.length; i++) {
+              const l = p.inputs[i];
+              // NOTE: only process --> product links can carry cost
+              if(l.from_node instanceof Process) {
+                tuple.n++;
+                if(l.share_of_cost === 0) tuple.nosoc++;
+                if(l.actualFlow(t) > VM.NEAR_ZERO) tuple.nz++;
+              }
+            }
+            return tuple;
+          };
+
     // First scan constraints X --> Y: these must have SoC > 0 and moreover
     // the level of both X and Y must be non-zero, or they transfer no cost
     for(let k in this.constraints) if(this.constraints.hasOwnProperty(k) &&
@@ -2741,12 +2771,7 @@ class LinnyRModel {
         break;
       }
       // Count constraints that affect CP of this process
-      let n = 0;
-      for(let i = 0; i < constraints.length; i++) {
-        const c = constraints[i];
-        if((c.to_node === p && c.soc_direction === VM.SOC_X_Y) ||
-            (c.from_node === p && c.soc_direction === VM.SOC_Y_X)) n++;
-      }
+      let n = costAffectingConstraints(p);
       if(n || p.inputs.length) {
         // All inputs can affect the CP of a process
         p.cost_price[t] = VM.UNDEFINED;
@@ -2765,65 +2790,38 @@ class LinnyRModel {
           if(pr < 0) negpr -= pr * l.relative_rate.result(dt);
         }
         p.cost_price[t] = negpr;
+        // Done, so not add to `processes` list 
       }
     }
     // Then scan the products
     for(let k in this.products) if(this.products.hasOwnProperty(k) &&
         !MODEL.ignored_entities[k]) {
       const p = this.products[k];
-      let n = 0,
-          nc = 0,
-          cp = 0;
-      // Count number of (potential) cost-carrying product flows
-      for(let i = 0; i < p.inputs.length; i++) {
-        const l = p.inputs[i];
-        // NOTE: only process --> product links can carry cost
-        if(l.share_of_cost > 0 && l.from_node instanceof Process) n++;
-      }
-      if(p.is_buffer) {
-        // Stocks often introduce cycles; those having only zero-flow
-        // links in/out have stockprice of t-1
+      let ifp = inputsFromProcesses(p, t),
+          nc = costAffectingConstraints(p);
+      if(p.is_buffer && !ifp.nz) {
+        // Stocks for which all INput links have flow = 0 have the same
+        // stock price as in t-1
         // NOTE: it is not good to check for zero stock, as that may be
         // the net result of in/outflows
-        let nz = 0;
-        for(let i = 0; i < p.inputs.length && !nz; i++) {
-          if(p.inputs[i].actualFlow(t) > VM.NEAR_ZERO) nz++;
-        }
-        for(let i = 0; i < p.outputs.length && !nz; i++) {
-          if(p.outputs[i].actualFlow(t) > VM.NEAR_ZERO) nz++;
-        }
-        if(!nz) {
-          n = 0;
-          cp = p.stockPrice(t - 1);
-        }
-      } else if(n > 1) {
-        // NOTE: products having no storage, and *multiple* cost-carrying
-        // input links that all are zero-flow have CP=0
-        let nz = 0;
-        for(let i = 0; i < p.inputs.length && !nz; i++) {
-          if(p.inputs[i].actualFlow(t) > VM.NEAR_ZERO) nz++;
-        }
-        if(!nz) n = 0;
-      }
-      // Add number of cost-transferring constraints
-      for(let i = 0; i < constraints.length; i++) {
-        const c = constraints[i];
-        if(c.to_node === p && c.soc_direction === VM.SOC_X_Y ||
-           (c.from_node === p && c.soc_direction === VM.SOC_Y_X)) nc++;
-      }
-      if(n + nc) {
+        p.cost_price[t] = p.stockPrice(t - 1);
+        p.stock_price[t] = p.cost_price[t];
+      } else if(!nc && (ifp.n === ifp.nosoc || (!ifp.nz && ifp.n > ifp.nosoc + 1))) {
+        // For products having only input links that carry no cost,
+        // CP = 0 but coded as NO_COST so that this can propagate.
+        // Furthermore, for products having no storage and *multiple*
+        // cost-carrying input links that all are zero-flow, the cost
+        // price cannot be inferred unambiguously => set to 0
+        p.cost_price[t] = (ifp.n && ifp.n === ifp.nosoc ? VM.NO_COST : 0);
+      } else {
         // Cost price must be calculated
         p.cost_price[t] = VM.UNDEFINED;
-        p.stock_price[t] = VM.UNDEFINED;
         products.push(p);
-      } else {
-        // Cost price is zero (for stocks: CP[t-1])
-        p.cost_price[t] = cp;
-        p.stock_price[t] = cp;
       }
+      p.cost_price[t] = p.cost_price[t];
     }
-    // Finally, scan all links, and likewise retain only those for which
-    // the CP can not already be inferred from their FROM node
+    // Finally, scan all links, and retain only those for which the CP
+    // can not already be inferred from their FROM node
     for(let k in this.links) if(this.links.hasOwnProperty(k) &&
         !MODEL.ignored_entities[k]) {
       const
@@ -2831,15 +2829,8 @@ class LinnyRModel {
           ld = l.actualDelay(t),
           fn = l.from_node,
           fncp = fn.costPrice(t - ld),
-          tn = l.to_node,
-          tncp = tn.costPrice(t - ld);
-      if(fncp !== VM.UNDEFINED && fncp !== VM.NOT_COMPUTED) {
-        // Links that are output of a node having CP defined have UCP = CP
-        l.unit_cost_price = fncp;
-      } else if(tncp !== VM.UNDEFINED && tncp !== VM.NOT_COMPUTED) {
-        // Links that are input of a node having CP defined have UCP = CP
-        l.unit_cost_price = 0;
-      } else if(fn instanceof Product && fn.price.defined) {
+          tn = l.to_node;
+      if(fn instanceof Product && fn.price.defined) {
         // Links from products having a market price have this price
         // multiplied by their relative rate as unit CP
         l.unit_cost_price = fn.price.result(t) * l.relative_rate.result(t);
@@ -2848,6 +2839,9 @@ class LinnyRModel {
         // Process output links that do not carry cost and product-to-
         // product links have unit CP = 0
         l.unit_cost_price = 0;
+      } else if(fncp !== VM.UNDEFINED && fncp !== VM.NOT_COMPUTED) {
+        // Links that are output of a node having CP defined have UCP = CP
+        l.unit_cost_price = fncp * l.relative_rate.result(t);
       } else {
         l.unit_cost_price = VM.UNDEFINED;
         // Do not push links related to processes having level < 0
@@ -3001,14 +2995,15 @@ class LinnyRModel {
             cp_sccp = VM.COMPUTING;
         for(let j = 0; j < p.inputs.length; j++) {
           const l = p.inputs[j];
-          if(l.from_node instanceof Process && l.share_of_cost > 0) {
+          if(l.from_node instanceof Process) {
             cp = l.from_node.costPrice(t - l.actualDelay(t));
-            if(cp === VM.UNDEFINED) {
+            if(cp === VM.UNDEFINED && l.share_of_cost > 0) {
+              // Contibuting CP still unknown => break from FOR loop
               break;
             } else {
               if(cp_sccp === VM.COMPUTING) {
                 // First CC process having a defined CP => use this CP
-                cp_sccp = cp;
+                cp_sccp = cp * l.share_of_cost;
               } else {
                 // Multiple CC processes => set CP to 0
                 cp_sccp = 0;
@@ -3034,7 +3029,7 @@ class LinnyRModel {
         if(cp === VM.UNDEFINED) continue;
         // CP of product is 0 if no new production UNLESS it has only
         // one cost-carrying production input, as then its CP equals
-        // the CP of the producing process;
+        // the CP of the producing process times the link SoC;
         // if new production > 0 then CP = cost / quantity
         if(cp_sccp !== VM.COMPUTING) {
           cp = (qnp > 0 ? cnp / qnp : cp_sccp);
@@ -6464,11 +6459,14 @@ class Process extends Node {
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     this.lower_bound.text = xmlDecoded(nodeContentByTag(node, 'lower-bound'));
     this.upper_bound.text = xmlDecoded(nodeContentByTag(node, 'upper-bound'));
-    this.initial_level.text = xmlDecoded(nodeContentByTag(node, 'initial-level'));
-    // NOTE: until version 1.0.16, pace was stored as a node parameter
-    const legacy_pace = nodeParameterValue(node, 'pace');
-    this.pace_expression.text = legacy_pace +
+    // NOTE: legacy models have no initial level field => default to 0 
+    const ilt = xmlDecoded(nodeContentByTag(node, 'initial-level'));
+    this.initial_level.text = ilt || '0';
+    // NOTE: until version 1.0.16, pace was stored as a node parameter; 
+    const pace_text = nodeParameterValue(node, 'pace') + 
         xmlDecoded(nodeContentByTag(node, 'pace'));
+    // NOTE: legacy models have no pace field => default to 1 
+    this.pace_expression.text = pace_text || '1';
     // NOTE: immediately evaluate pace expression as integer
     this.pace = Math.max(1, Math.floor(this.pace_expression.result(1)));
     this.x = safeStrToInt(nodeContentByTag(node, 'x-coord'));
@@ -6874,15 +6872,44 @@ class Product extends Node {
     this.integer_level = nodeParameterValue(node, 'integer-level') === '1';
     this.no_slack = nodeParameterValue(node, 'no-slack') === '1';
     // legacy models have tag "hidden" instead of "no-links"
-    const no_links_tag = (MODEL.legacyVersion ? 'hidden' : 'no-links');
-    this.no_links = nodeParameterValue(node, no_links_tag) === '1';
+    this.no_links = (nodeParameterValue(node, 'no-links') ||
+        nodeParameterValue(node, 'hidden')) === '1';
     this.scale_unit = MODEL.addScaleUnit(
         xmlDecoded(nodeContentByTag(node, 'unit')));
     // legacy models have tag "profit" instead of "price"
-    const price_tag = (MODEL.legacyVersion ? 'profit' : 'price');
-    this.price.text = xmlDecoded(nodeContentByTag(node, price_tag));
+    let pp = nodeContentByTag(node, 'price');
+    if(!pp) pp = nodeContentByTag(node, 'profit');
+    this.price.text = xmlDecoded(pp);
     this.lower_bound.text = xmlDecoded(nodeContentByTag(node, 'lower-bound'));
     this.upper_bound.text = xmlDecoded(nodeContentByTag(node, 'upper-bound'));
+    // legacy models can have LB and UB hexadecimal data strings
+    const
+        lb_data = nodeContentByTag(node, 'lower-bound-data'),
+        ub_data = nodeContentByTag(node, 'upper-bound-data'),
+        same = lb_data === ub_data;
+    if(lb_data) {
+      const
+          dsn = this.displayName + (same ? '' : ' LOWER') + ' BOUND DATA',
+          ds = MODEL.addDataset(dsn);
+      ds.default_value = parseFloat(this.lower_bound.text);
+      ds.data = stringToFloatArray(lb_data);
+      ds.computeVector();
+      ds.computeStatistics();
+      this.lower_bound.text = `[${dsn}]`;
+      if(same) this.equal_bounds = true;
+      MODEL.legacy_datasets = true;
+    }
+    if(ub_data && !same) {
+      const
+          dsn = this.displayName + ' UPPER BOUND DATA',
+          ds = MODEL.addDataset(dsn);
+      ds.default_value = parseFloat(this.upper_bound.text);
+      ds.data = stringToFloatArray(ub_data);
+      ds.computeVector();
+      ds.computeStatistics();
+      this.upper_bound.text = `[${dsn}]`;
+      MODEL.legacy_datasets = true;
+    }
     this.initial_level.text = xmlDecoded(
         nodeContentByTag(node, 'initial-level'));
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
@@ -7190,13 +7217,14 @@ class Link {
     this.is_feedback = nodeParameterValue(node, 'is-feedback') === '1';
     this.relative_rate.text = xmlDecoded(
         nodeContentByTag(node, 'relative-rate'));
-    this.flow_delay.text = xmlDecoded(nodeContentByTag(node, 'delay'));
+    // NOTE: legacy models have no flow delay field => default to 0
+    const fd_text = xmlDecoded(nodeContentByTag(node, 'delay'));
+    this.flow_delay.text = fd_text || '0';
     this.share_of_cost = safeStrToFloat(
         nodeContentByTag(node, 'share-of-cost'), 0);
-    if(MODEL.legacyVersion) {
+    if(!fd_text) {
     // NOTE: default share-of-cost for links in legacy Linny-R was 100%;
     //       this is dysfunctional in JS Linny-R => set to 0 if equal to 1
-      this.flow_delay.text = '0';
       if(this.share_of_cost == 1) this.share_of_cost = 0;
     }
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));

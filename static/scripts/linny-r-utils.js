@@ -555,6 +555,32 @@ function nameToLines(name, actor_name = '') {
 }
 
 //
+// Linny-R legacy model conversion functions
+//
+
+function hexToFloat(s) {
+  const n = parseInt('0x' + s, 16);
+  if(isNaN(n)) return 0;
+  const
+      sign = (n >> 31 ? -1 : 1),
+      exp = Math.pow(2, ((n >> 23) & 0xFF) - 127);
+  return sign * (n & 0x7fffff | 0x800000) * 1.0 / Math.pow(2, 23) * exp;
+}
+
+function stringToFloatArray(s) {
+  let i = 8,
+      a = [];
+  while(i <= s.length) {
+    const
+        h = s.substr(i - 8, 8),
+        r = h.substr(6, 2) + h.substr(4, 2) + h.substr(2, 2) + h.substr(0, 2);
+    a.push(hexToFloat(r));
+    i += 8;
+  }
+  return a;
+}
+
+//
 // Encryption-related functions
 //
 
