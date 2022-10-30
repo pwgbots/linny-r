@@ -13,6 +13,9 @@ so as to be platform-independent and 100% transparent open source (under the MIT
 The software comprises a server that runs on **Node.js**,
 and a graphical user interface (GUI) that runs in any modern browser.
 
+These <a href="https://sysmod.tbm.tudelft.nl/linny-r/docs/?68"target="_blank">instruction videos</a>
+published on YouTube give an idea of what Linny-R can do.
+
 User documentation for Linny-R is still scant, but it is growing. You can contribute yourself (in "wiki fashion")
 via the official user documentation site <a href="https://linny-r.info" target="_blank">https://linny-r.info</a>.
 Technical documentation will be developed on GitHub: https://github.com/pwgbots/linny-r/wiki
@@ -22,7 +25,7 @@ Technical documentation will be developed on GitHub: https://github.com/pwgbots/
 Linny-R is developed as a JavaScript package, and requires that **Node.js** is installed on your computer. 
 This software can be downloaded from <a href="https://nodejs.org" target="_blank">https://nodejs.org</a>. 
 Make sure that you choose the correct installer for your computer.
-Linny-R is developed using the _current_ release. Presently (October 2022) this is 18.11.0. 
+Linny-R is developed using the _current_ release. Presently (October 2022) this is 19.0.0. 
 
 Run the installer and accept the default settings.
 There is **no** need to install the optional _Tools for Native Modules_.
@@ -33,7 +36,7 @@ Verify the installation by typing:
 
 ``node --version``
 
-The response should be the version number of Node.js, for example: v18.11.0.
+The response should be the version number of Node.js, for example: v19.0.0.
 
 ## Installing Linny-R
 It is advisable to install Linny-R in a directory on your computer, not in a cloud. 
@@ -166,8 +169,8 @@ Open the Command Line Interface (CLI) of your computer, change to your `WORKING_
 This response should be something similar to:
 
 <pre>
-Node.js server for Linny-R version 1.1.11
-Node.js version: v18.11.0
+Node.js server for Linny-R version 1.1.14
+Node.js version: v19.0.0
 ... etc.
 </pre>
 
