@@ -13,7 +13,7 @@ so as to be platform-independent and 100% transparent open source (under the MIT
 The software comprises a server that runs on **Node.js**,
 and a graphical user interface (GUI) that runs in any modern browser.
 
-These <a href="https://sysmod.tbm.tudelft.nl/linny-r/docs/?68"target="_blank">instruction videos</a>
+These <a href="https://sysmod.tbm.tudelft.nl/linny-r/docs/?68" target="_blank">instruction videos</a>
 published on YouTube give an idea of what Linny-R can do.
 
 User documentation for Linny-R is still scant, but it is growing. You can contribute yourself (in "wiki fashion")
