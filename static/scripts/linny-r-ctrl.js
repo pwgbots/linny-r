@@ -140,7 +140,7 @@ class Controller {
         'scale_unit', 'equal_bounds', 'price', 'is_source', 'is_sink', 'is_buffer',
         'is_data', 'integer_level', 'no_slack'],
       DATASET_PROPS: ['comments', 'default_value', 'time_scale', 'time_unit',
-        'method', 'periodic', 'array', 'url'],
+        'method', 'periodic', 'array', 'url', 'default_selector'],
       LINK_PROPS: ['comments', 'multiplier', 'relative_rate', 'share_of_cost',
         'flow_delay'],
       CONSTRAINT_PROPS: ['comments', 'no_slack', 'share_of_cost'],

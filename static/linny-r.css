@@ -2168,8 +2168,8 @@ td.equation-expression {
 
 /* SERIES modal dialog */
 #series-dlg {
-  width: 156px;
-  height: 282px;
+  width: 165px;
+  height: 320px;
 }
 
 #series-default-lbl {
@@ -2182,7 +2182,7 @@ td.equation-expression {
   position: absolute;
   top: 24px;
   left: 79px;
-  width: 73px;
+  width: calc(100% - 83px);
   font-size: 12px;
   margin-bottom: 2px;
 }
@@ -2202,13 +2202,13 @@ td.equation-expression {
 #series-array {
   position: absolute;
   top: 45px;
-  left: 90px; 
+  left: 77px; 
 }
 
 #series-array-lbl {
   position: absolute;
   top: 47px;
-  left: 112px;  
+  left: 99px;  
 }
 
 #series-no-time-msg {
@@ -2216,7 +2216,7 @@ td.equation-expression {
   top: 66px;
   left: 1px;
   width: calc(100% - 2px);
-  height: 27px;
+  height: 30px;
   z-index: 1;
   background-color: inherit;
   font-style: italic;
@@ -2235,7 +2235,7 @@ td.equation-expression {
   position: absolute;
   top: 67px;
   left: 60px;
-  width: 43px;
+  width: 50px;
   font-size: 12px;
   margin-bottom: 2px;
 }
@@ -2243,7 +2243,7 @@ td.equation-expression {
 #series-time-unit {
   position: absolute;
   top: 67px;
-  left: 108px;
+  left: 116px;
   height: 19px;
   width: 45px;
   font-size: 12px;
@@ -2251,40 +2251,43 @@ td.equation-expression {
 
 #series-method-lbl {
   position: absolute;
-  top: 90px;
+  top: 91px;
   left: 2px;
 }
 
 #series-method {
   position: absolute;
-  top: 88px;
-  left: 49px;
-  height: 19px;
-  width: 105px;
-  font-size: 11px;
+  top: 89px;
+  left: 50px;
+  height: 21px;
+  width: 111px;
+  font-size: 12px;
 }
 
 #series-remote {
   position: absolute;
-  top: 110px;
-  left: 2px;  
+  top: 113px;
+  left: 3px;
+  width: calc(100% - 8px);
 }
 
 #series-url {
-  width: 150px;
+  width: 100%;
   font-size: 12px;
 }
 
 #series-data-lbl {
   position: absolute;
-  top: 129px;
+  top: 133px;
   left: 2px;
 }
 
 #series-data {
-  width: 150px;
-  height: 120px;
-  margin: 125px 3px;
+  position: absolute;
+  bottom: 13px;
+  width: calc(100% - 6px);
+  height: calc(100% - 165px);
+  margin: 3px;
 }
 
 #series-line {

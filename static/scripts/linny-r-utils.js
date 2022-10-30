@@ -564,7 +564,9 @@ function hexToFloat(s) {
   const
       sign = (n >> 31 ? -1 : 1),
       exp = Math.pow(2, ((n >> 23) & 0xFF) - 127);
-  return sign * (n & 0x7fffff | 0x800000) * 1.0 / Math.pow(2, 23) * exp;
+      f = sign * (n & 0x7fffff | 0x800000) * 1.0 / Math.pow(2, 23) * exp;
+  // NOTE: must consider precision of 32-bit floating point numbers!
+  return parseFloat(f.toPrecision(7));
 }
 
 function stringToFloatArray(s) {

@@ -6301,6 +6301,37 @@ class Node extends NodeBox {
     }
     return cac;
   }
+  
+  convertLegacyBoundData(lb_data, ub_data) {
+    // Convert time series data for LB and UB in legacy models to datasets,
+    // and replace attribute expressions by references to these datasets
+    if(!lb_data && !ub_data) return;
+    const same = lb_data === ub_data;
+    if(lb_data) {
+      const
+          dsn = this.displayName + (same ? '' : ' LOWER') + ' BOUND DATA',
+          ds = MODEL.addDataset(dsn);
+      // Use the LB attribute as default value for the dataset
+      ds.default_value = parseFloat(this.lower_bound.text);
+      ds.data = stringToFloatArray(lb_data);
+      ds.computeVector();
+      ds.computeStatistics();
+      this.lower_bound.text = `[${dsn}]`;
+      if(same) this.equal_bounds = true;
+      MODEL.legacy_datasets = true;
+    }
+    if(ub_data && !same) {
+      const
+          dsn = this.displayName + ' UPPER BOUND DATA',
+          ds = MODEL.addDataset(dsn);
+      ds.default_value = parseFloat(this.upper_bound.text);
+      ds.data = stringToFloatArray(ub_data);
+      ds.computeVector();
+      ds.computeStatistics();
+      this.upper_bound.text = `[${dsn}]`;
+      MODEL.legacy_datasets = true;
+    }
+  }
 
   actualLevel(t) {
     // Returns the production level c.q. stock level for this node in time step t
@@ -6459,6 +6490,13 @@ class Process extends Node {
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     this.lower_bound.text = xmlDecoded(nodeContentByTag(node, 'lower-bound'));
     this.upper_bound.text = xmlDecoded(nodeContentByTag(node, 'upper-bound'));
+    // legacy models can have LB and UB hexadecimal data strings
+    this.convertLegacyBoundData(nodeContentByTag(node, 'lower-bound-data'),
+        nodeContentByTag(node, 'upper-bound-data'));
+    if(nodeParameterValue(node, 'reversible') === '1') {
+      // For legacy "reversible" processes, the LB is set to -UB 
+      this.lower_bound.text = '-' + this.upper_bound.text;
+    }
     // NOTE: legacy models have no initial level field => default to 0 
     const ilt = xmlDecoded(nodeContentByTag(node, 'initial-level'));
     this.initial_level.text = ilt || '0';
@@ -6871,47 +6909,25 @@ class Product extends Node {
     this.equal_bounds = nodeParameterValue(node, 'equal-bounds') === '1';
     this.integer_level = nodeParameterValue(node, 'integer-level') === '1';
     this.no_slack = nodeParameterValue(node, 'no-slack') === '1';
-    // legacy models have tag "hidden" instead of "no-links"
+    // Legacy models have tag "hidden" instead of "no-links"
     this.no_links = (nodeParameterValue(node, 'no-links') ||
         nodeParameterValue(node, 'hidden')) === '1';
     this.scale_unit = MODEL.addScaleUnit(
         xmlDecoded(nodeContentByTag(node, 'unit')));
-    // legacy models have tag "profit" instead of "price"
+    // Legacy models have tag "profit" instead of "price"
     let pp = nodeContentByTag(node, 'price');
     if(!pp) pp = nodeContentByTag(node, 'profit');
     this.price.text = xmlDecoded(pp);
+    // Legacy models can have price time series data as hexadecimal string
+    this.convertLegacyPriceData(nodeContentByTag(node, 'profit-data'));
     this.lower_bound.text = xmlDecoded(nodeContentByTag(node, 'lower-bound'));
     this.upper_bound.text = xmlDecoded(nodeContentByTag(node, 'upper-bound'));
     // legacy models can have LB and UB hexadecimal data strings
-    const
-        lb_data = nodeContentByTag(node, 'lower-bound-data'),
-        ub_data = nodeContentByTag(node, 'upper-bound-data'),
-        same = lb_data === ub_data;
-    if(lb_data) {
-      const
-          dsn = this.displayName + (same ? '' : ' LOWER') + ' BOUND DATA',
-          ds = MODEL.addDataset(dsn);
-      ds.default_value = parseFloat(this.lower_bound.text);
-      ds.data = stringToFloatArray(lb_data);
-      ds.computeVector();
-      ds.computeStatistics();
-      this.lower_bound.text = `[${dsn}]`;
-      if(same) this.equal_bounds = true;
-      MODEL.legacy_datasets = true;
-    }
-    if(ub_data && !same) {
-      const
-          dsn = this.displayName + ' UPPER BOUND DATA',
-          ds = MODEL.addDataset(dsn);
-      ds.default_value = parseFloat(this.upper_bound.text);
-      ds.data = stringToFloatArray(ub_data);
-      ds.computeVector();
-      ds.computeStatistics();
-      this.upper_bound.text = `[${dsn}]`;
-      MODEL.legacy_datasets = true;
-    }
-    this.initial_level.text = xmlDecoded(
-        nodeContentByTag(node, 'initial-level'));
+    this.convertLegacyBoundData(nodeContentByTag(node, 'lower-bound-data'),
+        nodeContentByTag(node, 'upper-bound-data'));
+    // NOTE: legacy models have no initial level field => default to 0 
+    const ilt = xmlDecoded(nodeContentByTag(node, 'initial-level'));
+    this.initial_level.text = ilt || '0';
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     this.x = safeStrToInt(nodeContentByTag(node, 'x-coord'));
     this.y = safeStrToInt(nodeContentByTag(node, 'y-coord'));
@@ -6925,6 +6941,23 @@ class Product extends Node {
       IO_CONTEXT.rewrite(this.initial_level);
     }
     this.resize();
+  }
+
+  convertLegacyPriceData(data) {
+    // Convert time series data for prices in legacy models to a dataset,
+    // and replace the price expression by a reference to this dataset
+    if(data) {
+      const
+          dsn = this.displayName + ' PRICE DATA',
+          ds = MODEL.addDataset(dsn);
+      // Use the price attribute as default value for the dataset
+      ds.default_value = parseFloat(this.price.text);
+      ds.data = stringToFloatArray(data);
+      ds.computeVector();
+      ds.computeStatistics();
+      this.price.text = `[${dsn}]`;
+      MODEL.legacy_datasets = true;
+    }
   }
 
   get defaultAttribute() {
@@ -7396,6 +7429,8 @@ class Dataset {
     // *model* time step t = 0
     this.vector = [];
     this.modifiers = {};
+    // Selector to be used when model is run normally, i.e., no experiment
+    this.default_selector = '';
   }
 
   get type() {
@@ -7781,7 +7816,8 @@ class Dataset {
         '</method><url>', xmlEncoded(this.url),
         '</url><data>', xmlEncoded(this.dataString),
         '</data><modifiers>', ml.join(''),
-        '</modifiers></dataset>'].join('');
+        '</modifiers><default-selector>', xmlEncoded(this.default_selector),
+        '</default-selector></dataset>'].join('');
     return xml;
   }
 
@@ -7811,6 +7847,12 @@ class Dataset {
           this.addModifier(xmlDecoded(nodeContentByTag(c, 'selector')), c);
         }
       }
+    }
+    const ds = xmlDecoded(nodeContentByTag(node, 'default-selector'));
+    if(ds && !this.modifiers[ds]) {
+      UI.warn(`Dataset <tt>${this.name}</tt> has no selector <tt>${ds}</tt>`);
+    } else {
+      this.default_selector = ds;      
     }
   }
   

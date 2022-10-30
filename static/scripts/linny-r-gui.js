@@ -8833,7 +8833,7 @@ class GUIDatasetManager extends DatasetManager {
       if(d === sd) sdid += i;
       dl.push(['<tr id="dstr', i, '" class="dataset',
           (d === sd ? ' sel-set' : ''),
-          '" onclick="DATASET_MANAGER.selectDataset(\'',
+          '" onclick="DATASET_MANAGER.selectDataset(event, \'',
           dnl[i], '\');" onmouseover="DATASET_MANAGER.showInfo(\'', dnl[i],
           '\', event.shiftKey);"><td', cls, '>', d.displayName,
           '</td></tr>'].join(''));
@@ -8907,14 +8907,19 @@ class GUIDatasetManager extends DatasetManager {
     for(let i = 0; i < msl.length; i++) {
       const
           m = sd.modifiers[UI.nameToID(msl[i])],
-          clk = '" onclick="DATASET_MANAGER.selectModifier(\'' +
+          defsel = (m.selector === sd.default_selector),
+          clk = '" onclick="DATASET_MANAGER.selectModifier(event, \'' +
               m.selector + '\'';
       if(m === sm) smid += i;
       ml.push(['<tr id="dsmtr', i, '" class="dataset-modif',
           (m === sm ? ' sel-set' : ''),
           '"><td class="dataset-selector',
           (m.hasWildcards ? ' wildcard' : ''),
+          '" title="Shift-click to ', (defsel ? 'clear' : 'set as'),
+          ' default modifier',
           clk, ', false);">',
+          (defsel ? '<img src="images/solve.png" style="height: 14px;' +
+              ' width: 14px; margin: 0 1px -3px -1px;">' : ''),
           m.selector, '</td><td class="dataset-expression',
           clk, ');">', m.expression.text, '</td></tr>'].join(''));
     }
@@ -8961,46 +8966,54 @@ class GUIDatasetManager extends DatasetManager {
     this.updateDialog();
   }
   
-  selectDataset(id) {
-    // Select dataset, or edit it when double-clicked
+  selectDataset(event, id) {
+    // Select dataset, or edit it when Alt- or double-clicked
     const
-        d = MODEL.datasets[id],
+        d = MODEL.datasets[id] || null,
         now = Date.now(),
-        dt = now - this.last_time_selected;
+        dt = now - this.last_time_selected,
+        // Consider click to be "double" if it occurred less than 300 ms ago
+        edit = event.altKey || (d === this.selected_dataset && dt < 300);
+    this.selected_dataset = d;
     this.last_time_selected = now;
-    if(d === this.selected_dataset) {
-      // Consider click to be "double" if it occurred less than 300 ms ago
-      if(dt < 300) {
-        this.last_time_selected = 0;
-        this.editData();
-        return;
-      }
+    if(d && edit) {
+      this.last_time_selected = 0;
+      this.editData();
+      return;
     }
-    this.selected_dataset = MODEL.datasets[id];
     this.updateDialog();
   }
   
-  selectModifier(id, x=true) {
+  selectModifier(event, id, x=true) {
     // Select modifier, or when double-clicked, edit its expression or the
     // name of the modifier
     if(this.selected_dataset) {
       const m = this.selected_dataset.modifiers[UI.nameToID(id)],
             now = Date.now(),
-            dt = now - this.last_time_selected;
+            dt = now - this.last_time_selected,
+            // NOTE: Alt-click and double-click indicate: edit
+            // Consider click to be "double" if the same modifier was clicked
+            // less than 300 ms ago
+            edit = event.altKey || (m === this.selected_modifier && dt < 300);
       this.last_time_selected = now;
-      if(m === this.selected_modifier) {
-        // Consider click to be "double" if it occurred less than 300 ms ago
-        if(dt < 300) {
-          this.last_time_selected = 0;
-          if(x) {
-            this.editExpression();
-          } else {
-            this.promptForSelector('rename');
-          }
-          return;
+      if(event.shiftKey) {
+        // Toggle dataset default selector
+        if(m.selector === this.selected_dataset.default_selector) {
+          this.selected_dataset.default_selector = '';
+        } else {
+          this.selected_dataset.default_selector = m.selector;
         }
       }
       this.selected_modifier = m;
+      if(edit) {
+        this.last_time_selected = 0;
+        if(x) {
+          this.editExpression();
+        } else {
+          this.promptForSelector('rename');
+        }
+        return;
+      }
     } else {
       this.selected_modifier = null;
     }
@@ -9167,6 +9180,10 @@ class GUIDatasetManager extends DatasetManager {
         m = this.selected_dataset.addModifier(sel);
     // NULL can result when new name is invalid
     if(!m) return;
+    // If selected modifier was the dataset default selector, update it
+    if(oldm.selector === this.selected_dataset.default_selector) {
+      this.selected_dataset.default_selector = m.selector;
+    }
     // If only case has changed, just update the selector
     // NOTE: normal dataset selector, so remove all invalid characters
     if(m === oldm) {
@@ -9248,8 +9265,14 @@ class GUIDatasetManager extends DatasetManager {
   }
 
   deleteModifier() {
+    // Delete modifier from selected dataset
     const m = this.selected_modifier;
     if(m) {
+      // If it was the dataset default modifier, clear the default
+      if(m.selector === this.selected_dataset.default_selector) {
+        this.selected_dataset.default_selector = '';
+      }
+      // Then simply remove the object
       delete this.selected_dataset.modifiers[UI.nameToID(m.selector)];
       this.selected_modifier = null;
       this.updateModifiers();
@@ -9418,7 +9441,7 @@ class EquationManager {
       const
           m = ed.modifiers[UI.nameToID(msl[i])],
           mp = (m.parameters ? '\\' + m.parameters.join('\\') : ''),
-          clk = '" onclick="EQUATION_MANAGER.selectModifier(\'' +
+          clk = '" onclick="EQUATION_MANAGER.selectModifier(event, \'' +
               m.selector + '\'';
       if(m === sm) smid += i;
       ml.push(['<tr id="eqmtr', i, '" class="dataset-modif',
@@ -9444,28 +9467,27 @@ class EquationManager {
     // @@TO DO: Display documentation for the equation => extra comments field?
   }
   
-  selectModifier(id, x=true) {
-    // Select modifier, or when double-clicked, edit its expression or the
-    // name of the modifier
+  selectModifier(event, id, x=true) {
+    // Select modifier, or when Alt- or double-clicked, edit its expression
+    // or the equation name (= name of the modifier)
     if(MODEL.equations_dataset) {
       const
-          m = MODEL.equations_dataset.modifiers[UI.nameToID(id)],
+          m = MODEL.equations_dataset.modifiers[UI.nameToID(id)] || null,
           now = Date.now(),
-          dt = now - this.last_time_selected;
+          dt = now - this.last_time_selected,
+          // Consider click to be "double" if it occurred less than 300 ms ago
+          edit = event.altKey || (m === this.selected_modifier && dt < 300);
       this.last_time_selected = now;
-      if(m === this.selected_modifier) {
-        // Consider click to be "double" if it occurred less than 300 ms ago
-        if(dt < 300) {
-          this.last_time_selected = 0;
-          if(x) {
-            this.editEquation();
-          } else {
-            this.promptForName();
-          }
-          return;
-        }
-      }
       this.selected_modifier = m;
+      if(m && edit) {
+        this.last_time_selected = 0;
+        if(x) {
+          this.editEquation();
+        } else {
+          this.promptForName();
+        }
+        return;
+      }
     } else {
       this.selected_modifier = null;
     }

@@ -714,8 +714,11 @@ class ExpressionParser {
         return [x, anchor1, offset1, anchor2, offset2];
       }
     }
+    
+    //
     // NOTE: for experiment results, the method will ALWAYS have returned
     // a result, so what follows does not apply to experiment results
+    //
     
     // Attribute name (optional) follows object-attribute separator
     s = name.split(UI.OA_SEPARATOR);
@@ -725,7 +728,7 @@ class ExpressionParser {
       // ... so restore name if itself contains other vertical bars
       name = s.join(UI.OA_SEPARATOR).trim();
       if(!attr) {
-        // Explicit empty attribute, e.g., [name|]
+        // Explicit *empty* attribute, e.g., [name|]
         // NOTE: this matters for datasets having specifiers: the vertical
         // bar indicates "do not infer a modifier from a running experiment,
         // but use the data"
@@ -817,8 +820,12 @@ class ExpressionParser {
           (attr ? ' and have attribute ' + attr : '');
       return false;
     }
+    
+    //
     // NOTE: for statistics, the method will ALWAYS have returned a result,
     // so what follows does not apply to statistics results
+    //
+    
     let by_reference = false;
     if(name === '.') {
       // NOTE: when name is a single dot, it refers to the data of a dataset
@@ -5227,15 +5234,26 @@ function VMI_push_dataset_modifier(x, args) {
         MODEL.end_period - MODEL.start_period + MODEL.look_ahead + 1, t));
   }
   if(ms) {
-    // If modifier selector is specified, use the associated expression ...
+    // If modifier selector is specified, use the associated expression
     obj = mx;
-    // ... else check whether an experiment is running UNLESS "use data" is TRUE
-  } else if(MODEL.running_experiment && !ud) {
-    // If so, check if dataset modifiers match the combination of selectors
-    // for the active run
-    const mm = ds.matchingModifiers(MODEL.running_experiment.activeCombination);
-    // If so, use the first match
-    if(mm.length > 0) obj = mm[0].expression;
+  } else if(!ud) {
+    if(MODEL.running_experiment) {
+      // If an experiment is running, check if dataset modifiers match the
+      // combination of selectors for the active run
+      const mm = ds.matchingModifiers(MODEL.running_experiment.activeCombination);
+      // If so, use the first match
+      if(mm.length > 0) obj = mm[0].expression;
+    } else if(ds.default_selector) {
+      // If no expriment (so "normal" run), use default selector if specified
+      const dm = ds.modifiers[ds.default_selector];
+      if(dm) {
+        obj = dm.expression;
+      } else {
+        // Exception should never occur, but check anyway and log it 
+        console.log('WARNING: Dataset "' + ds.name +
+            `" has no default selector "${ds.default_selector}"`);
+      }
+    }
   }
   // By default, use the dataset default value
   let v = ds.defaultValue,
