@@ -476,7 +476,7 @@ function repoAdd(res, sp) {
   url = 'https://' + (url ? url.trim() : '');
   let i = url.length - 1;
   while(url[i] === '/') i--;
-  url = url.substring(0, i);
+  url = url.substring(0, i+1);
   try {
     test = new URL(url);
   } catch(err) {
@@ -491,6 +491,7 @@ function repoAdd(res, sp) {
   postRequest(url, {action: 'id'},
       // The `on_ok` function
       (data, res) => {
+          data = data.toString();
           // Response should be the URL of the repository
           if(data !== url) {
             servePlainText(res, 'WARNING: Not a Linny-R repository');
@@ -504,6 +505,7 @@ function repoAdd(res, sp) {
             postRequest(url, {action: 'access', repo: rname, token: token},
                 // The `on_ok` function
                 (data, res) => {
+                    data = data.toString();
                     if(data !== 'Authenticated') {
                       servePlainText(res, data);
                       return;
@@ -511,7 +513,7 @@ function repoAdd(res, sp) {
                     list = fs.readFileSync(
                         WORKSPACE.repositories, 'utf8').split('\n');
                     for(let i = 0; i < list.length; i++) {
-                      nu = entry.trim().split('|');
+                      const nu = list[i].trim().split('|');
                       if(nu[0] !== 'local host') {
                         if(nu[0] == rname) {
                           servePlainText(res,
