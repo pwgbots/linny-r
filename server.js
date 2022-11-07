@@ -77,7 +77,8 @@ function getVersionInfo() {
   }
   try {
     const
-        json = child_process.execSync('npm show linny-r time version --json'),
+        json = child_process.execSync(
+            'npm show linny-r time version --json', {timeout: 1000}),
         obj = JSON.parse(json);
     info.latest = obj.version;
     info.latest_time = new Date(Date.parse(obj.time[info.latest]));
@@ -433,7 +434,7 @@ function repositoryByName(name) {
     while(rbn.length < 2) rbn.push('');
     if(rbn[0] === name) return rbn;
   }
-  console.log(`ERROR: Repository "${name}" not found`);
+  console.log(`ERROR: Repository "${name}" not registered on this computer`);
   return false;
 }
 
@@ -485,7 +486,7 @@ function repoAdd(res, sp) {
   // Error callback function is used twice, so define it here
   const noConnection = (error, res) => {
         console.log(error);
-        servePlainText(res, 'ERROR: Failed to connect to ' + url);
+        servePlainText(res, connectionErrorText('Failed to connect to ' + url));
       };
   // Verify that the URL points to a Linny-R repository
   postRequest(url, {action: 'id'},
@@ -596,8 +597,8 @@ function repoDir(res, rname) {
           // The `on_error` function
           (error, res) => {
               console.log(error);
-              servePlainText(res,
-                  `ERROR: Failed to access remote repository "${rname}"`);
+              servePlainText(res, connectionErrorText(
+                  `Failed to access remote repository "${rname}"`));
           },
           res);
     } else {
@@ -751,7 +752,7 @@ function repoAccess(res, rname, rtoken) {
       // The `on_error` function
       (error, res) => {
           console.log(error);
-          servePlainText(res, 'ERROR: Failed to connect to' + r[1]);
+          servePlainText(res, connectionErrorText('Failed to connect to' + r[1]));
         },
       res);
 }
@@ -808,7 +809,7 @@ function repoStore(res, rname, mname, mxml) {
             // The `on_error` function
             (error, res) => {
                 console.log(error);
-                servePlainText(res, 'ERROR: Failed to connect to' + r[1]);
+                servePlainText(res, connectionErrorText('Failed to connect to' + r[1]));
               },
             res);
       } else {
@@ -870,7 +871,7 @@ function loadData(res, url) {
       getTextFromURL(url,
           (data, res) => servePlainText(res, data),
           (error, res) => servePlainText(res,
-              `ERROR: Failed to get data from <tt>${url}</tt>`),
+              connectionErrorText(`Failed to get data from <tt>${url}</tt>`)),
           res);
     } catch(err) {
       console.log(err);
@@ -1376,6 +1377,10 @@ function formData(obj) {
     fields.push(encodeURIComponent(k) + "=" + encodeURIComponent(obj[k]));
   }
   return fields.join('&');
+}
+
+function connectionErrorText(msg) {
+  return 'WARNING: ' + msg + ' - Please check your internet connection';
 }
 
 //

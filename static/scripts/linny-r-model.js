@@ -2019,10 +2019,9 @@ class LinnyRModel {
       this.timeout_period = Math.max(0,
           safeStrToInt(nodeContentByTag(node, 'timeout-period')));
       // Legacy models have tag "optimization-period" instead of "block-length"
-      const bl_tag = nodeContentByTag(node, 'block-length') ||
+      const bl_str = nodeContentByTag(node, 'block-length') ||
           nodeContentByTag(node, 'optimization-period'); 
-      this.block_length = Math.max(1,
-          safeStrToInt(nodeContentByTag(node, bl_tag)));
+      this.block_length = Math.max(1, safeStrToInt(node, bl_str));
       this.start_period = Math.max(1,
           safeStrToInt(nodeContentByTag(node, 'start-period')));
       this.end_period = Math.max(1,
