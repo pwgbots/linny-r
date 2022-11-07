@@ -75,10 +75,12 @@ function getVersionInfo() {
     console.log('This indicates that Linny-R is not installed properly.');
     process.exit();    
   }
+  console.log('\nNode.js server for Linny-R version', info.current);
+  console.log('Looking for newer version on https://npmjs.com');
   try {
     const
-        json = child_process.execSync(
-            'npm show linny-r time version --json', {timeout: 1000}),
+        json = child_process.execSync( 
+            'npm show linny-r time version --json', {timeout: 5000}),
         obj = JSON.parse(json);
     info.latest = obj.version;
     info.latest_time = new Date(Date.parse(obj.time[info.latest]));
@@ -88,12 +90,13 @@ function getVersionInfo() {
     // `latest` = 0 indicates that version check failed
     info.latest = 0;
   }
-  console.log('\nNode.js server for Linny-R version', info.current);
   if(!info.latest) {
-    console.log('WARNING: Could not check for updates');
+    console.log(connectionErrorText('Could not connect to https://nodejs.com'));
   } else if(!info.up_to_date) {
     console.log('UPDATE: Version ' + info.latest + ' was released on ' +
         info.latest_time.toString());
+  } else {
+    console.log('Linny-R software is up-to-date');
   }
   return info;
 }
