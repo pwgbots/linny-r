@@ -91,7 +91,7 @@ function getVersionInfo() {
     info.latest = 0;
   }
   if(!info.latest) {
-    console.log(connectionErrorText('Could not connect to https://nodejs.com'));
+    console.log(connectionErrorText('Could not connect to https://registry.npmjs.org/'));
   } else if(!info.up_to_date) {
     console.log('UPDATE: Version ' + info.latest + ' was released on ' +
         info.latest_time.toString());
