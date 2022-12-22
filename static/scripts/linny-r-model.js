@@ -7265,7 +7265,7 @@ class Link {
       IO_CONTEXT.addedLink(this);
       // Contextualize the rate and delay expressions
       IO_CONTEXT.rewrite(this.relative_rate);
-      IO_CONTEXT.rewrite(this.delay);
+      IO_CONTEXT.rewrite(this.flow_delay);
     }
   }
 

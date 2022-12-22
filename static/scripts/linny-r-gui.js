@@ -8065,7 +8065,8 @@ class Repository {
             if(include) {
               // Include module into current model
               REPOSITORY_BROWSER.promptForInclusion(
-                  this.name, this.module_names[n], parseXML(data));
+                  this.name, this.module_names[n],
+                  parseXML(data.replace(/%23/g, '#')));
             } else {
               if(UI.loadModelFromXML(data)) {
                 UI.notify(`Model <tt>${this.module_names[n]}</tt> ` +
