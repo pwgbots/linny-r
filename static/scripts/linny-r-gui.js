@@ -3482,13 +3482,17 @@ class GUIController extends Controller {
     const
         dlg = e.target.id.split('-')[0],
         tde = document.getElementById(dlg + '-dlg'),
-        mgr = tde.getAttribute('data-manager');
+        was_hidden = this.hidden(tde.id);
+    let mgr = tde.getAttribute('data-manager');
+    if(mgr) mgr = window[mgr];
     // NOTE: prevent modeler from viewing charts while an experiment is running
-    if(dlg === 'chart' && this.hidden(tde.id) && MODEL.running_experiment) {
+    if(dlg === 'chart' && was_hidden && MODEL.running_experiment) {
       UI.notify(UI.NOTICE.NO_CHARTS);
+      mgr.visible = false;
       return;
     }
     this.toggle(tde.id);
+    if(mgr) mgr.visible = was_hidden;
     // Open at position after last drag (recorded in DOM data attributes)
     let t = tde.getAttribute('data-top'),
         l = tde.getAttribute('data-left');
@@ -3506,15 +3510,14 @@ class GUIController extends Controller {
       this.reorderDialogs();
       // Update the diagram if its manager has been specified
       if(mgr) {
-        window[mgr].visible = true;
-        window[mgr].updateDialog();
-        if(mgr === 'DOCUMENTATION_MANAGER') {
+        mgr.visible = true;
+        mgr.updateDialog();
+        if(mgr === DOCUMENTATION_MANAGER) {
           if(this.info_line.innerHTML.length === 0) {
-            DOCUMENTATION_MANAGER.title.innerHTML = 'About Linny-R';
-            DOCUMENTATION_MANAGER.viewer.innerHTML =
-                DOCUMENTATION_MANAGER.about_linny_r;
-            DOCUMENTATION_MANAGER.edit_btn.classList.remove('enab');
-            DOCUMENTATION_MANAGER.edit_btn.classList.add('disab');
+            mgr.title.innerHTML = 'About Linny-R';
+            mgr.viewer.innerHTML = mgr.about_linny_r;
+            mgr.edit_btn.classList.remove('enab');
+            mgr.edit_btn.classList.add('disab');
           }
           UI.drawDiagram(MODEL);
         }
@@ -3527,10 +3530,10 @@ class GUIController extends Controller {
         this.reorderDialogs();
       }
       if(mgr) {
-        window[mgr].visible = true;
-        if(mgr === 'DOCUMENTATION_MANAGER') {
-          DOCUMENTATION_MANAGER.visible = false;
-          DOCUMENTATION_MANAGER.title.innerHTML = 'Documentation';
+        mgr.visible = true;
+        if(mgr === DOCUMENTATION_MANAGER) {
+          mgr.visible = false;
+          mgr.title.innerHTML = 'Documentation';
           UI.drawDiagram(MODEL);
         }
       }
@@ -14793,6 +14796,3 @@ if (MODEL.focal_cluster === fc) {
     } 
   }
 } // END of class UndoStack
-
-
-
