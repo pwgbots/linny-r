@@ -2603,9 +2603,14 @@ class LinnyRModel {
       this.cleanVector(p.cash_out, 0, 0);
       // NOTE: `start_ups` is a list of time steps when start-up occurred
       p.start_ups.length = 0;
-      // NOTE: `peak_level` records the highest level for each block,
-      // and for block 0 this means the initial level of p
-      p.peak_level = [p.level[0]];
+      // NOTE: `b_peak_inc` records the peak increase for each block,
+      // so at t=0 (block *before* block #1) this is the initial level
+      p.b_peak_inc = [p.level[0]];
+      // `la_peak_inc` records the additional peak increase in the
+      // look-ahead period
+      p.la_peak_inc = [p.level[0]];
+      // b_peak[b] records peak level value up to and including block b
+      p.b_peak = [p.level[0]];      
     }
     for(obj in this.products) if(this.products.hasOwnProperty(obj)) {
       p = this.products[obj];
@@ -2623,9 +2628,10 @@ class LinnyRModel {
       this.cleanVector(p.highest_cost_price, VM.UNDEFINED);
       if(p.is_buffer) this.cleanVector(p.stock_price, VM.UNDEFINED);
       p.start_ups.length = 0;
-      // NOTE: `peak_level` records the peak level for each block,
-      // so at t=0 (block *before* block #1) this is the initial level
-      p.peak_level = [p.level[0]];
+      // NOTE: peak increase also applies to products
+      p.b_peak_inc = [p.level[0]];
+      p.la_peak_inc = [p.level[0]];
+      
     }
     for(obj in this.links) if(this.links.hasOwnProperty(obj)) {
       l = this.links[obj];

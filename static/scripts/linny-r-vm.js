@@ -1471,6 +1471,9 @@ class VirtualMachine {
     // Base penalty of 10 is high relative to the (scaled) coefficients of the
     // cash flows in the objective function (typically +/- 1)
     this.BASE_PENALTY = 10;
+    // Peak variable penalty is added to make solver choose the *smallest*
+    // value that is greater than or equal to X[t] for all t as "peak value"
+    this.PEAK_VAR_PENALTY = 0.01;
   
     // NOTE: the VM uses numbers >> +INF to denote special computation results
     this.EXCEPTION = 1e+36; // to test for any exceptional value
@@ -2130,7 +2133,7 @@ class VirtualMachine {
     p.start_up_count_var_index = -1;
     p.suc_on_var_index = -1;
     p.first_commit_var_index = -1;
-    p.chunk_var_index = -1;
+    p.peak_inc_var_index = -1;
     if(p instanceof Product) {
       p.stock_LE_slack_var_index = -1;
       p.stock_GE_slack_var_index = -1;
@@ -2183,10 +2186,11 @@ class VirtualMachine {
     const
         type = tuple[0],
         obj = tuple[1];
-    if(type === 'peak') {
+    if(type.indexOf('-peak') > 0) {
       // Peak level variables have an array as node property
       const c = Math.trunc(t / this.block_length);
-      return obj.peak_level[c];
+      if(type.startsWith('b')) return obj.b_peak_inc[c];
+      return obj.la_peak_inc[c];
     }
     const prior_level = obj.actualLevel(t);
     if(type === 'OO') return prior_level > 0 ? 1 : 0;
@@ -2206,7 +2210,7 @@ class VirtualMachine {
     return prior_level;
   }
 
-  get variablesLegend() {
+  variablesLegend(block) {
     // Returns a string with each variable code and full name on a separate line
     const
         vcnt = this.variables.length,
@@ -2222,11 +2226,14 @@ class VirtualMachine {
       l += v + ' [' + this.variables[i][0] + p + ']\n';
     }
     if(this.chunk_variables.length > 0) {
+      // NOTE: chunk offset for last block may be lower than standard
+      const chof = (block >= this.nr_of_blocks ? this.chunk_offset :
+          this.cols * this.chunk_length + 1);
       for(let i = 0; i < this.chunk_variables.length; i++) {
         const
             obj = this.chunk_variables[i][1],
             // NOTE: chunk offset takes into account that indices are 0-based
-            cvi = this.chunk_offset + i;
+            cvi = chof + i;
         let v = (this.solver_name === 'lp_solve' ?
                  'C' + cvi : 'X' + cvi.toString().padStart(z, '0'));
         v += '     '.slice(v.length) + obj.displayName;
@@ -2440,15 +2447,20 @@ class VirtualMachine {
     
     // Now all variables that get a tableau column in each time step have
     // been defined; next step is to add "chunk variables"
-    // NOTE: chunk variables are "free", i.e., have no bound constraints
     let cvi = 0;
-    // Add chunk variable for processes having a peak increase link
+    // Add *two* chunk variables for processes having a peak increase link
     for(i = 0; i < process_keys.length; i++) {
       k = process_keys[i];
       p = MODEL.processes[k];
       if(!MODEL.ignored_entities[k] && p.needsMaximumData) {
-        p.chunk_var_index = cvi;
-        this.chunk_variables.push(['peak', p]);
+        // "peak increase" for block
+        p.peak_inc_var_index = cvi;
+        this.chunk_variables.push(['b-peak', p]);
+        cvi++;
+        // additional "peak increase" for the look-ahead period
+        // NOTE: no need to record the second index as it wil allways be
+        // equal to block peak index + 1
+        this.chunk_variables.push(['la-peak', p]);
         cvi++;
       }
     }
@@ -2457,13 +2469,18 @@ class VirtualMachine {
       k = product_keys[i];
       p = MODEL.products[k];
       if(!MODEL.ignored_entities[k] && p.needsMaximumData) {
-        p.chunk_var_index = cvi;
-        this.chunk_variables.push(['peak', p]);
+        p.peak_inc_var_index = cvi;
+        this.chunk_variables.push(['b-peak', p]);
+        cvi++;
+        this.chunk_variables.push(['la-peak', p]);
         cvi++;
       }
     }
 
     // Now *all* variables have been defined; next step is to set their bounds
+
+    // NOTE: chunk variables of node `p` have LB = 0 and UB = UB of `p`;
+    // this is effectuated by the VM "set bounds" instructions at run time
 
     // NOTE: under normal assumptions (all processes having LB >= 0), bounds on
     // actor cash flow variables need NOT be set because cash IN and cash OUT
@@ -2668,12 +2685,13 @@ class VirtualMachine {
                       VM.PRODUCE, VM.SPIN_RES, p.on_off_var_index, l.flow_delay, vi,
                       l.from_node.upper_bound, tnpx, l.relative_rate]]);
                 } else if(l.multiplier === VM.LM_PEAK_INC) {
-                  // "peak increase" will be > 0 only in the first time step
-                  // of the chunk being optimized, and 0 in all other time steps;
-                  // the VM instruction will handle this
+                  // NOTE: "peak increase" may be > 0 only in the first time step
+                  // of the block being optimized, and in the first step of the
+                  // look-ahead period (if peak rises in that period), and will
+                  // be 0 in all other time steps; the VM instruction handles this
                   // NOTE: delay is always 0 for this link flow
                   this.code.push([VMI_update_cash_coefficient, [
-                      VM.PRODUCE, VM.PEAK_INC, p.chunk_var_index, 0,
+                      VM.PRODUCE, VM.PEAK_INC, p.peak_inc_var_index, 0,
                       tnpx, l.relative_rate]]);
                 } else if(tnpx.isStatic && l.relative_rate.isStatic) {
                   // If link rate and product price are static, only add the variable
@@ -2850,7 +2868,7 @@ class VirtualMachine {
               } else if(l.multiplier === VM.LM_SHUTDOWN) {
                 vi = fn.shut_down_var_index;
               } else if(l.multiplier === VM.LM_PEAK_INC) {
-                vi = fn.chunk_var_index;
+                vi = fn.peak_inc_var_index;
               } else {
                 vi = fn.level_var_index;
               }
@@ -3089,22 +3107,23 @@ class VirtualMachine {
             (to prevent that FC[t] = 1 when SO[t-1] = 1 and SO[t] = 1, i.e.,
              SC was already > 0)
 
-       To calculate the highest increment for a "chunk", we need a continuous
-       "chunk variable" MX, i.e., only 1 tableau column per chunk, not 1 for
-       each time step. This variable MX will compute the highest value of
-       the node level variable L[t] (for all t in the chunk):
-       (n) L[t] - MX <= 0
-       Once per chunk, add two more constraints to ensure that MX is at
-       least as high as MX in the previous chunk: 
-       (o) MX - MX[c-1] >= 0  (where c is the chunk number, and MX[0] = 0)
-       (p) MX[c-1] - MX <= 0 
-       Then use this MX only once (at block time bt = 0) to compute the
-       actual flow as MX - MX[c-1]; for all other time steps, the AF for
-       highest increment links equals 0.
-       NOTE: These constraints do not keep MX from becoming higher than
-       the highest value (for all t) of L[t]; the modeler must ensure
-       that there is a cost associated with MX. Forcing MX to be exactly
-       equal to MAX(L[t]) would require a binary variable for each t.
+       To calculate the peak increase values, we need two continuous
+       "chunk variables", i.e., only 1 tableau column per chunk, not 1 for
+       each time step. These variables BPI and CPI will compute the highest
+       value (for all t in the block (B) and for the chunk (C)) of the
+       difference L[t] - block peak (BP) of previous block. This requires
+       one equation for every t = 1, ..., block length:
+       (n) L[t] - BPI[b] <= BP[b-1]  (where b denotes the block number)
+       plus one equation for every t = block length + 1 to chunk length:
+       (o) L[t] - BPI[b] - CPI[b] <= BP[b-1]
+       This ensures that CPI is the *additional* increase in the look-ahead 
+       Then use BPI[b] in first time step if block, and CPI[b] at first
+       time step of the look-ahead period to compute the actual flow for
+       the "peak increase" links. For all other time steps this AF equals 0.
+
+       NOTE: These constraints alone set the lower bound for BPI and CPI, so
+       these variables can take on higher values. The modeler must ensure
+       that there is a cost associated with the actual flow, not a revenue.
     */
     // NOTE: as of 20 June 2021, binary attributes of products are also computed
     const pp_nodes = [];
@@ -3350,12 +3369,12 @@ class VirtualMachine {
       // Check whether constraints (n) through (p) need to be added
       // to compute the peak level for a block of time steps
       // NOTE: this is independent of the binary variables!
-      if(p.chunk_var_index >= 0) {
+      if(p.peak_inc_var_index >= 0) {
         this.code.push(
           // One special instruction implements this operation, as part
           // of it must be performed only at block time = 0
-          [VMI_add_peak_level_constraints,
-              [p.level_var_index, p.chunk_var_index]]
+          [VMI_add_peak_increase_constraints,
+              [p.level_var_index, p.peak_inc_var_index]]
         );          
       }
     }
@@ -3648,13 +3667,17 @@ class VirtualMachine {
         b++;
       }
     }
-    // Get values of peak level variables from solution vector
+    // Get values of peak increase variables from solution vector
     // NOTE: computed offset takes into account that chunk variable list
     // is zero-based!
     const offset = this.cols * abl;
     for(let i = 0; i < ncv; i++) {
       const p = this.chunk_variables[i][1];
-      p.peak_level[block] = x[offset + i];
+      p.b_peak_inc[block] = x[offset + i];
+      i++;
+      p.la_peak_inc[block] = x[offset + i];
+      // Compute the peak from the peak increase
+      p.b_peak[block] = p.b_peak[block - 1] + p.b_peak_inc[block];
     }
     // Add warning to messages if slack has been used
     // NOTE: only check after the last round has been evaluated
@@ -3764,11 +3787,13 @@ class VirtualMachine {
                    p.inputs[j].relative_rate.result(bt));
           }
         } else if(l.multiplier === VM.LM_PEAK_INC) {
-          // Actual flow can only be > 0 in first time step of block
+          // Actual flow over "peak increase" link is zero unless...
           if(i === 0) {
-            // Increase is 0 when peak value < peak in previous block
-            pl = Math.max(0,
-                p.peak_level[block] - p.peak_level[block - 1]);
+            // first time step, then "block peak increase"...
+            pl = p.b_peak_inc[block];
+          } else if(i === MODEL.block_length) {
+            // or first step of look-ahead, then "additional increase"
+            pl = p.la_peak_inc[block];
           } else {
             pl = 0;
           }
@@ -6207,6 +6232,7 @@ function VMI_set_const_bounds(args) {
   // `args`: [var_index, number, number]
   const
       vi = args[0],
+      vbl = VM.variables[vi - 1][1],
       k = VM.offset + vi,
       r = VM.round_letters.indexOf(VM.round_sequence[VM.current_round]),
       // Optional fourth parameter indicates whether the solver's
@@ -6217,7 +6243,6 @@ function VMI_set_const_bounds(args) {
       u,
       fixed = (vi in VM.fixed_var_indices[r - 1]);
   if(fixed) {
-    const vbl = VM.variables[vi - 1][1];
     // Set both bounds equal to the level set in the previous round, or to 0
     // if this is the first round
     if(VM.current_round) {
@@ -6239,8 +6264,8 @@ function VMI_set_const_bounds(args) {
   }
   // NOTE: to check, add this to the condition below: fixed !== ''
   if(DEBUGGING) {
-    console.log(['set_const_bounds [', k, '] LB = ', VM.sig4Dig(l),
-      ', UB = ', VM.sig4Dig(u), fixed].join(''));
+    console.log(['set_const_bounds [', k, '] ', vbl.displayName, ' t = ', VM.t,
+      ' LB = ', VM.sig4Dig(l), ', UB = ', VM.sig4Dig(u), fixed].join(''));
   }
   // NOTE: since the VM vectors for lower bounds and upper bounds are
   // initialized with default values (0 for LB, +INF for UB), there is
@@ -6248,6 +6273,21 @@ function VMI_set_const_bounds(args) {
   if(l !== 0 || u < inf_val) {
     VM.lower_bounds[k] = l; 
     VM.upper_bounds[k] = u;
+    // If associated node is FROM-node of a "peak increase" link, then
+    // the "peak increase" variables of this node must have the highest
+    // UB of the node (for all t in this block, hence MAX) MINUS their
+    // peak level in previous block
+    if(vbl.peak_inc_var_index >= 0) {
+      u = Math.max(0, u - vbl.b_peak[VM.block_count - 1]);
+      const
+          cvi = VM.chunk_offset + vbl.peak_inc_var_index,
+          // Check if peak UB already set for previous t
+          piub = VM.upper_bounds[cvi];
+      // If so, use the highest value
+      if(piub) u = Math.max(piub, u);
+      VM.upper_bounds[cvi] = u;
+      VM.upper_bounds[cvi + 1] = u;
+    }
   }
 }
 
@@ -6255,6 +6295,7 @@ function VMI_set_var_bounds(args) {
   // `args`: [var_index, expression, expression]
   const
       vi = args[0],
+      vbl = VM.variables[vi - 1][1],
       k = VM.offset + vi,
       r = VM.round_letters.indexOf(VM.round_sequence[VM.current_round]),
       // Optional fourth parameter indicates whether the solver's
@@ -6265,7 +6306,6 @@ function VMI_set_var_bounds(args) {
       u,
       fixed = (vi in VM.fixed_var_indices[r - 1]);
   if(fixed) {
-    const vbl = VM.variables[vi - 1][1];
     // Set both bounds equal to the level set in the previous round, or to 0
     // if this is the first round
     if(VM.current_round) {
@@ -6289,10 +6329,20 @@ function VMI_set_var_bounds(args) {
   if(Math.abs(l) > VM.NEAR_ZERO || u !== inf_val) {
     VM.lower_bounds[k] = l; 
     VM.upper_bounds[k] = u;
+    // Check for peak increase -- see comments in VMI_set_const_bound
+    if(vbl.peak_inc_var_index >= 0) {
+      u = Math.max(0, u - vbl.b_peak[VM.block_count - 1]);
+      const
+          cvi = VM.chunk_offset + vbl.peak_inc_var_index,
+          piub = VM.upper_bounds[cvi];
+      if(piub) u = Math.max(piub, u);
+      VM.upper_bounds[cvi] = u;
+      VM.upper_bounds[cvi + 1] = u;
+    }
   }
   if(DEBUGGING) {
-    console.log(['set_var_bounds [', k, '] LB = ', args[1].variableName,
-      ', UB = ', args[2].variableName, fixed].join(''));
+    console.log(['set_var_bounds [', k, '] ', vbl.displayName, ' t = ', VM.t,
+      ' LB = ', l, ', UB = ', u, fixed].join(''));
   }
 }
 
@@ -6534,19 +6584,20 @@ function VMI_update_cash_coefficient(args) {
     if((type === VM.ONE_C && args.length === 6) ||
         (type === VM.TWO_X && args.length === 7)) d++;
   }
-  const
-      // NOTE: delay > 0 affects only which variable is to be used,
-      // not the expressions for rates or prices!
-      k = (type === VM.PEAK_INC ?
-          VM.chunk_offset + vi :
-          VM.offset + vi - d*VM.cols),
-      t = VM.t - d;
+  // `k` is the tableau column index of the variable that affects the CF
+  let k = (type === VM.PEAK_INC ? VM.chunk_offset + vi :
+      VM.offset + vi - d*VM.cols);
+  // NOTE: delay > 0 affects only which variable is to be used,
+  // not the expressions for rates or prices!
+  const t = VM.t - d;
   // NOTE: this instruction is used only for objective function
   // coefficients; previously computed decision variables can be ignored
   if(k <= 0) return;
   // NOTE: peak increase can generate cash only at the first time
-  // step of a block, and that is when VM.offset = 0
-  if(type === VM.PEAK_INC && VM.offset > 0) return;
+  // step of a block (when VM.offset = 0) and at the first time step
+  // of the look-ahead period (when VM.offset = block length)
+  if(type === VM.PEAK_INC &&
+      VM.offset > 0 && VM.offset !== MODEL.block_length) return;
   // First compute the result to be processed
   let r = 0;
   if(type === VM.ONE_C) {
@@ -6591,11 +6642,13 @@ function VMI_update_cash_coefficient(args) {
   if(flow === VM.CONSUME) r = -r;
   if(DEBUGGING) {
     const vbl = (vi <= this.cols ? VM.variables[vi - 1] :
-        VM.chunk_variables[vi - this.cols]); //@@@ TO MAKE CORRECT!
+        VM.chunk_variables[vi - this.cols]); //@@@ TO MAKE CORRECT FOR chunk vars!
     console.log(['update_cash_coefficient [', k, ']: ', vbl[0], ' ',
         vbl[1].displayName, ' (t = ', t, ') ', VM.CF_CONSTANTS[type], ' ',
         VM.CF_CONSTANTS[flow], ' r = ', VM.sig4Dig(r)].join(''));
   }
+  // Use look-ahead peak increase when offset > 0
+  if(type === VM.PEAK_INC && VM.offset) k++;
   // Then update the cash flow: cash IN if r > 0, otherwise cash OUT  
   if(r > 0) {
     if(k in VM.cash_in_coefficients) {
@@ -6653,6 +6706,18 @@ function VMI_set_objective(empty) {
   if(DEBUGGING) console.log('set_objective');
   for(let i in VM.coefficients) if(Number(i)) {
     VM.objective[i] = VM.coefficients[i];
+  }
+  // NOTE: For peak increase to function properly, the peak variables
+  // must have a small penalty in the objective function
+  if(VM.chunk_variables.length > 0) {
+    for(let i = 0; i < VM.chunk_variables.length; i++) {
+      const vn = VM.chunk_variables[i][0]; 
+      if(vn.indexOf('peak') > 0) {
+        // NOTE: chunk offset takes into account that indices are 0-based
+        VM.objective[VM.chunk_offset + i] = -VM.PEAK_VAR_PENALTY;
+        if(vn.startsWith('b')) VM.objective[VM.chunk_offset + i] -= VM.PEAK_VAR_PENALTY;
+      }
+    }
   }
 }
 
@@ -6832,60 +6897,61 @@ function VMI_add_bound_line_constraint(args) {
   VMI_add_constraint(bl.type);
 }
 
-function VMI_add_peak_level_constraints(args) {
-  // Adds 1 or 2 constraints to compute max. level for current block
+function VMI_add_peak_increase_constraints(args) {
+  // Adds constraints to compute peak increase for current block and
+  // for current block + look-ahead
   const
       vi = args[0], // tableau column of L[t]
       cvi = args[1], // tableau column of peak
       lci = VM.offset + vi,
-      plci = VM.chunk_offset + cvi;
+      cbici = VM.chunk_offset + cvi,
+      cvbl = VM.chunk_variables[cvi][1];
   if(DEBUGGING) {
     console.log('add_peak_level_constraints (t = ' + VM.t + ')',
         VM.variables[vi - 1][0], VM.variables[vi - 1][1].displayName,
-        VM.chunk_variables[cvi][0], VM.chunk_variables[cvi][1].displayName);
+        VM.chunk_variables[cvi][0], cvbl.displayName);
   }
-  // (n) L[t] - peak <= 0
+  // For t = 1 to block length, add constraint to compute block peak increase
+  if(VM.offset < MODEL.block_length * VM.cols) {
+    // (n) L[t] - BPI[b] <= BP[b-1]  (where b denotes the block number)
+    VMI_clear_coefficients();
+    VM.coefficients[lci] = 1;
+    VM.coefficients[cbici] = -1;
+    // Set RHS to highest level computed in previous blocks
+    VM.rhs = cvbl.b_peak[VM.block_count - 1];
+    VMI_add_constraint(VM.LE);
+    return;
+  }
+  // For every t = block length + 1 to chunk length:
   VMI_clear_coefficients();
+  // (o) L[t] - BPI[b] - CPI[b] <= BP[b-1]
   VM.coefficients[lci] = 1;
-  VM.coefficients[plci] = -1;
-  // No need to set RHS as it is already reset to 0  
+  VM.coefficients[cbici] = -1;
+  // NOTE: next index always points to LA peak increase 
+  VM.coefficients[cbici + 1] = -1;
+  // Set RHS to highest level computed in previous blocks
+  VM.rhs = cvbl.b_peak[VM.block_count - 1];
   VMI_add_constraint(VM.LE);
-
-  // NOTE: the other two constraints need to be defined only for bt = 0
-  if(VM.offset > 0) return;
-  VMI_clear_coefficients();
-  // (o) peak[b] >= peak[b-1]
-  VM.coefficients[plci] = 1;
-  // Set RHS to peak computed in previous block
-  VM.rhs = VM.chunk_variables[cvi][1].peak_level[VM.block_count - 1];
-  VMI_add_constraint(VM.GE);
-  // NOTE: these constraints will ensure that peak >= all L[t] in the
-  // chunk, but this does not prevent peak from taking a value higher
-  // than the highest L[t]; preventing this would require defining as
-  // many binary variables as there are time steps in the chunk.
 }
 
 function VMI_add_peak_increase_at_t_0(args) {
-  // This operation should result in adding (peak[b] - peak[b-1) * link rate
+  // This operation should result in adding peak increase[b] * link rate
   // to the product level for which a constraint is being defined.
-  // This means that the coefficient for the chunk variable peak[b] must
-  // equal the link rate, while the value of peak[b-1] (computed in the
-  // previous block) * link rate must be subtracted, hence *added* to
-  // the RHS.
-  // NOTE: only execute this operation at block time = 0
-  if(VM.offset > 0) return;
+  // This means that the coefficient for (B or LA) peak increase[b] must
+  // equal the link rate.
+  // NOTE: only execute this operation at start of block or of LA period
+  if(VM.offset && VM.offset !== MODEL.block_length * VM.cols) return;
   const
-      cvi = args[0],
-      obj = VM.chunk_variables[cvi][1],
-      prev_pl = obj.peak_level[VM.block_count - 1],
+      cvi = args[0] + (VM.offset ? 1 : 0),
+      tpl = VM.chunk_variables[cvi],
       rr = args[1].result(VM.t);
   if(DEBUGGING) {
     console.log('VMI_add_peak_increase_at_t_0 (t = ' + VM.t + ')',
-        obj.displayName,
-        'previous peak =', prev_pl);
+        tpl[0], tpl[1].displayName);
   }
   VM.coefficients[VM.chunk_offset + cvi] = rr;
-  VM.rhs += prev_pl * rr;
+  // NOTE: no "add constraint" as this instruction is only part of the
+  // series of coefficient-setting instructions
 }
 
 // NOTE: the global constants below are not defined in linny-r-globals.js

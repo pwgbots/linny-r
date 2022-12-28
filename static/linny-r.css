@@ -3301,6 +3301,11 @@ td.in-chart {
   font-weight: bold;
 }
 
+td.warnings {
+  background-color: yellow;
+  font-style: italic;
+}
+
 #viewer-spinners {
   position: absolute;
   bottom: 2px;

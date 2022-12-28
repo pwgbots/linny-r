@@ -5502,7 +5502,8 @@ class GUIController extends Controller {
         a1 = document.getElementById('link-arrow-1'),
         a2 = document.getElementById('link-arrow-2'),
         lm = document.getElementById('link-multiplier').value,
-        d = document.getElementById('link-D');
+        d = document.getElementById('link-D'),
+        deb = document.getElementById('link-D-x');
     // NOTE: selector value is a string, not a number
     if(lm === '0') {
       // Default link symbol is a solid arrow
@@ -5520,10 +5521,15 @@ class GUIController extends Controller {
       d.style.color = 'gray';
       d.style.backgroundColor = 'inherit';
       d.value = '0';
+      // Also disable its "edit expression" button 
+      deb.classList.remove('enab');
+      deb.classList.add('disab');
     } else {
       d.disabled = false;
       d.style.color = 'black';
       d.style.backgroundColor = 'white';
+      deb.classList.remove('disab');
+      deb.classList.add('enab');
     }
   }
   
@@ -12007,7 +12013,8 @@ class GUIExperimentManager extends ExperimentManager {
               ss = VM.sig2Dig(r.solver_seconds),
               ssp = (rdt < VM.NEAR_ZERO ? '' :
                   ' (' + Math.round(r.solver_seconds * 100 / rdt) + '%)'),
-              w = (r.warning_count > 0 ? pluralS(r.warning_count, 'warning') + '. ' : '');
+              w = (r.warning_count > 0 ?
+                  ' ' + pluralS(r.warning_count, 'warning') + '. ' : '');
           cell.title = ['Run #', i, ' (', r.time_steps, ' time steps of ',
               r.time_step_duration, ' h) took ', rdts, ' s. Solver used ', ss, ' s',
               ssp, '.', w, (rr ? `
