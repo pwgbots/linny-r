@@ -5825,7 +5825,7 @@ class GUIMonitor {
       this.equations_text.value = VM.equations[b - 1];
     }
     // Legend to variables is not block-dependent
-    this.variables_text.value = VM.variablesLegend;
+    this.variables_text.value = VM.variablesLegend(b);
     // Show the text area for the selected tab
     if(this.tab !== tab) {
       let mt = 'monitor-' + this.tab;

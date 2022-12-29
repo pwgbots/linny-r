@@ -2631,7 +2631,7 @@ class LinnyRModel {
       // NOTE: peak increase also applies to products
       p.b_peak_inc = [p.level[0]];
       p.la_peak_inc = [p.level[0]];
-      
+      p.b_peak = [p.level[0]];      
     }
     for(obj in this.links) if(this.links.hasOwnProperty(obj)) {
       l = this.links[obj];
@@ -4226,7 +4226,8 @@ class Note extends ObjectWithXYWH {
         if(obj instanceof DatasetModifier) {
           this.fields.push(new NoteField(tag, obj.expression));
         } else if(obj) {
-          const attr = (ena.length > 1 ? ena[1].trim() : '');
+          // If attribute omitted, use default attribute of entity type
+          const attr = (ena.length > 1 ? ena[1].trim() : obj.defaultAttribute);
           // Variable may specify a vector-type attribute
           let val = obj.attributeValue(attr);
           // If not, it may be a cluster unit balance

@@ -130,10 +130,12 @@ class Expression {
     this.code = null;
     const xp = new ExpressionParser(this.text, this.object, this.attribute);
     if(xp.error === '') {
-      // NOTE: except for dataset modifiers, expressions should not be based
-      // on levels-still-to-be-computed-by-the-solver, so caution the modeler
-      // when this appears to be the case
-      if(xp.is_level_based &&
+      // NOTE: except for dataset modifiers and note colors, expressions
+      // should not be based on levels-still-to-be-computed-by-the-solver,
+      // so caution the modeler when this appears to be the case
+      // NOTE: when note color expressions are edited, they are compiled
+      // to check their syntax; then their object is null
+      if(xp.is_level_based && this.object &&
           !(this.object instanceof Dataset || this.object instanceof Note)) {
         // NOTE: this should not occur, so log more details
         console.log('Level-based issue:',
