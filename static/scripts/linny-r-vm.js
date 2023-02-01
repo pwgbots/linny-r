@@ -6249,6 +6249,8 @@ function VMI_set_const_bounds(args) {
     // if this is the first round
     if(VM.current_round) {
       l = vbl.actualLevel(VM.t);
+      //PATCH!!
+      if(l < 0.0005) l = 0;
     } else {
       l = 0;
     }
