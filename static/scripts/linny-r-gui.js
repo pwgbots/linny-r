@@ -6739,9 +6739,14 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
       options.push('<option selected disabled value="-1"></option>');
       const d = MODEL.equations_dataset;
       if(d) {
+        const slist = [];
         for(let m in d.modifiers) if(d.modifiers.hasOwnProperty(m)) {
-          const s = d.modifiers[m].selector;
-          options.push(`<option value="${s}">${s}</option>`);
+          slist.push(d.modifiers[m].selector);
+        }
+        // Sort to present equations in alphabetical order
+        slist.sort();
+        for(let i = 0; i < slist.length; i++) {
+          options.push(`<option value="${slist[i]}">${slist[i]}</option>`);
         }
       }
       va.innerHTML = options.join('');
@@ -9819,6 +9824,12 @@ class GUIChartManager extends ChartManager {
     } else if(this.chart_index >= 0) {
       // Only accept when all conditions are met
       ev.preventDefault();
+      if(obj instanceof DatasetModifier) {
+        // Equations can be added directly as chart variable
+        this.addVariable(obj.name);
+        return;
+      }
+      // For other entities, the attribute must be specified
       this.add_variable_modal.show();
       const
           tn = VM.object_types.indexOf(obj.type),
