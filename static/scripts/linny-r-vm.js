@@ -1047,7 +1047,7 @@ class ExpressionParser {
       // NOTE: + and - operators are special case, since they may also
       // be part of a floating point number, hence the more elaborate check
       while(pl <= this.eot && (SEPARATOR_CHARS.indexOf(cpl) < 0 ||
-          ('+-'.indexOf(cpl) >= 0 && digs && pcpl === 'e'))) {
+          ('+-'.indexOf(cpl) >= 0 && digs && pcpl.toLowerCase() === 'e'))) {
         digs = digs || '0123456789'.indexOf(cpl) >= 0;
         this.los++;
         pl++;
