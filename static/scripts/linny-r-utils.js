@@ -9,7 +9,7 @@ This JavaScript file (linny-r-utils.js) defines a variety of "helper" functions
 that are used in other Linny-R modules.
 */
 /*
-Copyright (c) 2017-2022 Delft University of Technology
+Copyright (c) 2017-2023 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -324,6 +324,72 @@ function patternMatch(str, patterns) {
 function escapeRegex(str) {
   // Returns `str` with its RegEx special characters escaped
   return str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+}
+
+function compareSelectors(s1, s2) {
+  // Dataset selectors comparison is case-insensitive, and puts wildcards
+  // last, where * comes later than ?
+  // NOTE: without wildcards, strings that are identical except for the
+  // digits they *end* on are sorted on this "end number" (so abc12 > abc2)
+  // NOTE: this also applies to percentages ("end number"+ %)
+  if(s1 === s2) return 0;
+  if(s1 === '*') return 1;
+  if(s2 === '*') return -1;
+  const
+      star1 = s1.indexOf('*'),
+      star2 = s2.indexOf('*');
+  if(star1 >= 0) {
+    if(star2 < 0) return 1;
+    return s1.localeCompare(s2);
+  }
+  if(star2 >= 0) return -1;  
+  // Replace ? by | because | has a higher ASCII value than all other chars
+  let s_1 = s1.replace('?', '|').toLowerCase(), 
+      s_2 = s2.replace('?', '|').toLowerCase(),
+      // NOTE: treat selectors ending on a number or percentage as special case
+      n_1 = endsWithDigits(s_1),
+      p_1 = (s1.endsWith('%') ? endsWithDigits(s1.slice(0, -1)) : '');
+  if(n_1) {
+    const
+        ss_1 = s1.slice(0, -n_1.length),
+        n_2 = endsWithDigits(s2);
+    if(n_2 && ss_1 === s2.slice(0, -n_2.length)) {
+      return parseInt(n_1) - parseInt(n_2);
+    }
+  } else if(p_1) {
+    const
+        ss_1 = s1.slice(0, -p_1.length - 1),
+        p_2 = (s2.endsWith('%') ? endsWithDigits(s2.slice(0, -1)) : '');
+    if(p_2 && ss_1 === s2.slice(0, -p_2.length - 1)) {
+      return parseInt(p_1) - parseInt(p_2);
+    }
+  }
+  // Also sort selectors ending on minuses lower than those ending on plusses,
+  // and such that X-- comes before X-, like X+ automatically comes before X++
+  // ASCII(+) = 43, ASCII(-) = 45, so replace trailing minuses by as many spaces
+  // (ASCII 32) and add a '!' (ASCII 33) -- this then "sorts things out"
+  let n = s_1.length,
+      i = n - 1;
+  while(i >= 0 && s_1[i] === '-') i--;
+  // If trailing minuses, replace by as many spaces and add an exclamation point
+  if(i < n - 1) {
+    s_1 = s_1.substr(0, i);
+    while(s_1.length < n) s_1 += ' ';
+    s_1 += '!';
+  }
+  // Do the same for the second "normalized" selector
+  n = s_2.length;
+  i = n - 1;
+  while(i >= 0 && s_2[i] === '-') i--;
+  if(i < n - 1) {
+    s_2 = s_2.substr(0, i);
+    while(s_2.length < n) s_2 += ' ';
+    s_2 += '!';
+  }
+  // Now compare the two "normalized" selectors
+  if(s_1 < s_2) return -1;
+  if(s_1 > s_2) return 1;
+  return 0;
 }
 
 //

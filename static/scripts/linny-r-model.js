@@ -10,7 +10,7 @@ Linny-R project.
 */
 
 /*
-Copyright (c) 2017-2022 Delft University of Technology
+Copyright (c) 2017-2023 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -7482,71 +7482,7 @@ class Dataset {
     for(let k in this.modifiers) if(this.modifiers.hasOwnProperty(k)) {
       sl.push(this.modifiers[k].selector);
     }
-    return sl.sort((s1, s2) => {
-        // Dataset selectors comparison is case-insensitive, and puts wildcards
-        // last, where * comes later than ?
-        // NOTE: without wildcards, strings that are identical except for the
-        // digits they *end* on are sorted on this "end number" (so abc12 > abc2)
-        // NOTE: this also applies to percentages ("end number"+ %)
-        if(s1 === s2) return 0;
-        if(s1 === '*') return 1;
-        if(s2 === '*') return -1;
-        const
-            star1 = s1.indexOf('*'),
-            star2 = s2.indexOf('*');
-        if(star1 >= 0) {
-          if(star2 < 0) return 1;
-          return s1.localeCompare(s2);
-        }
-        if(star2 >= 0) return -1;  
-        // Replace ? by | because | has a higher ASCII value than all other chars
-        let s_1 = s1.replace('?', '|').toLowerCase(), 
-            s_2 = s2.replace('?', '|').toLowerCase(),
-            // NOTE: treat selectors ending on a number or percentage as special case
-            n_1 = endsWithDigits(s_1),
-            p_1 = (s1.endsWith('%') ? endsWithDigits(s1.slice(0, -1)) : '');
-        if(n_1) {
-          const
-              ss_1 = s1.slice(0, -n_1.length),
-              n_2 = endsWithDigits(s2);
-          if(n_2 && ss_1 === s2.slice(0, -n_2.length)) {
-            return parseInt(n_1) - parseInt(n_2);
-          }
-        } else if(p_1) {
-          const
-              ss_1 = s1.slice(0, -p_1.length - 1),
-              p_2 = (s2.endsWith('%') ? endsWithDigits(s2.slice(0, -1)) : '');
-          if(p_2 && ss_1 === s2.slice(0, -p_2.length - 1)) {
-            return parseInt(p_1) - parseInt(p_2);
-          }
-        }
-        // Also sort selectors ending on minuses lower than those ending on plusses,
-        // and such that X-- comes before X-, like X+ automatically comes before X++
-        // ASCII(+) = 43, ASCII(-) = 45, so replace trailing minuses by as many spaces
-        // (ASCII 32) and add a '!' (ASCII 33) -- this then "sorts things out"
-        let n = s_1.length,
-            i = n - 1;
-        while(i >= 0 && s_1[i] === '-') i--;
-        // If trailing minuses, replace by as many spaces and add an exclamation point
-        if(i < n - 1) {
-          s_1 = s_1.substr(0, i);
-          while(s_1.length < n) s_1 += ' ';
-          s_1 += '!';
-        }
-        // Do the same for the second "normalized" selector
-        n = s_2.length;
-        i = n - 1;
-        while(i >= 0 && s_2[i] === '-') i--;
-        if(i < n - 1) {
-          s_2 = s_2.substr(0, i);
-          while(s_2.length < n) s_2 += ' ';
-          s_2 += '!';
-        }
-        // Now compare the two "normalized" selectors
-        if(s_1 < s_2) return -1;
-        if(s_1 > s_2) return 1;
-        return 0;
-      });
+    return sl.sort(compareSelectors);
   }
 
   get plainSelectors() {
@@ -7803,9 +7739,14 @@ class Dataset {
       p += ' outcome="1"';
     }
     if(this.black_box) p += ' black-box="1"';
-    const ml = [];
+    const ml = [],
+          sl = [];
     for(let m in this.modifiers) if(this.modifiers.hasOwnProperty(m)) {
-      ml.push(this.modifiers[m].asXML);
+      sl.push(m);
+    }
+    sl.sort(compareSelectors);
+    for(let i = 0; i < sl.length; i++) {
+      ml.push(this.modifiers[sl[i]].asXML);
     }
     // NOTE: "black-boxed" datasets are stored anonymously without comments
     const id = UI.nameToID(n);
@@ -9651,6 +9592,16 @@ class Experiment {
   constructor(n) {
     this.title = n;
     this.comments = '';
+    this.download_settings = {
+        variables: 'selected',
+        runs: 'selected',
+        statistics: true,
+        series: false,
+        solver: false,
+        separator: 'semicolon',
+        quotes: 'none',
+        precision: CONFIGURATION.results_precision
+      };
     this.dimensions = [];
     this.charts = [];
     this.actual_dimensions = [];
@@ -9774,6 +9725,14 @@ class Experiment {
       (this.completed ? '" completed="1' : ''),
       '" started="', this.time_started,
       '" stopped="', this.time_stopped,
+      '" variables="', this.download_settings.variables,
+      '" runs="', this.download_settings.runs,
+      '" statistics="', this.download_settings.statistics ? 1 : 0,
+      '" series="', this.download_settings.series ? 1 : 0,
+      '" solver="', this.download_settings.solver ? 1 : 0,
+      '" separator="', this.download_settings.separator,
+      '" quotes="', this.download_settings.quotes,
+      '" precision="', this.download_settings.precision,
       '"><title>', xmlEncoded(this.title),
       '</title><notes>', xmlEncoded(this.comments),
       '</notes><dimensions>', d,
@@ -9796,6 +9755,18 @@ class Experiment {
     this.completed = nodeParameterValue(node, 'completed') === '1';
     this.time_started = safeStrToInt(nodeParameterValue(node, 'started'));
     this.time_stopped = safeStrToInt(nodeParameterValue(node, 'stopped'));
+    // Restore last download dialog settings for this experiment 
+    this.download_settings = {
+        variables: nodeParameterValue(node, 'variables') || 'selected',
+        runs: nodeParameterValue(node, 'runs') || 'selected',
+        statistics: nodeParameterValue(node, 'statistics') !== '0',
+        series: nodeParameterValue(node, 'series') === '1',
+        solver: nodeParameterValue(node, 'solver') === '1',
+        separator: nodeParameterValue(node, 'separator') || 'semicolon',
+        quotes: nodeParameterValue(node, 'quotes') || 'none',
+        precision: safeStrToInt(nodeParameterValue(node, 'precision'),
+            CONFIGURATION.results_precision)
+      };
     this.title = xmlDecoded(nodeContentByTag(node, 'title'));
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     let c, n = childNodeByTag(node, 'dimensions');
@@ -10021,6 +9992,124 @@ class Experiment {
     return null;
   }
 
+  get resultsAsCSV() {
+    // Return results as specfied by the download settings
+    const
+        allruns = this.download_settings.runs === 'all',
+        sep = (this.download_settings.separator === 'tab' ? '\t' :
+              (this.download_settings.separator === 'comma' ? ',' : ';')),
+        quo = (this.download_settings.quotes === 'single' ? "'" :
+              (this.download_settings.quotes === 'double' ? '"' : '')),
+        vars = [],
+        data = {
+            nr: `${quo}Run number${quo}${sep}`,
+            combi: `${quo}Selectors${quo}${sep}`,
+            rsecs: `${quo}Run duration${quo}${sep}`,
+            ssecs: `${quo}Solver time${quo}${sep}`,
+            warnings: `${quo}Warnings${quo}${sep}`,
+            variable: `${quo}Variable${quo}${sep}`,
+            N: `${quo}N${quo}${sep}`,
+            sum: `${quo}Sum${quo}${sep}`,
+            mean: `${quo}Mean${quo}${sep}`,
+            variance: `${quo}Variance${quo}${sep}`,
+            minimum: `${quo}Minimum${quo}${sep}`,
+            maximum: `${quo}Maximum${quo}${sep}`,
+            NZ: `${quo}Non-zero${quo}${sep}`,
+            last: `${quo}Last${quo}${sep}`,
+            exceptions: `${quo}Exceptions${quo}${sep}`,
+            run: []
+          };
+    // Make list of indices of variables to include
+    if(this.download_settings.variables === 'selected') {
+      // Only one variable
+      vars.push(this.resultIndex(this.selected_variable));
+    } else {
+      // All variables
+      for(let i = 0; i < this.variables.length; i++) {
+        vars.push(i);
+      }
+    }
+    const nvars = vars.length;
+    for(let i = 0; i < this.combinations.length; i++) {
+      if(i < this.runs.length &&
+          (allruns || this.chart_combinations.indexOf(i) >= 0)) {
+        data.run.push(i);
+      }
+    }
+    let series_length = 0;
+    for(let i = 0; i < data.run.length; i++) {
+      const
+          rnr = data.run[i],
+          r = this.runs[rnr];
+      data.nr += r.number;
+      data.combi += quo + this.combinations[rnr].join('|') + quo;
+      // Run duration in seconds
+      data.rsecs += VM.sig2Dig((r.time_recorded - r.time_started) * 0.001);
+      data.ssecs += VM.sig2Dig(r.solver_seconds);
+      data.warnings += r.warning_count;
+      for(let j = 0; j < nvars; j++) {
+        // Add empty cells for run attributes
+        data.nr += sep;
+        data.combi += sep;
+        data.rsecs += sep;
+        data.ssecs += sep;
+        data.warnings += sep;
+        const rr = r.results[vars[j]];
+        data.variable += rr.displayName + sep;
+        // Series may differ in length; the longest determines the
+        // number of rows of series data to be added
+        series_length = Math.max(series_length, rr.vector.length);
+        if(this.download_settings.statistics) {
+          data.N += rr.N + sep;
+          data.sum += rr.sum + sep;
+          data.mean += rr.mean + sep;
+          data.variance += rr.variance + sep;
+          data.minimum += rr.minimum + sep;
+          data.maximum += rr.maximum + sep;
+          data.NZ += rr.non_zero_tally + sep;
+          data.last += rr.last + sep;
+          data.exceptions += rr.exceptions + sep;
+        }
+      }
+    }
+    const ds = [data.nr, data.combi];
+    if(this.download_settings.solver) {
+      ds.push(data.rsecs, data.ssecs, data.warnings);
+    }
+    // Always add the row with variable names
+    ds.push(data.variable);
+    if(this.download_settings.statistics) {
+      ds.push(data.N, data.sum, data.mean, data.variance, data.minimum,
+          data.maximum, data.NZ, data.last, data.exceptions);
+    }
+    if(this.download_settings.series) {
+      ds.push('t');
+      const
+          prec = this.download_settings.precision,
+          row = [];
+      for(let i = 0; i < series_length; i++) {
+        row.length = 0;
+        row.push(i);
+        for(let j = 0; j < data.run.length; j++) {
+          const rnr = data.run[j];
+          for(let k = 0; k < vars.length; k++) {
+            const rr = this.runs[rnr].results[vars[k]];
+            if(i < rr.vector.length) {
+              const v = rr.vector[i];
+              if(v >= VM.MINUS_INFINITY && v <= VM.PLUS_INFINITY) {
+                row.push(v.toPrecision(prec));
+              } else {
+                row.push('');
+              }
+            }
+          }
+        }
+        ds.push(row.join(sep));
+      }
+    }
+    return ds.join('\n');
+  }
+  
 } // END of CLASS Experiment
 
 

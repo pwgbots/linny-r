@@ -2808,7 +2808,7 @@ class ModalDialog {
   }
 
   show(name=null) {
-    // Makes dialog visible and focuses on element with  `focal`
+    // Makes dialog visible and focuses on element with `focal`
     this.modal.style.display = 'block';
     if(name) this.element(name).focus();
   }
@@ -11293,6 +11293,8 @@ class GUIExperimentManager extends ExperimentManager {
         'click', () => EXPERIMENT_MANAGER.designMode());
     document.getElementById('xv-copy-btn').addEventListener(
         'click', () => EXPERIMENT_MANAGER.copyTableToClipboard());
+    document.getElementById('xv-download-btn').addEventListener(
+        'click', () => EXPERIMENT_MANAGER.promptForDownload());
     // The viewer's drop-down selectors
     document.getElementById('viewer-variable').addEventListener( 
         'change', () => EXPERIMENT_MANAGER.setVariable());
@@ -11390,6 +11392,12 @@ class GUIExperimentManager extends ExperimentManager {
         'blur', () => EXPERIMENT_MANAGER.setIgnoreSelectors());
     this.clusters_modal.element('delete-btn').addEventListener(
         'click', () => EXPERIMENT_MANAGER.deleteClusterFromIgnoreList());
+
+    this.download_modal = new ModalDialog('xp-download');
+    this.download_modal.ok.addEventListener(
+        'click', () => EXPERIMENT_MANAGER.downloadDataAsCSV());
+    this.download_modal.cancel.addEventListener(
+        'click', () => EXPERIMENT_MANAGER.download_modal.hide());
 
     // Initialize properties
     this.reset();
@@ -12748,6 +12756,77 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     UI.copyHtmlToClipboard(
         document.getElementById('viewer-scroll-area').innerHTML);
     UI.notify('Table copied to clipboard (as HTML)');
+  }
+  
+  promptForDownload() {
+    // Show the download modal
+    const x = this.selected_experiment;
+    if(!x) return;
+    const
+        md = this.download_modal,
+        ds = x.download_settings,
+        runs = x.runs.length,
+        sruns = x.chart_combinations.length;
+    if(!runs) {
+      UI.notify('No experiment results');
+      return;
+    }
+    md.element(ds.variables + '-v').checked = true;
+    // Disable "selected runs" button when no runs have been selected
+    if(sruns) {
+      md.element('selected-r').disabled = false;
+      md.element(ds.runs + '-r').checked = true;
+    } else {
+      md.element('selected-r').disabled = true;
+      // Check "all runs" but do not change download setting
+      md.element('all-r').checked = true;
+    }
+    this.download_modal.show();
+    md.element('statistics').checked = ds.statistics;
+    md.element('series').checked = ds.series;
+    md.element('solver').checked = ds.solver;
+    md.element('separator').value = ds.separator;
+    md.element('quotes').value = ds.quotes;
+    md.element('precision').value = ds.precision;
+    md.element('var-count').innerText = x.variables.length;
+    md.element('run-count').innerText = runs;
+    md.element('run-s').innerText = (sruns === 1 ? '' : 's');
+  }
+  
+  downloadDataAsCSV() {
+    // Push results to browser
+    if(this.selected_experiment) {
+      const md = this.download_modal;
+      this.selected_experiment.download_settings = {
+          variables: md.element('all-v').checked ? 'all' : 'selected',
+          runs: md.element('all-r').checked ? 'all' : 'selected',
+          statistics: md.element('statistics').checked,
+          series: md.element('series').checked,
+          solver: md.element('solver').checked,
+          separator: md.element('separator').value,
+          quotes: md.element('quotes').value,
+          precision: safeStrToInt(md.element('precision').value,
+              CONFIGURATION.results_precision),
+      };
+      md.hide();
+      const data = this.selected_experiment.resultsAsCSV;
+      if(data) {
+        UI.setMessage('CSV file size: ' + UI.sizeInBytes(data.length));
+        const el = document.getElementById('xml-saver');
+        el.href = 'data:attachment/text,' + encodeURI(data);
+        console.log('Encoded CSV file size:', el.href.length);
+        el.download = 'results.csv';
+        if(el.href.length > 25*1024*1024 &&
+            navigator.userAgent.search('Chrome') <= 0) {
+          UI.notify('CSV file size exceeds 25 MB. ' +
+              'If it does not download, select fewer runs');
+        }
+        el.click();
+        UI.normalCursor();
+      } else {
+        UI.notify('No data');
+      }
+    }
   }
   
 } // END of class GUIExperimentManager

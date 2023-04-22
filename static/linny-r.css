@@ -2966,9 +2966,9 @@ td.sa-not-run {
   display: none;
   z-index: 20;
   margin: 0;
-  width: 400px;
+  width: 425px;
   height: 275px;
-  min-width: 400px;
+  min-width: 425px;
   min-height: 250px;
   max-height: 99vh;
   max-width: 99vw;
@@ -3403,7 +3403,8 @@ div.no-colors {
 #sa-copy-btn,
 #sa-copy-data-btn,
 #xv-copy-btn,
-#xv-chart-btn {
+#xv-chart-btn,
+#xv-download-btn {
   display: inline-block;
   vertical-align: bottom;
   width: 19px;
@@ -3529,6 +3530,63 @@ span.sd-clear {
   font-weight: normal;
   margin-left: 5px;
 }
+
+/* the DOWNLOAD dialog prompts for selection of outcomes */
+#xp-download-dlg {
+  width: 335px;
+  height: 168px;
+}
+
+#xp-download-variables {
+  position: absolute;
+  top: 22px;
+  left: 1px;
+  width: 163px;
+  border: none;
+  padding-left: 0px;  
+}
+
+#xp-download-runs {
+  position: absolute;
+  top: 22px;
+  left: 180px;
+  width: 146px;
+  border: none;
+  padding-left: 0px;  
+}
+
+#xp-download-data {
+  position: absolute;
+  top: 84px;
+  left: 1px;
+  width: 163px;
+  border: none;
+  padding-left: 0px;  
+}
+
+#xp-download-format {
+  position: absolute;
+  top: 84px;
+  left: 180px;
+  width: 146px;
+  border: none;
+  padding-left: 0px;  
+}
+
+#xp-download-separator,
+#xp-download-quotes {
+  font-size: 11px;
+  height: 19px;
+  margin-bottom: 3px;
+}
+
+#xp-download-precision {
+  font-size: 12px;
+  height: 15px !important;
+  width: 20px;
+  text-align: center;  
+}
+
 
 /* the ACTOR DIMENSION dialog allows editing this dimension */
 #xp-actor-dimension-dlg {

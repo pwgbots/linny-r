@@ -159,7 +159,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                       '[LINNY_R_VERSION]', v);
               // Update the version number in the browser's upper left corner
               document.getElementById('linny-r-version-number').innerHTML = v;
-              if(info[1] !== 'up-to-date') {
+              // NOTE: server detects "version 0" when npmjs website was
+              // not reached; if so, do not suggest a new version exists
+              if(info[1] !== 'up-to-date' && info[1] !== '0') {
                 // Inform user that newer version exists
                 UI.check_update_modal.element('msg').innerHTML = [
                     '<a href="', GITHUB_REPOSITORY,
@@ -2107,6 +2109,8 @@ NOTE: * and ? will be interpreted as wildcards"
         <div id="xv-no-scale" class="color-scale no-colors"></div>
         <img id="xv-copy-btn" class="btn enab" src="images/table-to-clpbrd.png"
              title="Copy table to clipboard (as HTML)">
+        <img id="xv-download-btn" class="btn enab" src="images/save-data.png"
+             title="Download results (CSV file)">
       </div>
     </div>
     <div id="experiment-resize" class="resizer"></div>
@@ -2148,6 +2152,83 @@ NOTE: * and ? will be interpreted as wildcards"
       </div>
       <select id="xp-parameter-select">
       </select>
+    </div>
+  </div>
+
+  <!-- the DOWNLOAD dialog asks which outcomes to save, and how -->
+  <div id="xp-download-modal" class="modal">
+    <div id="xp-download-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Download results
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <fieldset id="xp-download-variables">
+        <legend>Variables:</legend>
+        <div>
+          <input type="radio" id="xp-download-selected-v"
+                 name="variables" value="selected">
+          <label for="selected">Only the selected variable</label>
+        </div>
+        <div>
+          <input type="radio" id="xp-download-all-v"
+                 name="variables" value="all">
+          <label for="all">All variables (N =
+              <span id="xp-download-var-count"></span>)
+          </label>
+        </div>
+      </fieldset>
+      <fieldset id="xp-download-runs">
+        <legend>Runs:</legend>
+        <div>
+          <input type="radio" id="xp-download-selected-r"
+                 name="runs" value="selected">
+          <label for="selected">Only the selected
+              run<span id="xp-download-run-s">s</span>
+          </label>
+        </div>
+        <div>
+          <input type="radio" id="xp-download-all-r"
+                 name="runs" value="all">
+          <label for="all">All runs (N =
+              <span id="xp-download-run-count"></span>)
+          </label>
+        </div>
+      </fieldset>
+      <fieldset id="xp-download-data">
+        <legend>Data:</legend>
+        <div>
+          <input type="checkbox" id="xp-download-statistics" value="1">
+          <label for="stats">Statistics</label>
+        </div>
+        <div>
+          <input type="checkbox" id="xp-download-series" value="1">
+          <label for="series">Time series data</label>
+        </div>
+        <div>
+          <input type="checkbox" id="xp-download-solver" value="1">
+          <label for="series">Solver information</label>
+        </div>
+      </fieldset>
+      <fieldset id="xp-download-format">
+        <legend>Format:</legend>
+        <div style="margin-left: 5px">
+          <label for="xp-download-separator">Separator:</label>
+          <select id="xp-download-separator">
+            <option value="comma">Comma</option>
+            <option value="semicolon">Semicolon</option>
+            <option value="tab">Tab</option>
+          </select>
+          <label for="xp-download-quotes">String quotes:</label>
+          <select id="xp-download-quotes">
+            <option value="none">None</option>
+            <option value="single">Single</option>
+            <option value="double">Double</option>
+          </select>
+          <label for="xp-download-precision">Precision:</label>
+          <input type="text" id="xp-download-precision"> digits
+        </div>
+      </fieldset>
     </div>
   </div>
 

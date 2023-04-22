@@ -305,6 +305,7 @@ class Expression {
     // Pop the time step
     this.step.pop();
     this.trace('--STOP: ' + this.variableName);
+DEBUGGING = false;
     // Clear context for #
     this.wildcard_number = false;
     // If error, display the call stack (only once)
@@ -6034,21 +6035,19 @@ function VMI_jump(x, index) {
 }
 
 function VMI_jump_if_false(x, index) {
-  // Pops the top number A from the stack, and if A is FALSE (zero or
+  // Tests the top number A of the stack, and if A is FALSE (zero or
   // VM.UNDEFINED) sets the program counter of the VM to `index` minus 1,
   // as the counter is ALWAYS increased by 1 after calling a VMI function
   const r = x.top(true);
-  // NOTE: FALSE indicates a stack error => skip this operation
-  if(r !== false) {
-    if(DEBUGGING) console.log(`JUMP-IF-FALSE (${r}, ${index})`);
-    if(r === 0 || r === VM.UNDEFINED) {
-      // Only jump on FALSE, leaving the stack "as is", so that in case
-      // of no THEN the expression result equals the IF condition value
-      x.program_counter = index - 1;
-    } else {
-      // Remove the value from the stack
-      x.stack.pop();
-    }
+  if(DEBUGGING) console.log(`JUMP-IF-FALSE (${r}, ${index})`);
+  if(r === 0 || r === VM.UNDEFINED || r === false) {
+    // Only jump on FALSE, leaving the stack "as is", so that in case
+    // of no THEN the expression result equals the IF condition value
+    // NOTE: Also do this on a stack error (r === false)
+    x.program_counter = index - 1;
+  } else {
+    // Remove the value from the stack
+    x.stack.pop();
   }
 }
 
