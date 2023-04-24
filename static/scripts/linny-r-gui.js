@@ -11802,6 +11802,31 @@ class GUIExperimentManager extends ExperimentManager {
     }
   }
   
+  toggleChartRow(r, shift) {
+    // Toggle row `r` (0 = top) to be part of the chart combination set
+    const
+        x = this.selected_experiment,
+        // Let `n` be the number of the first run on row `r`
+        n = r * this.nr_of_configurations;
+    if(x && r < x.combinations.length / this.nr_of_configurations) {
+      // NOTE: first cell of row determines ADD or REMOVE
+      const add = x.chart_combinations.indexOf(n) < 0;
+      for(let i = 0; i < this.nr_of_configurations; i++) {
+        const ic = x.chart_combinations.indexOf(i);
+        if(add) {
+          if(ic < 0) x.chart_combinations.push(n + i);
+        } else {
+          if(!add) x.chart_combinations.splice(n + i, 1);        
+        }
+      }
+      this.updateData();
+    }
+  }
+
+  toggleChartColumn(c, shift) {
+    // Toggle column `c` (0 = leftmost) to be part of the chart combination set
+  }
+  
   toggleChartCombi(n, shift, alt) {
     // Set `n` to be the chart combination, or toggle if Shift-key is pressed,
     // or execute single run if Alt-key is pressed
@@ -12788,7 +12813,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     md.element('separator').value = ds.separator;
     md.element('quotes').value = ds.quotes;
     md.element('precision').value = ds.precision;
-    md.element('var-count').innerText = x.variables.length;
+    md.element('var-count').innerText = x.runs[0].results.length;
     md.element('run-count').innerText = runs;
     md.element('run-s').innerText = (sruns === 1 ? '' : 's');
   }

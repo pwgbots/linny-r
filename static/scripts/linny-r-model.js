@@ -9226,7 +9226,12 @@ class ExperimentRunResult {
         obj = MODEL.objectByID(this.object_id),
         dn = obj.displayName;
     // NOTE: for equations dataset, only display the modifier selector
-    if(obj === MODEL.equations_dataset) return this.attribute;
+    if(obj === MODEL.equations_dataset) {
+      const m = obj.modifiers[this.attribute.toLowerCase()];
+      if(m) return m.selector;
+      console.log('WARNING: Run result of non-existent equation', this.attribute);
+      return this.attribute;
+    }
     return (this.attribute ? dn + '|' + this.attribute : dn);
   }
 
@@ -9994,7 +9999,19 @@ class Experiment {
 
   get resultsAsCSV() {
     // Return results as specfied by the download settings
+    // NOTE: no runs => no results => return empty string
+    if(this.runs.length === 0) return '';
     const
+        // Local function to convert number to string
+        numval = (v, p) => {
+            // Return 0 as single digit
+            if(Math.abs(v) < VM.NEAR_ZERO) return '0';
+            // Return empty string for undefined or exceptional values
+            if(!v || v < VM.MINUS_INFINITY || v > VM.PLUS_INFINITY) return '';
+            // Return other values as float with specified precision
+            return v.toPrecision(p);
+          },
+        prec = this.download_settings.precision,
         allruns = this.download_settings.runs === 'all',
         sep = (this.download_settings.separator === 'tab' ? '\t' :
               (this.download_settings.separator === 'comma' ? ',' : ';')),
@@ -10019,24 +10036,21 @@ class Experiment {
             exceptions: `${quo}Exceptions${quo}${sep}`,
             run: []
           };
-    // Make list of indices of variables to include
-    if(this.download_settings.variables === 'selected') {
-      // Only one variable
-      vars.push(this.resultIndex(this.selected_variable));
-    } else {
-      // All variables
-      for(let i = 0; i < this.variables.length; i++) {
-        vars.push(i);
-      }
-    }
-    const nvars = vars.length;
     for(let i = 0; i < this.combinations.length; i++) {
       if(i < this.runs.length &&
           (allruns || this.chart_combinations.indexOf(i) >= 0)) {
         data.run.push(i);
       }
     }
-    let series_length = 0;
+    let series_length = 0,
+        // By default, assume all variables to be output
+        start = 0,
+        stop = this.runs[0].results.length;
+    if(this.download_settings.variables === 'selected') {
+      // Only one variable
+      start = this.resultIndex(this.selected_variable);
+      stop = start + 1;
+    }
     for(let i = 0; i < data.run.length; i++) {
       const
           rnr = data.run[i],
@@ -10044,31 +10058,35 @@ class Experiment {
       data.nr += r.number;
       data.combi += quo + this.combinations[rnr].join('|') + quo;
       // Run duration in seconds
-      data.rsecs += VM.sig2Dig((r.time_recorded - r.time_started) * 0.001);
-      data.ssecs += VM.sig2Dig(r.solver_seconds);
+      data.rsecs += numval((r.time_recorded - r.time_started) * 0.001, 4);
+      data.ssecs += numval(r.solver_seconds, 4);
       data.warnings += r.warning_count;
-      for(let j = 0; j < nvars; j++) {
+      for(let j = start; j < stop; j++) {
         // Add empty cells for run attributes
         data.nr += sep;
         data.combi += sep;
         data.rsecs += sep;
         data.ssecs += sep;
         data.warnings += sep;
-        const rr = r.results[vars[j]];
-        data.variable += rr.displayName + sep;
-        // Series may differ in length; the longest determines the
-        // number of rows of series data to be added
-        series_length = Math.max(series_length, rr.vector.length);
-        if(this.download_settings.statistics) {
-          data.N += rr.N + sep;
-          data.sum += rr.sum + sep;
-          data.mean += rr.mean + sep;
-          data.variance += rr.variance + sep;
-          data.minimum += rr.minimum + sep;
-          data.maximum += rr.maximum + sep;
-          data.NZ += rr.non_zero_tally + sep;
-          data.last += rr.last + sep;
-          data.exceptions += rr.exceptions + sep;
+        const rr = r.results[j];
+        if(rr) {
+          data.variable += rr.displayName + sep;
+          // Series may differ in length; the longest determines the
+          // number of rows of series data to be added
+          series_length = Math.max(series_length, rr.vector.length);
+          if(this.download_settings.statistics) {
+            data.N += rr.N + sep;
+            data.sum += numval(rr.sum, prec) + sep;
+            data.mean += numval(rr.mean, prec) + sep;
+            data.variance += numval(rr.variance, prec) + sep;
+            data.minimum += numval(rr.minimum, prec) + sep;
+            data.maximum += numval(rr.maximum, prec) + sep;
+            data.NZ += rr.non_zero_tally + sep;
+            data.last += numval(rr.last, prec) + sep;
+            data.exceptions += rr.exceptions + sep;
+          }
+        } else {
+          console.log('No run results for ', this.variables[vars[j]].displayName);
         }
       }
     }
@@ -10084,20 +10102,18 @@ class Experiment {
     }
     if(this.download_settings.series) {
       ds.push('t');
-      const
-          prec = this.download_settings.precision,
-          row = [];
+      const row = [];
       for(let i = 0; i < series_length; i++) {
         row.length = 0;
         row.push(i);
         for(let j = 0; j < data.run.length; j++) {
           const rnr = data.run[j];
-          for(let k = 0; k < vars.length; k++) {
-            const rr = this.runs[rnr].results[vars[k]];
-            if(i < rr.vector.length) {
-              const v = rr.vector[i];
-              if(v >= VM.MINUS_INFINITY && v <= VM.PLUS_INFINITY) {
-                row.push(v.toPrecision(prec));
+          for(let k = start; k < stop; k++) {
+            const rr = this.runs[rnr].results[k];
+            if(rr) {
+              // NOTE: only experiment variables have vector data
+              if(rr.x_variable && i <= rr.N) {
+                row.push(numval(rr.vector[i], prec));
               } else {
                 row.push('');
               }
