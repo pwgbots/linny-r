@@ -738,8 +738,11 @@ class SensitivityAnalysis {
             oax = (obj ? obj.attributeExpression(vn[1]) : null);
         if(oax) {
           this.parameters.push(oax);
+        } else if(vn.length === 1 && obj instanceof Dataset) {
+          // Dataset without selector => push the dataset vector
+          this.parameters.push(obj.vector);
         } else {
-          UI.alert(`Parameter ${p} is not an expression`);
+          UI.alert(`Parameter ${p} is not a dataset or expression`);
         }
       }
       this.chart = new Chart(this.chart_title);
@@ -841,6 +844,7 @@ class SensitivityAnalysis {
     VM.halt();
     this.readyButtons();
     this.showProgress('');
+    this.must_pause = false;
   }
   
   clearResults() {

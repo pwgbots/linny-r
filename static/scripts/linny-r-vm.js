@@ -305,7 +305,6 @@ class Expression {
     // Pop the time step
     this.step.pop();
     this.trace('--STOP: ' + this.variableName);
-DEBUGGING = false;
     // Clear context for #
     this.wildcard_number = false;
     // If error, display the call stack (only once)
@@ -5183,7 +5182,16 @@ function VMI_push_var(x, args) {
   }
   if(Array.isArray(obj)) {
     // Object is a vector
-    x.push(t < obj.length ? obj[t] : VM.UNDEFINED);
+    let v = t < obj.length ? obj[t] : VM.UNDEFINED;
+    // NOTE: when the vector is the "active" parameter for sensitivity
+    // analysis, the value is multiplied by 1 + delta %
+    if(obj === MODEL.active_sensitivity_parameter) {
+      // NOTE: do NOT scale exceptional values
+      if(v > VM.MINUS_INFINITY && v < VM.PLUS_INFINITY) {
+        v *= (1 + MODEL.sensitivity_delta * 0.01);
+      }
+    }
+    x.push(v);
   } else if(xv) {
     // Variable references an earlier value computed for this expression `x`
     x.push(t >= 0 && t < x.vector.length ? x.vector[t] : obj.dv);
@@ -5316,8 +5324,10 @@ function VMI_push_dataset_modifier(x, args) {
         tot[1] + (tot[2] ? ':' + tot[2] : ''), ' value = ', VM.sig4Dig(v));
     console.log('  --', x.text, ' for owner ', x.object.displayName, x.attribute);
   }
-  // NOTE: unless error, push default value if exceptional ("undefined", etc.)
-  x.push(v < VM.PLUS_INFINITY ? v : ds.defaultValue);
+  // NOTE: if value is exceptional ("undefined", etc.), use default value
+  if(v >= VM.PLUS_INFINITY) v = ds.defaultValue;
+  // Finally, push the value onto the expression stack
+  x.push(v);
 }
 
 

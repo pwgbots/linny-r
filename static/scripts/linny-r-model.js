@@ -2485,12 +2485,15 @@ class LinnyRModel {
     const ds_dict = {};
     for(let k in this.datasets) if(this.datasets.hasOwnProperty(k)) {
       const ds = this.datasets[k];
-      for(let m in ds.modifiers) if(ds.modifiers.hasOwnProperty(m)) {
-        const s = ds.modifiers[m].selector;
-        if(s in ds_dict) {
-          ds_dict[s].push(ds);
-        } else {
-          ds_dict[s] = [ds];
+      // NOTE: ignore selectors of the equations dataset
+      if(ds !== this.equations_dataset) {
+        for(let m in ds.modifiers) if(ds.modifiers.hasOwnProperty(m)) {
+          const s = ds.modifiers[m].selector;
+          if(s in ds_dict) {
+            ds_dict[s].push(ds);
+          } else {
+            ds_dict[s] = [ds];
+          }
         }
       }
     }
@@ -7644,9 +7647,11 @@ class Dataset {
   attributeExpression(a) {
     // Returns expression for selector `a`, or NULL if no such selector exists
     // NOTE: selectors no longer are case-sensitive
-    a = UI.nameToID(a);
-    for(let m in this.modifiers) if(this.modifiers.hasOwnProperty(m)) {
-      if(m === a) return this.modifiers[m].expression;
+    if(a) {
+      a = UI.nameToID(a);
+      for(let m in this.modifiers) if(this.modifiers.hasOwnProperty(m)) {
+        if(m === a) return this.modifiers[m].expression;
+      }
     }
     return null;
   }

@@ -10513,7 +10513,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     this.base_selectors.addEventListener(
         'blur', () => SENSITIVITY_ANALYSIS.setBaseSelectors());
 
-    this.delta = document.getElementById('sa-delta');
+    this.delta = document.getElementById('sensitivity-delta');
     this.delta.addEventListener(
         'focus', () => SENSITIVITY_ANALYSIS.editDelta());
     this.delta.addEventListener(
@@ -10610,6 +10610,8 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
   
   updateControlPanel() {
+    // Shows the control panel, or when the analysis is running the
+    // legend to the outcomes (also to prevent changes to parameters) 
     this.base_selectors.value = MODEL.base_case_selectors;
     this.delta.value = VM.sig4Dig(MODEL.sensitivity_delta);
     const tr = [];
@@ -10900,6 +10902,8 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     // NOTE: clusters have no suitable attributes, and equations are endogenous
     md.element('cluster').style.display = 'none';
     md.element('equation').style.display = 'none';
+    // NOTE: update to ensure that valid attributes are selectable
+    X_EDIT.updateVariableBar('add-sa-');
     md.show();
   }
 
@@ -10909,6 +10913,8 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     md.element('type').innerText = 'outcome';
     md.element('cluster').style.display = 'block';
     md.element('equation').style.display = 'block';
+    // NOTE: update to ensure that valid attributes are selectable
+    X_EDIT.updateVariableBar('add-sa-');
     md.show();
   }
 
@@ -10977,9 +10983,14 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
         a = md.selectedOption('attr').text;
     let n = '';
     if(e === 'Equation' && a) {
+      // For equations, the attribute denotes the name
       n = a;
     } else if(o && a) {
+      // Most variables are defined by name + attribute ...
       n = o + UI.OA_SEPARATOR + a;
+    } else if(e === 'Dataset' && o) {
+      // ... but for datasets the selector is optional
+      n = o;
     }
     if(n) {
       if(t === 'parameter' && MODEL.sensitivity_parameters.indexOf(n) < 0) {
@@ -11021,6 +11032,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     this.start_btn.classList.add('off');
     this.pause_btn.classList.remove('off');
     this.stop_btn.classList.add('off');
+    this.must_pause = false;
     return paused;
   }
 
@@ -11029,6 +11041,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     this.pause_btn.classList.add('off');
     this.stop_btn.classList.add('off');
     this.start_btn.classList.remove('off', 'blink');
+    this.must_pause = false;
   }
   
   pausedButtons(aci) {
@@ -11047,6 +11060,8 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     this.readyButtons();
     this.reset_btn.classList.add('off');
     this.selected_run = -1;
+    this.must_pause = false;
+    this.progress.innerHTML = '';
     this.updateDialog();
   }
 
@@ -11802,21 +11817,22 @@ class GUIExperimentManager extends ExperimentManager {
     }
   }
   
-  toggleChartRow(r, shift) {
-    // Toggle row `r` (0 = top) to be part of the chart combination set
+  toggleChartRow(r, n, shift) {
+    // Toggle `n` consecutive rows, starting at row `r` (0 = top), to be
+    // (no longer) part of the chart combination set
     const
         x = this.selected_experiment,
         // Let `n` be the number of the first run on row `r`
-        n = r * this.nr_of_configurations;
+        nconf = r * this.nr_of_configurations;
     if(x && r < x.combinations.length / this.nr_of_configurations) {
       // NOTE: first cell of row determines ADD or REMOVE
       const add = x.chart_combinations.indexOf(n) < 0;
       for(let i = 0; i < this.nr_of_configurations; i++) {
         const ic = x.chart_combinations.indexOf(i);
         if(add) {
-          if(ic < 0) x.chart_combinations.push(n + i);
+          if(ic < 0) x.chart_combinations.push(nconf + i);
         } else {
-          if(!add) x.chart_combinations.splice(n + i, 1);        
+          if(!add) x.chart_combinations.splice(nconf + i, 1);        
         }
       }
       this.updateData();
