@@ -25,7 +25,7 @@ Technical documentation will be developed on GitHub: https://github.com/pwgbots/
 Linny-R is developed as a JavaScript package, and requires that **Node.js** is installed on your computer. 
 This software can be downloaded from <a href="https://nodejs.org" target="_blank">https://nodejs.org</a>. 
 Make sure that you choose the correct installer for your computer.
-Linny-R is developed using the _current_ release. Presently (February 2023) this is 19.6.0. 
+Linny-R is developed using the _current_ release. Presently (April 2023) this is 20.0.0. 
 
 Run the installer and accept the default settings.
 There is **no** need to install the optional _Tools for Native Modules_.
@@ -36,7 +36,7 @@ Verify the installation by typing:
 
 ``node --version``
 
-The response should be the version number of Node.js, for example: v19.6.0.
+The response should be the version number of Node.js, for example: v20.0.0.
 
 ## Installing Linny-R
 It is advisable to install Linny-R in a directory on your computer, not in a cloud. 
@@ -170,7 +170,7 @@ This response should be something similar to:
 
 <pre>
 Node.js server for Linny-R version 1.1.21
-Node.js version: v19.6.0
+Node.js version: v20.0.0
 ... etc.
 </pre>
 
@@ -180,9 +180,9 @@ The Linny-R GUI should show in your browser window,
 while in the CLI you should see a long series of server log messages like:
 
 <pre>
-[2022-10-17 14:55:37] Static file: /index.html
-[2022-10-17 14:55:37] Static file: /scripts/iro.min.js
-[2022-10-17 14:55:37] Static file: /images/open.png
+[2023-04-29 22:55:17] Static file: /index.html
+[2023-04-29 22:55:17] Static file: /scripts/iro.min.js
+[2023-04-29 22:55:17] Static file: /images/open.png
 ... etc.
 </pre>
 
