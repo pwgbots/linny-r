@@ -781,7 +781,21 @@ class LinnyRModel {
       UI.updateControllerDialogs('X');
     }
   }
+
+  orthogonalSelectors(sel) {
+    // Returns TRUE iff the selectors in `sel` all are elements of
+    // different experiment dimensions
+    console.log('HERE', sel);
+    return true; // @@@TO DO!!!
+  }
   
+  renameSelectorInExperiments(olds, news) {
+    // Replace all occurrences of `olds` in dimension strings by `news`
+    for(let i = 0; i < this.experiments.length; i++) {
+      this.experiments[i].renameSelectorInDimensions(olds, news);
+    }
+  }
+
   ignoreClusterInThisRun(c) {
     // Returns TRUE iff an experiment is running and cluster `c` is in the
     // clusters-to-ignore list and its selectors in this list overlap with the
@@ -4441,7 +4455,7 @@ class NodeBox extends ObjectWithXYWH {
         delete MODEL.products[old_id];
       } else if(this instanceof Cluster) {
         MODEL.clusters[new_id] = this;
-        delete MODEL.products[old_id];
+        delete MODEL.clusters[old_id];
       } else {
         // NOTE: this should never happen => report an error
         UI.alert('Can only rename processes, products and clusters');
@@ -9621,6 +9635,8 @@ class Experiment {
     this.column_scenario_dims = 0;
     this.settings_selectors = [];
     this.settings_dimensions = [];
+    this.combination_selectors = [];
+    this.combination_dimensions = [];
     this.actor_selectors = [];
     this.actor_dimensions = [];
     this.excluded_selectors = '';
@@ -9715,6 +9731,16 @@ class Experiment {
           `<sdim>${xmlEncoded(this.settings_dimensions[i].join(','))}</sdim>`;
       if(sd.indexOf(dim) < 0) sd += dim;
     }
+    let cs = '';
+    for(let i = 0; i < this.combination_selectors.length; i++) {
+      cs += `<csel>${xmlEncoded(this.combination_selectors[i])}</csel>`;
+    }
+    let cd = '';
+    for(let i = 0; i < this.combination_dimensions.length; i++) {
+      const dim =
+          `<cdim>${xmlEncoded(this.combination_dimensions[i].join(','))}</cdim>`;
+      if(cd.indexOf(dim) < 0) cd += dim;
+    }
     let as = '';
     for(let i = 0; i < this.actor_selectors.length; i++) {
       as += this.actor_selectors[i].asXML;
@@ -9749,7 +9775,9 @@ class Experiment {
       '</dimensions><chart-titles>', ct,
       '</chart-titles><settings-selectors>', ss,
       '</settings-selectors><settings-dimensions>', sd,
-      '</settings-dimensions><actor-selectors>', as,
+      '</settings-dimensions><combination-selectors>', cs,
+      '</combination-selectors><combination-dimensions>', cd,
+      '</combination-dimensions><actor-selectors>', as,
       '</actor-selectors><excluded-selectors>',
       xmlEncoded(this.excluded_selectors),
       '</excluded-selectors><clusters-to-ignore>', cti,
@@ -9814,6 +9842,24 @@ class Experiment {
         c = n.childNodes[i];
         if(c.nodeName === 'sdim') {
           this.settings_dimensions.push(xmlDecoded(nodeContent(c)).split(','));
+        }
+      }
+    }
+    n = childNodeByTag(node, 'combination-selectors');
+    if(n && n.childNodes) {
+      for(let i = 0; i < n.childNodes.length; i++) {
+        c = n.childNodes[i];
+        if(c.nodeName === 'csel') {
+          this.combination_selectors.push(xmlDecoded(nodeContent(c)));
+        }
+      }
+    }
+    n = childNodeByTag(node, 'combination-dimensions');
+    if(n && n.childNodes) {
+      for(let i = 0; i < n.childNodes.length; i++) {
+        c = n.childNodes[i];
+        if(c.nodeName === 'cdim') {
+          this.combination_dimensions.push(xmlDecoded(nodeContent(c)).split(','));
         }
       }
     }
@@ -9946,7 +9992,26 @@ class Experiment {
     }
     return false;
   }
-  
+
+  renameSelectorInDimensions(olds, news) {
+    // Update the combination dimensions that contain `olds`
+    for(let i = 0; i < this.settings_dimensions.length; i++) {
+      const si = this.settings_dimensions[i].indexOf(olds);
+      if(si >= 0) this.settings_dimensions[i][si] = news;
+    }
+    for(let i = 0; i < this.combination_selectors.length; i++) {
+      const
+          c = this.combination_selectors[i].split('|'),
+          sl = c[1].split(' '),
+          si = sl.indexOf(olds);
+      if(si >= 0) {
+        sl[si] = news;
+        c[1] = sl.join(' ');
+         this.combination_selectors[i] = c.join('|');
+      }
+    }
+  }
+
   inferVariables() {
     // Create list of distinct variables in charts
     this.variables.length = 0;

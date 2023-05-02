@@ -741,7 +741,7 @@ and move the cursor over the status bar">
         <tr>
           <td>Module:</td>
           <td>
-            <input id="store-bb-model-in-repository-name" type="text"
+            <input id="store-bb-in-repository-model-name" type="text"
                    autocomplete="off" style="width:266px; font-size:12px;">
           </td>
         </tr>
@@ -2016,7 +2016,9 @@ NOTE: * and ? will be interpreted as wildcards"
             <img id="xp-d-settings-btn" class="v-btn" src="images/settings.png"
                  title="Edit model settings dimensions">
             <img id="xp-d-actor-btn" class="v-btn" src="images/actors.png"
-                 title="Edit actor dimension">
+                 title="Edit actors dimension">
+            <img id="xp-d-combination-btn" class="v-btn" src="images/combination.png"
+                 title="Edit combination dimensions">
             <img id="xp-d-delete-btn" class="v-btn" src="images/remove.png"
                  title="Remove selected dimension from list">
           </div>
@@ -2340,6 +2342,74 @@ Example: s=0.5h  t=1-480  b=24  l=24   (in this order: s t b l)">
         <label>Rounds sequence:</label>
         <input id="xp-actor-selector-rounds" type="text" autocomplete="off"
                title="One or more round letters">
+      </div>
+    </div>
+  </div>
+
+  <!-- the COMBINATION dialog permits editing the combination dimensions -->
+  <div id="xp-combination-modal" class="modal">
+    <div id="xp-combination-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Combination dimensions
+        <img class="close-btn" src="images/close.png">
+      </div>
+      <div id="xp-combination-s-header">Combination selectors:
+        <img id="xp-combination-s-add-btn" class="v-btn" src="images/add.png"
+             title="Add combination selector">
+      </div>
+      <div id="xp-combination-s-scroll-area">
+        <table id="xp-combination-s-table">
+        </table>
+      </div>
+      <div id="xp-combination-d-header">Combination dimensions:
+        <img id="xp-combination-d-add-btn" class="v-btn" src="images/add.png"
+             title="Add combination dimension">
+      </div>
+      <div id="xp-combination-d-scroll-area">
+        <table id="xp-combination-d-table">
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- the COMBINATION SELECTOR dialog prompts for a selector + string -->
+  <div id="xp-combination-selector-modal" class="modal">
+    <div id="xp-combination-selector-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="xp-combination-selector-action">Edit</span>
+        combination selector
+        <span id="xp-combination-selector-clear" class="sd-clear">
+          (clear combination field to remove)
+        </span>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div style="padding: 2px; white-space: nowrap">
+        <label>Selector:</label>
+        <input id="xp-combination-selector-code" type="text"
+               title="Max. 10 characters (only alphanumericals, +, -, and %)" 
+               maxlength="10" autocomplete="off">
+        <label>Combination:</label>
+        <input id="xp-combination-selector-string" type="text" autocomplete="off"
+               title="One or more selectors, each from a different dimension">
+      </div>
+    </div>
+  </div>
+
+  <!-- the COMBINATION DIMENSION dialog prompts for a combination dimension -->
+  <div id="xp-combination-dimension-modal" class="modal">
+    <div id="xp-combination-dimension-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="xp-combination-dimension-action">Edit</span>
+        combination dimension
+        <span id="xp-combination-dimension-clear">(clear to remove)</span>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div style="padding: 2px; white-space: nowrap"
+           title="One or more combination selectors, separated by spaces">
+        <label>Selectors:</label>
+        <input id="xp-combination-dimension-string" type="text" autocomplete="off">
       </div>
     </div>
   </div>

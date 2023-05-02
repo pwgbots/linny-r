@@ -3050,7 +3050,7 @@ td.sa-not-run {
   position: absolute;
   top: -2px;
   left: 72px;
-  width: 140px;
+  width: 150px;
 }
 
 /* enhance brightness for dark v-btn buttons */
@@ -3450,19 +3450,25 @@ div.no-colors {
 }
 
 /* the EDIT SETTINGS DIMENSIONS dialog allows editing these dimensions */
-/* NOTE: many styles in common with the EDIT ACTOR DIMENSIONS dialog */ 
-#xp-settings-dlg {
+/* NOTE: many styles in common with the EDIT COMBINATIONS dialog and */
+/* the EDIT ACTOR DIMENSIONS dialog */ 
+#xp-settings-dlg,
+#xp-combination-dlg {
   width: 270px;
   height: 236px;
 }
 
 #xp-actor-s-header,
+#xp-combination-s-header,
+#xp-combination-d-header,
 #xp-settings-s-header,
 #xp-settings-d-header {
   margin: 2px;
 }
 
 #xp-actor-s-header > img,
+#xp-combination-s-header > img,
+#xp-combination-d-header > img,
 #xp-settings-s-header > img,
 #xp-settings-d-header > img {
   margin-left: 5px;
@@ -3470,6 +3476,8 @@ div.no-colors {
   vertical-align: bottom;
 }
 
+#xp-combination-s-scroll-area,
+#xp-combination-d-scroll-area,
 #xp-settings-s-scroll-area,
 #xp-settings-d-scroll-area {
   width: 266px;
@@ -3479,6 +3487,8 @@ div.no-colors {
 }
 
 #xp-actor-dimension-table,
+#xp-combination-s-table,
+#xp-combination-d-table,
 #xp-settings-s-table,
 #xp-settings-d-table {
   background-color: white;
@@ -3488,6 +3498,8 @@ div.no-colors {
 }
 
 #xp-actor-dimension-table > tbody > tr:hover,
+#xp-combination-s-table > tbody > tr:hover,
+#xp-combination-d-table > tbody > tr:hover,
 #xp-settings-s-table > tbody > tr:hover,
 #xp-settings-d-table > tbody > tr:hover,
 #xp-clusters-table > tbody > tr:hover {
@@ -3495,9 +3507,15 @@ div.no-colors {
 }
 
 #xp-actor-dimension-table > tbody > tr > td,
+#xp-combination-s-table > tbody > tr > td,
 #xp-settings-s-table > tbody > tr > td,
 #xp-clusters-table > tbody > tr > td {
   border: 1px solid Silver;
+}
+
+#xp-combination-selector-dlg {
+  width: 395px;
+  height: 45px;
 }
 
 #xp-settings-selector-dlg {
@@ -3506,22 +3524,26 @@ div.no-colors {
 }
 
 #xp-actor-selector-code,
+#xp-combination-selector-code,
 #xp-settings-selector-code {
   width: 80px;
 }
 
+#xp-combination-selector-string,
 #xp-settings-selector-string {
   width: 182px;
   font-family: monospace;
 }
 
+#xp-combination-dimension-dlg,
 #xp-settings-dimension-dlg {
-  width: 295px;
+  width: 305px;
   height: 45px;
 }
 
+#xp-combination-dimension-string,
 #xp-settings-dimension-string {
-  width: 234px;
+  width: 244px;
 }
 
 span.sd-clear {

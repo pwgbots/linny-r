@@ -9189,6 +9189,8 @@ class GUIDatasetManager extends DatasetManager {
     const
         hw = this.selected_modifier.hasWildcards,
         sel = this.rename_selector_modal.element('name').value,
+        // NOTE: normal dataset selector, so remove all invalid characters
+        clean_sel = sel.replace(/[^a-zA-z0-9\%\+\-]/g, ''),
         // Keep track of old name
         oldm = this.selected_modifier,
         // NOTE: addModifier returns existing one if selector not changed
@@ -9199,10 +9201,10 @@ class GUIDatasetManager extends DatasetManager {
     if(oldm.selector === this.selected_dataset.default_selector) {
       this.selected_dataset.default_selector = m.selector;
     }
+    MODEL.renameSelectorInExperiments(oldm.selector, clean_sel);
     // If only case has changed, just update the selector
-    // NOTE: normal dataset selector, so remove all invalid characters
     if(m === oldm) {
-      m.selector = sel.replace(/[^a-zA-z0-9\%\+\-]/g, '');
+      m.selector = clean_sel;
       this.updateDialog();
       return;
     }
@@ -9925,6 +9927,11 @@ class GUIChartManager extends ChartManager {
         u_btn = 'chart-variable-up ',
         d_btn = 'chart-variable-down ',
         ed_btns = 'chart-edit-variable chart-delete-variable ';
+    // Just in case variable index has not been adjusted after some
+    // variables have been deleted
+    if(this.variable_index >= c.variables.length) {
+      this.variable_index = -1;
+    }
     if(this.variable_index < 0) {
       UI.disableButtons(ed_btns + u_btn + d_btn);
     } else {
@@ -9942,7 +9949,7 @@ class GUIChartManager extends ChartManager {
       // If the Edit variable dialog is showing, update its header
       if(this.variable_index >= 0 && !UI.hidden('variable-dlg')) {
         document.getElementById('variable-dlg-name').innerHTML =
-            c.variables[this.variable_index].displayName;
+              c.variables[this.variable_index].displayName;
       }
     }
     this.add_variable_modal.element('obj').value = 0;
@@ -11294,6 +11301,8 @@ class GUIExperimentManager extends ExperimentManager {
         'click', () => EXPERIMENT_MANAGER.moveDimension(1));
     document.getElementById('xp-d-settings-btn').addEventListener(
         'click', () => EXPERIMENT_MANAGER.editSettingsDimensions());
+    document.getElementById('xp-d-combination-btn').addEventListener(
+        'click', () => EXPERIMENT_MANAGER.editCombinationDimensions());
     document.getElementById('xp-d-actor-btn').addEventListener(
         'click', () => EXPERIMENT_MANAGER.editActorDimension());
     document.getElementById('xp-d-delete-btn').addEventListener(
@@ -11374,6 +11383,26 @@ class GUIExperimentManager extends ExperimentManager {
     this.settings_dimension_modal.cancel.addEventListener(
         'click', () => EXPERIMENT_MANAGER.settings_dimension_modal.hide());
 
+    this.combination_modal = new ModalDialog('xp-combination');
+    this.combination_modal.close.addEventListener(
+        'click', () => EXPERIMENT_MANAGER.closeCombinationDimensions());
+    this.combination_modal.element('s-add-btn').addEventListener(
+        'click', () => EXPERIMENT_MANAGER.editCombinationSelector(-1));
+    this.combination_modal.element('d-add-btn').addEventListener(
+        'click', () => EXPERIMENT_MANAGER.editCombinationDimension(-1));
+
+    this.combination_selector_modal = new ModalDialog('xp-combination-selector');
+    this.combination_selector_modal.ok.addEventListener(
+        'click', () => EXPERIMENT_MANAGER.modifyCombinationSelector());
+    this.combination_selector_modal.cancel.addEventListener(
+        'click', () => EXPERIMENT_MANAGER.combination_selector_modal.hide());
+
+    this.combination_dimension_modal = new ModalDialog('xp-combination-dimension');
+    this.combination_dimension_modal.ok.addEventListener(
+        'click', () => EXPERIMENT_MANAGER.modifyCombinationDimension());
+    this.combination_dimension_modal.cancel.addEventListener(
+        'click', () => EXPERIMENT_MANAGER.combination_dimension_modal.hide());
+
     this.actor_dimension_modal = new ModalDialog('xp-actor-dimension');
     this.actor_dimension_modal.close.addEventListener(
         'click', () => EXPERIMENT_MANAGER.closeActorDimension());
@@ -11423,6 +11452,7 @@ class GUIExperimentManager extends ExperimentManager {
     this.selected_parameter = '';
     this.edited_selector_index = -1;
     this.edited_dimension_index = -1;
+    this.edited_combi_selector_index = -1;
     this.color_scale = new ColorScale('no');
     this.designMode();
   }
@@ -12299,7 +12329,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     md.element('clear').innerHTML = clear;
     md.element('code').value = sel[0];
     md.element('string').value = sel[1];
-    md.show('string');
+    md.show(sel[0] ? 'string' : 'code');
   }
   
   modifySettingsSelector() {
@@ -12350,10 +12380,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
           // NOTE: rename occurrence of code in dimension (should at most be 1)
           const oc = x.settings_selectors[this.edited_selector_index].split('|')[0];
           x.settings_selectors[this.edited_selector_index] = sel;
-          for(let i = 0; i < x.settings_dimensions.length; i++) {
-            const si = x.settings_dimensions[i].indexOf(oc);
-            if(si >= 0) x.settings_dimensions[i][si] = code;
-          }
+          x.renameSelectorInDimensions(oc, code);
         }
       }
       md.hide();
@@ -12430,6 +12457,185 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     this.settings_dimension_modal.hide();
     // Update settings dimensions dialog
     this.editSettingsDimensions();
+  }
+ 
+  editCombinationDimensions() {
+    // Open dialog for editing combination dimensions
+    const
+        x = this.selected_experiment,
+        rows = [];
+console.log('NOW HERE', x.combination_selectors);
+    if(x) {
+      // Initialize selector list
+      for(let i = 0; i < x.combination_selectors.length; i++) {
+        const sel = x.combination_selectors[i].split('|');
+        rows.push('<tr onclick="EXPERIMENT_MANAGER.editCombinationSelector(', i,
+            ');"><td width="25%">', sel[0], '</td><td>', sel[1], '</td></tr>');
+      }
+      this.combination_modal.element('s-table').innerHTML = rows.join('');
+      // Initialize combination list
+      rows.length = 0;
+console.log('NOW HERE', x.combination_dimensions);
+      for(let i = 0; i < x.combination_dimensions.length; i++) {
+        const dim = x.combination_dimensions[i];
+        rows.push('<tr onclick="EXPERIMENT_MANAGER.editCombinationDimension(', i,
+            ');"><td>', setString(dim), '</td></tr>');
+      }
+      this.combination_modal.element('d-table').innerHTML = rows.join('');
+      this.combination_modal.show();
+      // NOTE: clear infoline because dialog can generate warnings that would
+      // otherwise remain visible while no longer relevant
+      UI.setMessage('');
+    }
+  }
+
+  closeCombinationDimensions() {
+    // Hide editor, and then update the experiment manager to reflect changes
+    this.combination_modal.hide();
+    this.updateDialog();
+  }
+  
+  editCombinationSelector(selnr) {
+    const x = this.selected_experiment;
+    if(!x) return;
+    let action = 'Add',
+        clear = '',
+        sel = ['', ''];
+    this.edited_combi_selector_index = selnr;
+    if(selnr >= 0) {
+      action = 'Edit';
+      clear = '(clear to remove)';
+      sel = x.combination_selectors[selnr].split('|');
+    }
+    const md = this.combination_selector_modal;
+    md.element('action').innerHTML = action;
+    md.element('clear').innerHTML = clear;
+    md.element('code').value = sel[0];
+    md.element('string').value = sel[1];
+    md.show(sel[0] ? 'string' : 'code');
+  }
+  
+  modifyCombinationSelector() {
+    // Accepts an "orthogonal" set of selectors
+    let x = this.selected_experiment;
+    if(x) {
+      const
+          md = this.combination_selector_modal,
+          sc = md.element('code'),
+          ss = md.element('string'),
+          code = sc.value.replace(/[^\w\+\-\%]/g, ''),
+          value = ss.value.trim().replace(',', '.'),
+          add =  this.edited_combi_selector_index < 0;
+      // Remove selector if either field has been cleared
+      if(code.length === 0 || value.length === 0) {
+        if(!add) {
+          x.combination_selectors.splice(this.edited_combi_selector_index, 1);
+        }
+      } else {
+        // Check for uniqueness of code
+        for(let i = 0; i < x.combination_selectors.length; i++) {
+          // NOTE: ignore selector being edited, as this selector can be renamed
+          if(i != this.edited_combi_selector_index &&
+              x.combination_selectors[i].split('|')[0] === code) {
+            UI.warn(`Combination selector "${code}"already defined`);
+            sc.focus();
+            return;
+          }
+        }
+        // Test for orthogonality (and existence!) of the selectors
+        if(!MODEL.orthogonalSelectors(value)) {
+          ss.focus();
+          return;
+        }
+        // Combination selector has format code|space-separated selectors 
+        const sel = code + '|' + value;
+        if(add) {
+          x.combination_selectors.push(sel);
+          console.log('HERE', x.combination_selectors);
+        } else {
+          // NOTE: rename occurrence of code in dimension (should at most be 1)
+          const oc = x.combination_selectors[this.edited_combi_selector_index].split('|')[0];
+          x.combination_selectors[this.edited_combi_selector_index] = sel;
+          for(let i = 0; i < x.combination_dimensions.length; i++) {
+            const si = x.combination_dimensions[i].indexOf(oc);
+            if(si >= 0) x.combination_dimensions[i][si] = code;
+          }
+        }
+      }
+      md.hide();
+    }
+    // Update combination dimensions dialog
+    this.editCombinationDimensions();
+  }
+
+  editCombinationDimension(dimnr) {
+    const x = this.selected_experiment;
+    if(!x) return;
+    let action = 'Add',
+        clear = '',
+        value = '';
+    this.edited_combi_dimension_index = dimnr;
+    if(dimnr >= 0) {
+      action = 'Edit';
+      clear = '(clear to remove)';
+      // NOTE: present to modeler as space-separated string
+      value = x.combination_dimensions[dimnr].join(' ');
+    }
+    const md = this.combination_dimension_modal;
+    md.element('action').innerHTML = action;
+    md.element('clear').innerHTML = clear;
+    md.element('string').value = value;
+    md.show('string');
+  }
+  
+  modifyCombinationDimension() {
+    let x = this.selected_experiment;
+    if(x) {
+      const
+          add = this.edited_combi_dimension_index < 0,
+          // Trim whitespace and reduce inner spacing to a single space
+          dimstr = this.combination_dimension_modal.element('string').value.trim();
+      // Remove dimension if field has been cleared
+      if(dimstr.length === 0) {
+        if(!add) {
+          x.combination_dimensions.splice(this.edited_combi_dimension_index, 1);
+        }
+      } else {
+        // Check for valid selector list
+        const
+            dim = dimstr.split(/\s+/g),
+            ssl = [];
+        // Get this experiment's combination selector list
+        for(let i = 0; i < x.combination_selectors.length; i++) {
+          ssl.push(x.combination_selectors[i].split('|')[0]);
+        }
+        // All selectors in string should have been defined
+        let c = complement(dim, ssl);
+        if(c.length > 0) {
+          UI.warn('Combination dimension contains ' +
+              pluralS(c.length, 'unknown selector') + ': ' + c.join(' '));
+          return;
+        }
+        // No selectors in string may occur in another combination dimension
+        for(let i = 0; i < x.combination_dimensions.length; i++) {
+          c = intersection(dim, x.combination_dimensions[i]);
+          if(c.length > 0 && i != this.edited_combi_dimension_index) {
+            UI.warn(pluralS(c.length, 'selector') + ' already in use: ' +
+                c.join(' '));
+            return;
+          }
+        }
+        // OK? Then add or modify
+        if(add) {
+          x.combination_dimensions.push(dim);
+        } else {
+          x.combination_dimensions[this.edited_combi_dimension_index] = dim;
+        }
+      }
+    }
+    this.combination_dimension_modal.hide();
+    // Update combination dimensions dialog
+    this.editCombinationDimensions();
   }
  
   editActorDimension() {
