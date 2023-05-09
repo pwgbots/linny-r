@@ -45,6 +45,12 @@ const CONFIGURATION = {
     // Default properties for new models
     default_currency_unit: 'EUR',
     default_time_unit: 'hour',
+    // Standard scale units to be included in new models
+    scale_units: [
+        // Units can be defined as 3-tuples [name, scalar, base unit], e.g.,
+        // ['MJ', '1', '1'],
+        // ['kWh', '3.6', 'MJ']
+      ],
     default_scale_unit: '1',  // 1 denotes "no unit" (abstract scale)
     // Font properties for SVG diagram
     // NOTE: When a font name comprises multiple words, it must be enclosed

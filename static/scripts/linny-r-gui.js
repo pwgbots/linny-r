@@ -589,7 +589,7 @@ class Paper {
   }
 
   numberSize(number, fsize=8, fweight=400) {
-    // Returns the boundingbox {width: ..., height: ...} of a numerical
+    // Returns the boundingbox {width: ..., height: ...} of a numeric
     // string (in pixels)
     // NOTE: this routine is about 500x faster than textSize because it
     // does not use the DOM tree
@@ -3123,6 +3123,10 @@ class GUIController extends Controller {
             // Ensure that model documentation can no longer be edited
             DOCUMENTATION_MANAGER.clearEntity([MODEL]);
           });
+    // Make the scale units button of the settings dialog responsive
+    this.modals.settings.element('scale-units-btn').addEventListener('click',
+        // Open the scale units modal dialog on top of the settings dialog 
+        () => SCALE_UNIT_MANAGER.show());
 
     // Modals related to vertical toolbar buttons
     this.modals['add-process'].ok.addEventListener('click',
@@ -3276,6 +3280,7 @@ class GUIController extends Controller {
     const loaded = MODEL.parseXML(xml);
     // If not a valid Linny-R model, ensure that the current model is clean 
     if(!loaded) MODEL = new LinnyRModel();
+    this.updateScaleUnitList();
     this.drawDiagram(MODEL);
     // Cursor may have been set to `waiting` when decrypting
     this.normalCursor();
@@ -4632,7 +4637,18 @@ class GUIController extends Controller {
     if(name === 'initial level') x.is_static = true; 
     return true;
   }
-
+  
+  updateScaleUnitList() {
+    // Update the HTML datalist element to reflect all scale units
+    const
+        ul = [],
+        keys = Object.keys(MODEL.scale_units).sort(ciCompare);
+    for(let i = 0; i < keys.length; i++) {
+      ul.push(`<option value="${MODEL.scale_units[keys[i]].name}">`);
+    }
+    document.getElementById('units-data').innerHTML = ul.join('');
+  }
+  
   //
   // Navigation in the cluster hierarchy
   //
@@ -4824,6 +4840,7 @@ class GUIController extends Controller {
     // Create a brand new model with (optionally) specified name and author
     MODEL = new LinnyRModel(
         md.element('name').value.trim(), md.element('author').value.trim());
+    MODEL.addPreconfiguredScaleUnits();
     md.hide();
     this.updateTimeStep(MODEL.simulationTimeStep);
     this.drawDiagram(MODEL);
@@ -5135,9 +5152,13 @@ class GUIController extends Controller {
       md.element('time-limit').focus();
       return false;
     }
+    const
+        e = md.element('product-unit'),
+        dsu = UI.cleanName(e.value) || '1';
     model.name = md.element('name').value.trim();
     model.author = md.element('author').value.trim();
-    model.default_unit = md.element('product-unit').value.trim();
+    if(!model.scale_units.hasOwnProperty(dsu)) model.addScaleUnit(dsu);
+    model.default_unit = dsu;
     model.currency_unit = md.element('currency-unit').value.trim();
     model.encrypt = UI.boxChecked('settings-encrypt');
     model.decimal_comma = UI.boxChecked('settings-decimal-comma');
@@ -5312,6 +5333,8 @@ class GUIController extends Controller {
     this.setBox('product-sink', p.is_sink);
     this.setBox('product-data', p.is_data);
     this.setBox('product-stock', p.is_buffer);
+    // NOTE: price label includes the currency unit and the product unit,
+    // e.g., EUR/ton
     md.element('P').value = p.price.text;
     md.element('P-unit').innerHTML =
         (p.scale_unit === '1' ? '' : p.scale_unit);
@@ -5395,7 +5418,7 @@ class GUIController extends Controller {
       }
     }
     // Update other properties
-    p.scale_unit = md.element('unit').value.trim();
+    p.changeScaleUnit(md.element('unit').value);
     p.equal_bounds = this.getEqualBounds('product-UB-equal');
     p.is_source = this.boxChecked('product-source');
     p.is_sink = this.boxChecked('product-sink');
@@ -6472,14 +6495,15 @@ Attributes, however, are case sensitive!">[Actor X|CF]</code> for cash flow.
   <code title="Number of time steps in 1 hour)">h</code>,
   <code title="Number of time steps in 1 minute)">m</code>,
   <code title="Number of time steps in 1 second)">s</code>,
-  <code title="A random number from the uniform distribution U(0, 1)">random</code>)
-  and constants (<code title="Mathematical constant &pi; = ${Math.PI}">pi</code>,
+  <code title="A random number from the uniform distribution U(0, 1)">random</code>),
+  constants (<code title="Mathematical constant &pi; = ${Math.PI}">pi</code>,
   <code title="Logical constant true = 1
 NOTE: any non-zero value evaluates as true">true</code>,
   <code title="Logical constant false = 0">false</code>,
   <code title="The value used for &lsquo;unbounded&rsquo; variables (` +
-    VM.PLUS_INFINITY.toExponential() + `)">infinity</code>)
-    are <strong><em>not</em></strong> enclosed by brackets.
+    VM.PLUS_INFINITY.toExponential() + `)">infinity</code>) and scale units
+    are <strong><em>not</em></strong> enclosed by brackets. Scale units
+    may be enclosed by single quotes.
 </p>
 <h4>Operators</h4>
 <p><em>Monadic:</em>
@@ -6702,7 +6726,7 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
     // is passed to differentiate between the DOM elements to be used
     const
         type = document.getElementById(prefix + 'variable-obj').value,
-        n_list = this.namesByType(VM.object_types[type]).sort(),
+        n_list = this.namesByType(VM.object_types[type]).sort(ciCompare),
         vn = document.getElementById(prefix + 'variable-name'),
         options = [];
     // Add "empty" as first and initial option, but disable it.
@@ -6744,7 +6768,7 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
           slist.push(d.modifiers[m].selector);
         }
         // Sort to present equations in alphabetical order
-        slist.sort();
+        slist.sort(ciCompare);
         for(let i = 0; i < slist.length; i++) {
           options.push(`<option value="${slist[i]}">${slist[i]}</option>`);
         }
@@ -7027,6 +7051,217 @@ class ModelAutoSaver {
   }
 
 } // END of class ModelAutoSaver
+
+
+// CLASS ScaleUnitManager (modal dialog!)
+class ScaleUnitManager {
+  constructor() {
+    // Add the scale units modal
+    this.dialog = new ModalDialog('scale-units');
+    this.dialog.close.addEventListener('click',
+        () => SCALE_UNIT_MANAGER.dialog.hide());
+    // Make the add, edit and delete buttons of this modal responsive
+    this.dialog.element('new-btn').addEventListener('click',
+        () => SCALE_UNIT_MANAGER.promptForScaleUnit());
+    this.dialog.element('edit-btn').addEventListener('click',
+        () => SCALE_UNIT_MANAGER.editScaleUnit());
+    this.dialog.element('delete-btn').addEventListener('click',
+        () => SCALE_UNIT_MANAGER.deleteScaleUnit());
+    // Add the scale unit definition modal
+    this.new_scale_unit_modal = new ModalDialog('new-scale-unit');
+    this.new_scale_unit_modal.ok.addEventListener(
+        'click', () => SCALE_UNIT_MANAGER.addNewScaleUnit());
+    this.new_scale_unit_modal.cancel.addEventListener(
+        'click', () => SCALE_UNIT_MANAGER.new_scale_unit_modal.hide());
+    this.scroll_area = this.dialog.element('scroll-area');
+    this.table = this.dialog.element('table');
+  }
+  
+  get selectedUnitIsBaseUnit() {
+    // Returns TRUE iff selected unit is used as base unit for some unit
+    for(let u in this.scale_units) if(this.scale_units.hasOwnProperty(u)) {
+      if(this.scale_units[u].base_unit === this.selected_unit) return true;
+    }
+    return false;
+  }
+
+  show() {
+    // Show the user-defined scale units for the current model
+    // NOTE: add/edit/delete actions operate on this list, so changes
+    // take immediate effect
+    MODEL.cleanUpScaleUnits();
+    // NOTE: unit name is key in the scale units object
+    this.selected_unit = '';
+    this.last_time_selected = 0;
+    this.updateDialog();
+    this.dialog.show();
+  }
+  
+  updateDialog() {
+    // Create the HTML for the scale units table and update the state
+    // of the action buttons
+    if(!MODEL.scale_units.hasOwnProperty(this.selected_unit)) {
+      this.selected_unit = '';
+    }
+    const
+        keys = Object.keys(MODEL.scale_units).sort(ciCompare),
+        sl = [],
+        ss = this.selected_unit;
+    let ssid = 'scntr';
+    if(keys.length <= 1) {
+      // Only one key => must be the default '1'
+      sl.push('<tr><td><em>No units defined</em></td></tr>');
+    } else {
+      for(let i = 1; i < keys.length; i++) {
+        const
+            s = keys[i],
+            clk = '" onclick="SCALE_UNIT_MANAGER.selectScaleUnit(event, \'' +
+                s + '\'';
+        if(s === ss) ssid += i;
+        sl.push(['<tr id="scntr', i, '" class="dataset-modif',
+            (s === ss ? ' sel-set' : ''),
+            '"><td class="dataset-selector', clk, ');">',
+            s, '</td><td class="dataset-selector', clk, ', \'scalar\');">',
+            MODEL.scale_units[s].scalar, '</td><td class="dataset-selector',
+            clk, ', \'base\');">', MODEL.scale_units[s].base_unit,
+            '</td></tr>'].join(''));
+      }
+    }
+    this.table.innerHTML = sl.join('');
+    if(ss) UI.scrollIntoView(document.getElementById(ssid));
+    let btns = 'scale-units-edit';
+    if(!this.selectedUnitIsBaseUnit) btns += ' scale-units-delete';
+    if(ss) {
+      UI.enableButtons(btns);
+    } else {
+      UI.disableButtons(btns);
+    }
+  }
+
+  selectScaleUnit(event, symbol, focus) {
+    // Select scale unit, and when double-clicked, allow to edit it
+    const
+        ss = this.selected_unit,
+        now = Date.now(),
+        dt = now - this.last_time_selected,
+        // NOTE: Alt-click and double-click indicate: edit
+        // Consider click to be "double" if the same modifier was clicked
+        // less than 300 ms ago
+        edit = event.altKey || (symbol === ss && dt < 300);
+    this.selected_unit = symbol;
+    this.last_time_selected = now;
+    if(edit) {
+      this.last_time_selected = 0;
+      this.promptForScaleUnit('Edit', focus);
+      return;
+    }
+    this.updateDialog();
+  }
+  
+  promptForScaleUnit(action='Define new', focus='name') {
+    // Show the Add/Edit scale unit dialog for the indicated action 
+    const md = this.new_scale_unit_modal;
+    // NOTE: by default, let name and base unit be empty strings, not '1'
+    let sv = {name: '', scalar: '1', base_unit: '' };
+    if(action === 'Edit' && this.selected_unit) {
+      sv = MODEL.scale_units[this.selected_unit];
+    }
+    md.element('action').innerText = action;
+    md.element('name').value = sv.name;
+    md.element('scalar').value = sv.scalar;
+    md.element('base').value = sv.base_unit;
+    UI.updateScaleUnitList();
+    this.new_scale_unit_modal.show(focus);
+  }
+
+  addNewScaleUnit() {
+    // Add the new scale unit or update the one being edited 
+    const
+        md = this.new_scale_unit_modal,
+        edited = md.element('action').innerText === 'Edit',
+        s = UI.cleanName(md.element('name').value),
+        v = md.element('scalar').value.trim(),
+        // NOTE: accept empty base unit to denote '1'
+        b = md.element('base').value.trim() || '1';
+    if(!s) {
+      // Do not accept empty string as name
+      UI.Warn('Scale unit must have a name');
+      md.element('name').focus();
+      return;
+    }
+    if(MODEL.scale_units.hasOwnProperty(s) && !edited) {
+      // Do not accept existing unit as name for new unit
+      UI.Warn(`Scale unit "${s}" is already defined`);
+      md.element('name').focus();
+      return;
+      
+    }
+    if(b === s && b !== '1') {
+      UI.warn(`Base unit cannot be identical to scale unit`);
+      md.element('base').focus();
+      return;
+    }
+    if(!MODEL.scale_units.hasOwnProperty(b)) {
+      UI.warn(`Base unit "${b}" is undefined`);
+      md.element('base').focus();
+      return;
+    }
+    if(UI.validNumericInput('new-scale-unit-scalar', 'scalar')) {
+      const ucs = Math.abs(safeStrToFloat(v));
+      if(ucs < VM.NEAR_ZERO) {
+        UI.warn(`Unit conversion scalar cannot be zero`);
+        md.element('scalar').focus();
+        return;
+      }
+      const selu = this.selected_unit;
+      if(edited) {
+        // Prevent inconsistencies across sclars
+        const cr = MODEL.scale_units[b].conversionRates();
+        if(cr.hasOwnProperty(s)) {
+          UI.warn(`Defining ${s} in terms of ${b} introduces a circular reference`);
+          md.element('base').focus();
+          return;
+        }
+      }
+      if(edited && s !== selu) {
+         // First rename base units
+        for(let u in MODEL.scale_units) if(MODEL.scale_units.hasOwnProperty(u)) {
+          if(MODEL.scale_units[u].base_unit === selu) {
+            MODEL.scale_units[u].base_unit = s;
+          }
+        }
+        // NOTE: renameScaleUnit replaces references to `s`, not the entry
+        MODEL.renameScaleUnit(selu, s);
+        delete MODEL.scale_units[this.selected_unit];
+      }
+      MODEL.scale_units[s] = new ScaleUnit(s, v, b);
+      MODEL.selected_unit = s;
+      this.new_scale_unit_modal.hide();
+      this.updateDialog();
+    }
+  }
+  
+  editScaleUnit() {
+    // Allow user to edit name and/or value
+    if(this.selected_unit) this.promptForScaleUnit('Edit', 'scalar');
+  }
+  
+  deleteScaleUnit() {
+    // Allow user to delete
+    // @@@TO DO: check whether scale unit is used in the model
+    if(this.selected_unit && !this.selectedUnitIsBaseUnit) {
+      delete MODEL.scale_units[this.selected_unit];
+      this.updateDialog();
+    }
+  }
+  
+  updateScaleUnits() {
+    // Replace scale unit definitions of model by the new definitions
+    UI.updateScaleUnitList();
+    this.dialog.hide();
+  }
+  
+} // END of class ScaleUnitManager
 
 
 // CLASS ActorManager (modal dialog!)
@@ -8833,7 +9068,7 @@ class GUIDatasetManager extends DatasetManager {
         dnl.push(d);
       }
     }
-    dnl.sort();
+    dnl.sort(ciCompare);
     let sdid = 'dstr';
     for(let i = 0; i < dnl.length; i++) {
       const d = MODEL.datasets[dnl[i]];
@@ -8859,7 +9094,8 @@ class GUIDatasetManager extends DatasetManager {
       this.table.innerHTML = dl.join('');
       this.properties.style.display = 'block';
       document.getElementById('dataset-default').innerHTML =
-          VM.sig4Dig(sd.default_value);
+          VM.sig4Dig(sd.default_value) +
+              (sd.scale_unit === '1' ? '' : '&nbsp;' + sd.scale_unit);
       document.getElementById('dataset-count').innerHTML = sd.data.length;
       document.getElementById('dataset-special').innerHTML = sd.propertiesString;
       if(sd.data.length > 0) {
@@ -9094,6 +9330,7 @@ class GUIDatasetManager extends DatasetManager {
       // Copy properties of d to nd
       nd.comments = `${d.comments}`;
       nd.default_value = d.default_value;
+      nd.scale_unit = d.scale_unit;
       nd.time_scale = d.time_scale;
       nd.time_unit = d.time_unit;
       nd.method = d.method;
@@ -9314,6 +9551,7 @@ class GUIDatasetManager extends DatasetManager {
         cover = md.element('no-time-msg');
     if(ds) {
       md.element('default').value = ds.default_value;
+      md.element('unit').value = ds.scale_unit;
       cover.style.display = (ds.array ? 'block' : 'none');
       md.element('time-scale').value = VM.sig4Dig(ds.time_scale);
       // Add options for time unit selector
@@ -9378,6 +9616,7 @@ class GUIDatasetManager extends DatasetManager {
     }
     // Save the data
     ds.default_value = dv;
+    ds.changeScaleUnit(this.series_modal.element('unit').value);
     ds.time_scale = ts;
     ds.time_unit = this.series_modal.element('time-unit').value;
     ds.method = this.series_modal.element('method').value;
@@ -10717,12 +10956,12 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
       this.showBaseCaseInfo();
       return;
     }
-    // Otherwise, display list of all database selectors in docu-viewer
+    // Otherwise, display list of all dataset selectors in docu-viewer
     if(DOCUMENTATION_MANAGER.visible) {
       const
           ds_dict = MODEL.listOfAllSelectors,
           html = [],
-          sl = Object.keys(ds_dict).sort();
+          sl = Object.keys(ds_dict).sort(ciCompare);
       for(let i = 0; i < sl.length; i++) {
         const
             s = sl[i],
@@ -11478,7 +11717,7 @@ class GUIExperimentManager extends ExperimentManager {
     for(let i = 0; i < MODEL.experiments.length; i++) {
       xtl.push(MODEL.experiments[i].title);
     }
-    xtl.sort();
+    xtl.sort(ciCompare);
     for(let i = 0; i < xtl.length; i++) {
       const
           xi = MODEL.indexOfExperiment(xtl[i]),
@@ -11685,7 +11924,7 @@ class GUIExperimentManager extends ExperimentManager {
       for(let i = 0; i < x.variables.length; i++) {
         vl.push(x.variables[i].displayName); 
       }
-      vl.sort();
+      vl.sort(ciCompare);
       for(let i = 0; i < vl.length; i++) {
         ol.push(['<option value="', vl[i], '"',
             (vl[i] == x.selected_variable ? ' selected="selected"' : ''),
@@ -13590,7 +13829,7 @@ class DocumentationManager {
         }
         lis.push(`<li>${dn}</li>`);
       }
-      lis.sort();
+      lis.sort(ciCompare);
       this.viewer.innerHTML = `<ul>${lis.join('')}</ul>`;
     }
   }
@@ -13619,7 +13858,7 @@ class DocumentationManager {
       for(let i = 0; i < iol.length; i++) {
         lis.push(`<li>${iol[i].displayName}</li>`);
       }
-      lis.sort();
+      lis.sort(ciCompare);
       this.viewer.innerHTML = `<ul>${lis.join('')}</ul>`;
     }
   }
@@ -13937,7 +14176,7 @@ class Finder {
           }
         }
       }
-      enl.sort();
+      enl.sort(ciCompare);
     }
     document.getElementById('finder-entity-imgs').innerHTML = imgs;
     let seid = 'etr';

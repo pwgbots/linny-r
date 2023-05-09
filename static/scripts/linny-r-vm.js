@@ -64,6 +64,7 @@ class Expression {
   get variableName() {
     // Return the name of the variable computed by this expression
     if(this.attribute === 'C') return 'note color expression';
+    if(this.object === MODEL.equations_dataset) return 'equation ' + this.attribute;
     return this.object.displayName + UI.OA_SEPARATOR + this.attribute;
   }
   
@@ -1004,10 +1005,10 @@ class ExpressionParser {
     c = this.expr.charAt(this.pit);
     if(c === '[') {
       // Left bracket denotes start of a variable name
-      // NOTE: As variable names may contain regular expressions, they may
-      // also contain brackets => allow *matched* [...] pairs inside
       i = indexOfMatchingBracket(this.expr, this.pit);
       if(i < 0) {
+        this.pit++;
+        this.los = 1;
         this.error = 'Missing closing bracket \']\'';
       } else {
         v = this.expr.substr(this.pit + 1, i - 1 - this.pit);
@@ -1018,6 +1019,27 @@ class ExpressionParser {
         // or FALSE if variable name is not valid.
         this.sym = this.parseVariable(v);
         // NOTE: parseVariable may set is_static to FALSE
+      }
+    } else if(c === "'") {
+      // Symbol is ALL text up to and including closing quote and trailing
+      // spaces (but such spaces are trimmed)
+      i = this.expr.indexOf("'", this.pit + 1);
+      if(i < 0) {
+        this.pit++;
+        this.los = 1;
+        this.error = 'Unmatched quote';
+      } else {
+        v = this.expr.substr(this.pit + 1, i - 1 - this.pit);
+        this.pit = i + 1;
+        // NOTE: Enclosing quotes are also part of this symbol
+        this.los = v.length + 2;
+        v = UI.cleanName(v);
+        if(MODEL.scale_units.hasOwnProperty(v)) {
+          // Symbol is a scale unit => use its multiplier as numerical value
+          this.sym = MODEL.scale_units[v].multiplier;
+        } else {
+          this.error = `Unknown scale unit "${v}"`;
+        }
       }
     } else if(c === '(' || c === ')') {
       this.sym = c;
@@ -1038,7 +1060,7 @@ class ExpressionParser {
       this.sym = OPERATOR_CODES[OPERATORS.indexOf(c)];
     } else {
       // Take any text up to the next operator, parenthesis,
-      // opening bracket, or space
+      // opening bracket, quote or space
       this.los = 0;
       let pl = this.pit + this.los,
           cpl = this.expr.charAt(pl),
@@ -1089,12 +1111,15 @@ class ExpressionParser {
           // If a valid number, keep it within the +/- infinity range
           this.sym = Math.max(VM.MINUS_INFINITY, Math.min(VM.PLUS_INFINITY, f));
         }
+      } else if(MODEL.scale_units.hasOwnProperty(v)) {
+        // Symbol is a scale unit => use its multiplier as numerical value
+        this.sym = MODEL.scale_units[v].multiplier;
       } else {
         // Symbol does not start with a digit
         // NOTE: distinguish between run length N and block length n
         i = ACTUAL_SYMBOLS.indexOf(l === 'n' ? v : l);
         if(i < 0) {
-          this.error = `Invalid symbol "${l}"`;
+          this.error = `Invalid symbol "${v}"`;
         } else {
           this.sym = SYMBOL_CODES[i];
           // NOTE: Using time symbols or `random` makes the expression dynamic! 
@@ -6974,7 +6999,8 @@ const
   // Valid symbols in expressions
   PARENTHESES = '()',
   OPERATOR_CHARS = ';?:+-*/%=!<>^|',
-  SEPARATOR_CHARS = PARENTHESES + OPERATOR_CHARS + '[ ',
+  // Opening bracket, space and single quote indicate a separation
+  SEPARATOR_CHARS = PARENTHESES + OPERATOR_CHARS + "[ '",
   COMPOUND_OPERATORS = ['!=', '<>', '>=', '<='],
   CONSTANT_SYMBOLS = [
       't', 'rt', 'bt', 'b', 'N', 'n', 'l', 'r', 'lr', 'nr', 'x', 'nx',
@@ -7038,7 +7064,7 @@ const
 // The first custom operator in this section demonstrates by example how custom
 // operators can be added.
 
-// Custom operators should preferably have a short alphanumerical string as
+// Custom operators should preferably have a short alphanumeric string as
 // their identifying symbol. Custom operators are monadic and reducing, i.e.,
 // they must have a grouping as operand. The number of required arguments must
 // be checked at run time by the VM instruction for this operator.

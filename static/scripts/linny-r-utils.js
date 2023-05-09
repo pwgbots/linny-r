@@ -238,6 +238,11 @@ function markFirstDifference(s1, s2) {
 // Functions that perform string search, comparison and/or substitution
 //
 
+function ciCompare(a, b) {
+  // Performs case-insensitive comparison
+  return a.localeCompare(b, undefined, {sensitivity: 'base'});
+}
+
 function endsWithDigits(str) {
   // Returns trailing digts of `str` (empty string will evaluate as FALSE)
   let i = str.length - 1,

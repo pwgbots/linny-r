@@ -198,6 +198,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       UNDO_STACK = new UndoStack();
       X_EDIT = new ExpressionEditor();
       ACTOR_MANAGER = new ActorManager();
+      SCALE_UNIT_MANAGER = new ScaleUnitManager();
       EQUATION_MANAGER = new EquationManager();
       FINDER = new Finder();
       CONSTRAINT_EDITOR = new ConstraintEditor();  
@@ -487,7 +488,12 @@ and move the cursor over the status bar">
         </strong>
       </div>
     </div>
-  </div>  
+  </div>
+  
+  <!-- the UNITS datalist is a placeholder for scale units -->
+  <datalist id="units-data">
+    <option value="1">
+  </datalist>
   
   <!-- the MODEL SETTINGS dialog allows the user to modify model parameters -->
   <div id="settings-modal" class="modal">
@@ -510,15 +516,21 @@ and move the cursor over the status bar">
           <td><input id="settings-author" type="text" autocomplete="off"
                      style="width:270px"></td>
         </tr>
-      </table>
-      <table style="width:100%; white-space: nowrap">
         <tr>
           <td colspan="2">Default product unit:&nbsp;
-            <input id="settings-product-unit" type="text" autocomplete="off"
-                   style="width:45px;margin-right:19px">Currency unit:&nbsp;
+            <input id="settings-product-unit" type="text"
+                   list="units-data" autocomplete="off" style="width:80px">
+            <img id="settings-scale-units-btn" class="sbtn" src="images/scale.png"
+                 title="View scale units">
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2">Currency unit:&nbsp;
             <input id="settings-currency-unit" type="text" style="width:45px">
           </td>
         </tr>
+      </table>
+      <table style="width:100%; white-space: nowrap">
         <tr>
           <td style="padding:0px">
             <div id="settings-decimal-comma" class="box clear"></div>
@@ -593,6 +605,55 @@ and move the cursor over the status bar">
           </td>
           <td style="padding-bottom:4px">
             Encrypt with password
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- the SCALE UNITS dialog allows viewing/editing scale units -->
+  <div id="scale-units-modal" class="modal">
+    <div id="scale-units-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Scale units
+        <img class="close-btn" src="images/close.png">
+      </div>
+      <div id="scale-units-buttons">
+        <img id="scale-units-new-btn" class="btn enab" src="images/new.png"
+             title="New scale unit">
+        <img id="scale-units-edit-btn" class="btn disab" src="images/edit.png"
+             title="Edit selected scale unit">
+        <img id="scale-units-delete-btn" class="btn disab" src="images/delete.png"
+             title="Delete selected scale unit">
+      </div>
+      <div id="scale-units-scroll-area">
+        <table id="scale-units-table">
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- the ADD SCALE UNIT dialog prompts for a new scale unit -->
+  <div id="new-scale-unit-modal" class="modal">
+    <div id="new-scale-unit-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="new-scale-unit-action" >Define new</span> scale unit
+        <img class="cancel-btn" src="images/cancel.png"">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table>
+        <tr>
+          <td>Unit:</td>
+          <td title="Unit symbols must be alphanumeric and start with a letter.
+NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
+            <input id="new-scale-unit-name" type="text" autocomplete="off">
+          </td>
+          <td>=</td>
+          <td>
+            <input id="new-scale-unit-scalar" type="text" autocomplete="off">
+          </td>
+          <td title="Base unit (optional)">
+            <input id="new-scale-unit-base" type="text" list="units-data" autocomplete="off">
           </td>
         </tr>
       </table>
@@ -947,7 +1008,7 @@ and move the cursor over the status bar">
         <tr>
           <td>Unit:</td>
           <td>
-            <input id="add-product-unit"
+            <input id="add-product-unit" list="units-data"
                    style="width:70px" type="text" autocomplete="off">
           </td>
           <td style="width:20px;padding:0px">
@@ -1247,7 +1308,7 @@ and move the cursor over the status bar">
       <div id="product-name-lbl">Name:</div>
       <input id="product-name" type="text" autocomplete="off">
       <div id="product-unit-lbl">Unit:</div>
-      <input id="product-unit" type="text" autocomplete="off">
+      <input id="product-unit" type="text" list="units-data" autocomplete="off">
       <div id="source" title="Source products may have level &lt; 0">
         <div id="product-source" class="box clear"></div>
         <div id="product-source-lbl">Source</div>
@@ -1539,7 +1600,7 @@ and move the cursor over the status bar">
         <img class="ok-btn" src="images/ok.png">
       </div>
       <input id="new-selector-name" type="text"
-             title="Can contain only alphanumerical characters, +, -, and %
+             title="Can contain only alphanumeric characters, +, -, and %
 NOTE: * and ? will be interpreted as wildcards" 
              maxlength="10" autocomplete="off">
       <div id="new-selector-label">(1 to 10 characters)</div>
@@ -1555,7 +1616,7 @@ NOTE: * and ? will be interpreted as wildcards"
         <img class="ok-btn" src="images/ok.png">
       </div>
       <input id="rename-selector-name" type="text"
-             title="Can contain only alphanumerical characters, +, -, and %" 
+             title="Can contain only alphanumeric characters, +, -, and %" 
              maxlength="10" autocomplete="off">
       <div id="rename-selector-label">(1 to 10 characters)</div>
     </div>
@@ -1575,6 +1636,8 @@ NOTE: * and ? will be interpreted as wildcards"
       </div>
       <div id="series-default-lbl">Default value:</div>
       <input id="series-default" type="text" autocomplete="off">
+      <div id="series-unit-lbl">Unit:</div>
+      <input id="series-unit" type="text" list="units-data" autocomplete="off">
       <div id="series-periodic" class="box clear"></div>
       <div id="series-periodic-lbl">Periodic</div>
       <div id="series-array" class="box clear"></div>

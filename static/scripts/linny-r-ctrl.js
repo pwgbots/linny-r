@@ -72,6 +72,7 @@ class Controller {
       };
     this.WARNING = {
         NO_CONNECTION: 'No connection with server',
+        INVALID_UNIT: 'Unit name must be alphanumeric (spaces permitted) and start with a letter',
         INVALID_ACTOR_NAME: 'Invalid actor name',
         SELECTOR_SYNTAX: 'Selector can contain only letters, digits, +, -, % and wildcards',
         SINGLE_WILDCARD: 'Selector can contain only one *',
@@ -130,8 +131,9 @@ class Controller {
         end_period: 'End at',
         look_ahead: 'Look-ahead'
       },
-      ENTITY_PROPS: ['actors', 'clusters', 'processes', 'products', 'datasets',
-        'equations', 'links', 'constraints'],
+      ENTITY_PROPS: ['units', 'actors', 'clusters', 'processes', 'products',
+        'datasets', 'equations', 'links', 'constraints'],
+      UNIT_PROPS: ['multiplier', 'base_unit'],
       ACTOR_PROPS: ['weight', 'comments'],
       CLUSTER_PROPS: ['comments', 'collapsed', 'ignore'],
       PROCESS_PROPS: ['comments', 'lower_bound', 'upper_bound', 'initial_level',
@@ -139,8 +141,8 @@ class Controller {
       PRODUCT_PROPS: ['comments', 'lower_bound', 'upper_bound', 'initial_level',
         'scale_unit', 'equal_bounds', 'price', 'is_source', 'is_sink', 'is_buffer',
         'is_data', 'integer_level', 'no_slack'],
-      DATASET_PROPS: ['comments', 'default_value', 'time_scale', 'time_unit',
-        'method', 'periodic', 'array', 'url', 'default_selector'],
+      DATASET_PROPS: ['comments', 'default_value', 'scale_unit', 'time_scale',
+        'time_unit', 'method', 'periodic', 'array', 'url', 'default_selector'],
       LINK_PROPS: ['comments', 'multiplier', 'relative_rate', 'share_of_cost',
         'flow_delay'],
       CONSTRAINT_PROPS: ['comments', 'no_slack', 'share_of_cost'],
@@ -152,7 +154,8 @@ class Controller {
       EXPERIMENT_PROPS: ['comments', 'configuration_dims',
         'column_scenario_dims', 'excluded_selectors'],
     };
-    this.MC.ALL_PROPS = this.MC.ENTITY_PROPS + this.MC.ACTOR_PROPS +
+    this.MC.ALL_PROPS = this.MC.ENTITY_PROPS +
+        this.MC.UNIT_PROPS + this.MC.ACTOR_PROPS +
         this.MC.CLUSTER_PROPS + this.MC.PROCESS_PROPS +
         this.MC.PRODUCT_PROPS + this.MC.DATASET_PROPS + this.MC.LINK_PROPS +
         this.MC.CONSTRAINT_PROPS + this.MC.NOTE_PROPS + this.MC.CHART_PROPS +
@@ -277,9 +280,12 @@ class Controller {
     // Returns `name` without the object-attribute separator |, backslashes,
     // and leading and trailing whitespace, and with all internal whitespace
     // reduced to a single space.
-    return name.replace(this.OA_SEPARATOR, ' ')
+    name = name.replace(this.OA_SEPARATOR, ' ')
         .replace(/\||\\/g, ' ').trim()
         .replace(/\s\s+/g, ' ');
+    // NOTE: this may still result in a single space, which is not a name
+    if(name === ' ') return '';
+    return name;
   }
   
   validName(name) {
@@ -329,7 +335,7 @@ class Controller {
     // Return FALSE to indicate "no replacement made"
     return false;
   }
-  
+
   // Methods to notify modeler
   
   setMessage(msg, type, cause=null) {
@@ -437,6 +443,7 @@ class Controller {
   // while they can only be meaningfully performed by the GUI controller
   addListeners() {}
   readyToReset() {}
+  updateScaleUnitList() {}
   drawDiagram() {}
   drawSelection() {}
   drawObject() {}

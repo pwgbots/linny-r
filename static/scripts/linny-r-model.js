@@ -54,7 +54,8 @@ class LinnyRModel {
     this.currency_unit = CONFIGURATION.default_currency_unit;
     this.default_unit = CONFIGURATION.default_scale_unit;
     this.decimal_comma = CONFIGURATION.decimal_comma;
-    this.scale_units = [this.default_unit];
+    // NOTE: Default scale unit list comprises only the primitive base unit
+    this.scale_units = {'1': new ScaleUnit('1', '1', '1')};
     this.actors = {};
     this.products = {};
     this.processes = {};
@@ -837,14 +838,115 @@ class LinnyRModel {
     return this.actors[id];
   }
 
-  addScaleUnit(name) {
+  addScaleUnit(name, scalar='1', base_unit='1') {
+    // Add a scale unit to the model, and return its symbol
+    //  (1) To permit things like 1 kWh = 3.6 MJ, and 1 GJ = 1000 MJ,
+    //      scale units have a multiplier and a base unit; by default,
+    //      multiplier = 1 and base unit = '1' to denote "atomic unit"
+    //  (2) Linny-R remains agnostic about physics, SI standards etc.
+    //      so modelers can do anything they like
+    //  (3) Linny-R may in the future be extended with a unit consistency
+    //      check
     name = UI.cleanName(name);
-    if(name === '' || name === ' ') return this.default_unit;
-    // scale units (case sensitive!) are assumed to be universal 
-    if(this.scale_units.indexOf(name) === -1) {
-      this.scale_units.push(name);
+    // NOTE: empty string denotes default unit, so test this first to
+    // avoid a warning 
+    if(!name) return this.default_unit;
+    // NOTE: do not replace or modify an existing scale unit
+    if(!this.scale_units.hasOwnProperty(name)) {
+      this.scale_units[name] = new ScaleUnit(name, scalar, base_unit);
+      UI.updateScaleUnitList();
     }
     return name;
+  }
+  
+  addPreconfiguredScaleUnits() {
+    // Add scale units defined in file `config.js` (by default: none)
+    for(let i = 0; i < CONFIGURATION.scale_units.length; i++) {
+      const su = CONFIGURATION.scale_units[i];
+      this.addScaleUnit(...su);
+    }
+  }
+  
+  cleanUpScaleUnits() {
+    // Remove all scale units that are not used and have base unit '1'
+    const suiu = {};
+    // Collect all non-empty product units
+    for(let p in this.products) if(this.products.hasOwnProperty(p)) {
+      const su = this.products[p].scale_unit;
+      if(su) suiu[su] = true;
+    }
+    // Likewise collect all non-empty dataset units
+    for(let ds in this.datasets) if(this.datasets.hasOwnProperty(ds)) {
+      const su = this.datasets[ds].scale_unit;
+      if(su) suiu[su] = true;
+    }
+    // Also collect base units and units having base unit other than '1'
+    for(let su in this.scale_units) if(this.scale_units.hasOwnProperty(su)) {
+      const u = this.scale_units[su];
+      suiu[u.base_unit] = true;
+      if(u.base_unit !== '1') suiu[u.name] = true;
+    }
+    // Now all scale units NOT in `suiu` can be removed
+    for(let su in this.scale_units) if(this.scale_units.hasOwnProperty(su)) {
+      if(!suiu.hasOwnProperty(su)) {
+        delete this.scale_units[su];
+      }
+    }
+  }
+  
+  renameScaleUnit(oldu, newu) {
+    let nr = 0;
+    // Rename product scale units
+    for(let p in MODEL.products) if(MODEL.products.hasOwnProperty(p)) {
+      if(MODEL.products[p].scale_unit === oldu) {
+        MODEL.products[p].scale_unit = newu;
+        nr++;
+      }
+    }
+    // Rename product and dataset units
+    for(let ds in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(ds)) {
+      if(MODEL.datasets[ds].scale_unit === oldu) {
+        MODEL.datasets[ds].scale_unit = newu;
+        nr++;
+      }
+    }
+    // Also rename conversion units in note fields
+    for(let k in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(k)) {
+      const c = MODEL.clusters[k];
+      for(let i = 0; i < c.notes.length; i++) {
+        const
+            n = c.notes[i],
+            tags = n.contents.match(/\[\[[^\]]+\]\]/g);
+        if(tags) {
+          for(let i = 0; i < tags.length; i++) {
+            const
+                ot = tags[i],
+                parts = ot.split('->'), 
+                last = parts.pop().trim();
+            if(last === oldu + ']]') {
+              const nt = parts.join('->') + `->${newu}]]`; 
+              n.contents = n.contents.replace(ot, nt);
+            }
+          }
+          n.parsed = false;
+        }
+      }
+    }
+    // @@@TO DO: rename scale unit in expressions
+    if(nr) UI.notify(pluralS(nr, 'scale unit') +
+        ' renamed (expressions NOT checked!)');
+  }
+  
+  unitConversionMultiplier(from, to) {
+    // Compute and return the FROM : TO unit conversion rate
+    // NOTE: no conversion if TO is the primitive unit
+    if(from === to || to === '1' || to === '') return 1;
+    const fsu = this.scale_units[from];
+    if(fsu) { 
+       const fcr = fsu.conversionRates();
+       if(fcr.hasOwnProperty(to)) return fcr[to];
+    }
+    return VM.UNDEFINED;
   }
   
   addNote(node=null) {
@@ -854,7 +956,7 @@ class LinnyRModel {
     this.focal_cluster.notes.push(n);
     return n;
   }
-  
+
   addCluster(name, actor_name, node=null) {
     // NOTE: Adapt XML saved by legacy Linny-R software
     if(name === UI.FORMER_TOP_CLUSTER_NAME ||
@@ -2070,7 +2172,9 @@ class LinnyRModel {
       for(i = 0; i < n.childNodes.length; i++) {
         c = n.childNodes[i];
         if(c.nodeName === 'scaleunit') {
-          this.addScaleUnit(xmlDecoded(nodeContentByTag(c, 'name')));
+          this.addScaleUnit(xmlDecoded(nodeContentByTag(c, 'name')),
+              nodeContentByTag(c, 'scalar'),
+              xmlDecoded(nodeContentByTag(c, 'base-unit')));
         }
       }
     }
@@ -2381,12 +2485,11 @@ class LinnyRModel {
         '</end-period><look-ahead-period>', this.look_ahead,
         '</look-ahead-period><round-sequence>', this.round_sequence,
         '</round-sequence><scaleunits>'].join('');
-    for(let i = 0; i < this.scale_units.length; i++) {
-      xml += '<scaleunit><name>' + xmlEncoded(this.scale_units[i]) +
-          '</name></scaleunit>';
+    let obj;
+    for(obj in this.scale_units) if(this.scale_units.hasOwnProperty(obj)) {
+      xml += this.scale_units[obj].asXML;
     }
     xml += '</scaleunits><actors>';
-    let obj;
     for(obj in this.actors) {
       // NOTE: do not to save "(no actor)"
       if(this.actors.hasOwnProperty(obj) && obj != UI.nameToID(UI.NO_ACTOR)) {
@@ -3358,17 +3461,6 @@ class LinnyRModel {
     // Start with the Linny-R model properties
     let diff = differences(this, m, Object.keys(UI.MC.SETTINGS_PROPS));
     if(Object.keys(diff).length > 0) d.settings = diff;
-    // Then check for differences in scale unit lists
-    diff = {};
-    for(let i = 0; i < this.scale_units.length; i++) {
-      const su = this.scale_units[i];
-      if(m.scale_units.indexOf(su) < 0) diff[su] = [UI.MC.ADDED, su];
-    }
-    for(let i = 0; i < m.scale_units.length; i++) {
-      const su = m.scale_units[i];
-      if(this.scale_units.indexOf(su) < 0) diff[su] = [UI.MC.DELETED, su];
-    }
-    if(Object.keys(diff).length > 0) d.units = diff;
     // NOTE: dataset differences will also detect equation differences
     for(let i = 0; i < UI.MC.ENTITY_PROPS.length; i++) {
       const ep = UI.MC.ENTITY_PROPS[i]; 
@@ -3966,6 +4058,79 @@ class IOContext {
 } // END of class IOContext
 
 
+// CLASS ScaleUnit
+class ScaleUnit {
+  constructor(name, scalar, base_unit) {
+    this.name = name;
+    // NOTES:
+    // (1) Undefined or empty strings default to '1'
+    // (2) Multiplier is stored as string to preserve modeler's notation
+    this.scalar = scalar || '1';
+    this.base_unit = base_unit || '1';
+  }
+  
+  get multiplier() {
+    // Returns scalar as number
+    return safeStrToFloat(this.scalar, 1);
+  }
+  
+  conversionRates() {
+    // Returns a "dictionary" {U1: R1, U2: R2, ...} such that Ui is a
+    // scale unit that can be converted to *this* scaleunit U at rate Ri
+    const cr = {};
+    let p = 0, // previous count of entries
+        n = 1;
+    // At least one conversion: U -> U with rate 1
+    cr[this.name] = 1; 
+    if(this.base_unit !== '1') {
+      // Second conversion: U -> base of U with modeler-defined rate
+      cr[this.base_unit] = this.multiplier;
+      n++;
+    }
+    // Keep track of the number of keys; terminate as no new keys
+    while(p < n) {
+      p = n;
+      // Iterate over all convertible scale units discovered so far
+      for(let u in cr) if(cr.hasOwnProperty(u)) {
+        // Look for conversions to units NOT yet detected
+        for(let k in MODEL.scale_units) if(k != '1' &&
+            MODEL.scale_units.hasOwnProperty(k)) {
+          const
+              su = MODEL.scale_units[k],
+              b = su.base_unit;
+          if(b === '1') continue;
+          if(!cr.hasOwnProperty(k) && cr.hasOwnProperty(b)) {
+            // Add unit if new while base unit is convertible
+            cr[k] = cr[b] / su.multiplier;
+            n++;
+          } else if(cr.hasOwnProperty(k) && !cr.hasOwnProperty(b)) {
+            // Likewise, add base unit if new while unit is convertible
+            cr[b] = cr[k] * su.multiplier;
+            n++;
+          }
+        }
+      }
+    }
+    return cr;
+  }
+
+  get asXML() {
+    return ['<scaleunit><name>', xmlEncoded(this.name),
+        '</name><scalar>', this.scalar,
+        '</scalar><base-unit>', xmlEncoded(this.base_unit),
+        '</base-unit></scaleunit>'].join('');
+  }
+  
+  // NOTE: NO initFromXML because scale units are added directly
+
+  differences(u) {
+    // Return "dictionary" of differences, or NULL if none
+    const d = differences(this, u, UI.MC.UNIT_PROPS);
+    if(Object.keys(d).length > 0) return d;
+    return null;
+  }
+}
+
 // CLASS Actor
 class Actor {
   constructor(name) {
@@ -4121,35 +4286,45 @@ class ObjectWithXYWH {
 
 // CLASS NoteField: numeric value of "field" [[dataset]] in note text 
 class NoteField {
-  constructor(f, o) {
-    // `f` holds the unmodified tag string [[dataset]] to be replaced by the
-    // value of vector or expression `o` for the current time step
+  constructor(f, o, u='1', m=1) {
+    // `f` holds the unmodified tag string [[dataset]] to be replaced by
+    // the value of vector or expression `o` for the current time step;
+    // if specified, `u` is the unit of the value to be displayed, and
+    // `m` is the multiplier for the value to be displayed
     this.field = f;
     this.object = o;
+    this.unit = u;
+    this.multiplier = m;
   }
   
   get value() {
-    // Returns the numeric value of this note field
+    // Returns the numeric value of this note field as a numeric string
+    // followed by its unit (unless this is 1)
+    let v = VM.UNDEFINED;
     const t = MODEL.t;
     if(Array.isArray(this.object)) {
       // Object is a vector
-      if(t < this.object.length) {
-        return this.object[t];
-      } else {
-        return VM.UNDEFINED;
-      }
-    } else if(this.object.hasOwnProperty('c') && this.object.hasOwnProperty('u')) {
+      if(t < this.object.length) v = this.object[t];
+    } else if(this.object.hasOwnProperty('c') &&
+        this.object.hasOwnProperty('u')) {
       // Object holds link lists for cluster balance computation
-      return MODEL.flowBalance(this.object, t);
+      v = MODEL.flowBalance(this.object, t);
     } else if(this.object instanceof Expression) {
       // Object is an expression
-      return this.object.result(t);
+      v = this.object.result(t);
     } else if(typeof this.object === 'number') {
-      return this.object;
+      v = this.object;
+    } else {
+      // NOTE: this fall-through should not occur
+      console.log('Note field value issue:', this.object);
     }
-    // NOTE: this fall-through should not occur
-    console.log('Note field value issue:', this.object);
-    return VM.UNDEFINED;
+    if(Math.abs(this.multiplier - 1) > VM.NEAR_ZERO &&
+        v > VM.MINUS_INFINITY && v < VM.PLUS_INFINITY) {
+      v *= this.multiplier;
+    }
+    v = VM.sig4Dig(v);
+    if(this.unit !== '1') v += ' ' + this.unit;
+    return v;
   }
   
 } // END of class NoteField
@@ -4237,11 +4412,40 @@ class Note extends ObjectWithXYWH {
       for(let i = 0; i < tags.length; i++) {
         const
             tag = tags[i],
-            ena = tag.slice(2, tag.length - 2).trim().split('|');
+            inner = tag.slice(2, tag.length - 2).trim(),
+            bar = inner.lastIndexOf('|'),
+            arrow = inner.lastIndexOf('->');
+        // Check if a unit conversion scalar was specified
+        let ena,
+            from_unit = '1',
+            to_unit = '',
+            multiplier = 1;
+        if(arrow > bar) {
+          // Now for sure it is entity->unit or entity|attr->unit
+          ena = inner.split('->');
+          // As example, assume that unit = 'kWh' (so the value of the
+          // field should be displayed in kilowatthour)
+          // NOTE: use .trim() instead of UI.cleanName(...) here;
+          // this forces the modeler to be exact, and that permits proper
+          // renaming of scale units in note fields
+          to_unit = ena[1].trim();
+          ena = ena[0].split('|');
+          if(!MODEL.scale_units.hasOwnProperty(to_unit)) {
+            UI.warn(`Unknown scale unit "${to_unit}"`);
+            to_unit = '1';
+          }
+        } else {
+          ena = inner.split('|');
+        }
         // Look up entity for name and attribute
-        const obj = MODEL.objectByName(ena[0]);
+        const obj = MODEL.objectByName(ena[0].trim());
         if(obj instanceof DatasetModifier) {
-          this.fields.push(new NoteField(tag, obj.expression));
+          // NOTE: equations are (for now) dimensionless => unit '1'
+          if(obj.dataset !== MODEL.equations_dataset) {
+            from_unit = obj.dataset.scale_unit;
+            multiplier = MODEL.unitConversionMultiplier(from_unit, to_unit);
+          }
+          this.fields.push(new NoteField(tag, obj.expression, to_unit, multiplier));
         } else if(obj) {
           // If attribute omitted, use default attribute of entity type
           const attr = (ena.length > 1 ? ena[1].trim() : obj.defaultAttribute);
@@ -4250,11 +4454,45 @@ class Note extends ObjectWithXYWH {
           // If not, it may be a cluster unit balance
           if(!val && attr.startsWith('=') && obj instanceof Cluster) {
             val = {c: obj, u: attr.substring(1).trim()};
+            from_unit = val.u;
+          }
+          if(obj instanceof Dataset) {
+            from_unit = obj.scale_unit;
+          } else if(obj instanceof Product) {
+            if(attr === 'L') {
+              from_unit = obj.scale_unit;
+            } else if(attr === 'CP' || attr === 'HCP') {
+              from_unit = MODEL.currency_unit;
+            }
+          } else if(obj instanceof Link) {
+            const node = (obj.from_node instanceof Process ?
+                obj.to_node : obj.from_node);
+            if(attr === 'F') {
+              if(obj.multiplier <= VM.LM_MEAN) {
+                from_unit = node.scale_unit;
+              } else {
+                from_unit = '1';
+              }
+            }
+          } else if(attr === 'CI' || attr === 'CO' || attr === 'CF') {
+            from_unit = MODEL.currency_unit;
           }
           // If not, it may be an expression-type attribute
-          if(!val) val = obj.attributeExpression(attr);
+          if(!val) {
+            val = obj.attributeExpression(attr);
+            if(obj instanceof Product) {
+              if(attr === 'IL' || attr === 'LB' || attr === 'UB') {
+                from_unit = obj.scale_unit;
+              } else if(attr === 'P') {
+                from_unit = MODEL.currency_unit + '/' + obj.scale_unit;
+              }
+            }
+          }
+          // If no TO unit, add the FROM unit 
+          if(to_unit === '') to_unit = from_unit;
           if(val) {
-            this.fields.push(new NoteField(tag, val));
+            multiplier = MODEL.unitConversionMultiplier(from_unit, to_unit);
+            this.fields.push(new NoteField(tag, val, to_unit, multiplier));
           } else {
             UI.warn(`Unknown ${obj.type.toLowerCase()} attribute "${attr}"`);
           }
@@ -4298,7 +4536,7 @@ class Note extends ObjectWithXYWH {
     let txt = this.contents;
     for(let i = 0; i < this.fields.length; i++) {
       const nf = this.fields[i];
-      txt = txt.replace(nf.field, VM.sig4Dig(nf.value));
+      txt = txt.replace(nf.field, nf.value);
     }
     return txt;
   }
@@ -6336,6 +6574,8 @@ class Node extends NodeBox {
           ds = MODEL.addDataset(dsn);
       // Use the LB attribute as default value for the dataset
       ds.default_value = parseFloat(this.lower_bound.text);
+      // UB data has same unit as product
+      ds.scale_unit = this.scale_unit;
       ds.data = stringToFloatArray(lb_data);
       ds.computeVector();
       ds.computeStatistics();
@@ -6348,6 +6588,8 @@ class Node extends NodeBox {
           dsn = this.displayName + ' UPPER BOUND DATA',
           ds = MODEL.addDataset(dsn);
       ds.default_value = parseFloat(this.upper_bound.text);
+      // UB data has same unit as product
+      ds.scale_unit = this.scale_unit;
       ds.data = stringToFloatArray(ub_data);
       ds.computeVector();
       ds.computeStatistics();
@@ -6975,6 +7217,8 @@ class Product extends Node {
           ds = MODEL.addDataset(dsn);
       // Use the price attribute as default value for the dataset
       ds.default_value = parseFloat(this.price.text);
+      // NOTE: dataset unit then is a currency
+      ds.scale_unit = MODEL.currency_unit;
       ds.data = stringToFloatArray(data);
       ds.computeVector();
       ds.computeStatistics();
@@ -7435,6 +7679,7 @@ class Dataset {
     this.name = name;
     this.comments = '';
     this.default_value = 0;
+    this.scale_unit = '1';
     this.time_scale = 1;
     this.time_unit = CONFIGURATION.default_time_unit;
     this.method = 'nearest';
@@ -7532,6 +7777,14 @@ class Dataset {
       return this.default_value;
     }
     return this.default_value * MODEL.timeStepDuration / this.timeStepDuration;
+  }
+
+  changeScaleUnit(name) {
+    let su = MODEL.addScaleUnit(name);
+    if(su !== this.scale_unit) {
+      this.scale_unit = su;
+      MODEL.cleanUpScaleUnits();
+    }
   }
   
   matchingModifiers(l) {
@@ -7776,7 +8029,8 @@ class Dataset {
     const xml = ['<dataset', p, '><name>', xmlEncoded(n),
         '</name><notes>', cmnts,
         '</notes><default>', this.default_value,
-        '</default><time-scale>', this.time_scale,
+        '</default><unit>', xmlEncoded(this.scale_unit),
+        '</unit><time-scale>', this.time_scale,
         '</time-scale><time-unit>', this.time_unit,
         '</time-unit><method>', this.method,
         '</method><url>', xmlEncoded(this.url),
@@ -7790,6 +8044,7 @@ class Dataset {
   initFromXML(node) {
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     this.default_value = safeStrToFloat(nodeContentByTag(node, 'default'));
+    this.scale_unit = xmlDecoded(nodeContentByTag(node, 'unit'));
     this.time_scale = safeStrToFloat(nodeContentByTag(node, 'time-scale'), 1);
     this.time_unit = nodeContentByTag(node, 'time-unit');
     if(!this.time_unit) this.time_unit = CONFIGURATION.default_time_unit;
@@ -9974,6 +10229,14 @@ class Experiment {
     if(n >= this.actual_dimensions.length) {
       // NOTE: do not push an empty selector list (can occur if no dimensions)
       if(s.length > 0) this.combinations.push(s);
+      // NOTE: combinations may include *dimension* selectors
+      // These then must be "expanded", so if combination havin selector
+      // C1 comprises two "normal" selectors (a1, b2) then these must be
+      // appended to the combinations set. The original selector C1 can
+      // be removed from this set because *dimension* selectors cannot
+      // be a used as "normal" selectors (e.g., for dataset modifiers,
+      // actor settings or model setting)
+      //@@@TO BE IMPLEMENTED!
       return;
     }
     const d = this.actual_dimensions[n];

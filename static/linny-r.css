@@ -747,11 +747,69 @@ img.inline-cancel-btn {
   cursor: pointer;
 }
 
+/* styles for the NEW SCALAR dialog */
+#new-scale-unit-modal {
+  z-index: 115; /* on top of the SCALARS modal */
+}
+
+#new-scale-unit-dlg {
+  width: min-content;
+  height: min-content;
+  max-height: 450px;
+}
+
+#new-scale-unit-name {
+  width: 70px;
+}
+
+#new-scale-unit-scalar {
+  width: 115px;
+}
+
+#new-scale-unit-base {
+  width: 70px;
+}
+
+/* styles for the SCALE UNITS dialog */
+#scale-units-modal {
+  z-index: 110; /* on top of the SETTINGS dialog */
+}
+
+#scale-units-dlg {
+  width: 270px;
+  height: min-content;
+  max-height: 450px;
+}
+
+#scale-units-buttons > img.btn {
+  height: 20px;
+  width: 20px;
+}
+
+#scale-units-scroll-area {
+  margin: 2px;
+  width: calc(100% - 4px);
+  max-height: 250px;
+  overflow-y: auto;
+  border-top: 1px solid Silver;
+}
 
 /* styles for the MODEL SETTINGS dialog */
 #settings-dlg {
   width: min-content;
   height: min-content;
+}
+
+#settings-scale-units-btn {
+  margin-left: 0px;
+  margin-right: 7px;
+  margin-top: -3px;
+  cursor: pointer;
+  filter: brightness(85%);
+}
+
+#settings-scale-units-btn:hover {
+  filter: brightness(200%);
 }
 
 #password-dlg {
@@ -1905,6 +1963,7 @@ div.io-box {
   border-top: 1px solid Silver;
 }
 
+#scale-units-table,
 #dataset-table,
 #dataset-modif-table,
 #equation-table,
@@ -2169,7 +2228,7 @@ td.equation-expression {
 /* SERIES modal dialog */
 #series-dlg {
   width: 165px;
-  height: 320px;
+  height: 341px;
 }
 
 #series-default-lbl {
@@ -2184,36 +2243,49 @@ td.equation-expression {
   left: 79px;
   width: calc(100% - 83px);
   font-size: 12px;
-  margin-bottom: 2px;
+}
+
+#series-unit-lbl {
+  position: absolute;
+  top: 47px;
+  left: 2px;
+}
+
+#series-unit {
+  position: absolute;
+  top: 46px;
+  left: 32px;
+  width: 70px;
+  font-size: 12px;
 }
 
 #series-periodic {
   position: absolute;
-  top: 45px;
+  top: 66px;
   left: 0px;  
 }
 
 #series-periodic-lbl {
   position: absolute;
-  top: 47px;
+  top: 68px;
   left: 22px;  
 }
 
 #series-array {
   position: absolute;
-  top: 45px;
+  top: 66px;
   left: 77px; 
 }
 
 #series-array-lbl {
   position: absolute;
-  top: 47px;
+  top: 68px;
   left: 99px;  
 }
 
 #series-no-time-msg {
   position: absolute;
-  top: 66px;
+  top: 87px;
   left: 1px;
   width: calc(100% - 2px);
   height: 30px;
@@ -2227,22 +2299,21 @@ td.equation-expression {
 
 #series-time-step-lbl {
   position: absolute;
-  top: 68px;
+  top: 89px;
   left: 2px;
 }
 
 #series-time-scale {
   position: absolute;
-  top: 67px;
+  top: 88px;
   left: 60px;
   width: 50px;
   font-size: 12px;
-  margin-bottom: 2px;
 }
 
 #series-time-unit {
   position: absolute;
-  top: 67px;
+  top: 88px;
   left: 116px;
   height: 19px;
   width: 45px;
@@ -2251,13 +2322,13 @@ td.equation-expression {
 
 #series-method-lbl {
   position: absolute;
-  top: 91px;
+  top: 112px;
   left: 2px;
 }
 
 #series-method {
   position: absolute;
-  top: 89px;
+  top: 110px;
   left: 50px;
   height: 21px;
   width: 111px;
@@ -2266,7 +2337,7 @@ td.equation-expression {
 
 #series-remote {
   position: absolute;
-  top: 113px;
+  top: 134px;
   left: 3px;
   width: calc(100% - 8px);
 }
@@ -2278,7 +2349,7 @@ td.equation-expression {
 
 #series-data-lbl {
   position: absolute;
-  top: 133px;
+  top: 154px;
   left: 2px;
 }
 
@@ -2286,7 +2357,7 @@ td.equation-expression {
   position: absolute;
   bottom: 13px;
   width: calc(100% - 6px);
-  height: calc(100% - 165px);
+  height: calc(100% - 186px);
   margin: 3px;
 }
 
