@@ -526,10 +526,11 @@ class ExpressionParser {
       this.log('dynamic because of offset');
       // String contains at least one @ character, then split at the last (pop)
       // and check that @ sign is followed by an offset (range if `:`)
+      // NOTE: offset anchors are case-insensitive
       const offs = s.pop().replace(/\s+/g, '').toLowerCase().split(':');
       // Re-assemble the other substrings, as name itself may contain @ signs
       name = s.join('@').trim();
-      const re = /(^[\+\-]?[0-9]+|[\#cfinprst]([\+\-][0-9]+)?)$/;
+      const re = /(^[\+\-]?[0-9]+|[\#cfijklnprst]([\+\-][0-9]+)?)$/;
       if(!re.test(offs[0])) {
         msg = `Invalid offset "${offs[0]}"`;
       } else if(offs.length > 1 && !re.test(offs[1])) {
@@ -539,21 +540,22 @@ class ExpressionParser {
         // Anchor may be:
         //  # (absolute index in vector)
         //  c (start of current block)
-        //  f (final: last value of the vector)
-        //  i (initial, i.e. time step 0)
+        //  f (first value of the vector, i.e., time step 0)
+        //  i, j, k (iterator index variable)
+        //  l (last value of the vector, i.e., time step t_N)
         //  n (start of next block)
         //  p (start of previous block)
         //  r (relative: relative time step, i.e., t0 = 1)
         //  s (scaled: time step 0, but offset is scaled to time unit of run)
         //  t (current time step, this is the default),
-        if('#cfinprst'.includes(offs[0].charAt(0))) {
+        if('#cfijklnprst'.includes(offs[0].charAt(0))) {
           anchor1 = offs[0].charAt(0);
           offset1 = safeStrToInt(offs[0].substr(1)); 
         } else {
           offset1 = safeStrToInt(offs[0]); 
         }
         if(offs.length > 1) {
-          if('#cfinprst'.includes(offs[1].charAt(0))) {
+          if('#cfijklnprst'.includes(offs[1].charAt(0))) {
             anchor2 = offs[1].charAt(0);
             offset2 = safeStrToInt(offs[1].substr(1));
           } else {
@@ -723,12 +725,12 @@ class ExpressionParser {
     // a result, so what follows does not apply to experiment results
     //
     
-    // Attribute name (optional) follows object-attribute separator
+    // Attribute name (optional) follows object-attribute separator |
     s = name.split(UI.OA_SEPARATOR);
     if(s.length > 1) {
-      // Attribute is string after LAST vertical bar ...
+      // Attribute is string after LAST separator ...
       attr = s.pop().trim();
-      // ... so restore name if itself contains other vertical bars
+      // ... so restore name if itself contains other separators
       name = s.join(UI.OA_SEPARATOR).trim();
       if(!attr) {
         // Explicit *empty* attribute, e.g., [name|]
@@ -808,6 +810,18 @@ class ExpressionParser {
           }
         }
       }
+      // NOTE: also add expressions for equations that match
+      const edm = MODEL.equations_dataset.modifiers;
+      for(let k in edm) if(edm.hasOwnProperty(k)) {
+        const m = edm[k];
+        if(patternMatch(m.selector, pat)) {
+          list.push(m.expression);
+          if(!m.expression.isStatic) {
+            this.is_static = false;
+            this.log('dynamic because matching equation is dynamic');
+          }
+        }
+      }
       if(list.length > 0) {
         // NOTE: statistic MAY make expression level-based
         // NOTE: assume NOT when offset has been specified, as this suggests
@@ -878,7 +892,8 @@ class ExpressionParser {
           'Equation' : 'Dataset modifier expression') +
           ' must not reference itself';
     } else if(obj.array &&
-        (anchor1 && anchor1 !== '#' || anchor2 && anchor2 !== '#')) {
+        (anchor1 && '#ijk'.indexOf(anchor1) < 0 ||
+         anchor2 && '#ijk'.indexOf(anchor2) < 0)) {
       msg = 'Invalid anchor(s) for array-type dataset ' + obj.displayName;
     } else {
       // NOTE: except for array-type datasets, the default anchor is 't';
@@ -893,6 +908,10 @@ class ExpressionParser {
         return [{r: obj, a: attr}, anchor1, offset1, anchor2, offset2];
       }
       if(obj === this.dataset && attr === '' && !obj.array) {
+        // When dataset modifier expression refers to its dataset without
+        // selector, then this is equivalent to [.] (use the series data
+        // vector) unless it is an array, since then the series data is
+        // not a time-scaled vector => special case 
         args = obj.vector;
       } else if(attr === '') {
         // For all other variables, assume default attribute
@@ -903,8 +922,6 @@ class ExpressionParser {
         // "use the data"
         if(obj instanceof Dataset &&
             (obj.array || (!use_data && obj.selectorList.length > 0))) {
-          // NOTE: also pass the "use data" flag so that experiment selectors
-          // will be ignored if the modeler coded the vertical bar
           if(obj.data.length > 1 || obj.data.length > 0 && !obj.periodic ||
               !obj.allModifiersAreStatic) {
             // No explicit selector => dynamic unless no time series data, and
@@ -912,6 +929,8 @@ class ExpressionParser {
             this.is_static = false;
             this.log('dynamic because dataset without explicit selector is used');
           }
+          // NOTE: also pass the "use data" flag so that experiment selectors
+          // will be ignored if the modeler coded the vertical bar
           return [{d: obj, ud: use_data}, anchor1, offset1, anchor2, offset2];
         }
       } else if(obj instanceof Dataset) {
@@ -1401,8 +1420,12 @@ class VirtualMachine {
     this.chunk_variables = [];
     // Array for VM instructions
     this.code = [];
-    // Array to hold lines of (solver-dependent) model equations
-    this.lines = [];
+    // The Simplex tableau: matrix, rhs and ct will have same length
+    this.matrix = [];
+    this.right_hand_side = [];
+    this.constraint_types = [];
+    // String to hold lines of (solver-dependent) model equations
+    this.lines = '';
     // String specifying a numeric issue (empty if none)
     this.numeric_issue = '';
     // The call stack tracks evaluation of "nested" expression variables
@@ -4012,6 +4035,15 @@ class VirtualMachine {
     setTimeout((n) => VM.initializeTableau(n), 0, abl);
   }
   
+  resetTableau() {
+    // Clears tableau data: matrix, rhs and constraint types
+    // NOTE: this reset is called when initializing, and to free up
+    // memory after posting a block to the server
+    this.matrix.length = 0;
+    this.right_hand_side.length = 0;
+    this.constraint_types.length = 0;
+  }
+  
   initializeTableau(abl) {
     // `offset` is used to calculate the actual column index for variables
     this.offset = 0;
@@ -4039,9 +4071,7 @@ class VirtualMachine {
     this.rhs = 0;
     // NOTE: the constraint coefficient matrix and the rhs and ct vectors
     // have equal length (#rows); the matrix is a list of sparse vectors
-    this.matrix = [];
-    this.right_hand_side = [];
-    this.constraint_types = [];
+    this.resetTableau();
     // NOTE: setupBlock only works properly if setupProblem was successful
     // Every variable gets one column per time step => tableau is organized
     // in segments per time step, where each segment has `cols` columns
@@ -4223,9 +4253,8 @@ class VirtualMachine {
     // shorter than the standard, as it should not go beyond the end time
     const abl = this.actualBlockLength;
     this.numeric_issue = '';
-    this.lines.length = 0;
     // First add the objective (always MAXimize)
-    this.lines.push('/* Objective function */\nmax:');
+    this.lines = '/* Objective function */\nmax:\n';
     let c,
         p,
         line = '';
@@ -4261,14 +4290,14 @@ class VirtualMachine {
       }
       // Keep lines under approx. 110 chars
       if(line.length >= 100) {
-        this.lines.push(line);
+        this.lines += line + '\n';
         line = '';
       }
     }
-    this.lines.push(line + ';');
+    this.lines += line + ';\n';
     line = '';
     // Add the row constraints
-    this.lines.push('\n/* Constraints */');
+    this.lines += '\n/* Constraints */\n';
     n = this.matrix.length;
     for(let r = 0; r < n; r++) {
       const row = this.matrix[r];
@@ -4289,17 +4318,17 @@ class VirtualMachine {
         }
         // Keep lines under approx. 80 chars
         if(line.length >= 100) {
-          this.lines.push(line);
+          this.lines += line + '\n';
           line = '';
         }
       }
       c = this.right_hand_side[r];
-      this.lines.push(line + ' ' +
-          this.constraint_symbols[this.constraint_types[r]] + ' ' + c + ';');
+      this.lines += line + ' ' +
+          this.constraint_symbols[this.constraint_types[r]] + ' ' + c + ';\n';
       line = '';
     }
     // Add the variable bounds
-    this.lines.push('\n/* Variable bounds */');
+    this.lines += '\n/* Variable bounds */\n';
     n = abl * this.cols;
     for(p = 1; p <= n; p++) {
       let lb = null,
@@ -4328,25 +4357,25 @@ class VirtualMachine {
         if(lb !== null && lb !== 0) line = lb + ' <= ' + line;
         if(ub !== null) line += ' <= ' + ub;
       }
-      if(line) this.lines.push(line + ';');
+      if(line) this.lines += line + ';\n';
     }
     // Add the special variable types
     const v_set = [];
     // NOTE: for binary variables, add the constraint <= 1
     for(let i in this.is_binary) if(Number(i)) {
-      this.lines.push('C' + i + ' <= 1;');
+      this.lines += 'C' + i + ' <= 1;\n';
       v_set.push('C' + i);
     }
     for(let i in this.is_integer) if(Number(i)) v_set.push('C' + i);
-    if(v_set.length > 0) this.lines.push('int ' + v_set.join(', ') + ';');
+    if(v_set.length > 0) this.lines += 'int ' + v_set.join(', ') + ';\n';
     // Clear the INT variable list
     v_set.length = 0;
     // Add the semi-continuous variables
     for(let i in this.is_semi_continuous) if(Number(i)) v_set.push('C' + i);
-    if(v_set.length > 0) this.lines.push('sec ' + v_set.join(', ') + ';');
+    if(v_set.length > 0) this.lines += 'sec ' + v_set.join(', ') + ';\n';
     // Add the SOS section
     if(this.sos_var_indices.length > 0) {
-      this.lines.push('sos');
+      this.lines += 'sos\n';
       let sos = 1;
       for(let j = 0; j < abl; j++) {
         for(let i = 0; i < this.sos_var_indices.length; i++) {
@@ -4357,7 +4386,7 @@ class VirtualMachine {
             v_set.push('C' + vi);
             vi++;
           }
-          this.lines.push(`SOS${sos}: ${v_set.join(',')} <= 2;`);
+          this.lines += `SOS${sos}: ${v_set.join(',')} <= 2;\n`;
           sos++;
         }
       }
@@ -4392,19 +4421,18 @@ class VirtualMachine {
         p,
         r;
     this.numeric_issue = '';
-    this.lines.length = 0;
+    this.lines = '';
     for(c = 1; c <= ncol; c++) cols.push([]);
     this.decimals = Math.max(nrow, ncol).toString().length;
-    this.lines.push('NAME block-' + this.blockWithRound);
-    this.lines.push('ROWS');
+    this.lines += 'NAME block-' + this.blockWithRound + '\nROWS\n';
     // Start with the "free" row that will be the objective function
-    this.lines.push(' N  OBJ');
+    this.lines += ' N  OBJ\n';
     for(r = 0; r < nrow; r++) {
       const
           row = this.matrix[r],
           row_lbl = 'R' + (r + 1).toString().padStart(this.decimals, '0');
-      this.lines.push(' ' + this.constraint_letters[this.constraint_types[r]] +
-          '  ' + row_lbl);
+      this.lines += ' ' + this.constraint_letters[this.constraint_types[r]] +
+          '  ' + row_lbl + '\n';
       for(p in row) if (row.hasOwnProperty(p)) {
         c = row[p];
         // Check for numeric issues 
@@ -4445,17 +4473,18 @@ class VirtualMachine {
       return;
     }
     // Add the columns section
-    this.lines.push('COLUMNS');
+    this.lines += 'COLUMNS\n';
     for(c = 1; c <= ncol; c++) {
       const col_lbl = '    X' + c.toString().padStart(this.decimals, '0') + '  ';
-      this.lines.push(col_lbl + cols[c].join('\n' + col_lbl));
+      this.lines += col_lbl + cols[c].join('\n' + col_lbl) + '\n';
     }
+    // Free up memory
     cols.length = 0;
     // Add the RHS section
-    this.lines.push('RHS\n' + rhs.join('\n'));
+    this.lines += 'RHS\n' + rhs.join('\n') + '\n';
     rhs.length = 0;
     // Add the BOUNDS section
-    this.lines.push('BOUNDS');
+    this.lines += 'BOUNDS\n';
     // NOTE: start at column number 1 (not 0)
     setTimeout((c, n) => VM.showMPSProgress(c, n), 0, 1, ncol);
   }
@@ -4514,12 +4543,12 @@ class VirtualMachine {
       */
       semic = p in this.is_semi_continuous;
       if(p in this.is_binary) {
-        this.lines.push(' BV' + bnd);
+        this.lines += ' BV' + bnd + '\n';
       } else if(lb !== null && ub !== null && lb <= VM.SOLVER_MINUS_INFINITY &&
           ub >= VM.SOLVER_PLUS_INFINITY) {
-        this.lines.push(' FR' + bnd);
+        this.lines += ' FR' + bnd + '\n';
       } else if(lb !== null && lb === ub && !semic) {
-        this.lines.push(' FX' + bnd + lb);
+        this.lines += ' FX' + bnd + lb + '\n';
       } else {
         // Assume "standard" bounds
         lbc = ' LO';
@@ -4534,10 +4563,10 @@ class VirtualMachine {
         }
         // NOTE: by default, lower bound of variables is 0
         if(lb !== null && lb !== 0 || lbc !== ' LO') {
-          this.lines.push(lbc + bnd + lb);
+          this.lines += lbc + bnd + lb + '\n';
         }
         if(ub !== null) {
-          this.lines.push(ubc + bnd + ub);
+          this.lines += ubc + bnd + ub + '\n';
         }
       }
     }
@@ -4555,18 +4584,18 @@ class VirtualMachine {
     this.hideSetUpOrWriteProgress();
     // Add the SOS section
     if(this.sos_var_indices.length > 0) {
-      this.lines.push('SOS');
+      this.lines += 'SOS\n';
       const abl = this.actualBlockLength;
       let sos = 1;
       for(let j = 0; j < abl; j++) {
         for(let i = 0; i < this.sos_var_indices.length; i++) {
-          this.lines.push(' S2 sos' + sos);
+          this.lines += ' S2 sos' + sos + '\n';
           let vi = this.sos_var_indices[i][0] + j * this.cols;
           const n = this.sos_var_indices[i][1];
           for(let j = 1; j <= n; j++) {
             const s = '    X' + vi.toString().padStart(this.decimals, '0') +
                 '          ';
-            this.lines.push(s.substring(0, 15) + j);
+            this.lines += s.substring(0, 15) + j + '\n';
             vi++;
           }
           sos++;
@@ -4574,7 +4603,7 @@ class VirtualMachine {
       }
     }
     // Add the end-of-model marker
-    this.lines.push('ENDATA');
+    this.lines += 'ENDATA';
     setTimeout(() => VM.submitFile(), 0);
   }
   
@@ -4750,6 +4779,9 @@ Solver status = ${json.status}`);
   }  
 
   submitFile() {
+    // Prepares to POST the model file (LP or MPS) to the Linny-R server
+    // NOTE: the tableau is no longer needed, so free up its memory
+    this.resetTableau();
     if(this.numeric_issue) {
       const msg = 'Invalid ' + this.numeric_issue;
       this.logMessage(this.block_count, msg);
@@ -4758,13 +4790,11 @@ Solver status = ${json.status}`);
     } else {
       // Log the time it took to create the code lines
       this.logMessage(this.block_count,
-          `Model file creation (${this.lines.length} lines) took ` +
-          this.elapsedTime + ' seconds.');
-      // Concatenate code lines to POST as a single data string
-      const ccl = this.lines.join('\n');
-      // Immediately free the constituent lines
-      this.lines.length = 0;
-      MONITOR.submitBlockToSolver(ccl);
+          'Model file creation (' + UI.sizeInBytes(this.lines.length) +
+              ') took ' + this.elapsedTime + ' seconds.');
+      // NOTE: monitor will use (and then clear) VM.lines, so no need
+      // to pass it on as parameter
+      MONITOR.submitBlockToSolver();
       // Now the round number can be increased...
       this.current_round++;
       // ... and also the blocknumber if all rounds have been played
@@ -4998,6 +5028,42 @@ function VMI_push_infinity(x, empty) {
   x.push(VM.PLUS_INFINITY);
 }
 
+function valueOfIndexVariable(v) {
+  // AUXILIARY FUNCTION for the VMI_push_(i, j or k) instructions
+  // Returns value of iterator index variable for the current experiment
+  if(MODEL.running_experiment) {
+    const
+        lead = v + '=',
+        combi = MODEL.running_experiment.activeCombination;
+    for(let i = 0; i < combi.length; i++) {
+      const sel = combi[i] ;
+      if(sel.startsWith(lead)) return parseInt(sel.substring(2));
+    }
+  }
+  return 0;
+}
+
+function VMI_push_i(x, empty) {
+  // Pushes the value of iterator index i
+  const i = valueOfIndexVariable('i');
+  if(DEBUGGING) console.log('push i = ' + i);
+  x.push(i);
+}
+
+function VMI_push_j(x, empty) {
+  // Pushes the value of iterator index j
+  const j = valueOfIndexVariable('j');
+  if(DEBUGGING) console.log('push j = ' + j);
+  x.push(j);
+}
+
+function VMI_push_k(x, empty) {
+  // Pushes the value of iterator index k
+  const k = valueOfIndexVariable('k');
+  if(DEBUGGING) console.log('push k = ' + k);
+  x.push(k);
+}
+
 function pushTimeStepsPerTimeUnit(x, unit) {
   // AUXILIARY FUNCTION for the VMI_push_(time unit) instructions
   // Pushes the number of model time steps represented by 1 unit 
@@ -5133,13 +5199,17 @@ function relativeTimeStep(t, anchor, offset, dtm, x) {
     // Relative to start of next optimization block
     return VM.block_start + MODEL.block_length + offset;
   }
-  if(anchor === 'f') {
-    // Final: offset relative to the last index in the vector
+  if(anchor === 'l') {
+    // Last: offset relative to the last index in the vector
     return MODEL.end_period - MODEL.start_period + 1 + offset;
   }
   if(anchor === 's') {
     // Scaled: offset is scaled to time unit of run
     return Math.floor(offset * dtm);
+  }
+  if('ijk'.indexOf(anchor) >= 0) {
+    // Index: offset is added to the iterator index i, j or k
+    return valueOfIndexVariable(anchor) + offset;
   }
   if(anchor === '#') {
     // Index: offset is added to the inferred value of the # symbol
@@ -5156,6 +5226,7 @@ function relativeTimeStep(t, anchor, offset, dtm, x) {
     return valueOfNumberSign(x) + offset;
   }
   // Fall-through: offset relative to the initial value index (0)
+  // NOTE: this also applies to anchor f (First) 
   return offset;
 }
 
@@ -5298,23 +5369,7 @@ function VMI_push_dataset_modifier(x, args) {
     // If modifier selector is specified, use the associated expression
     obj = mx;
   } else if(!ud) {
-    if(MODEL.running_experiment) {
-      // If an experiment is running, check if dataset modifiers match the
-      // combination of selectors for the active run
-      const mm = ds.matchingModifiers(MODEL.running_experiment.activeCombination);
-      // If so, use the first match
-      if(mm.length > 0) obj = mm[0].expression;
-    } else if(ds.default_selector) {
-      // If no expriment (so "normal" run), use default selector if specified
-      const dm = ds.modifiers[ds.default_selector];
-      if(dm) {
-        obj = dm.expression;
-      } else {
-        // Exception should never occur, but check anyway and log it 
-        console.log('WARNING: Dataset "' + ds.name +
-            `" has no default selector "${ds.default_selector}"`);
-      }
-    }
+    obj = ds.activeModifierExpression;
   }
   // By default, use the dataset default value
   let v = ds.defaultValue,
@@ -5324,7 +5379,7 @@ function VMI_push_dataset_modifier(x, args) {
     // Object is a vector
     if(t >= 0 && t < obj.length) {
       v = obj[t];
-    } else if(ds.array) {
+    } else if(ds.array && t >= obj.length) {
       // Set error value if array index is out of bounds
       v = VM.ARRAY_INDEX;
       VM.out_of_bounds_array = ds.displayName;
@@ -7005,7 +7060,7 @@ const
   CONSTANT_SYMBOLS = [
       't', 'rt', 'bt', 'b', 'N', 'n', 'l', 'r', 'lr', 'nr', 'x', 'nx',
       'random', 'dt', 'true', 'false', 'pi', 'infinity', '#',
-      'yr', 'wk', 'd', 'h', 'm', 's'],
+      'i', 'j', 'k', 'yr', 'wk', 'd', 'h', 'm', 's'],
   CONSTANT_CODES = [
       VMI_push_time_step, VMI_push_relative_time, VMI_push_block_time,
       VMI_push_block_number, VMI_push_run_length, VMI_push_block_length,
@@ -7013,9 +7068,10 @@ const
       VMI_push_number_of_rounds, VMI_push_run_number, VMI_push_number_of_runs,
       VMI_push_random, VMI_push_delta_t, VMI_push_true, VMI_push_false,
       VMI_push_pi, VMI_push_infinity, VMI_push_selector_wildcard,
+      VMI_push_i, VMI_push_j, VMI_push_k,
       VMI_push_year, VMI_push_week, VMI_push_day, VMI_push_hour,
       VMI_push_minute, VMI_push_second],
-  DYNAMIC_SYMBOLS = ['t', 'rt', 'bt', 'b', 'r', 'random'],
+  DYNAMIC_SYMBOLS = ['t', 'rt', 'bt', 'b', 'r', 'random', 'i', 'j', 'k'],
   MONADIC_OPERATORS = [
       '~', 'not', 'abs', 'sin', 'cos', 'atan', 'ln',
       'exp', 'sqrt', 'round', 'int', 'fract', 'min', 'max',
@@ -7100,12 +7156,12 @@ function VMI_profitable_units(x, empty) {
         // the time horizon (by default the length of the simulation period)
         nt = (d.length > 5 ? d[5] : MODEL.end_period - MODEL.start_period + 1); 
     // Handle exceptional values of `uc` and `mc`
-    if(uc >= VM.BEYOND_PLUS_INFINITY || mc >= VM.BEYOND_PLUS_INFINITY) {
-      x.retop(Math.max(uc, mc));
-      return;
-    }
     if(uc <= VM.BEYOND_MINUS_INFINITY || mc <= VM.BEYOND_MINUS_INFINITY) {
       x.retop(Math.min(uc, mc));
+      return;
+    }
+    if(uc >= VM.BEYOND_PLUS_INFINITY || mc >= VM.BEYOND_PLUS_INFINITY) {
+      x.retop(Math.max(uc, mc));
       return;
     }
     
@@ -7204,6 +7260,145 @@ DYNAMIC_SYMBOLS.push('npu');
 // Add to this list only if operation makes an expression level-based
 LEVEL_BASED_CODES.push(VMI_profitable_units);
 
+
+function VMI_highest_cumulative_consecutive_deviation(x, empty) {
+  // Replaces the argument list that should be at the top of the stack by
+  // the HCCD (as in the function name) of the vector V that is passed as
+  // the first argument of this function. The HCCD value is computed by
+  // first iterating over the vector to obtain a new vector A that
+  // aggregates its values by blocks of B numbers of the original vector,
+  // while computing the mean value M. Then it iterates over A to compute
+  // the HCCD: the sum of deviations d = a[i] - M for consecutive i
+  // until the sign of d changes. Then the HCCD (which is initially 0)
+  // is udated to max(HCCD, |sum|). The eventual HCCD can be used as
+  // estimator for the storage capacity required for a stock having a
+  // net inflow as specified by the vector.  
+  // The function takes up to 4 elements: the vector V, the block length
+  // B (defaults to 1), the index where to start (defaults to 1) and the
+  // index where to end (defaults to the length of V)
+  const
+      d = x.top(),
+      vmi = 'Highest Cumulative Consecutive Deviation';
+  // Check whether the top stack element is a grouping of the correct size
+  if(d instanceof Array && d.length >= 1 &&
+      typeof d[0] === 'object' && d[0].hasOwnProperty('entity')) {
+    const
+        e = d[0].entity,
+        a = d[0].attribute;
+    let vector = e.attributeValue(a);
+    // NOTE: equations can also be passed by reference
+    if(e === MODEL.equations_dataset) {
+      const x = e.modifiers[a].expression;
+      // NOTE: an expression may not have been (fully) computed yet
+      x.compute();
+      if(!x.isStatic) {
+        const nt = MODEL.end_period - MODEL.start_period + 1;
+        for(let t = 1; t <= nt; t++) x.result(t);
+      }
+      vector = x.vector;
+    }
+    if(Array.isArray(vector) &&
+      // Check that other arguments are numbers
+      (d.length === 1 || (typeof d[1] === 'number' &&
+          (d.length === 2 || typeof d[2] === 'number' &&
+              (d.length === 3 || typeof d[3] === 'number'))))) {
+      // Valid parameters => get the data required for computation
+      const
+          name = e.displayName + (a ? '|' + a : ''),
+          block_size = d[1] || 1,
+          first = d[2] || 1,
+          last = d[3] || vector.length - 1,
+          // Handle exceptional values of the parameters
+          low = Math.min(block_size, first, last),
+          high = Math.min(block_size, first, last);
+      if(low <= VM.BEYOND_MINUS_INFINITY) {
+        x.retop(low);
+        return;
+      }
+      if(high >= VM.BEYOND_PLUS_INFINITY) {
+        x.retop(high);
+        return;
+      }
+      
+      // NOTE: HCCD is not time-dependent => result is stored in cache
+      // As expressions may contain several HCCD operators, create a unique key
+      // based on its parameters
+      const cache_key = ['hccd', e.identifier, a, block_size, first, last].join('_');
+      if(x.cache[cache_key]) {
+        x.retop(x.cache[cache_key]);
+        return;
+      }
+      
+      if(DEBUGGING) console.log(`*${vmi} for ${name}`);
+      
+      // Compute the aggregated vector and sum
+      let sum = 0,
+          b = 0,
+          n = 0,
+          av = [];
+      for(let i = first; i <= last; i++) {
+        const v = vector[i];
+        // Handle exceptional values in vector
+        if(v <= VM.BEYOND_MINUS_INFINITY || v >= VM.BEYOND_PLUS_INFINITY) {
+          x.retop(v);
+          return;
+        }
+        sum += v;
+        b += v;
+        if(n++ === block_size) {
+          av.push(b);
+          n = 0;
+          b = 0;
+        }
+      }
+      // Always push the remaining block sum, even if it is 0
+      av.push(b);
+      // Compute the mean (per block)
+      const mean = sum / av.length;
+      let hccd = 0,
+          positive = av[0] > mean;
+      sum = 0;
+      // Iterate over the aggregated vector
+      for(let i = 0; i < av.length; i++) {
+        const v = av[i];
+        if((positive && v < mean) || (!positive && v > mean)) {
+          hccd = Math.max(hccd, Math.abs(sum));
+          sum = v;
+          positive = !positive;
+        } else {
+          // No sign change => add deviation
+          sum += v;
+        }
+      }
+      hccd = Math.max(hccd, Math.abs(sum));
+      // Store the result in the expression's cache
+      x.cache[cache_key] = hccd;
+      // Push the result onto the stack
+      x.retop(hccd);
+      return;
+    }
+  }
+  // Fall-trough indicates error
+  if(DEBUGGING) console.log(vmi + ': invalid parameter(s)\n', d);
+  x.retop(VM.PARAMS);
+}
+
+// Add the custom operator instruction to the global lists
+// NOTE: All custom operators are monadic (priority 9) and reducing
+OPERATORS.push('hccd');
+MONADIC_OPERATORS.push('hccd');
+ACTUAL_SYMBOLS.push('hccd');
+OPERATOR_CODES.push(VMI_highest_cumulative_consecutive_deviation);
+MONADIC_CODES.push(VMI_highest_cumulative_consecutive_deviation);
+REDUCING_CODES.push(VMI_highest_cumulative_consecutive_deviation);
+SYMBOL_CODES.push(VMI_highest_cumulative_consecutive_deviation);
+PRIORITIES.push(9);
+// Add to this list only if operation makes an expression dynamic
+DYNAMIC_SYMBOLS.push('hccd');
+// Add to this list only if operation makes an expression random
+// RANDOM_CODES.push(VMI_...);
+// Add to this list only if operation makes an expression level-based
+// LEVEL_BASED_CODES.push(VMI_...);
 
 /*** END of custom operator API section ***/
 

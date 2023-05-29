@@ -72,7 +72,6 @@ class Controller {
       };
     this.WARNING = {
         NO_CONNECTION: 'No connection with server',
-        INVALID_UNIT: 'Unit name must be alphanumeric (spaces permitted) and start with a letter',
         INVALID_ACTOR_NAME: 'Invalid actor name',
         SELECTOR_SYNTAX: 'Selector can contain only letters, digits, +, -, % and wildcards',
         SINGLE_WILDCARD: 'Selector can contain only one *',
@@ -317,6 +316,16 @@ class Controller {
     return n.replace(this.EQUATIONS_DATASET_NAME + '|',
         '<span class="eq">\u221Ax</span>');
   }
+  
+  nameAsConstantString(n) {
+    // Returns name with single quotes if it equals an Linny-R constant
+    // or operator, or when it contains symbol separator characters or ']'
+    let quoted = CONSTANT_SYMBOLS.indexOf(n) >= 0 ||
+        MONADIC_OPERATORS.indexOf(n) >= 0 || n.indexOf(']') >= 0;
+    if(!quoted) SEPARATOR_CHARS.split('').forEach(
+        (c) => { if(n.indexOf(c) >= 0) quoted = true; });
+    return (quoted ? `'${n}'` : n);
+  }
 
   replaceEntity(str, en1, en2) {
     // Returns `en2` if `str` matches entity name `en1`; otherwise FALSE
@@ -348,6 +357,7 @@ class Controller {
       // Strip HTML tags from message text unless UI is graphical
       if(!this.paper) msg = msg.replace(/<[^>]*>?/gm, '');
       console.log(msg);
+if(msg.indexOf('Unknown entity') >= 0) throw('STOP!');
       if(cause) console.log('Cause:', cause);
     }
   }

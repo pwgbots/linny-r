@@ -2965,6 +2965,10 @@ class GUIController extends Controller {
     // NOTE: responding to `mouseenter` is needed to update the cursor position
     // after closing a modal dialog
     this.cc.addEventListener('mouseenter', (event) => UI.mouseMove(event));
+    // Products can be dragged from the Finder to add a placeholder for
+    // it to the focal cluster
+    this.cc.addEventListener('dragover', (event) => UI.dragOver(event));
+    this.cc.addEventListener('drop', (event) => UI.drop(event));
 
     // Disable dragging on all images
     const
@@ -3269,7 +3273,7 @@ class GUIController extends Controller {
     if(letters.indexOf('C') >= 0) CHART_MANAGER.updateDialog();
     if(letters.indexOf('D') >= 0) DATASET_MANAGER.updateDialog();
     if(letters.indexOf('E') >= 0) EQUATION_MANAGER.updateDialog();
-    if(letters.indexOf('F') >= 0) FINDER.changeFilter();
+    if(letters.indexOf('F') >= 0) FINDER.updateDialog();
     if(letters.indexOf('I') >= 0) DOCUMENTATION_MANAGER.updateDialog();
     if(letters.indexOf('J') >= 0) SENSITIVITY_ANALYSIS.updateDialog();
     if(letters.indexOf('X') >= 0) EXPERIMENT_MANAGER.updateDialog();
@@ -3803,15 +3807,26 @@ class GUIController extends Controller {
   //
   // Handlers for mouse/cursor events
   //
-
-  mouseMove(e) {
-    // Responds to mouse cursor moving over Linny-R diagram area
-    this.on_node = null;
+  
+  updateCursorPosition(e) {
+    // Updates the cursor coordinates and displays them on the status bar
     const cp = this.paper.cursorPosition(e.pageX, e.pageY);
     this.mouse_x = cp[0];
     this.mouse_y = cp[1];
     document.getElementById('pos-x').innerHTML = 'X = ' + this.mouse_x;
-    document.getElementById('pos-y').innerHTML = 'Y = ' + this.mouse_y;
+    document.getElementById('pos-y').innerHTML = 'Y = ' + this.mouse_y;    
+    this.on_note = null;
+    this.on_node = null;
+    this.on_cluster = null;
+    this.on_cluster_edge = false;
+    this.on_arrow = null;
+    this.on_link = null;
+    this.on_constraint = false;
+  }
+
+  mouseMove(e) {
+    // Responds to mouse cursor moving over Linny-R diagram area
+    this.updateCursorPosition(e);
     
     // NOTE: check, as MODEL might still be undefined
     if(!MODEL) return;
@@ -3834,8 +3849,6 @@ class GUIController extends Controller {
         }
       }
     }
-    this.on_arrow = null;
-    this.on_link = null;
     for(let i = 0; i < fc.arrows.length; i++) {
       const arr = fc.arrows[i];
       if(arr) {
@@ -3858,8 +3871,6 @@ class GUIController extends Controller {
         }
       }
     }
-    this.on_cluster = null;
-    this.on_cluster_edge = false;
     for(let i = fc.sub_clusters.length-1; i >= 0; i--) {
       const obj = fc.sub_clusters[i];
       // NOTE: ignore cluster that is being dragged, so that a cluster it is
@@ -3879,7 +3890,6 @@ class GUIController extends Controller {
       // NOTE: element is persistent, so semi-transparency must also be undone
       c.shape.element.setAttribute('opacity', 1);
     }
-    this.on_note = null;
     for(let i = fc.notes.length-1; i >= 0; i--) {
       const obj = fc.notes[i];
       if(obj.containsPoint(this.mouse_x, this.mouse_y)) {
@@ -4298,6 +4308,29 @@ class GUIController extends Controller {
     this.start_sel_x = -1;
     this.start_sel_y = -1;
     this.updateButtons();
+  }
+  
+  dragOver(e) {
+    // Accepts products that are dragged from the Finder and do not have
+    // a placeholder in the focal cluster
+    this.updateCursorPosition(e);
+    const p = MODEL.products[e.dataTransfer.getData('text')];
+    if(p && MODEL.focal_cluster.indexOfProduct(p) < 0) e.preventDefault();
+  }
+
+  drop(e) {
+    // Adds a product that is dragged from the Finder to the focal cluster
+    // at the cursor position if it does not have a placeholder yet
+    const p = MODEL.products[e.dataTransfer.getData('text')];
+    if(p && MODEL.focal_cluster.indexOfProduct(p) < 0) {
+      e.preventDefault();
+      MODEL.focal_cluster.addProductPosition(p, this.mouse_x, this.mouse_y);
+      UNDO_STACK.push('add', p);
+      this.selectNode(p);
+      this.drawDiagram(MODEL);
+    }
+    // NOTE: update afterwards, as the modeler may target a precise (X, Y)
+    this.updateCursorPosition(e);
   }
 
   //
@@ -5337,7 +5370,7 @@ class GUIController extends Controller {
     // e.g., EUR/ton
     md.element('P').value = p.price.text;
     md.element('P-unit').innerHTML =
-        (p.scale_unit === '1' ? '' : p.scale_unit);
+        (p.scale_unit === '1' ? '' : '/' + p.scale_unit);
     md.element('currency').innerHTML = MODEL.currency_unit;
     md.element('IL').value = p.initial_level.text;
     this.setBox('product-integer', p.integer_level);
@@ -5874,8 +5907,12 @@ class GUIMonitor {
     document.getElementById('call-stack-error').innerHTML =
         `ERROR at t=${t}: ` + VM.errorMessage(err);
     for(let i = 0; i < csl; i++) {
-      const x = VM.call_stack[i];
-      vlist.push(x.object.displayName + '|' + x.attribute);
+      const
+          x = VM.call_stack[i],
+          // For equations, only show the attribute
+          ons = (x.object === MODEL.equations_dataset ? '' :
+              x.object.displayName + '|');
+      vlist.push(ons + x.attribute);
       // Trim spaces around all object-attribute separators in the expression
       xlist.push(x.text.replace(/\s*\|\s*/g, '|'));
     }
@@ -6033,24 +6070,30 @@ class GUIMonitor {
     return false;
   }
 
-  submitBlockToSolver(bcode) {
+  submitBlockToSolver() {
     let top = MODEL.timeout_period;
     if(VM.max_solver_time && top > VM.max_solver_time) {
       top = VM.max_solver_time;
       UI.notify('Solver time limit for this server is ' +
           VM.max_solver_time + ' seconds');
     }
-    const bwr = VM.blockWithRound;
+UI.logHeapSize(`BEFORE creating post data`);
+    const
+        bwr = VM.blockWithRound,
+        pd = postData({
+            action: 'solve',
+            user: VM.solver_user,
+            token: VM.solver_token,
+            block: VM.block_count,
+            round: VM.round_sequence[VM.current_round],
+            data: VM.lines,
+            timeout: top
+          });
+UI.logHeapSize(`AFTER creating post data`);
+    // Immediately free the memory taken up by VM.lines
+    VM.lines = '';
     UI.logHeapSize(`BEFORE submitting block #${bwr} to solver`);
-    fetch('solver/', postData({
-          action: 'solve',
-          user: VM.solver_user,
-          token: VM.solver_token,
-          block: VM.block_count,
-          round: VM.round_sequence[VM.current_round],
-          data: bcode,
-          timeout: top
-        }))
+    fetch('solver/', pd)
       .then((response) => {
           if(!response.ok) {
             const msg = `ERROR ${response.status}: ${response.statusText}`;
@@ -6062,6 +6105,7 @@ class GUIMonitor {
       .then((data) => {
           try {
             VM.processServerResponse(JSON.parse(data));
+            UI.logHeapSize('After processing results for block #' + this.block_count);
             // If no errors, solve next block (if any)
             // NOTE: use setTimeout so that this calling function returns,
             // and browser can update its DOM to display progress
@@ -6086,6 +6130,8 @@ class GUIMonitor {
           UI.alert(msg);
           VM.stopSolving();
         });
+    pd.body = '';
+UI.logHeapSize(`after calling FETCH and clearing POST data body`);
     VM.logMessage(VM.block_count,
         `POSTing block #${bwr} took ${VM.elapsedTime} seconds.`);
     UI.logHeapSize(`AFTER posting block #${bwr} to solver`);
@@ -6489,6 +6535,9 @@ Attributes, however, are case sensitive!">[Actor X|CF]</code> for cash flow.
   <code title="Number of rounds in the sequence">nr</code>,
   <code title="Number of current experiment run (starts at 0)">x</code>,
   <code title="Number of runs in the experiment">nx</code>,
+  <span title="Index variables of iterator dimensions)">
+    <code>i</code>, <code>j</code>, <code>k</code>,
+  </span>
   <code title="Number of time steps in 1 year)">yr</code>,
   <code title="Number of time steps in 1 week)">wk</code>,
   <code title="Number of time steps in 1 day)">d</code>,
@@ -6566,7 +6615,8 @@ considers X0, &hellip;, Xn as a variable cash flow time series.">npv</code><br>
   <em>Grouping:</em>
   <code title="X ; Y evaluates as a group or &ldquo;tuple&rdquo; (X, Y)
 NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates as (1;2;3;4;5)">X ; Y</code>
-  (use only in combination with <code>max</code>, <code>min</code> and probabilistic operators)<br>
+  (use only in combination with <code>max</code>, <code>min</code>, <code>npv</code>
+  and probabilistic operators)<br>
 </p>
 <p>
   Monadic operators take precedence over dyadic operators.
@@ -7179,29 +7229,24 @@ class ScaleUnitManager {
     const
         md = this.new_scale_unit_modal,
         edited = md.element('action').innerText === 'Edit',
-        s = UI.cleanName(md.element('name').value),
+        // NOTE: unit name cannot contain single quotes
+        s = UI.cleanName(md.element('name').value).replace("'", ''),
         v = md.element('scalar').value.trim(),
         // NOTE: accept empty base unit to denote '1'
         b = md.element('base').value.trim() || '1';
     if(!s) {
       // Do not accept empty string as name
-      UI.Warn('Scale unit must have a name');
+      UI.warn('Scale unit must have a name');
       md.element('name').focus();
       return;
     }
     if(MODEL.scale_units.hasOwnProperty(s) && !edited) {
       // Do not accept existing unit as name for new unit
-      UI.Warn(`Scale unit "${s}" is already defined`);
+      UI.warn(`Scale unit "${s}" is already defined`);
       md.element('name').focus();
-      return;
-      
+      return;      
     }
-    if(b === s && b !== '1') {
-      UI.warn(`Base unit cannot be identical to scale unit`);
-      md.element('base').focus();
-      return;
-    }
-    if(!MODEL.scale_units.hasOwnProperty(b)) {
+    if(b !== s && !MODEL.scale_units.hasOwnProperty(b)) {
       UI.warn(`Base unit "${b}" is undefined`);
       md.element('base').focus();
       return;
@@ -7213,9 +7258,14 @@ class ScaleUnitManager {
         md.element('scalar').focus();
         return;
       }
+      if(b === s && ucs !== 1) {
+        UI.warn(`When base unit = scale unit, scalar must equal 1`);
+        md.element('scalar').focus();
+        return;
+      }      
       const selu = this.selected_unit;
-      if(edited) {
-        // Prevent inconsistencies across sclars
+      if(edited && b !== s) {
+        // Prevent inconsistencies across scalars
         const cr = MODEL.scale_units[b].conversionRates();
         if(cr.hasOwnProperty(s)) {
           UI.warn(`Defining ${s} in terms of ${b} introduces a circular reference`);
@@ -7237,6 +7287,7 @@ class ScaleUnitManager {
       MODEL.scale_units[s] = new ScaleUnit(s, v, b);
       MODEL.selected_unit = s;
       this.new_scale_unit_modal.hide();
+      UI.updateScaleUnitList();
       this.updateDialog();
     }
   }
@@ -9074,15 +9125,19 @@ class GUIDatasetManager extends DatasetManager {
       const d = MODEL.datasets[dnl[i]];
       let cls = ioclass[MODEL.ioType(d)];
       if(d.outcome) {
-        cls = (cls + ' outcome').trim();
+        cls += ' outcome';
       } else if(d.array) {
-        cls = (cls + ' array').trim();
+        cls += ' array';
+      } else if(d.data.length > 0) {
+        cls += ' series';
       }
-      if(d.black_box) cls = (cls + ' blackbox').trim();
+      if(d.black_box) cls += ' blackbox';
+      cls = cls.trim();
       if(cls) cls = ' class="'+ cls + '"';
       if(d === sd) sdid += i;
       dl.push(['<tr id="dstr', i, '" class="dataset',
           (d === sd ? ' sel-set' : ''),
+          (d.default_selector ? ' def-sel' : ''),
           '" onclick="DATASET_MANAGER.selectDataset(event, \'',
           dnl[i], '\');" onmouseover="DATASET_MANAGER.showInfo(\'', dnl[i],
           '\', event.shiftKey);"><td', cls, '>', d.displayName,
@@ -9248,11 +9303,16 @@ class GUIDatasetManager extends DatasetManager {
             edit = event.altKey || (m === this.selected_modifier && dt < 300);
       this.last_time_selected = now;
       if(event.shiftKey) {
+        // NOTE: prepare to update HTML class of selected dataset
+        const el = document.getElementById('dataset-table')
+            .getElementsByClassName('sel-set')[0];
         // Toggle dataset default selector
         if(m.selector === this.selected_dataset.default_selector) {
           this.selected_dataset.default_selector = '';
+          el.classList.remove('def-sel');
         } else {
           this.selected_dataset.default_selector = m.selector;
+          el.classList.add('def-sel');
         }
       }
       this.selected_modifier = m;
@@ -9477,12 +9537,8 @@ class GUIDatasetManager extends DatasetManager {
     if(msg.length) {
       UI.notify('Updated ' +  msg.join(' and '));
       // Also update these stay-on-top dialogs, as they may display a
-      // variable name for this dataset + modifier 
-      CHART_MANAGER.updateDialog();
-      DATASET_MANAGER.updateDialog();
-      EQUATION_MANAGER.updateDialog();
-      EXPERIMENT_MANAGER.updateDialog();
-      FINDER.changeFilter();
+      // variable name for this dataset + modifier
+      UI.updateControllerDialogs('CDEFX');
     }
     // NOTE: update dimensions only if dataset now has 2 or more modifiers
     // (ignoring those with wildcards)
@@ -9696,7 +9752,6 @@ class EquationManager {
     for(let i = 0; i < msl.length; i++) {
       const
           m = ed.modifiers[UI.nameToID(msl[i])],
-          mp = (m.parameters ? '\\' + m.parameters.join('\\') : ''),
           clk = '" onclick="EQUATION_MANAGER.selectModifier(event, \'' +
               m.selector + '\'';
       if(m === sm) smid += i;
@@ -9705,7 +9760,7 @@ class EquationManager {
           '"><td class="equation-selector',
           (m.expression.isStatic ? '' : ' it'),
           clk, ', false);">',
-          m.selector, mp, '</td><td class="equation-expression',
+          m.selector, '</td><td class="equation-expression',
           clk, ');">', m.expression.text, '</td></tr>'].join(''));
     }
     this.table.innerHTML = ml.join('');
@@ -9831,7 +9886,6 @@ class EquationManager {
     } else {
       // When a new modifier has been added, more actions are needed
       m.expression = oldm.expression;
-      m.parameters = oldm.parameters;
       this.deleteEquation();
       this.selected_modifier = m;
     }
@@ -9859,11 +9913,7 @@ class EquationManager {
       UI.notify('Updated ' +  msg.join(' and '));
       // Also update these stay-on-top dialogs, as they may display a
       // variable name for this dataset + modifier
-      CHART_MANAGER.updateDialog();
-      DATASET_MANAGER.updateDialog();
-      EQUATION_MANAGER.updateDialog();
-      EXPERIMENT_MANAGER.updateDialog();
-      FINDER.changeFilter();
+      UI.updateControllerDialogs('CDEFX');
     }
     // Always close the name prompt dialog, and update the equation manager
     this.rename_modal.hide();
@@ -10293,8 +10343,7 @@ class GUIChartManager extends ChartManager {
         if(c.show_title) this.drawChart();
       }
       // Update experiment viewer in case its current experiment uses this chart
-      EXPERIMENT_MANAGER.updateDialog();
-      FINDER.changeFilter();
+      UI.updateControllerDialogs('CFX');
     }
     this.rename_chart_modal.hide();
   }
@@ -10344,10 +10393,8 @@ class GUIChartManager extends ChartManager {
         MODEL.charts.splice(this.chart_index, 1);
         this.chart_index = -1;
       }
-      this.updateDialog();
       // Also update the experiment viewer (charts define the output variables)
-      EXPERIMENT_MANAGER.updateDialog();
-      FINDER.changeFilter();
+      UI.updateControllerDialogs('CFX');
     }
   }
   
@@ -10422,12 +10469,11 @@ class GUIChartManager extends ChartManager {
       this.variable_index = MODEL.charts[this.chart_index].addVariable(o, a);
       if(this.variable_index >= 0) {
         this.add_variable_modal.hide();
-        this.updateDialog();
         // Also update the experiment viewer (charts define the output variables)
         if(EXPERIMENT_MANAGER.selected_experiment) {
           EXPERIMENT_MANAGER.selected_experiment.inferVariables();
-          EXPERIMENT_MANAGER.updateDialog();
         }
+        UI.updateControllerDialogs('CFX');
       }
     }
   }
@@ -10563,10 +10609,7 @@ class GUIChartManager extends ChartManager {
       this.updateDialog();
       // Also update the experiment viewer (charts define the output variables)
       // and finder dialog
-      if(EXPERIMENT_MANAGER.selected_experiment) {
-        EXPERIMENT_MANAGER.updateDialog();
-        FINDER.changeFilter();
-      }
+      if(EXPERIMENT_MANAGER.selected_experiment) UI.updateControllerDialogs('FX');
     }
     this.variable_modal.hide();
   }
@@ -11540,6 +11583,8 @@ class GUIExperimentManager extends ExperimentManager {
         'click', () => EXPERIMENT_MANAGER.moveDimension(1));
     document.getElementById('xp-d-settings-btn').addEventListener(
         'click', () => EXPERIMENT_MANAGER.editSettingsDimensions());
+    document.getElementById('xp-d-iterator-btn').addEventListener(
+        'click', () => EXPERIMENT_MANAGER.editIteratorRanges());
     document.getElementById('xp-d-combination-btn').addEventListener(
         'click', () => EXPERIMENT_MANAGER.editCombinationDimensions());
     document.getElementById('xp-d-actor-btn').addEventListener(
@@ -11601,6 +11646,12 @@ class GUIExperimentManager extends ExperimentManager {
         'click', () => EXPERIMENT_MANAGER.addParameter());
     this.parameter_modal.cancel.addEventListener(
         'click', () => EXPERIMENT_MANAGER.parameter_modal.hide());
+
+    this.iterator_modal = new ModalDialog('xp-iterator');
+    this.iterator_modal.ok.addEventListener(
+        'click', () => EXPERIMENT_MANAGER.modifyIteratorRanges());
+    this.iterator_modal.cancel.addEventListener(
+        'click', () => EXPERIMENT_MANAGER.iterator_modal.hide());
 
     this.settings_modal = new ModalDialog('xp-settings');
     this.settings_modal.close.addEventListener(
@@ -11759,24 +11810,25 @@ class GUIExperimentManager extends ExperimentManager {
 
   updateParameters() {
     MODEL.inferDimensions();
-    let n = MODEL.dimensions.length,
-        canview = true;
+    let canview = true;
     const
         dim_count = document.getElementById('experiment-dim-count'),
         combi_count = document.getElementById('experiment-combi-count'),
         header = document.getElementById('experiment-params-header'),
         x = this.selected_experiment;
     if(!x) {
-      dim_count.innerHTML = pluralS(n, ' data dimension') + ' in model';
+      dim_count.innerHTML = pluralS(
+          MODEL.dimensions.length, ' data dimension') + ' in model';
       combi_count.innerHTML = '';
       header.innerHTML = '(no experiment selected)';
       this.params_div.style.display = 'none';
       return;
     }
     x.updateActorDimension();
-    n += x.settings_dimensions.length +
-        x.actor_dimensions.length - x.dimensions.length; 
-    dim_count.innerHTML = pluralS(n, 'more dimension');
+    x.updateIteratorDimensions();
+    x.inferAvailableDimensions(); 
+    dim_count.innerHTML = pluralS(x.available_dimensions.length,
+        'more dimension');
     x.inferActualDimensions();
     x.inferCombinations();
     combi_count.innerHTML = pluralS(x.combinations.length, 'combination');
@@ -11794,11 +11846,10 @@ class GUIExperimentManager extends ExperimentManager {
     }
     document.getElementById('experiment-dim-table').innerHTML = tr.join('');
     // Add button must be enabled only if there still are unused dimensions
-    if(x.dimensions.length >= MODEL.dimensions.length +
-        x.settings_dimensions.length + x.actor_dimensions.length) {
-      document.getElementById('xp-d-add-btn').classList.add('v-disab');
-    } else {
+    if(x.available_dimensions.length > 0) {
       document.getElementById('xp-d-add-btn').classList.remove('v-disab');
+    } else {
+      document.getElementById('xp-d-add-btn').classList.add('v-disab');
     }
     this.updateUpDownButtons();
     tr.length = 0;
@@ -12519,6 +12570,61 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     }
   }
   
+  editIteratorRanges() {
+    // Open dialog for editing iterator ranges
+    const
+        x = this.selected_experiment,
+        md = this.iterator_modal,
+        il = ['i', 'j', 'k'];
+    if(x) {
+      // NOTE: there are always 3 iterators (i, j k) so these have fixed
+      // FROM and TO input fields in the dialog
+      for(let i = 0; i < 3; i++) {
+        const k = il[i];
+        md.element(k + '-from').value = x.iterator_ranges[i][0];
+        md.element(k + '-to').value = x.iterator_ranges[i][1];
+      }
+      this.iterator_modal.show();
+    }
+  }
+
+  modifyIteratorRanges() {
+    const
+        x = this.selected_experiment,
+        md = this.iterator_modal;
+    if(x) {
+      // First validate all input fields (must be integer values)
+      // NOTE: test using a copy so as not to overwrite values until OK
+      const
+          il = ['i', 'j', 'k'],
+          ir = [[0, 0], [0, 0], [0, 0]],
+          re = /^[\+\-]?[0-9]+$/;
+      let el, f, t;
+      for(let i = 0; i < 3; i++) {
+        const k = il[i];
+        el = md.element(k + '-from');
+        f = el.value.trim() || '0';
+        if(f === '' || re.test(f)) {
+          el = md.element(k + '-to');
+          t = el.value.trim() || '0';
+          if(t === '' || re.test(t)) el = null;
+        }
+        // NULL value signals that field inputs are valid
+        if(el === null) {
+          ir[i] = [f, t];
+        } else {
+          el.focus();
+          UI.warn('Iterator range limits must be integers (or default to 0)');
+          return;
+        }
+      }
+      // Input validated, so modify the iterator dimensions
+      x.iterator_ranges = ir;
+      this.updateDialog();
+    }
+    md.hide();
+  }
+ 
   editSettingsDimensions() {
     // Open dialog for editing model settings dimensions
     const x = this.selected_experiment, rows = [];
@@ -12703,7 +12809,6 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     const
         x = this.selected_experiment,
         rows = [];
-console.log('NOW HERE', x.combination_selectors);
     if(x) {
       // Initialize selector list
       for(let i = 0; i < x.combination_selectors.length; i++) {
@@ -12714,7 +12819,6 @@ console.log('NOW HERE', x.combination_selectors);
       this.combination_modal.element('s-table').innerHTML = rows.join('');
       // Initialize combination list
       rows.length = 0;
-console.log('NOW HERE', x.combination_dimensions);
       for(let i = 0; i < x.combination_dimensions.length; i++) {
         const dim = x.combination_dimensions[i];
         rows.push('<tr onclick="EXPERIMENT_MANAGER.editCombinationDimension(', i,
@@ -12762,8 +12866,11 @@ console.log('NOW HERE', x.combination_dimensions);
           md = this.combination_selector_modal,
           sc = md.element('code'),
           ss = md.element('string'),
+          // Ignore invalid characters in the combination selector
           code = sc.value.replace(/[^\w\+\-\%]/g, ''),
-          value = ss.value.trim().replace(',', '.'),
+          // Reduce comma's, semicolons and multiple spaces in the
+          // combination string to a single space
+          value = ss.value.trim().replace(/[\,\;\s]+/g, ' '),
           add =  this.edited_combi_selector_index < 0;
       // Remove selector if either field has been cleared
       if(code.length === 0 || value.length === 0) {
@@ -12771,18 +12878,22 @@ console.log('NOW HERE', x.combination_dimensions);
           x.combination_selectors.splice(this.edited_combi_selector_index, 1);
         }
       } else {
-        // Check for uniqueness of code
-        for(let i = 0; i < x.combination_selectors.length; i++) {
-          // NOTE: ignore selector being edited, as this selector can be renamed
-          if(i != this.edited_combi_selector_index &&
-              x.combination_selectors[i].split('|')[0] === code) {
-            UI.warn(`Combination selector "${code}"already defined`);
-            sc.focus();
-            return;
+        let ok = x.allDimensionSelectors.indexOf(code) < 0;
+        if(ok) {
+          // Check for uniqueness of code
+          for(let i = 0; i < x.combination_selectors.length; i++) {
+            // NOTE: ignore selector being edited, as this selector can be renamed
+            if(i != this.edited_combi_selector_index &&
+                x.combination_selectors[i].startsWith(code + '|')) ok = false;
           }
         }
+        if(!ok) {
+          UI.warn(`Combination selector "${code}" already defined`);
+          sc.focus();
+          return;
+        }
         // Test for orthogonality (and existence!) of the selectors
-        if(!MODEL.orthogonalSelectors(value)) {
+        if(!x.orthogonalSelectors(value.split(' '))) {
           ss.focus();
           return;
         }
@@ -12790,7 +12901,6 @@ console.log('NOW HERE', x.combination_dimensions);
         const sel = code + '|' + value;
         if(add) {
           x.combination_selectors.push(sel);
-          console.log('HERE', x.combination_selectors);
         } else {
           // NOTE: rename occurrence of code in dimension (should at most be 1)
           const oc = x.combination_selectors[this.edited_combi_selector_index].split('|')[0];
@@ -12855,12 +12965,13 @@ console.log('NOW HERE', x.combination_dimensions);
               pluralS(c.length, 'unknown selector') + ': ' + c.join(' '));
           return;
         }
-        // No selectors in string may occur in another combination dimension
+        // All selectors should expand to non-overlapping selector sets
+        if(!x.orthogonalCombinationDimensions(dim)) return;
+        // Do not add when a (setwise) identical combination dimension exists
         for(let i = 0; i < x.combination_dimensions.length; i++) {
-          c = intersection(dim, x.combination_dimensions[i]);
-          if(c.length > 0 && i != this.edited_combi_dimension_index) {
-            UI.warn(pluralS(c.length, 'selector') + ' already in use: ' +
-                c.join(' '));
+          const cd = x.combination_dimensions[i];
+          if(intersection(dim, cd).length === dim.length) {
+            UI.notify('Combination already defined: ' + setString(cd));
             return;
           }
         }
@@ -13100,22 +13211,10 @@ console.log('NOW HERE', x.combination_dimensions);
       const ol = [];
       this.parameter_modal.element('type').innerHTML = type;
       if(type === 'dimension') {
-        // Compile a list of data dimensions and settings dimensions
-        // NOTE: slice to avoid adding settings dimensions to the data dimensions
-        const dl = MODEL.dimensions.slice();
-        for(let i = 0; i < x.settings_dimensions.length; i++) {
-          dl.push(x.settings_dimensions[i]);
-        }
-        for(let i = 0; i < x.actor_dimensions.length; i++) {
-          dl.push(x.actor_dimensions[i]);
-        }
-        for(let i = 0; i < dl.length; i++) {
-          const d = dl[i];
-          // NOTE: exclude dimensions already in the selected experiment
-          if (x.hasDimension(d) < 0) {
-            const ds = setString(d);
-            ol.push(`<option value="${ds}">${ds}</option>`);
-          }
+        x.inferAvailableDimensions();
+        for(let i = 0; i < x.available_dimensions.length; i++) {
+          const ds = setString(x.available_dimensions[i]);
+          ol.push(`<option value="${ds}">${ds}</option>`);
         }
       } else { 
         for(let i = 0; i < this.suitable_charts.length; i++) {
@@ -13182,7 +13281,7 @@ console.log('NOW HERE', x.combination_dimensions);
     if(x) {
       x.excluded_selectors = this.exclude.value.replace(
           /[\;\,]/g, ' ').trim().replace(
-          /[^a-zA-Z0-9\+\-\%\_\s]/g, '').split(/\s+/).join(' ');
+          /[^a-zA-Z0-9\+\-\=\%\_\s]/g, '').split(/\s+/).join(' ');
       this.exclude.value = x.excluded_selectors;
       this.updateParameters();
     }
@@ -15029,6 +15128,9 @@ class UndoStack {
     this.undoables.push(ue);
     // Update the GUI buttons
     UI.updateButtons();
+    // NOTE: update the Finder only if needed, and with a delay because
+    // the "prepare for undo" is performed before the actual change 
+    if(action !== 'move') setTimeout(() => { FINDER.updateDialog(); }, 5);
 //console.log('push ' + action);
 //console.log(UNDO_STACK);
   }
@@ -15325,6 +15427,8 @@ if (MODEL.focal_cluster === fc) {
       MODEL.focal_cluster.clearAllProcesses();
       UI.drawDiagram(MODEL);
       UI.updateButtons();
+      // Update the Finder if needed
+      if(ue.action !== 'move') FINDER.updateDialog();
     }
 //console.log('undo');
 //console.log(UNDO_STACK);
@@ -15376,6 +15480,7 @@ if (MODEL.focal_cluster === fc) {
       MODEL.focal_cluster.clearAllProcesses();
       UI.drawDiagram(MODEL);
       UI.updateButtons();
+      if(re.action !== 'move') FINDER.updateDialog();
     } 
   }
 } // END of class UndoStack

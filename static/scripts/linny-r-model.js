@@ -736,8 +736,9 @@ class LinnyRModel {
     }
     // Then infer dimensions from the datasets (which have been changed)
     this.inferDimensions();
-    // Find dimension that has been removed or (only reduced)
-    let removed = null, reduced = null;
+    // Find dimension that has been removed (or only reduced)
+    let removed = null,
+        reduced = null;
     if(od.length > this.dimensions.length) {
       // Dimension removed => find out which one
       let rd = null;
@@ -783,13 +784,6 @@ class LinnyRModel {
     }
   }
 
-  orthogonalSelectors(sel) {
-    // Returns TRUE iff the selectors in `sel` all are elements of
-    // different experiment dimensions
-    console.log('HERE', sel);
-    return true; // @@@TO DO!!!
-  }
-  
   renameSelectorInExperiments(olds, news) {
     // Replace all occurrences of `olds` in dimension strings by `news`
     for(let i = 0; i < this.experiments.length; i++) {
@@ -896,6 +890,11 @@ class LinnyRModel {
   
   renameScaleUnit(oldu, newu) {
     let nr = 0;
+    // Update the default product unit
+    if(MODEL.default_unit === oldu) {
+      MODEL.default_unit = newu;
+      nr++;
+    }
     // Rename product scale units
     for(let p in MODEL.products) if(MODEL.products.hasOwnProperty(p)) {
       if(MODEL.products[p].scale_unit === oldu) {
@@ -932,9 +931,70 @@ class LinnyRModel {
         }
       }
     }
-    // @@@TO DO: rename scale unit in expressions
-    if(nr) UI.notify(pluralS(nr, 'scale unit') +
-        ' renamed (expressions NOT checked!)');
+    // Also rename scale units in expressions (quoted if needed)
+    oldu = UI.nameAsConstantString(oldu);
+    newu = UI.nameAsConstantString(newu);
+    const ax = MODEL.allExpressions;
+    if(oldu.startsWith("'")) {
+      // Simple case: replace quoted old unit by new
+      for(let i = 0; i < ax.length; i++) {
+        let parts = ax[i].text.split(oldu);
+        nr += parts.length - 1;
+        ax[i].text = parts.join(newu);
+      }
+    } else {
+      // Old unit is not enclosed in quotes; then care must be taken
+      // not to replace partial matches, e.g., kton => ktonne when 'ton'
+      // is renamed to 'tonne'; solution is to ensure that old unit must
+      // have a separator character on both sides, or it is not replaced
+      const
+          sep = SEPARATOR_CHARS + "]'",
+          esep = escapeRegex(sep),
+          eou = escapeRegex(oldu),
+          raw = `\[[^\[]*\]|(^|\s|[${esep}])(${eou})($|\s|[${esep}])`;
+      const
+          // NOTE: this will match anything within brackets, and the unit
+          re = new RegExp(raw, 'g');
+      // Iterate over all expressions
+      for(let i = 0; i < ax.length; i++) {
+        let ot = ax[i].text,
+            nt = '',
+            m = re.exec(ot);
+        while (m !== null) {
+          // NOTE: A match with the unit name will have 3 groups, and the
+          // middle one (so element with index 2) should then be equal to
+          // the unit name; other matches will be bracketed text that
+          // should be ignored
+          if(m.length > 2 && m[2] === oldu) {
+            // NOTE: lastIndex points right after the complete match,
+            // and this match m[0] can have separator characters on both
+            // sides which should not be removed
+            const
+                parts = m[0].split(oldu),
+                left = parts[0].split('').pop(),
+                right = (parts[1] ? parts[1].split('')[0] : '');
+            // NOTE: if one separator is a single quote, the the other
+            // must also be a single quote (to avoid 'ton/m3' to be
+            // renamed when 'ton' is renamed)
+            if(!((left === "'" || right === "'") && left !== right) &&
+                sep.indexOf(left) >= 0 && sep.indexOf(right) >= 0) {
+              // Separator chars on both side =>
+              nt += ot.slice(0, re.lastIndex - m[0].length) + parts.join(newu);
+              ot = ot.slice(re.lastIndex);
+            }
+          }
+          m = re.exec(ot);
+        }
+        if(nt) {
+          ax[i].text = nt + ot;
+          nr++;
+        }
+      }
+    }
+    if(nr) {
+      UI.notify(pluralS(nr, 'scale unit') + ' renamed');
+      UI.drawDiagram(MODEL);
+    }
   }
   
   unitConversionMultiplier(from, to) {
@@ -1131,11 +1191,27 @@ class LinnyRModel {
       }
     }
     d = new Dataset(name);
-    // NOTE: when equations dataset is added, recognize it as such, or its
-    // modifier selectors may be rejected while initializing from XML
-    if(name === UI.EQUATIONS_DATASET_NAME) this.equations_dataset = d;
+    let eqds = null;
+    if(name === UI.EQUATIONS_DATASET_NAME) {
+      // When including a module, the current equations must be saved,
+      // then the newly parsed dataset must have its modifiers prefixed,
+      // and then be merged with the original equations dataset
+      if(IO_CONTEXT) eqds = this.equations_dataset;
+      // When equations dataset is added, recognize it as such, or its
+      // modifier selectors may be rejected while initializing from XML
+      this.equations_dataset = d;
+    }
     if(node) d.initFromXML(node);
-    this.datasets[id] = d;
+    if(eqds) {
+      // Restore pointer to original equations dataset
+      this.equations_dataset = eqds;
+      // Add included equations with prefixed names
+console.log('HERE', d);
+      // Return the extended equations dataset
+      return eqds;
+    } else {
+      this.datasets[id] = d;
+    }
     return d;
   }
   
@@ -1385,8 +1461,8 @@ class LinnyRModel {
 
   setSelection() {
     // Set selection to contain all selected entities in the focal cluster
-    // NOTE: to be called after loading a model, and after UNDO/REDO (and then
-    // before drawing the diagram)
+    // NOTE: to be called after loading a model, and after UNDO/REDO (and
+    // then before drawing the diagram)
     const fc = this.focal_cluster;
     this.selection.length = 0;
     this.selection_related_arrows.length = 0;
@@ -1951,6 +2027,44 @@ class LinnyRModel {
     }
   }
   
+  get allExpressions() {
+    // Returns list of all Expression objects
+    // NOTE: start with dataset expressions, so that when recompiling
+    // their `level-based` property is set before recompiling the
+    // other expressions
+    const x = [];
+    for(let k in this.datasets) if(this.datasets.hasOwnProperty(k)) {
+      const ds = this.datasets[k];
+      // NOTE: dataset modifier expressions include the equations
+      for(let m in ds.modifiers) if(ds.modifiers.hasOwnProperty(m)) {
+        x.push(ds.modifiers[m].expression);
+      }
+    }
+    for(let k in this.actors) if(this.actors.hasOwnProperty(k)) {
+      x.push(this.actors[k].weight);
+    }
+    for(let k in this.processes) if(this.processes.hasOwnProperty(k)) {
+      const p = this.processes[k];
+      x.push(p.lower_bound, p.upper_bound, p.initial_level, p.pace_expression);
+    }
+    for(let k in this.products) if(this.products.hasOwnProperty(k)) {
+      const p = this.products[k];
+      x.push(p.lower_bound, p.upper_bound, p.initial_level, p.price);
+    }
+    for(let k in this.clusters) if(this.clusters.hasOwnProperty(k)) {
+      const c = this.clusters[k];
+      for(let i = 0; i < c.notes.length; i++) {
+        const n = c.notes[i];
+        x.push(n.color);
+      }
+    }
+    for(let k in this.links) if(this.links.hasOwnProperty(k)) {
+      const l = this.links[k];
+      x.push(l.relative_rate, l.flow_delay);
+    }
+    return x;
+  }
+
   replaceEntityInExpressions(en1, en2) {
     // Replace entity name `en1` by `en2` in all variables in all expressions
     // (provided that they are not identical)
@@ -1964,46 +2078,16 @@ class LinnyRModel {
     // NOTE: use the `rewrite` method of class IOContext; this will keep track
     // of the number of replacements made
     const ioc = new IOContext();
-    // Check all actor weight expressions
-    for(let k in this.actors) if(this.actors.hasOwnProperty(k)) {
-      ioc.rewrite(this.actors[k].weight, en1, en2);
+    // Iterate over all expressions
+    const ax = this.allExpressions;
+    for(let i = 0; i < ax.length; i++) {
+      ioc.rewrite(ax[i], en1, en2);
     }
-    // Check all process attribute expressions
-    for(let k in this.processes) if(this.processes.hasOwnProperty(k)) {
-      const p = this.processes[k];
-      ioc.rewrite(p.lower_bound, en1, en2);
-      ioc.rewrite(p.upper_bound, en1, en2);
-      ioc.rewrite(p.initial_level, en1, en2);
-      ioc.rewrite(p.pace_expression, en1, en2);
-    }
-    // Check all product attribute expressions
-    for(let k in this.products) if(this.products.hasOwnProperty(k)) {
-      const p = this.products[k];
-      ioc.rewrite(p.lower_bound, en1, en2);
-      ioc.rewrite(p.upper_bound, en1, en2);
-      ioc.rewrite(p.initial_level, en1, en2);
-      ioc.rewrite(p.price, en1, en2);
-    }
-    // Check all notes in clusters for their color expressions and fields
+    // Iterate over all notes in clusters to rename entities in note fields
     for(let k in this.clusters) if(this.clusters.hasOwnProperty(k)) {
-      const c = this.clusters[k];
-      for(let i = 0; i < c.notes.length; i++) {
-        const n = c.notes[i];
-        ioc.rewrite(n.color, en1, en2);
-        // Also rename entities in note fields
-        n.rewriteFields(en1, en2);
-      }
-    }
-    // Check all link rate & delay expressions
-    for(let k in this.links) if(this.links.hasOwnProperty(k)) {
-      ioc.rewrite(this.links[k].relative_rate, en1, en2);
-      ioc.rewrite(this.links[k].flow_delay, en1, en2);
-    }
-    // Check all dataset modifier expressions
-    for(let k in this.datasets) if(this.datasets.hasOwnProperty(k)) {
-      const ds = this.datasets[k];
-      for(let m in ds.modifiers) if(ds.modifiers.hasOwnProperty(m)) {
-        ioc.rewrite(ds.modifiers[m].expression, en1, en2);
+      const cn = this.clusters[k].notes;
+      for(let i = 0; i < cn.length; i++) {
+        cn[i].rewriteFields(en1, en2);
       }
     }
     if(ioc.replace_count) {
@@ -2028,50 +2112,14 @@ class LinnyRModel {
     const
         en = escapeRegex(ena[0].trim().replace(/\s+/g, ' ').toLowerCase()),
         at = ena[1].trim(),
-        raw = en.replace(/\s/, '\\s+') + '\\s*\\|\\s*' + escapeRegex(at),
-        re = new RegExp(
-            '\\[\\s*' + raw + '\\s*(\\@[^\\]]+)?\\s*\\]',
-            'gi');
+        raw = en.replace(/\s/, `\s+`) + `\s*\|\s*` + escapeRegex(at),
+        re = new RegExp(`\[\s*${raw}\s*(\@[^\]]+)?\s*\]`, 'gi');
     // Count replacements made
     let n = 0;
-    // Check all actor weight expressions
-    for(let k in this.actors) if(this.actors.hasOwnProperty(k)) {
-      n += this.actors[k].weight.replaceAttribute(re, at, a);
-    }
-    // Check all process attribute expressions
-    for(let k in this.processes) if(this.processes.hasOwnProperty(k)) {
-      const p = this.processes[k];
-      n += p.lower_bound.replaceAttribute(re, at, a);
-      n += p.upper_bound.replaceAttribute(re, at, a);
-      n += p.initial_level.replaceAttribute(re, at, a);
-      n += p.pace_expression.replaceAttribute(re, at, a);
-    }
-    // Check all product attribute expressions
-    for(let k in this.products) if(this.products.hasOwnProperty(k)) {
-      const p = this.products[k];
-      n += p.lower_bound.replaceAttribute(re, at, a);
-      n += p.upper_bound.replaceAttribute(re, at, a);
-      n += p.initial_level.replaceAttribute(re, at, a);
-      n += p.price.replaceAttribute(re, at, a);
-    }
-    // Check all notes in clusters for their color expressions and fields
-    for(let k in this.clusters) if(this.clusters.hasOwnProperty(k)) {
-      const c = this.clusters[k];
-      for(let i = 0; i < c.notes.length; i++) {
-        n += c.notes[i].color.replaceAttribute(re, at, a);
-      }
-    }
-    // Check all link rate and delay expressions
-    for(let k in this.links) if(this.links.hasOwnProperty(k)) {
-      n += this.links[k].relative_rate.replaceAttribute(re, at, a);
-      n += this.links[k].flow_delay.replaceAttribute(re, at, a);
-    }
-    // Check all dataset modifier expressions
-    for(let k in this.datasets) if(this.datasets.hasOwnProperty(k)) {
-      const ds = this.datasets[k];
-      for(let m in ds.modifiers) if(ds.modifiers.hasOwnProperty(m)) {
-        n += ds.modifiers[m].expression.replaceAttribute(re, at, a);
-      }
+    // Iterate over all expressions
+    const ax = this.allExpressions;
+    for(let i = 0; i < ax.length; i++) {
+      n += ax[i].replaceAttribute(re, at, a);
     }
     return n;
   }
@@ -2314,14 +2362,14 @@ class LinnyRModel {
           // will then add the module prefix to the selector
           if(IO_CONTEXT) {
             if(name === UI.EQUATIONS_DATASET_NAME) {
-              const mn = childNodeByTag(node, 'modifiers');
+              const mn = childNodeByTag(c, 'modifiers');
               if(mn && mn.childNodes) {
                 for(let j = 0; j < mn.childNodes.length; j++) {
-                  const c = mn.childNodes[j];
-                  if(c.nodeName === 'modifier') {
+                  const cc = mn.childNodes[j];
+                  if(cc.nodeName === 'modifier') {
                     this.equations_dataset.addModifier(
-                        xmlDecoded(nodeContentByTag(c, 'selector')),
-                        c, IO_CONTEXT);
+                        xmlDecoded(nodeContentByTag(cc, 'selector')),
+                        cc, IO_CONTEXT);
                   }
                 }
               }              
@@ -2706,6 +2754,10 @@ class LinnyRModel {
       this.cleanVector(p.cash_flow, 0, 0);
       this.cleanVector(p.cash_in, 0, 0);
       this.cleanVector(p.cash_out, 0, 0);
+      // NOTE: note fields also must be reset
+      for(let i = 0; i < p.notes.length; i++) {
+        p.notes[i].parsed = false;
+      }
     }
     for(obj in this.processes) if(this.processes.hasOwnProperty(obj)) {
       p = this.processes[obj];
@@ -2796,30 +2848,9 @@ class LinnyRModel {
 
   compileExpressions() {
     // Compile all expression attributes of all model entities
-    let obj,
-        p;
-    // NOTE: start with dataset expressions, so that their level-based
-    // property is set before compiling the other expressions
-    for(obj in this.datasets) if(this.datasets.hasOwnProperty(obj)) {
-      this.datasets[obj].compileExpressions();
-    }
-    for(obj in this.actors) if(this.actors.hasOwnProperty(obj)) {
-      this.actors[obj].weight.compile();
-    }
-    for(obj in this.processes) if(this.processes.hasOwnProperty(obj)) {
-      p = this.processes[obj];
-      p.lower_bound.compile();
-      p.upper_bound.compile();
-    }
-    for(obj in this.products) if(this.products.hasOwnProperty(obj)) {
-      p = this.products[obj];
-      p.lower_bound.compile();
-      p.upper_bound.compile();
-      p.price.compile();
-    }
-    for(obj in this.links) if(this.links.hasOwnProperty(obj)) {
-      this.links[obj].relative_rate.compile();
-      this.links[obj].flow_delay.compile();
+    const ax = this.allExpressions;
+    for(let i = 0; i < ax.length; i++) {
+      ax[i].compile();
     }
   }
   
@@ -3797,8 +3828,8 @@ class IOContext {
   }
 
   bind(fn, an) {
-    // Binds the formal name `n` of an entity in a module to the actual name
-    // `an` it will have in the current model
+    // Binds the formal name `fn` of an entity in a module to the actual
+    // name `an` it will have in the current model
     const id = UI.nameToID(fn);
     if(this.bindings.hasOwnProperty(id)) {
       this.bindings[id].bind(an);
@@ -3818,7 +3849,6 @@ class IOContext {
     // (and for processes and clusters: with actor name `an` if specified and
     // not "(no actor)")
     // NOTE: do not modify (no actor), nor the "dataset dot"
-    // @@TO DO: correctly handle equations!
     if(n === UI.NO_ACTOR || n === '.') return n;
     // NOTE: the top cluster of the included model has the prefix as its name
     if(n === UI.TOP_CLUSTER_NAME || n === UI.FORMER_TOP_CLUSTER_NAME) {
@@ -3953,7 +3983,7 @@ class IOContext {
         a,
         stat;
     while(true) {
-      p = x.text.indexOf('[', p + 1);
+      p = x.text.indexOf('[', q + 1);
       if(p < 0) {
         // No more '[' => add remaining part of text, and quit
         s += x.text.slice(q + 1);
@@ -4449,8 +4479,14 @@ class Note extends ObjectWithXYWH {
         } else if(obj) {
           // If attribute omitted, use default attribute of entity type
           const attr = (ena.length > 1 ? ena[1].trim() : obj.defaultAttribute);
-          // Variable may specify a vector-type attribute
-          let val = obj.attributeValue(attr);
+          let val = null;
+          // NOTE: for datasets, use the active modifier
+          if(!attr && obj instanceof Dataset) {
+            val = obj.activeModifierExpression;
+          } else {
+            // Variable may specify a vector-type attribute
+            val = obj.attributeValue(attr);
+          }
           // If not, it may be a cluster unit balance
           if(!val && attr.startsWith('=') && obj instanceof Cluster) {
             val = {c: obj, u: attr.substring(1).trim()};
@@ -7601,12 +7637,10 @@ class Link {
 
 // CLASS DatasetModifier
 class DatasetModifier {
-  constructor(dataset, selector, params=false) {
+  constructor(dataset, selector) {
     this.dataset = dataset;
     this.selector = selector;
     this.expression = new Expression(dataset, selector, '');
-    // Equations may have parameters
-    this.parameters = params;
     this.expression_cache = {};
   }
   
@@ -7637,17 +7671,12 @@ class DatasetModifier {
     // NOTE: for some reason, selector may become empty string, so prevent
     // saving such unidentified modifiers
     if(this.selector.trim().length === 0) return '';
-    let pstr = (Array.isArray(this.parameters) ?
-        this.parameters.join('\\').trim() : '');
-    if(pstr) pstr = ' parameters="' + xmlEncoded(pstr) + '"';
-    return ['<modifier', pstr, '><selector>', xmlEncoded(this.selector),
+    return ['<modifier><selector>', xmlEncoded(this.selector),
       '</selector><expression>', xmlEncoded(this.expression.text),
       '</expression></modifier>'].join('');
   }
 
   initFromXML(node) {
-    const pstr = nodeParameterValue(node, 'parameters').trim();
-    this.parameters = (pstr ? xmlDecoded(pstr).split('\\'): false);
     this.expression.text = xmlDecoded(nodeContentByTag(node, 'expression'));
     if(IO_CONTEXT) {
       // Contextualize the included expression
@@ -7922,47 +7951,45 @@ class Dataset {
     }
     return null;
   }
+
+  get activeModifierExpression() { 
+    if(MODEL.running_experiment) {
+      // If an experiment is running, check if dataset modifiers match the
+      // combination of selectors for the active run
+      const mm = this.matchingModifiers(MODEL.running_experiment.activeCombination);
+      // If so, use the first match
+      if(mm.length > 0) return mm[0].expression;
+    }
+    if(this.default_selector) {
+      // If no experiment (so "normal" run), use default selector if specified
+      const dm = this.modifiers[this.default_selector];
+      if(dm) return dm.expression;
+      // Exception should never occur, but check anyway and log it 
+      console.log('WARNING: Dataset "' + this.name +
+          `" has no default selector "${this.default_selector}"`);
+    }
+    // Fall-through: return vector instead of expression
+    return this.vector;
+  }
   
   addModifier(selector, node=null, ioc=null) {
-    let s = selector,
-        params = false;
+    let s = selector;
     // Firstly, sanitize the selector
     if(this === MODEL.equations_dataset) {
       // Equation identifiers cannot contain characters that have special
       // meaning in a variable identifier
-      s = s.replace(/[\*\?\|\[\]\{\}\:\@\#]/g, '');
+      s = s.replace(/[\*\?\|\[\]\{\}\@\#]/g, '');
       if(s !== selector) {
-        UI.warn('Equation name cannot contain [, ], {, }, |, :, @, #, * or ?');
+        UI.warn('Equation name cannot contain [, ], {, }, |, @, #, * or ?');
         return null;
       }
-      // Check whether equation has parameters
-      const ss = s.split('\\');
-      if(ss.length > 1) {
-        s = ss.shift();
-        // Store parameter names in lower case
-        for(let i = 0; i < ss.length; i++) {
-          ss[i] = ss[i].toLowerCase();
-        }
-        params = ss;
-      }
+      // Reduce inner spaces to one, and trim outer spaces
+      s = s.replace(/\s+/g, ' ').trim();
+    // Then prefix it when the IO context argument is defined 
+    if(ioc) s = ioc.actualName(s);
       // If equation already exists, return its modifier
       const id = UI.nameToID(s);
-      if(this.modifiers.hasOwnProperty(id)) {
-        const exm = this.modifiers[id];
-        if(params) {
-          if(!exm.parameters) {
-            UI.warn(`Existing equation ${exm.displayName} has no parameters`);
-          } else {
-            const
-                newp = params.join('\\'),
-                oldp = exm.parameters.join('\\');
-            if(newp !== oldp) {
-              UI.warn(`Parameter mismatch: expected \\${oldp}, not \\${newp}`);
-            }
-          }
-        }
-        return exm;
-      }
+      if(this.modifiers.hasOwnProperty(id)) return this.modifiers[id];
       // New equation identifier must not equal some entity ID
       const obj = MODEL.objectByName(s);
       if(obj) {
@@ -7970,8 +7997,6 @@ class Dataset {
         UI.warningEntityExists(obj);
         return null;
       }
-      // Also reduce inner spaces to one, and trim outer spaces
-      s = s.replace(/\s+/g, ' ').trim();
     } else {
       // Standard dataset modifier selectors are much more restricted, but
       // to be user-friendly, special chars are removed automatically
@@ -7989,12 +8014,10 @@ class Dataset {
       UI.warn(UI.WARNING.INVALID_SELECTOR);
       return null;
     }
-    // Then prefix it when the IO context argument is defined 
-    if(ioc) s = ioc.actualName(s);
     // Then add a dataset modifier to this dataset
     const id = UI.nameToID(s);
     if(!this.modifiers.hasOwnProperty(id)) {
-      this.modifiers[id] = new DatasetModifier(this, s, params);
+      this.modifiers[id] = new DatasetModifier(this, s);
     }
     // Finally, initialize it when the XML node argument is defined
     if(node) this.modifiers[id].initFromXML(node);
@@ -8044,11 +8067,11 @@ class Dataset {
   initFromXML(node) {
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     this.default_value = safeStrToFloat(nodeContentByTag(node, 'default'));
-    this.scale_unit = xmlDecoded(nodeContentByTag(node, 'unit'));
+    this.scale_unit = xmlDecoded(nodeContentByTag(node, 'unit')) || '1';
     this.time_scale = safeStrToFloat(nodeContentByTag(node, 'time-scale'), 1);
-    this.time_unit = nodeContentByTag(node, 'time-unit');
-    if(!this.time_unit) this.time_unit = CONFIGURATION.default_time_unit;
-    this.method = nodeContentByTag(node, 'method');
+    this.time_unit = nodeContentByTag(node, 'time-unit') ||
+        CONFIGURATION.default_time_unit;
+    this.method = nodeContentByTag(node, 'method') || 'nearest';
     this.periodic = nodeParameterValue(node, 'periodic') === '1';
     this.array = nodeParameterValue(node, 'array') === '1';
     this.black_box = nodeParameterValue(node, 'black-box') === '1';
@@ -9888,10 +9911,13 @@ class Experiment {
     this.variables = [];
     this.configuration_dims = 0;
     this.column_scenario_dims = 0;
+    this.iterator_ranges = [[0,0], [0,0], [0,0]];
+    this.iterator_dimensions = [];
     this.settings_selectors = [];
     this.settings_dimensions = [];
     this.combination_selectors = [];
     this.combination_dimensions = [];
+    this.available_dimensions = [];
     this.actor_selectors = [];
     this.actor_dimensions = [];
     this.excluded_selectors = '';
@@ -9949,6 +9975,56 @@ class Experiment {
     // Returns the list of active selectors
     if(this.active_combination_index < 0) return [];
     return this.combinations[this.active_combination_index];
+  }
+  
+  get iteratorRangeString() {
+    // Returns the iterator ranges as "from,to" pairs separated by |
+    const ir = [];
+    for(let i = 0; i < 3; i++) {
+      ir.push(this.iterator_ranges[i].join(','));
+    }
+    return ir.join('|');
+  }
+  
+  parseIteratorRangeString(s) {
+    // Parses `s` as "from,to" pairs, ignoring syntax errors
+    if(s) {
+      const ir = s.split('|');
+      // Add 2 extra substrings to have at least 3
+      ir.push('', '');
+      for(let i = 0; i < 3; i++) {
+        const r = ir[i].split(',');
+        // Likewise add extra substring to have at least 2
+        r.push('');
+        // Parse integers, defaulting to 0
+        this.iterator_ranges[i] = [safeStrToInt(r[0], 0), safeStrToInt(r[1], 0)];
+      }
+    }
+  }
+  
+  updateIteratorDimensions() {
+    // Create iterator selectors for each index variable having a relevant range
+    this.iterator_dimensions = [];
+    const il = ['i', 'j', 'k'];
+    for(let i = 0; i < 3; i++) {
+      const r = this.iterator_ranges[i];
+      if(r[0] || r[1]) {
+        const
+            sel = [],
+            k = il[i] + '=';
+        // NOTE: iterate from FROM to TO limit also when FROM > TO
+        if(r[0] <= r[1]) {
+          for(let j = r[0]; j <= r[1]; j++) {
+            sel.push(k + j);
+          }
+        } else {
+          for(let j = r[0]; j >= r[1]; j--) {
+            sel.push(k + j);
+          }          
+        }
+        this.iterator_dimensions.push(sel);
+      }
+    }
   }
   
   matchingCombinationIndex(sl) {
@@ -10014,6 +10090,7 @@ class Experiment {
     return ['<experiment configuration-dims="', this.configuration_dims,
       '" column_scenario-dims="', this.column_scenario_dims,
       (this.completed ? '" completed="1' : ''),
+      '" iterator-ranges="', this.iteratorRangeString,
       '" started="', this.time_started,
       '" stopped="', this.time_stopped,
       '" variables="', this.download_settings.variables,
@@ -10045,6 +10122,7 @@ class Experiment {
       nodeParameterValue(node, 'configuration-dims'));
     this.column_scenario_dims = safeStrToInt(
       nodeParameterValue(node, 'column-scenario-dims'));
+    this.parseIteratorRangeString(nodeParameterValue(node, 'iterator-ranges'));
     this.completed = nodeParameterValue(node, 'completed') === '1';
     this.time_started = safeStrToInt(nodeParameterValue(node, 'started'));
     this.time_stopped = safeStrToInt(nodeParameterValue(node, 'stopped'));
@@ -10166,7 +10244,9 @@ class Experiment {
     // Returns dimension index if any dimension contains any selector in
     // dimension `d`, or -1 otherwise
     for(let i = 0; i < this.dimensions.length; i++) {
-      if(intersection(this.dimensions[i], d).length > 0) return i;
+      const xd = this.dimensions[i].slice();
+      this.expandCombinationSelectors(xd);
+      if(intersection(xd, d).length > 0) return i;
     }
     return -1;
   }
@@ -10175,7 +10255,7 @@ class Experiment {
     // Removes dimension `d` from list and returns its old index
     for(let i = 0; i < this.dimensions.length; i++) {
       if(intersection(this.dimensions[i], d).length > 0) {
-        this.dimensions.splice(i);
+        this.dimensions.splice(i, 1);
         return i;
       }
     }
@@ -10212,7 +10292,170 @@ class Experiment {
       if(adi >= 0) this.dimensions[adi] = d;
     }
   }
+  
+  get allDimensionSelectors() {
+    const sl = Object.keys(MODEL.listOfAllSelectors);
+    // Add selectors of actor, iterator and settings dimensions
+    return sl;
+  }
 
+  orthogonalSelectors(c) {
+    // Returns TRUE iff the selectors in set `c` all are elements of
+    // different experiment dimensions
+    const
+        // Make a copy of `c` so it can be safely expanded
+        xc = c.slice(),
+        // Start with a copy of all model dimensions
+        dl = MODEL.dimensions.slice(),
+        issues = [];
+    // Add dimensions defined for this experiment
+    for(let i = 0; i < this.settings_dimensions.length; i++) {
+      dl.push(this.settings_dimensions[i]);
+    }
+    for(let i = 0; i < this.actor_dimensions.length; i++) {
+      dl.push(this.actor_dimensions[i]);
+    }
+    // Expand `c` as it may contain combination selectors
+    this.expandCombinationSelectors(xc);
+    // Check for all these dimensions that `c` contains known selectors
+    // and that no two or more selectors occur in the same dimension
+    let unknown = xc.slice();
+    for(let i = 0; i < dl.length; i++) {
+      const idc = intersection(dl[i], xc);
+      unknown = complement(unknown, idc);
+      if(idc.length > 1) {
+        const pair = idc.join(' & ');
+        if(issues.indexOf(pair) < 0) issues.push(pair);
+      }
+    }
+    if(unknown.length > 0) {
+      UI.warn('Combination contains ' +
+          pluralS(unknown.length, 'undefined selector') +
+          ' (' + unknown.join(', ') + ')');
+      return false;
+    }
+    if(issues.length > 0) {
+      UI.warn('Combination contains multiple selectors from same dimension (' +
+          issues.join(', ') + ')');
+      return false;
+    }
+    return true;
+  }
+  
+  expandCombinationSelectors(cs) {
+    // Expansion of combination selectors in a selector set `cs` means
+    // that if, for example, `cs` = (A, C1) where C1 is a combination
+    // selector defined as C1 = (B, C2) with A and B being "normal"
+    // selectors, then C1 must be removed from `cs`, while B and the
+    // expansion of C2 must be appended to `cs`.
+    // NOTE: the original selectors C1 and C2 must be removed because
+    // *dimension* selectors cannot be a used as "normal" selectors
+    // (e.g., for dataset modifiers, actor settings or model setting)
+    // NOTE: traverse `cs` in reverse order to ensure that deleting and
+    // appending produce the intended result
+    for(let i = cs.length - 1; i >= 0; i--) {
+      const s = cs[i];
+      // Check whether selector `s` defines a combination
+      for(let j = 0; j < this.combination_selectors.length; j++) {
+        const tuple = this.combination_selectors[j].split('|');
+        if(tuple[0] === s) {
+          // First remove `s` from the original set...
+          cs.splice(i, 1);
+          // Let `xs` be the selector set to replace `s`
+          const xs = tuple[1].split(' ');
+          // Recursively expand `xs`, as it may contain combination selectors
+          this.expandCombinationSelectors(xs);
+          // ... and append its expansion
+          cs.push(...xs);
+        }
+      }
+    }
+  }
+  
+  orthogonalCombinationDimensions(sl) {
+    // Returns TRUE iff the expansions of the selectors in set `sl`
+    // are mutually exclusive
+    const
+        xl = {},
+        issues = {};
+    for(let i = 0; i < sl.length; i++) {
+      const s = sl[i];
+      xl[s] = [s];
+      this.expandCombinationSelectors(xl[s]);
+      issues[s] = [];
+    }
+    let ok = true;
+    for(let i = 0; i < sl.length; i++) {
+      const s1 = sl[i];
+      for(let j = i + 1; j < sl.length; j++) {
+        const
+            s2 = sl[j],
+            shared = intersection(xl[s1], xl[s2]);
+        if(shared.length > 0) {
+          issues[s1].push(`${s2}: ${shared.join(', ')}`);
+          ok = false;
+        }
+      }
+    }
+    if(!ok) {
+      const il = [];
+      for(let i = 0; i < sl.length; i++) {
+        const s = sl[i];
+        if(issues[s].length > 0) {
+          il.push(`${s} (${issues[s].join('; ')})`);
+        }
+      }
+      UI.warn('Combination dimension is not orthogonal: ' + il.join(', '));
+    }
+    return ok;
+  }
+  
+  inferAvailableDimensions() {
+    // Creates list of dimensions that are orthogonal to those already
+    // selected for this experiment
+    this.available_dimensions.length = 0;
+    // For efficiency, do not use hasDimension but expand the dimensions
+    // that are already selected once, and define a lookup function that
+    // checks for orthogonality
+    const
+        axes = [],
+        orthogonal = (d) => {
+            for(let i = 0; i < axes.length; i++) {
+              if(intersection(axes[i], d).length > 0) return false;
+            }
+            return true;
+          };
+    for(let i = 0; i < this.dimensions.length; i++) {
+      axes.push(this.dimensions[i].slice());
+      this.expandCombinationSelectors(axes[i]);
+    }
+    for(let i = 0; i < MODEL.dimensions.length; i++) {
+      const d = MODEL.dimensions[i];
+      if(orthogonal(d)) this.available_dimensions.push(d);
+    }
+    for(let i = 0; i < this.settings_dimensions.length; i++) {
+      const d = this.settings_dimensions[i];
+      if(orthogonal(d)) this.available_dimensions.push(d);
+    }
+    for(let i = 0; i < this.iterator_dimensions.length; i++) {
+      const d = this.iterator_dimensions[i];
+      if(orthogonal(d)) this.available_dimensions.push(d);
+    }
+    for(let i = 0; i < this.actor_dimensions.length; i++) {
+      const d = this.actor_dimensions[i];
+      if(orthogonal(d)) this.available_dimensions.push(d);
+    }
+    for(let i = 0; i < this.combination_dimensions.length; i++) {
+      // NOTE: combination dimensions must be expanded before checking...
+      const
+          d = this.combination_dimensions[i],
+          xd = d.slice();
+      this.expandCombinationSelectors(xd);
+      // ... but the original combination dimension must be added
+      if(orthogonal(xd)) this.available_dimensions.push(d);
+    }
+  }
+  
   inferActualDimensions() {
     // Creates list of dimensions without excluded selectors
     this.actual_dimensions.length = 0;
@@ -10230,13 +10473,8 @@ class Experiment {
       // NOTE: do not push an empty selector list (can occur if no dimensions)
       if(s.length > 0) this.combinations.push(s);
       // NOTE: combinations may include *dimension* selectors
-      // These then must be "expanded", so if combination havin selector
-      // C1 comprises two "normal" selectors (a1, b2) then these must be
-      // appended to the combinations set. The original selector C1 can
-      // be removed from this set because *dimension* selectors cannot
-      // be a used as "normal" selectors (e.g., for dataset modifiers,
-      // actor settings or model setting)
-      //@@@TO BE IMPLEMENTED!
+      // These then must be "expanded"
+      this.expandCombinationSelectors(s);
       return;
     }
     const d = this.actual_dimensions[n];
@@ -10248,14 +10486,6 @@ class Experiment {
     }
   }
   
-  mayBeIgnored(c) {
-    // Returns TRUE iff `c` is on the list to be ignored
-    for(let i = 0; i < this.clusters_to_ignore.length; i++) {
-      if(this.clusters_to_ignore[i].cluster === c) return true;
-    }
-    return false;
-  }
-
   renameSelectorInDimensions(olds, news) {
     // Update the combination dimensions that contain `olds`
     for(let i = 0; i < this.settings_dimensions.length; i++) {
@@ -10270,9 +10500,17 @@ class Experiment {
       if(si >= 0) {
         sl[si] = news;
         c[1] = sl.join(' ');
-         this.combination_selectors[i] = c.join('|');
+        this.combination_selectors[i] = c.join('|');
       }
     }
+  }
+
+  mayBeIgnored(c) {
+    // Returns TRUE iff cluster `c` is on the list to be ignored
+    for(let i = 0; i < this.clusters_to_ignore.length; i++) {
+      if(this.clusters_to_ignore[i].cluster === c) return true;
+    }
+    return false;
   }
 
   inferVariables() {

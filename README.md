@@ -116,6 +116,7 @@ Academic licenses can be obtained by students and staff of eligible institutions
 
 #### Installing Gurobi
 
+The software you need to install is '''Gurobi Optimizer'''.
 More information on how to obtain a license, and instructions for installing
 Gurobi on your computer can be obtained via this URL:
 https://www.gurobi.com/academia/academic-program-and-licenses/

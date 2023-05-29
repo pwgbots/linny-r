@@ -1016,6 +1016,7 @@ td.a-box > div.abox {
 
 td.a-name {
   width: 208px;
+  max-width: 208px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1024,6 +1025,7 @@ td.a-name {
 
 td.a-weight {
   width: 124px;
+  max-width: 124px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1604,7 +1606,7 @@ td.export {
 }
 
 #expression-dlg {
-  width: 545px;
+  width: 550px;
   height: 325px;
 }
 
@@ -1922,6 +1924,10 @@ td.it {
   font-style: italic;
 }
 
+td.series {
+  
+}
+
 td.io {
   width: 12px;
 }
@@ -2084,20 +2090,33 @@ tr.sel-set {
   background-color: #eff0ff;  
 }
 
+tr.def-sel {
+  color: #400090;
+  font-style: italic;
+}
+
 td.outcome:before {
   content: ' \25C8';
 }
 
 td.array:before {
-  content: ' \2637';
+  content: ' \2263';
+}
+
+td.series:before {
+  content: ' \250B';
 }
 
 td.blackbox:before {
   content: ' \25FC';
 }
 
+td.blackbox.series:before {
+  content: ' \25FC\250B';
+}
+
 td.blackbox.array:before {
-  content: ' \25FC\2637';
+  content: ' \25FC\2263';
 }
 
 td.blackbox.outcome:before {
@@ -3037,9 +3056,9 @@ td.sa-not-run {
   display: none;
   z-index: 20;
   margin: 0;
-  width: 425px;
+  width: 450px;
   height: 275px;
-  min-width: 425px;
+  min-width: 450px;
   min-height: 250px;
   max-height: 99vh;
   max-width: 99vw;
@@ -3121,7 +3140,7 @@ td.sa-not-run {
   position: absolute;
   top: -2px;
   left: 72px;
-  width: 150px;
+  width: 170px;
 }
 
 /* enhance brightness for dark v-btn buttons */
@@ -3520,6 +3539,21 @@ div.no-colors {
   width: calc(100% - 6px);
 }
 
+#xp-iterator-dlg {
+  width: 130px;
+  height: min-content;
+}
+
+#xp-iterator-table {
+  margin: 2px;
+}
+
+input.range-limit {
+  height: 15px !important;
+  width: 30px;
+  text-align: center;
+}
+
 /* the EDIT SETTINGS DIMENSIONS dialog allows editing these dimensions */
 /* NOTE: many styles in common with the EDIT COMBINATIONS dialog and */
 /* the EDIT ACTOR DIMENSIONS dialog */ 
@@ -3529,7 +3563,7 @@ div.no-colors {
   height: 236px;
 }
 
-#xp-actor-s-header,
+#xp-actor-dimension-header,
 #xp-combination-s-header,
 #xp-combination-d-header,
 #xp-settings-s-header,
@@ -3537,7 +3571,7 @@ div.no-colors {
   margin: 2px;
 }
 
-#xp-actor-s-header > img,
+#xp-actor-dimension-header > img,
 #xp-combination-s-header > img,
 #xp-combination-d-header > img,
 #xp-settings-s-header > img,

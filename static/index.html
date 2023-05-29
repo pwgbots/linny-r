@@ -165,7 +165,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 // Inform user that newer version exists
                 UI.check_update_modal.element('msg').innerHTML = [
                     '<a href="', GITHUB_REPOSITORY,
-                    '/wiki/Linny-R-version-history" ',
+                    '/wiki/Linny-R-version-history#%EF%B8%8F-current-',
+                    info[1].replaceAll('.', ''), '" ',
                     'title="Click to view version release notes" ',
                     'target="_blank">Version <strong>',
                     info[1], '</strong></a> released on ',
@@ -1344,7 +1345,7 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
       <div id="product-P-div">
         <div id="product-P-lbl">
           Price
-          <small>(<span id="product-currency"></span>/<span id="product-P-unit"></span>)</small>:
+          <small>(<span id="product-currency"></span><span id="product-P-unit"></span>)</small>:
         </div>
         <input id="product-P" type="text" autocomplete="off">
         <img id="product-P-x" class="sbtn enab" src="images/edit.png"
@@ -2078,6 +2079,8 @@ NOTE: * and ? will be interpreted as wildcards"
                  title="Move dimension down in list">
             <img id="xp-d-settings-btn" class="v-btn" src="images/settings.png"
                  title="Edit model settings dimensions">
+            <img id="xp-d-iterator-btn" class="v-btn" src="images/iterator.png"
+                 title="Edit iterator ranges">
             <img id="xp-d-actor-btn" class="v-btn" src="images/actors.png"
                  title="Edit actors dimension">
             <img id="xp-d-combination-btn" class="v-btn" src="images/combination.png"
@@ -2294,6 +2297,55 @@ NOTE: * and ? will be interpreted as wildcards"
           <input type="text" id="xp-download-precision"> digits
         </div>
       </fieldset>
+    </div>
+  </div>
+
+  <!-- the ITERATOR dialog permits editing the iterator ranges -->
+  <div id="xp-iterator-modal" class="modal">
+    <div id="xp-iterator-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Iterator ranges
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table id="xp-iterator-table">
+        <tr>
+          <td>i</td><td>=</td>
+          <td>
+            <input id="xp-iterator-i-from" type="text" class="range-limit"
+                   placeholder="0" maxlength="4" autocomplete="off">
+          </td>
+          <td>&hellip;</td>
+          <td>
+            <input id="xp-iterator-i-to" type="text" class="range-limit"
+                   placeholder="0" maxlength="4" autocomplete="off">
+          </td>
+        </tr>
+        <tr>
+          <td>j</td><td>=</td>
+          <td>
+            <input id="xp-iterator-j-from" type="text" class="range-limit"
+                   placeholder="0" maxlength="4" autocomplete="off">
+          </td>
+          <td>&hellip;</td>
+          <td>
+            <input id="xp-iterator-j-to" type="text" class="range-limit"
+                   placeholder="0" maxlength="4" autocomplete="off">
+          </td>
+        </tr>
+        <tr>
+          <td>k</td><td>=</td>
+          <td>
+            <input id="xp-iterator-k-from" type="text" class="range-limit"
+                   placeholder="0" maxlength="4" autocomplete="off">
+          </td>
+          <td>&hellip;</td>
+          <td>
+            <input id="xp-iterator-k-to" type="text" class="range-limit"
+                   placeholder="0" maxlength="4" autocomplete="off">
+          </td>
+        </tr>
+      </table>
     </div>
   </div>
 
