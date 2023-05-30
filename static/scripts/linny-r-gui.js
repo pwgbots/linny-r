@@ -939,6 +939,8 @@ class Paper {
     }
     // Resize paper if necessary
     this.extend();
+    // Display model name in browser
+    document.title = mdl.name || 'Linny-R';
   }
   
   drawSelection(mdl, dx=0, dy=0) {
@@ -5189,6 +5191,8 @@ class GUIController extends Controller {
         e = md.element('product-unit'),
         dsu = UI.cleanName(e.value) || '1';
     model.name = md.element('name').value.trim();
+    // Display model name in browser unless blank
+    document.title = model.name || 'Linny-R';
     model.author = md.element('author').value.trim();
     if(!model.scale_units.hasOwnProperty(dsu)) model.addScaleUnit(dsu);
     model.default_unit = dsu;
@@ -9131,6 +9135,7 @@ class GUIDatasetManager extends DatasetManager {
       } else if(d.data.length > 0) {
         cls += ' series';
       }
+      if(Object.keys(d.modifiers).length > 0) cls += ' modif';
       if(d.black_box) cls += ' blackbox';
       cls = cls.trim();
       if(cls) cls = ' class="'+ cls + '"';
@@ -11420,7 +11425,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     }
     this.table.innerHTML = html.join('');
     if(this.selected_run >= 0) document.getElementById(
-          `sa-r${this.selected_run}c0`).parent().classList.add('sa-p-sel');
+          `sa-r${this.selected_run}c0`).parentNode.classList.add('sa-p-sel');
     this.updateData();
   }
   
@@ -11483,7 +11488,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     } else if(n < MODEL.sensitivity_runs.length) {
       this.selected_run = n;
       if(n >= 0) document.getElementById(
-          `sa-r${n}c0`).parent().classList.add('sa-p-sel');
+          `sa-r${n}c0`).parentNode.classList.add('sa-p-sel');
     }
     VM.setRunMessages(this.selected_run);
   }

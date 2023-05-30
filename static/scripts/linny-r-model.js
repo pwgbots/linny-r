@@ -2094,8 +2094,23 @@ console.log('HERE', d);
       UI.notify(`Renamed ${pluralS(ioc.replace_count, 'variable')} in ` +
           pluralS(ioc.expression_count, 'expression'));
     }
+    // Also rename entities in parameters and outcomes of sensitivity analysis
+    for(let i = 0; i < this.sensitivity_parameters.length; i++) {
+      const sp = this.sensitivity_parameters[i].split('|');
+      if(sp[0].toLowerCase() === en1) {
+        sp[0] = en2;
+        this.sensitivity_parameters[i] = sp.join('|');
+      }
+    }
+    for(let i = 0; i < this.sensitivity_outcomes.length; i++) {
+      const so = this.sensitivity_outcomes[i].split('|');
+      if(so[0].toLowerCase() === en1) {
+        so[0] = en2;
+        this.sensitivity_outcomes[i] = so.join('|');
+      }
+    }
     // Name was changed, so update controller dialogs to display the new name
-    UI.updateControllerDialogs('CDEFX');
+    UI.updateControllerDialogs('CDEFJX');
   }
 
   replaceAttributeInExpressions(ena, a) {
@@ -2105,7 +2120,7 @@ console.log('HERE', d);
     // or in the new attribute `a` (except for leading and trailing spaces)
     a = a.trim();
     ena = ena.split('|');
-    // Double-check that `a` is no empty and `ena` contains a vertical bar
+    // Double-check that `a` is not empty and `ena` contains a vertical bar
     if(!a || ena.length < 2) return;
     // Prepare regex to match [entity|attribute] including brackets, but case-
     // tolerant and spacing-tolerant
@@ -2121,6 +2136,24 @@ console.log('HERE', d);
     for(let i = 0; i < ax.length; i++) {
       n += ax[i].replaceAttribute(re, at, a);
     }
+    // Also rename attributes in parameters and outcomes of sensitivity analysis
+    let sa_cnt = 0;
+    const enat = en + '|' + at;
+    for(let i = 0; i < this.sensitivity_parameters.length; i++) {
+      const sp = this.sensitivity_parameters[i];
+      if(sp.toLowerCase() === enat) {
+        this.sensitivity_parameters[i] = sp.split('|')[0] + '|' + a;
+        sa_cnt++;
+      }
+    }
+    for(let i = 0; i < this.sensitivity_outcomes.length; i++) {
+      const so = this.sensitivity_outcomes[i];
+      if(so.toLowerCase() === enat) {
+        this.sensitivity_outcomes[i] = so.split('|')[0] + '|' + a;
+        sa_cnt++;
+      }
+    }
+    if(sa_cnt > 0) SENSITIVITY_ANALYSIS.updateDialog();
     return n;
   }
 
@@ -5044,7 +5077,7 @@ class Arrow {
     } else {
       if(p[0] && p[1]) {
         console.log('ERROR: Two distinct flows on monodirectional arrow',
-            this, sum);
+            this, sum, p);
         return [0, 0, 0, false, false];
       }
       status = 1;

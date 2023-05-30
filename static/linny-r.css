@@ -2092,35 +2092,89 @@ tr.sel-set {
 
 tr.def-sel {
   color: #400090;
-  font-style: italic;
+  font-weight: bold;
 }
 
-td.outcome:before {
+td.modif::before {
+  content: ' \2045';
+  color: #b00080;
+  margin-right: 2px;
+}
+
+td.outcome::before {
   content: ' \25C8';
+  color: #b00080;
+  margin-right: 1px;
 }
 
-td.array:before {
+td.array::before {
   content: ' \2263';
+  color: #b00080;
+  margin-right: 1px;
 }
 
-td.series:before {
-  content: ' \250B';
+td.series::before {
+  content: ' \28B8';
+  color: #b00080;
+  margin-left: -1px;
 }
 
-td.blackbox:before {
+td.outcome.modif::before {
+  content: ' \25C8\2045';
+  color: #b00080;
+  margin-right: 2px;
+}
+
+td.array.modif::before {
+  content: ' \2263\2045';
+  color: #b00080;
+  margin-right: 1px;
+}
+
+td.series.modif::before {
+  content: ' \28B8\2045';
+  color: #b00080;
+  margin-left: -1px;
+}
+
+td.blackbox::before {
   content: ' \25FC';
+  color: #b00080;
 }
 
-td.blackbox.series:before {
-  content: ' \25FC\250B';
+td.blackbox.series::before {
+  content: ' \25FC\28B8';
+  color: #b00080;
 }
 
-td.blackbox.array:before {
+td.blackbox.array::before {
   content: ' \25FC\2263';
+  color: #b00080;
 }
 
-td.blackbox.outcome:before {
+td.blackbox.outcome::before {
   content: ' \25FC\25C8';
+  color: #b00080;
+}
+
+td.blackbox.modif::before {
+  content: ' \25FC\2045';
+  color: #b00080;
+}
+
+td.blackbox.series.modif::before {
+  content: ' \25FC\28B8\2045';
+  color: #b00080;
+}
+
+td.blackbox.array.modif::before {
+  content: ' \25FC\2263\2045';
+  color: #b00080;
+}
+
+td.blackbox.outcome.modif::before {
+  content: ' \25FC\25C8\2045';
+  color: #b00080;
 }
 
 td.dataset-selector {
