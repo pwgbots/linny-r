@@ -6648,7 +6648,7 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
       UI.edited_object = UI.dbl_clicked_node;
       this.edited_input_id = 'note-C';
       if(UI.edited_object) {
-        this.edited_expression = UI.edited_object.attributeExpression('C');
+        this.edited_expression = UI.edited_object.color;
       } else {
         this.edited_expression = null;
       }

@@ -357,7 +357,6 @@ class Controller {
       // Strip HTML tags from message text unless UI is graphical
       if(!this.paper) msg = msg.replace(/<[^>]*>?/gm, '');
       console.log(msg);
-if(msg.indexOf('Unknown entity') >= 0) throw('STOP!');
       if(cause) console.log('Cause:', cause);
     }
   }

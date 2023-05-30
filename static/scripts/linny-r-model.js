@@ -1182,7 +1182,7 @@ class LinnyRModel {
     const id = UI.nameToID(name);
     let d = this.namedObjectByID(id);
     if(d) {
-      if(IO_CONTEXT) {
+      if(IO_CONTEXT && d !== this.equations_dataset) {
         IO_CONTEXT.supersede(d);
       } else {
         // Preserve name uniqueness
@@ -4417,6 +4417,13 @@ class Note extends ObjectWithXYWH {
     this.width = safeStrToInt(nodeContentByTag(node, 'width'));
     this.height = safeStrToInt(nodeContentByTag(node, 'height'));
     this.color.text = xmlDecoded(nodeContentByTag(node, 'color'));
+    if(IO_CONTEXT) {
+      const fel = this.fieldEntities;
+      for(let i = 0; i < fel.length; i++) {
+        this.rewriteTags(fel[i], IO_CONTEXT.actualName(fel[i]));
+      }
+      IO_CONTEXT.rewrite(this.color);
+    }
   }
 
   setCluster(c) {
@@ -4539,10 +4546,48 @@ class Note extends ObjectWithXYWH {
     }
     this.parsed = true;
   }
+
+  get fieldEntities() {
+    // Return a list with names of entities used in fields
+    const
+        fel = [],
+        tags = this.contents.match(/\[\[[^\]]+\]\]/g);
+    for(let i = 0; i < tags.length; i++) {
+      const
+          tag = tags[i],
+          inner = tag.slice(2, tag.length - 2).trim(),
+          vb = inner.lastIndexOf('|'),
+          ua = inner.lastIndexOf('->');
+      if(vb >= 0) {
+        addDistinct(inner.slice(0, vb), fel);
+      } else if(ua >= 0 &&
+          MODEL.scale_units.hasOwnProperty(inner.slice(ua + 2))) {
+        addDistinct(inner.slice(0, ua), fel);
+      } else {
+        addDistinct(inner, fel);
+      }
+    }
+    return fel;    
+  }
+  
+  rewriteTags(en1, en2) {
+    // Rewrite tags that reference entity name `en1` to reference `en2` instead
+    if(en1 === en2) return;
+    const
+        raw = en1.split(/\s+/).join('\\\\s+'),
+        re = new RegExp('\\[\\[\\s*' + raw + '\\s*(\\->|\\||\\])', 'g'),
+        tags = this.contents.match(re);
+    if(tags) {
+      for(let i = 0; i < tags.length; i++) {
+        this.contents = this.contents.replace(tags[i], tags[i].replace(en1, en2));
+      }
+    }
+  }
   
   rewriteFields(en1, en2) {
     // Rename fields that reference entity name `en1` to reference `en2` instead
     // NOTE: this does not affect the expression code
+    if(en1 === en2) return;
     for(let i = 0; i < this.fields.length; i++) {
       const
           f = this.fields[i],
@@ -4551,12 +4596,17 @@ class Note extends ObjectWithXYWH {
       // Separate tag into variable and attribute + offset string (if any)
       let e = tag,
           a = '',
-          vb = tag.lastIndexOf('|');
+          vb = tag.lastIndexOf('|'),
+          ua = tag.lastIndexOf('->');
       if(vb >= 0) {
         e = tag.slice(0, vb);
         // NOTE: attribute string includes the vertical bar '|'
         a = tag.slice(vb);
-      }            
+      } else if(ua >= 0 && MODEL.scale_units.hasOwnProperty(tag.slice(ua + 2))) {
+        e = tag.slice(0, ua);
+        // NOTE: attribute string includes the unit conversion arrow '->'
+        a = tag.slice(ua);
+      }
       // Check for match
       const r = UI.replaceEntity(e, en1, en2);
       if(r) {
