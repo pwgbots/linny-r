@@ -974,6 +974,9 @@ class SensitivityAnalysis {
 // Class ExperimentManager controls the collection of experiments of the model
 class ExperimentManager {
   constructor() {
+    // NOTE: the properties below are relevant only for the GUI
+    this.experiment_table = null;
+    this.focal_table = null;
   }
 
   reset() {
@@ -1005,6 +1008,7 @@ class ExperimentManager {
   selectExperiment(title) {
     const xi = MODEL.indexOfExperiment(title);
     this.selected_experiment = (xi < 0 ? null : MODEL.experiments[xi]);
+    this.focal_table = this.experiment_table;
     this.updateDialog();
   }
 

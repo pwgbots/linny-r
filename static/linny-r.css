@@ -1924,10 +1924,6 @@ td.it {
   font-style: italic;
 }
 
-td.series {
-  
-}
-
 td.io {
   width: 12px;
 }
@@ -2116,7 +2112,7 @@ td.array::before {
 td.series::before {
   content: ' \28B8';
   color: #b00080;
-  margin-left: -1px;
+  margin-left: -4px;
 }
 
 td.outcome.modif::before {
@@ -2134,7 +2130,7 @@ td.array.modif::before {
 td.series.modif::before {
   content: ' \28B8\2045';
   color: #b00080;
-  margin-left: -1px;
+  margin-left: -4px;
 }
 
 td.blackbox::before {
@@ -4036,6 +4032,11 @@ select.i-param {
   max-width: calc(100% - 15px);
 }
 
+#confirm-load-from-repo-dlg {
+  width: 400px;
+  height: 85px;
+}
+
 #confirm-delete-from-repo-dlg {
   width: 270px;
   height: 120px;
@@ -4047,12 +4048,14 @@ select.i-param {
   font-weight: bold;
 }
 
+#confirm-load-from-repo-mod-name,
 #confirm-delete-from-repo-mod-name {
   word-break: keep-all;
   white-space: nowrap;
   font-family: monospace;
 }
 
+#confirm-load-from-repo-msg,
 #confirm-delete-from-repo-msg {
   height: calc(100% - 55px);  
 }
@@ -4577,6 +4580,7 @@ div.call-stack-expr {
   height: min-content;
 }
 
+#confirm-load-from-repo-msg,
 #confirm-delete-from-repo-msg,
 #check-update-msg {
   width: calc(100% - 8px);
@@ -4585,6 +4589,7 @@ div.call-stack-expr {
 }
 
 #confirm-move-buttons,
+#confirm-load-from-repo-buttons,
 #confirm-delete-from-repo-buttons,
 #check-update-buttons {
   width: 100%;
@@ -4595,6 +4600,7 @@ div.call-stack-expr {
 }
 
 #confirm-move-buttons > img,
+#confirm-load-from-repo-buttons > img,
 #confirm-delete-from-repo-buttons > img,
 #check-update-buttons > img {
   float: none;

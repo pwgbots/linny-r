@@ -4378,6 +4378,13 @@ class GUIController extends Controller {
           const btns = topmod.getElementsByClassName('ok-btn');
           if(btns.length > 0) btns[0].dispatchEvent(new Event('click'));
         }
+      } else if(this.dr_dialog_order.length > 0) {
+        // Send ENTER key event to the top draggable dialog
+        const last = this.dr_dialog_order.length - 1;
+        if(last >= 0) {
+          const mgr = window[this.dr_dialog_order[last].dataset.manager];
+          if(mgr && 'enterKey' in mgr) mgr.enterKey();
+        }
       }
     } else if(e.keyCode === 8 &&
         ttype !== 'text' && ttype !== 'password' && ttype !== 'textarea') {
@@ -4392,7 +4399,18 @@ class GUIController extends Controller {
           return;
         }
       }
-      // end. home, Left and right arrow keys
+      // Up and down arrow keys
+      if([38, 40].indexOf(e.keyCode) >= 0) {
+        e.preventDefault();
+        // Send event to the top draggable dialog
+        const last = this.dr_dialog_order.length - 1;
+        if(last >= 0) {
+          const mgr = window[this.dr_dialog_order[last].dataset.manager];
+          // NOTE: pass key direction as -1 for UP and +1 for DOWN
+          if(mgr && 'upDownKey' in mgr) mgr.upDownKey(e.keyCode - 39);
+        }
+      }
+      // end, home, Left and right arrow keys
       if([35, 36, 37, 39].indexOf(e.keyCode) >= 0) e.preventDefault();
       if(e.keyCode === 35) {
         MODEL.t = MODEL.end_period - MODEL.start_period + 1;
@@ -8478,7 +8496,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
     document.getElementById('repo-include-btn').addEventListener(
         'click', () => REPOSITORY_BROWSER.includeModule());
     document.getElementById('repo-load-btn').addEventListener(
-        'click', () => REPOSITORY_BROWSER.loadModuleAsModel());
+        'click', () => REPOSITORY_BROWSER.confirmLoadModuleAsModel());
     document.getElementById('repo-store-btn').addEventListener(
         'click', () => REPOSITORY_BROWSER.promptForStoring());
     document.getElementById('repo-black-box-btn').addEventListener(
@@ -8525,6 +8543,12 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
     this.include_modal.element('actor').addEventListener(
         'blur', () => REPOSITORY_BROWSER.updateActors());
 
+    this.confirm_load_modal = new ModalDialog('confirm-load-from-repo');
+    this.confirm_load_modal.ok.addEventListener(
+        'click', () => REPOSITORY_BROWSER.loadModuleAsModel());
+    this.confirm_load_modal.cancel.addEventListener(
+        'click', () => REPOSITORY_BROWSER.confirm_load_modal.hide());
+
     this.confirm_delete_modal = new ModalDialog('confirm-delete-from-repo');
     this.confirm_delete_modal.ok.addEventListener(
         'click', () => REPOSITORY_BROWSER.deleteFromRepository());
@@ -8535,6 +8559,31 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   reset() {
     super.reset();
     this.last_time_selected = 0;
+  }
+
+  enterKey() {
+    // Open "edit properties" dialog for the selected entity
+    const srl = this.modules_table.getElementsByClassName('sel-set');
+    if(srl.length > 0) {
+      const r = this.modules_table.rows[srl[0].rowIndex];
+      if(r) {
+        // Ensure that click will be interpreted as double-click
+        this.last_time_selected = Date.now();
+        r.dispatchEvent(new Event('click'));
+      }
+    }
+  }
+  
+  upDownKey(dir) {
+    // Select row above or below the selected one (if possible)
+    const srl = this.modules_table.getElementsByClassName('sel-set');
+    if(srl.length > 0) {
+      const r = this.modules_table.rows[srl[0].rowIndex + dir];
+      if(r) {
+        UI.scrollIntoView(r);
+        r.dispatchEvent(new Event('click'));
+      }
+    }
   }
   
   get isLocalHost() {
@@ -8718,7 +8767,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
         // Consider click to be "double" if it occurred less than 300 ms ago
         if(dt < 300) {
           this.last_time_selected = 0;
-          this.loadModuleAsModel();
+          this.includeModule();
           return;
         }
       }
@@ -8967,6 +9016,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   
   loadModuleAsModel() {
     // Loads selected module as model
+    this.confirm_load_modal.hide();
     if(this.repository_index >= 0 && this.module_index >= 0) {
       // NOTE: when loading new model, the stay-on-top dialogs must be reset
       UI.hideStayOnTopDialogs();
@@ -8982,6 +9032,17 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
       const r = this.repositories[this.repository_index];
       r.loadModule(this.module_index, true);
     }
+  }
+
+  confirmLoadModuleAsModel() {
+    // Prompts modeler to confirm loading the selected module as model
+    if(this.repository_index >= 0 && this.module_index >= 0 &&
+        document.getElementById('repo-load-btn').classList.contains('enab')) {
+      const r = this.repositories[this.repository_index];
+      this.confirm_load_modal.element('mod-name').innerText =
+          r.module_names[this.module_index];
+      this.confirm_load_modal.show();
+    }    
   }
   
   confirmDeleteFromRepository() {
@@ -9034,7 +9095,7 @@ class GUIDatasetManager extends DatasetManager {
     this.filter_text = document.getElementById('ds-filter-text');
     this.filter_text.addEventListener(
         'input', () => DATASET_MANAGER.changeFilter());
-    this.table = document.getElementById('dataset-table');
+    this.dataset_table = document.getElementById('dataset-table');
     // Data properties pane
     this.properties = document.getElementById('dataset-properties');
     // Toggle buttons at bottom of dialog
@@ -9056,6 +9117,8 @@ class GUIDatasetManager extends DatasetManager {
         'click', () => DATASET_MANAGER.editExpression());
     document.getElementById('ds-delete-modif-btn').addEventListener(
         'click', () => DATASET_MANAGER.deleteModifier());
+    // Modifier table
+    this.modifier_table = document.getElementById('dataset-modif-table');
     // Modal dialogs
     this.new_modal = new ModalDialog('new-dataset');
     this.new_modal.ok.addEventListener(
@@ -9104,7 +9167,59 @@ class GUIDatasetManager extends DatasetManager {
     this.selected_modifier = null;
     this.edited_expression = null;
     this.filter_pattern = null;
-    this.last_time_selected = 0;
+    this.clicked_object = null;
+    this.last_time_clicked = 0;
+    this.focal_table = null;
+  }
+  
+  doubleClicked(obj) {
+    const
+        now = Date.now(),
+        dt = now - this.last_time_clicked;
+    this.last_time_clicked = now;
+    if(obj === this.clicked_object) {
+      // Consider click to be "double" if it occurred less than 300 ms ago
+      if(dt < 300) {
+        this.last_time_clicked = 0;
+        return true;
+      }
+    }
+    this.clicked_object = obj;
+    return false;
+  }
+  
+  enterKey() {
+    // Open "edit" dialog for the selected dataset or modifier expression
+    const srl = this.focal_table.getElementsByClassName('sel-set');
+    if(srl.length > 0) {
+      const r = this.focal_table.rows[srl[0].rowIndex];
+      if(r) {
+        const e = new Event('click');
+        if(this.focal_table === this.dataset_table) {
+          // Emulate Alt-click in the table to open the time series dialog
+          e.altKey = true;
+          r.dispatchEvent(e);
+        } else if(this.focal_table === this.modifier_table) {
+          // Emulate a double-click on the second cell to edit the expression
+          this.last_time_clicked = Date.now();
+          r.cells[1].dispatchEvent(e);
+        }
+      }
+    }
+  }
+  
+  upDownKey(dir) {
+    // Select row above or below the selected one (if possible)
+    const srl = this.focal_table.getElementsByClassName('sel-set');
+    if(srl.length > 0) {
+      let r = this.focal_table.rows[srl[0].rowIndex + dir];
+      if(r) {
+        UI.scrollIntoView(r);
+        // NOTE: cell, not row, listens for onclick event
+        if(this.focal_table === this.modifier_table) r = r.cells[1];
+        r.dispatchEvent(new Event('click'));
+      }
+    }
   }
   
   updateDialog() {
@@ -9148,10 +9263,10 @@ class GUIDatasetManager extends DatasetManager {
           '\', event.shiftKey);"><td', cls, '>', d.displayName,
           '</td></tr>'].join(''));
     }
-    this.table.innerHTML = dl.join('');
+    this.dataset_table.innerHTML = dl.join('');
     const btns = 'ds-data ds-rename ds-clone ds-delete';
     if(sd) {
-      this.table.innerHTML = dl.join('');
+      this.dataset_table.innerHTML = dl.join('');
       this.properties.style.display = 'block';
       document.getElementById('dataset-default').innerHTML =
           VM.sig4Dig(sd.default_value) +
@@ -9234,7 +9349,7 @@ class GUIDatasetManager extends DatasetManager {
           m.selector, '</td><td class="dataset-expression',
           clk, ');">', m.expression.text, '</td></tr>'].join(''));
     }
-    document.getElementById('dataset-modif-table').innerHTML = ml.join('');
+    this.modifier_table.innerHTML = ml.join('');
     ttls.style.display = 'block';
     msa.style.display = 'block';
     mbtns.style.display = 'block';
@@ -9279,16 +9394,13 @@ class GUIDatasetManager extends DatasetManager {
   
   selectDataset(event, id) {
     // Select dataset, or edit it when Alt- or double-clicked
+    this.focal_table = this.dataset_table;
     const
         d = MODEL.datasets[id] || null,
-        now = Date.now(),
-        dt = now - this.last_time_selected,
-        // Consider click to be "double" if it occurred less than 300 ms ago
-        edit = event.altKey || (d === this.selected_dataset && dt < 300);
+        edit = event.altKey || this.doubleClicked(d);
     this.selected_dataset = d;
-    this.last_time_selected = now;
     if(d && edit) {
-      this.last_time_selected = 0;
+      this.last_time_clicked = 0;
       this.editData();
       return;
     }
@@ -9298,19 +9410,13 @@ class GUIDatasetManager extends DatasetManager {
   selectModifier(event, id, x=true) {
     // Select modifier, or when double-clicked, edit its expression or the
     // name of the modifier
+    this.focal_table = this.modifier_table;
     if(this.selected_dataset) {
       const m = this.selected_dataset.modifiers[UI.nameToID(id)],
-            now = Date.now(),
-            dt = now - this.last_time_selected,
-            // NOTE: Alt-click and double-click indicate: edit
-            // Consider click to be "double" if the same modifier was clicked
-            // less than 300 ms ago
-            edit = event.altKey || (m === this.selected_modifier && dt < 300);
-      this.last_time_selected = now;
+            edit = event.altKey || this.doubleClicked(m);
       if(event.shiftKey) {
         // NOTE: prepare to update HTML class of selected dataset
-        const el = document.getElementById('dataset-table')
-            .getElementsByClassName('sel-set')[0];
+        const el = this.dataset_table.getElementsByClassName('sel-set')[0];
         // Toggle dataset default selector
         if(m.selector === this.selected_dataset.default_selector) {
           this.selected_dataset.default_selector = '';
@@ -9322,7 +9428,7 @@ class GUIDatasetManager extends DatasetManager {
       }
       this.selected_modifier = m;
       if(edit) {
-        this.last_time_selected = 0;
+        this.last_time_clicked = 0;
         if(x) {
           this.editExpression();
         } else {
@@ -9743,7 +9849,49 @@ class EquationManager {
     this.visible = false;
     this.selected_modifier = null;
     this.edited_expression = null;
-    this.last_time_selected = 0;
+    this.last_time_clicked = 0;
+  }
+  
+  doubleClicked(obj) {
+    const
+        now = Date.now(),
+        dt = now - this.last_time_clicked;
+    this.last_time_clicked = now;
+    if(obj === this.clicked_object) {
+      // Consider click to be "double" if it occurred less than 300 ms ago
+      if(dt < 300) {
+        this.last_time_clicked = 0;
+        return true;
+      }
+    }
+    this.clicked_object = obj;
+    return false;
+  }
+  
+  enterKey() {
+    // Open the expression editor for the selected equation
+    const srl = this.table.getElementsByClassName('sel-set');
+    if(srl.length > 0) {
+      const r = this.table.rows[srl[0].rowIndex];
+      if(r) {
+        // Emulate a double-click on the second cell to edit the expression
+        this.last_time_clicked = Date.now();
+        r.cells[1].dispatchEvent(new Event('click'));
+      }
+    }
+  }
+  
+  upDownKey(dir) {
+    // Select row above or below the selected one (if possible)
+    const srl = this.table.getElementsByClassName('sel-set');
+    if(srl.length > 0) {
+      const r = this.table.rows[srl[0].rowIndex + dir];
+      if(r) {
+        UI.scrollIntoView(r);
+        // NOTE: not row but cell listens for onclick
+        r.cells[1].dispatchEvent(new Event('click'));
+      }
+    }
   }
   
   updateDialog() {
@@ -9789,14 +9937,9 @@ class EquationManager {
     if(MODEL.equations_dataset) {
       const
           m = MODEL.equations_dataset.modifiers[UI.nameToID(id)] || null,
-          now = Date.now(),
-          dt = now - this.last_time_selected,
-          // Consider click to be "double" if it occurred less than 300 ms ago
-          edit = event.altKey || (m === this.selected_modifier && dt < 300);
-      this.last_time_selected = now;
+          edit = event.altKey || this.doubleClicked(m);
       this.selected_modifier = m;
       if(m && edit) {
-        this.last_time_selected = 0;
         if(x) {
           this.editEquation();
         } else {
@@ -10086,6 +10229,31 @@ class GUIChartManager extends ChartManager {
     this.options_shown = true;
     this.setRunsChart(false);
     this.last_time_selected = 0;
+  }
+  
+  enterKey() {
+    // Open "edit" dialog for the selected chart variable
+    const srl = this.variables_table.getElementsByClassName('sel-set');
+    if(srl.length > 0) {
+      const r = this.variables_table.rows[srl[0].rowIndex];
+      if(r) {
+        // Emulate a double-click to edit the variable properties
+        this.last_time_selected = Date.now();
+        r.dispatchEvent(new Event('click'));
+      }
+    }
+  }
+  
+  upDownKey(dir) {
+    // Select row above or below the selected one (if possible)
+    const srl = this.variables_table.getElementsByClassName('sel-set');
+    if(srl.length > 0) {
+      const r = this.variables_table.rows[srl[0].rowIndex + dir];
+      if(r) {
+        UI.scrollIntoView(r);
+        r.dispatchEvent(new Event('click'));
+      }
+    }
   }
   
   setRunsChart(show) {
@@ -11552,7 +11720,10 @@ class GUIExperimentManager extends ExperimentManager {
     this.default_message = document.getElementById('experiment-default-message');
     
     this.design = document.getElementById('experiment-design');
+    this.experiment_table = document.getElementById('experiment-table');
     this.params_div = document.getElementById('experiment-params-div');
+    this.dimension_table = document.getElementById('experiment-dim-table');
+    this.chart_table = document.getElementById('experiment-chart-table');
     // NOTE: the Exclude input field responds to several events
     this.exclude = document.getElementById('experiment-exclude');
     this.exclude.addEventListener(
@@ -11749,7 +11920,20 @@ class GUIExperimentManager extends ExperimentManager {
     this.edited_dimension_index = -1;
     this.edited_combi_selector_index = -1;
     this.color_scale = new ColorScale('no');
+    this.focal_table = null;
     this.designMode();
+  }
+  
+  upDownKey(dir) {
+    // Select row above or below the selected one (if possible)
+    const srl = this.focal_table.getElementsByClassName('sel-set');
+    if(srl.length > 0) {
+      const r = this.focal_table.rows[srl[0].rowIndex + dir];
+      if(r) {
+        UI.scrollIntoView(r);
+        r.dispatchEvent(new Event('click'));
+      }
+    }
   }
   
   updateDialog() {
@@ -11785,7 +11969,7 @@ class GUIExperimentManager extends ExperimentManager {
           '\');" onmouseover="EXPERIMENT_MANAGER.showInfo(', xi,
           ', event.shiftKey);"><td>', x.title, '</td></tr>'].join(''));
     }
-    document.getElementById('experiment-table').innerHTML = xl.join('');
+    this.experiment_table.innerHTML = xl.join('');
     const
         btns = 'xp-rename xp-view xp-delete xp-ignore',
         icnt = document.getElementById('xp-ignore-count');
@@ -11849,7 +12033,7 @@ class GUIExperimentManager extends ExperimentManager {
           setString(x.dimensions[i]),
           '</td></tr>'].join(''));
     }
-    document.getElementById('experiment-dim-table').innerHTML = tr.join('');
+    this.dimension_table.innerHTML = tr.join('');
     // Add button must be enabled only if there still are unused dimensions
     if(x.available_dimensions.length > 0) {
       document.getElementById('xp-d-add-btn').classList.remove('v-disab');
@@ -11865,7 +12049,7 @@ class GUIExperimentManager extends ExperimentManager {
           i, '\');"><td>',
           x.charts[i].title, '</td></tr>'].join(''));
     }
-    document.getElementById('experiment-chart-table').innerHTML = tr.join('');
+    this.chart_table.innerHTML = tr.join('');
     if(x.charts.length === 0) canview = false;
     if(tr.length >= this.suitable_charts.length) {
       document.getElementById('xp-c-add-btn').classList.add('v-disab');
@@ -12525,6 +12709,8 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   
   selectParameter(p) {
     this.selected_parameter = p;
+    this.focal_table = (p.startsWith('d') ? this.dimension_table :
+        this.chart_table);
     this.updateDialog();
   }
   
@@ -14142,7 +14328,10 @@ class Finder {
     this.copy_btn = document.getElementById('finder-copy-btn');
     this.copy_btn.addEventListener(
         'click', (event) => FINDER.copyAttributesToClipboard(event.shiftKey));
-
+    this.entity_table = document.getElementById('finder-table');
+    this.item_table = document.getElementById('finder-item-table');
+    this.expression_table = document.getElementById('finder-expression-table');
+        
   // Attribute headers are used by Finder to output entity attribute values
     this.attribute_headers = {
         A: 'ACTORS:\tWeight\tCash IN\tCash OUT\tCash FLOW',
@@ -14172,6 +14361,47 @@ class Finder {
     // Product cluster index "remembers" for which cluster a product was
     // last revealed, so it can reveal the next cluster when clicked again
     this.product_cluster_index = 0;
+  }
+  
+  doubleClicked(obj) {
+    const
+        now = Date.now(),
+        dt = now - this.last_time_clicked;
+    this.last_time_clicked = now;
+    if(obj === this.clicked_object) {
+      // Consider click to be "double" if it occurred less than 300 ms ago
+      if(dt < 300) {
+        this.last_time_clicked = 0;
+        return true;
+      }
+    }
+    this.clicked_object = obj;
+    return false;
+  }
+  
+  enterKey() {
+    // Open "edit properties" dialog for the selected entity
+    const srl = this.entity_table.getElementsByClassName('sel-set');
+    if(srl.length > 0) {
+      const r = this.entity_table.rows[srl[0].rowIndex];
+      if(r) {
+        const e = new Event('click');
+        e.altKey = true;
+        r.dispatchEvent(e);
+      }
+    }
+  }
+  
+  upDownKey(dir) {
+    // Select row above or below the selected one (if possible)
+    const srl = this.entity_table.getElementsByClassName('sel-set');
+    if(srl.length > 0) {
+      const r = this.entity_table.rows[srl[0].rowIndex + dir];
+      if(r) {
+        UI.scrollIntoView(r);
+        r.dispatchEvent(new Event('click'));
+      }
+    }
   }
   
   updateDialog() {
@@ -14289,7 +14519,7 @@ class Finder {
       if(e === se) seid += i;
       el.push(['<tr id="etr', i, '" class="dataset',
           (e === se ? ' sel-set' : ''), '" onclick="FINDER.selectEntity(\'',
-          enl[i], '\');" onmouseover="FINDER.showInfo(\'', enl[i],
+          enl[i], '\', event.altKey);" onmouseover="FINDER.showInfo(\'', enl[i],
           '\', event.shiftKey);"><td draggable="true" ',
           'ondragstart="FINDER.drag(event);"><img class="finder" src="images/',
           e.type.toLowerCase(), '.png">', e.displayName,
@@ -14297,7 +14527,7 @@ class Finder {
     }
     // NOTE: reset `selected_entity` if not in the new list
     if(seid === 'etr') this.selected_entity = null;
-    document.getElementById('finder-table').innerHTML = el.join('');
+    this.entity_table.innerHTML = el.join('');
     UI.scrollIntoView(document.getElementById(seid));
     document.getElementById('finder-count').innerHTML = pluralS(
         el.length, 'entity', 'entities');
@@ -14452,7 +14682,7 @@ class Finder {
           e.type.toLowerCase(), '.png">', e.displayName,
           '</td></tr>'].join(''));
     }
-    document.getElementById('finder-item-table').innerHTML = el.join('');
+    this.item_table.innerHTML = el.join('');
     // Clear the table row list
     el.length = 0;
     // Now fill it with entity+attribute having a matching expression
@@ -14480,7 +14710,7 @@ class Finder {
           '<img class="finder" src="images/', img, '.png">', td, '</td></tr>'
           ].join(''));
     }
-    document.getElementById('finder-expression-table').innerHTML = el.join('');
+    this.expression_table.innerHTML = el.join('');
     document.getElementById('finder-expression-hdr').innerHTML =
         pluralS(el.length, 'expression');
   }
@@ -14515,10 +14745,37 @@ class Finder {
     if(e) DOCUMENTATION_MANAGER.update(e, shift);
   }
   
-  selectEntity(id) {
-    // Looks up entity, selects it in the left pane, and updates the right pane
-    this.selected_entity = MODEL.objectByID(id);
+  selectEntity(id, alt=false) {
+    // Looks up entity, selects it in the left pane, and updates the
+    // right pane; opens the "edit properties" modal dialog on double-click
+    // and Alt-click if the entity is editable
+    const obj = MODEL.objectByID(id);
+    this.selected_entity = obj;
     this.updateDialog();
+    if(!obj) return;
+    if(alt || this.doubleClicked(obj)) {
+      if(obj instanceof Process) {
+        UI.showProcessPropertiesDialog(obj);
+      } else if(obj instanceof Product) {
+        UI.showProductPropertiesDialog(obj);
+      } else if(obj instanceof Link) {
+        UI.showLinkPropertiesDialog(obj);
+      } else if(obj instanceof Note) {
+        obj.showNotePropertiesDialog();
+      } else if(obj instanceof Dataset) {
+        if(UI.hidden('dataset-dlg')) {
+          UI.buttons.dataset.dispatchEvent(new Event('click'));
+        }
+        DATASET_MANAGER.selected_dataset = obj;
+        DATASET_MANAGER.updateDialog();
+      } else if(obj instanceof DatasetModifier) {
+        if(UI.hidden('equation-dlg')) {
+          UI.buttons.equation.dispatchEvent(new Event('click'));
+        }
+        EQUATION_MANAGER.selected_modifier = obj;
+        EQUATION_MANAGER.updateDialog();
+      }
+    }
   }
   
   reveal(id) {
@@ -14569,22 +14826,12 @@ class Finder {
     // NOTE: return the object to save a second lookup by revealExpression
     return obj;
   }
-
+  
   revealExpression(id, attr, shift=false, alt=false) {
-    const
-        obj = this.reveal(id),
-        now = Date.now(),
-        dt = now - this.last_time_clicked;
-    this.last_time_clicked = now;
-    if(obj === this.clicked_object) {
-      // Consider click to be "double" if it occurred less than 300 ms ago
-      if(dt < 300) {
-        this.last_time_clicked = 0;
-        shift = true;
-      }
-    }
-    this.clicked_object = obj;
-    if(obj && attr && (shift || alt)) {
+    const obj = this.reveal(id);
+    if(!obj) return;
+    shift = shift || this.doubleClicked(obj);
+    if(attr && (shift || alt)) {
       if(obj instanceof Process) {
         // NOTE: the second argument makes the dialog focus on the specified
         // attribute input field; the third makes it open the expression editor

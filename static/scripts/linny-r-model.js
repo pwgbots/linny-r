@@ -689,8 +689,8 @@ class LinnyRModel {
         // Merge into dimension if there are shared selectors
         for(let i = 0; i < this.dimensions.length; i++) {
           const c = complement(sl, this.dimensions[i]);
-          if(c.length > 0 && c.length < sl.length) {
-            this.dimensions[i].push(...c);
+          if(c.length < sl.length) {
+            if(c.length > 0) this.dimensions[i].push(...c);
             newdim = false;
             break;
           }
@@ -1181,8 +1181,8 @@ class LinnyRModel {
     }
     const id = UI.nameToID(name);
     let d = this.namedObjectByID(id);
-    if(d) {
-      if(IO_CONTEXT && d !== this.equations_dataset) {
+    if(d && d !== this.equations_dataset) {
+      if(IO_CONTEXT) {
         IO_CONTEXT.supersede(d);
       } else {
         // Preserve name uniqueness
@@ -1205,8 +1205,6 @@ class LinnyRModel {
     if(eqds) {
       // Restore pointer to original equations dataset
       this.equations_dataset = eqds;
-      // Add included equations with prefixed names
-console.log('HERE', d);
       // Return the extended equations dataset
       return eqds;
     } else {
@@ -4773,7 +4771,14 @@ class NodeBox extends ObjectWithXYWH {
   get numberContext() {
     // Returns the string to be used to evaluate #, so for clusters, processes
     // and products this is the string of trailing digits (or empty if none)
-    return endsWithDigits(this.name);
+    // of the node name, or if that does not end with a number, the trailing
+    // digits of the first prefix (from right to left) that does
+    const sn = this.name.split(UI.PREFIXER);
+    let nc = endsWithDigits(sn.pop());
+    while(!nc && sn.length > 0) {
+      nc = endsWithDigits(sn.pop());
+    }
+    return nc;
   }
   
   rename(name, actor_name) {
@@ -7593,8 +7598,8 @@ class Link {
       tn = this.from_node;
     }
     // Otherwise, the FROM node is checked first
-    let nc = endsWithDigits(fn.name);
-    if(!nc) nc = endsWithDigits(tn.name);
+    let nc = fn.numberContext;
+    if(!nc) nc = tn.numberContext;
     return nc;
   }
     
@@ -7847,7 +7852,12 @@ class Dataset {
   
   get numberContext() {
     // Returns the string to be used to evaluate # (empty string if undefined)
-    return endsWithDigits(this.name);
+    const sn = this.name.split(UI.PREFIXER);
+    let nc = endsWithDigits(sn.pop());
+    while(!nc && sn.length > 0) {
+      nc = endsWithDigits(sn.pop());
+    }
+    return nc;
   }
 
   get selectorList() {
