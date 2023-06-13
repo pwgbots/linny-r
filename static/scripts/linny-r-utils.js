@@ -310,18 +310,34 @@ function patternList(str) {
 
 function patternMatch(str, patterns) {
   // Returns TRUE when `str` matches the &|^-pattern
+  // NOTE: if a pattern starts with equals sign = then `str` must
+  // equal the rest of the pattern to match; if it starts with a tilde
+  // ~ then `str` must start with the rest of the pattern to match 
   for(let i = 0; i < patterns.length; i++) {
     const p = patterns[i];
-    let match = true;
+    let pm,
+        match = true;
     for(let j = 0; j < p.plus.length; j++) {
-      match = match && str.indexOf(p.plus[j]) >= 0;
+      pm = p.plus[j];
+      if(pm.startsWith('=')) {
+        match = match && str === pm.substring(1);
+      } else if(pm.startsWith('~')) {
+        match = match && str.startsWith(pm.substring(1));
+      } else {
+        match = match && str.indexOf(pm) >= 0;
+      }
     }
     for(let j = 0; j < p.min.length; j++) {
-      match = match && str.indexOf(p.min[j]) < 0;
+      pm = p.min[j];
+      if(pm.startsWith('=')) {
+        match = match && str !== pm.substring(1);
+      } else if(pm.startsWith('~')) {
+        match = match && !str.startsWith(pm.substring(1));
+      } else {
+        match = match && str.indexOf(pm) < 0;
+      }
     }
-    if(match) {
-      return true;
-    }
+    if(match) return true;
   }
   return false;
 }

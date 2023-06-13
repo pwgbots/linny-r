@@ -12,7 +12,7 @@ dialogs, the main drawing canvas, and event handler functions.
 */
 
 /*
-Copyright (c) 2017-2022 Delft University of Technology
+Copyright (c) 2017-2023 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -9080,7 +9080,9 @@ class GUIDatasetManager extends DatasetManager {
     this.close_btn.addEventListener(
         'click', (event) => UI.toggleDialog(event));
     document.getElementById('ds-new-btn').addEventListener(
-        'click', () => DATASET_MANAGER.promptForDataset());
+         // Shift-click on New button => add prefix of selected dataset
+         // (if any) to the name field of the dialog
+        'click', () => DATASET_MANAGER.promptForDataset(event.shiftKey));
     document.getElementById('ds-data-btn').addEventListener(
         'click', () => DATASET_MANAGER.editData());
     document.getElementById('ds-rename-btn').addEventListener(
@@ -9170,6 +9172,7 @@ class GUIDatasetManager extends DatasetManager {
     this.clicked_object = null;
     this.last_time_clicked = 0;
     this.focal_table = null;
+    this.expanded_rows = [];
   }
   
   doubleClicked(obj) {
@@ -9213,6 +9216,9 @@ class GUIDatasetManager extends DatasetManager {
     const srl = this.focal_table.getElementsByClassName('sel-set');
     if(srl.length > 0) {
       let r = this.focal_table.rows[srl[0].rowIndex + dir];
+      while(r && r.style.display === 'none') {
+        r = (dir > 0 ? r.nextSibling : r.previousSibling);
+      }
       if(r) {
         UI.scrollIntoView(r);
         // NOTE: cell, not row, listens for onclick event
@@ -9222,14 +9228,85 @@ class GUIDatasetManager extends DatasetManager {
     }
   }
   
+  hideCollapsedRows() {
+    // Hides all rows except top level and immediate children of expanded
+    for(let i = 0; i < this.dataset_table.rows.length; i++) {
+      const
+          row = this.dataset_table.rows[i],
+          // Get the first DIV in the first TD of this row
+          first_div = row.firstChild.firstElementChild,
+          btn = first_div.dataset.prefix === 'x'; 
+      let p = row.dataset.prefix,
+          x = this.expanded_rows.indexOf(p) >= 0, 
+          show = !p || x;
+      if(btn) {
+        const btn_div = row.getElementsByClassName('tree-btn')[0];
+        // Special expand/collapse row
+        if(show) {
+          // Set triangle to point down 
+          btn_div.innerText = '\u25BC';
+        } else {
+          // Set triangle to point right 
+          btn_div.innerText = '\u25BA';
+          // See whether "parent prefix" is expanded
+          p = p.split(UI.PREFIXER);
+          p.pop();
+          p = p.join(UI.PREFIXER);
+          // If so, then also show the row
+          show = (!p || this.expanded_rows.indexOf(p) >= 0);
+        }
+      }
+      row.style.display = (show ? 'block' : 'none');
+    }
+  }
+  
+  togglePrefixRow(e) {
+    // Shows list items of the next prefix level
+    let r = e.target;
+    while(r.tagName !== 'TR') r = r.parentNode;
+    const
+        p = r.dataset.prefix,
+        i = this.expanded_rows.indexOf(p);
+    if(i >= 0) {
+      this.expanded_rows.splice(i, 1);
+      // Also remove all prefixes that have `p` as prefix
+      for(let j = this.expanded_rows.length - 1; j >= 0; j--) {
+        if(this.expanded_rows[j].startsWith(p + UI.PREFIXER)) {
+          this.expanded_rows.splice(j, 1);
+        }
+      }
+    } else {
+      addDistinct(p, this.expanded_rows);
+    }
+    this.hideCollapsedRows();
+  }
+  
+  selectPrefixRow(e) {
+    // Selects expand/collapse prefix row
+    this.focal_table = this.dataset_table;
+    let r = e.target;
+    // Modeler may have clicked on the expand/collapse triangle;
+    const toggle = r.classList.contains('tree-btn');
+    while(r.tagName !== 'TR') r = r.parentNode;
+    const sel = this.dataset_table.getElementsByClassName('sel-set');
+    this.selected_dataset = null;
+    if(sel.length > 0) {
+      sel[0].classList.remove('sel-set');
+      this.updatePanes();
+    }
+    r.classList.add('sel-set');
+    if(toggle || e.altKey || this.doubleClicked(r)) this.togglePrefixRow(e);
+  }
+  
   updateDialog() {
     const
+        indent_px = 14,
         dl = [],
         dnl = [],
         sd = this.selected_dataset,
         ioclass = ['', 'import', 'export'];
     for(let d in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(d) &&
-        // NOTE: do not list "black-boxed" entities
+         // NOTE: do not list "black-boxed" entities
         !d.startsWith(UI.BLACK_BOX) &&
         // NOTE: do not list the equations dataset
         MODEL.datasets[d] !== MODEL.equations_dataset) {
@@ -9239,9 +9316,56 @@ class GUIDatasetManager extends DatasetManager {
       }
     }
     dnl.sort(ciCompare);
-    let sdid = 'dstr';
+    // First determine indentation levels, prefixes and names 
+    const
+        indent = [],
+        pref_ids = [],
+        names = [],
+        pref_names = {},
+        xids = [];
+    let max_indent = 0;
     for(let i = 0; i < dnl.length; i++) {
-      const d = MODEL.datasets[dnl[i]];
+      const pref = MODEL.datasets[dnl[i]].name.split(UI.PREFIXER);
+      names.push(pref.pop());
+      indent.push(pref.length);
+      max_indent = Math.max(pref.length);
+      // NOTE: ignore case but join again with ": " because prefixes
+      // can contain any character; only the prefixer is "reserved"
+      const pref_id = pref.join(UI.PREFIXER).toLowerCase();
+      pref_ids.push(pref_id);
+      // NOTE: only the name part (so no prefixes at all) will be shown
+      pref_names[pref_id] = pref.pop();
+    }
+    let sdid = 'dstr',
+        prev_id = '',
+        ind_div = '';
+    for(let i = 0; i < dnl.length; i++) {
+      const
+          d = MODEL.datasets[dnl[i]],
+          pid = pref_ids[i];
+      if(indent[i]) {
+        ind_div = '<div class="ds-indent" style="width: ' +
+            indent[i] * indent_px + 'px">\u25B9</div>';
+      } else {
+        ind_div = '';
+      }
+      // NOTE: empty string should not add a collapse/expand row
+      if(pid && pid != prev_id && xids.indexOf(pid) < 0) {
+        // Add a "collapse" row for the new prefix
+        dl.push(['<tr data-prefix="', pid, '" class="dataset',
+            '" onclick="DATASET_MANAGER.selectPrefixRow(event);"><td>',
+            // NOTE: data-prefix="x" signals that this is an extra row
+            (indent[i] > 0 ?
+                '<div data-prefix="x" style="width: ' + indent[i] * indent_px +
+                'px"></div>' :
+                ''),
+            '<div data-prefix="x" class="tree-btn">',
+            (this.expanded_rows.indexOf(pid) >= 0 ? '\u25BC' : '\u25BA'),
+            '</div>', pref_names[pid], '</td></tr>'].join(''));
+        // Add to the list to prevent multiple c/x-rows for the same prefix
+        xids.push(pid);
+      }
+      prev_id = pid;
       let cls = ioclass[MODEL.ioType(d)];
       if(d.outcome) {
         cls += ' outcome';
@@ -9253,20 +9377,29 @@ class GUIDatasetManager extends DatasetManager {
       if(Object.keys(d.modifiers).length > 0) cls += ' modif';
       if(d.black_box) cls += ' blackbox';
       cls = cls.trim();
-      if(cls) cls = ' class="'+ cls + '"';
+      if(cls) cls = ' class="' + cls + '"';
       if(d === sd) sdid += i;
       dl.push(['<tr id="dstr', i, '" class="dataset',
           (d === sd ? ' sel-set' : ''),
           (d.default_selector ? ' def-sel' : ''),
+          '" data-prefix="', pid,
           '" onclick="DATASET_MANAGER.selectDataset(event, \'',
           dnl[i], '\');" onmouseover="DATASET_MANAGER.showInfo(\'', dnl[i],
-          '\', event.shiftKey);"><td', cls, '>', d.displayName,
-          '</td></tr>'].join(''));
+          '\', event.shiftKey);"><td>', ind_div, '<div', cls, '>',
+          names[i], '</td></tr>'].join(''));
     }
     this.dataset_table.innerHTML = dl.join('');
-    const btns = 'ds-data ds-rename ds-clone ds-delete';
+    this.hideCollapsedRows();
+    const e = document.getElementById(sdid);
+    if(e) UI.scrollIntoView(e);
+    this.updatePanes();
+  }
+  
+  updatePanes() {
+    const
+        sd = this.selected_dataset,
+        btns = 'ds-data ds-rename ds-clone ds-delete';
     if(sd) {
-      this.dataset_table.innerHTML = dl.join('');
       this.properties.style.display = 'block';
       document.getElementById('dataset-default').innerHTML =
           VM.sig4Dig(sd.default_value) +
@@ -9296,8 +9429,6 @@ class GUIDatasetManager extends DatasetManager {
         this.outcome.classList.add('not-selected');
       }
       UI.setImportExportBox('dataset', MODEL.ioType(sd));
-      const e = document.getElementById(sdid);
-      UI.scrollIntoView(e);
       UI.enableButtons(btns);
     } else {
       this.properties.style.display = 'none';
@@ -9442,8 +9573,23 @@ class GUIDatasetManager extends DatasetManager {
     this.updateModifiers();
   }
   
-  promptForDataset() {
-    this.new_modal.element('name').value = '';
+  promptForDataset(shift=false) {
+    // Shift signifies: add prefix of selected dataset (if any) to
+    // the name field of the dialog
+    let prefix = '';
+    if(shift) {
+      if(this.selected_dataset) {
+        const p = this.selected_dataset.name.split(UI.PREFIXER);
+        p[p.length - 1] = '';
+        prefix = p.join(UI.PREFIXER);
+      } else if(this.clicked_object) {
+        const td = this.clicked_object.firstChild;
+        if(td && td.firstElementChild.dataset.prefix === 'x') {
+          prefix = td.lastChild.textContent + UI.PREFIXER;
+        }
+      }
+    }
+    this.new_modal.element('name').value = prefix;
     this.new_modal.show('name');
   }
   
@@ -10283,14 +10429,13 @@ class GUIChartManager extends ChartManager {
     const
         n = ev.dataTransfer.getData('text'),
         obj = MODEL.objectByID(n);
+    ev.preventDefault();
     if(!obj) {
       UI.alert(`Unknown entity ID "${n}"`);
     } else if(this.chart_index >= 0) {
-      // Only accept when all conditions are met
-      ev.preventDefault();
       if(obj instanceof DatasetModifier) {
         // Equations can be added directly as chart variable
-        this.addVariable(obj.name);
+        this.addVariable(obj.selector);
         return;
       }
       // For other entities, the attribute must be specified

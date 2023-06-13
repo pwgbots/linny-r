@@ -12,7 +12,7 @@ file all have their graphical extensions in file linny-r-gui.js.
 */
 
 /*
-Copyright (c) 2017-2022 Delft University of Technology
+Copyright (c) 2017-2023 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -290,13 +290,29 @@ class Controller {
   validName(name) {
     // Returns TRUE if `name` is a valid Linny-R entity name. These names
     // must not be empty strings, may not contain brackets, backslashes or
-    // vertical bars, and must start with an underscore, a letter or a digit;
-    // this is enforced mainly to preclude parsing issues with variable names
+    // vertical bars, may not end with a colon, and must start with an
+    // underscore, a letter or a digit. This is enforced mainly to
+    // preclude parsing issues with variable names
     // NOTE: normalize to also accept letters with accents
     if(name === this.TOP_CLUSTER_NAME) return true;
     name = name.normalize('NFKD').trim();
-    return name && !name.match(/\[\\\|\]/) &&
+    return name && !name.match(/\[\\\|\]/) && !name.endsWith(':') &&
         (name.startsWith(this.BLACK_BOX) || name[0].match(/[\w]/));
+  }
+  
+  prefixesAndName(name) {
+    // Returns name split exclusively at '[non-space]: [non-space]'
+    const
+        s = name.split(this.PREFIXER),
+        pan = [s[0]];
+    for(let i = 1; i < s.length; i++) {
+      const j = pan.length - 1;
+      if(s[i].startsWidth(' ') || (i > 0 && pan[j].endsWith(' '))) {
+        pan[j] += s[i];
+      } else {
+        pan.push(s[i]);
+      }
+    }
   }
   
   nameToID(name) {

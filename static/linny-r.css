@@ -2091,84 +2091,106 @@ tr.def-sel {
   font-weight: bold;
 }
 
-td.modif::before {
+tr.dataset > td > div {
+  display: inline-block;
+}
+
+div.ds-indent {
+  color: #909090;
+  text-align: right;
+  font-weight: normal !important;
+  margin-right: 2px;
+  margin-left: 3px;
+}
+
+div.tree-btn {
+  color: #909090;
+  margin-right: 3px;
+  cursor: pointer;
+}
+
+div.tree-btn {
+  margin-left: -9px;
+}
+
+div.modif::before {
   content: ' \2045';
   color: #b00080;
   margin-right: 2px;
 }
 
-td.outcome::before {
+div.outcome::before {
   content: ' \25C8';
   color: #b00080;
   margin-right: 1px;
 }
 
-td.array::before {
+div.array::before {
   content: ' \2263';
   color: #b00080;
   margin-right: 1px;
 }
 
-td.series::before {
+div.series::before {
   content: ' \28B8';
   color: #b00080;
   margin-left: -4px;
 }
 
-td.outcome.modif::before {
+div.outcome.modif::before {
   content: ' \25C8\2045';
   color: #b00080;
   margin-right: 2px;
 }
 
-td.array.modif::before {
+div.array.modif::before {
   content: ' \2263\2045';
   color: #b00080;
   margin-right: 1px;
 }
 
-td.series.modif::before {
+div.series.modif::before {
   content: ' \28B8\2045';
   color: #b00080;
   margin-left: -4px;
 }
 
-td.blackbox::before {
+div.blackbox::before {
   content: ' \25FC';
   color: #b00080;
 }
 
-td.blackbox.series::before {
+div.blackbox.series::before {
   content: ' \25FC\28B8';
   color: #b00080;
 }
 
-td.blackbox.array::before {
+div.blackbox.array::before {
   content: ' \25FC\2263';
   color: #b00080;
 }
 
-td.blackbox.outcome::before {
+div.blackbox.outcome::before {
   content: ' \25FC\25C8';
   color: #b00080;
 }
 
-td.blackbox.modif::before {
+div.blackbox.modif::before {
   content: ' \25FC\2045';
   color: #b00080;
 }
 
-td.blackbox.series.modif::before {
+div.blackbox.series.modif::before {
   content: ' \25FC\28B8\2045';
   color: #b00080;
 }
 
-td.blackbox.array.modif::before {
+div.blackbox.array.modif::before {
   content: ' \25FC\2263\2045';
   color: #b00080;
 }
 
-td.blackbox.outcome.modif::before {
+div.blackbox.outcome.modif::before {
   content: ' \25FC\25C8\2045';
   color: #b00080;
 }

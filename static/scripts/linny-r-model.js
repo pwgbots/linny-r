@@ -557,7 +557,7 @@ class LinnyRModel {
   inferPrefix(obj) {
     // Return the inferred (!) prefixes of `obj` as a list
     if(obj) {
-      const pl = obj.displayName.split(UI.PREFIXER);
+      const pl = UI.prefixesAndName(obj.displayName);
       if(pl.length > 1) {
         pl.pop();
         return pl;
@@ -2125,8 +2125,8 @@ class LinnyRModel {
     const
         en = escapeRegex(ena[0].trim().replace(/\s+/g, ' ').toLowerCase()),
         at = ena[1].trim(),
-        raw = en.replace(/\s/, `\s+`) + `\s*\|\s*` + escapeRegex(at),
-        re = new RegExp(`\[\s*${raw}\s*(\@[^\]]+)?\s*\]`, 'gi');
+        raw = en.replace(/\s/, '\\s+') + '\\s*\\|\\s*' + escapeRegex(at),
+        re = new RegExp(String.raw`\[\s*${raw}\s*(\@[^\]]+)?\s*\]`, 'gi');
     // Count replacements made
     let n = 0;
     // Iterate over all expressions
@@ -4773,7 +4773,7 @@ class NodeBox extends ObjectWithXYWH {
     // and products this is the string of trailing digits (or empty if none)
     // of the node name, or if that does not end with a number, the trailing
     // digits of the first prefix (from right to left) that does
-    const sn = this.name.split(UI.PREFIXER);
+    const sn = UI.prefixesAndName(this.name);
     let nc = endsWithDigits(sn.pop());
     while(!nc && sn.length > 0) {
       nc = endsWithDigits(sn.pop());
@@ -7852,7 +7852,7 @@ class Dataset {
   
   get numberContext() {
     // Returns the string to be used to evaluate # (empty string if undefined)
-    const sn = this.name.split(UI.PREFIXER);
+    const sn = UI.prefixesAndName(this.name);
     let nc = endsWithDigits(sn.pop());
     while(!nc && sn.length > 0) {
       nc = endsWithDigits(sn.pop());
@@ -8055,11 +8055,11 @@ class Dataset {
     }
     if(this.default_selector) {
       // If no experiment (so "normal" run), use default selector if specified
-      const dm = this.modifiers[this.default_selector];
+      const dm = this.modifiers[UI.nameToID(this.default_selector)];
       if(dm) return dm.expression;
       // Exception should never occur, but check anyway and log it 
       console.log('WARNING: Dataset "' + this.name +
-          `" has no default selector "${this.default_selector}"`);
+          `" has no default selector "${this.default_selector}"`, this.modifiers);
     }
     // Fall-through: return vector instead of expression
     return this.vector;
@@ -8186,7 +8186,7 @@ class Dataset {
       }
     }
     const ds = xmlDecoded(nodeContentByTag(node, 'default-selector'));
-    if(ds && !this.modifiers[ds]) {
+    if(ds && !this.modifiers[UI.nameToID(ds)]) {
       UI.warn(`Dataset <tt>${this.name}</tt> has no selector <tt>${ds}</tt>`);
     } else {
       this.default_selector = ds;      
