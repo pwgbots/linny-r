@@ -12195,7 +12195,8 @@ class GUIExperimentManager extends ExperimentManager {
           x.charts[i].title, '</td></tr>'].join(''));
     }
     this.chart_table.innerHTML = tr.join('');
-    if(x.charts.length === 0) canview = false;
+    // Do not show viewer unless at least 1 dependent variable has been defined
+    if(x.charts.length === 0 && MODEL.outcomeNames.length === 0) canview = false;
     if(tr.length >= this.suitable_charts.length) {
       document.getElementById('xp-c-add-btn').classList.add('v-disab');
     } else {
@@ -12215,7 +12216,7 @@ class GUIExperimentManager extends ExperimentManager {
       dbtn.classList.add('v-disab');
       cbtn.classList.add('v-disab');
     }
-    // Enable viewing only if > 1 dimensions and > 1 charts
+    // Enable viewing only if > 1 dimensions and > 1 outcome variables
     if(canview) {
       UI.enableButtons('xp-view');
     } else {
@@ -12300,14 +12301,11 @@ class GUIExperimentManager extends ExperimentManager {
     const x = this.selected_experiment;
     if(x) {
       x.inferVariables();
-      if(x.selected_variable === '') {
-        x.selected_variable = x.variables[0].displayName;
-      }
       const
           ol = [],
           vl = MODEL.outcomeNames;
       for(let i = 0; i < x.variables.length; i++) {
-        vl.push(x.variables[i].displayName); 
+        addDistinct(x.variables[i].displayName, vl); 
       }
       vl.sort(ciCompare);
       for(let i = 0; i < vl.length; i++) {
@@ -12316,6 +12314,9 @@ class GUIExperimentManager extends ExperimentManager {
             '>', vl[i], '</option>'].join(''));
       }
       document.getElementById('viewer-variable').innerHTML = ol.join('');
+      if(x.selected_variable === '') {
+        x.selected_variable = vl[0];
+      }
     }
   }
   

@@ -5189,15 +5189,15 @@ function relativeTimeStep(t, anchor, offset, dtm, x) {
   }
   if(anchor === 'c') {
     // Relative to start of current optimization block
-    return VM.block_start + offset;
+    return Math.trunc(t / MODEL.block_length) * MODEL.block_length + offset;
   }
   if(anchor === 'p') {
     // Relative to start of previous optimization block
-    return VM.block_start - MODEL.block_length + offset;
+    return (Math.trunc(t / MODEL.block_length) - 1) * MODEL.block_length + offset;
   }
   if(anchor === 'n') {
     // Relative to start of next optimization block
-    return VM.block_start + MODEL.block_length + offset;
+    return (Math.trunc(t / MODEL.block_length) + 1) * MODEL.block_length + offset;
   }
   if(anchor === 'l') {
     // Last: offset relative to the last index in the vector
