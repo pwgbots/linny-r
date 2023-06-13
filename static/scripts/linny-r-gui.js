@@ -9325,7 +9325,7 @@ class GUIDatasetManager extends DatasetManager {
         xids = [];
     let max_indent = 0;
     for(let i = 0; i < dnl.length; i++) {
-      const pref = MODEL.datasets[dnl[i]].name.split(UI.PREFIXER);
+      const pref = UI.prefixesAndName(MODEL.datasets[dnl[i]].name);
       names.push(pref.pop());
       indent.push(pref.length);
       max_indent = Math.max(pref.length);
@@ -9579,7 +9579,7 @@ class GUIDatasetManager extends DatasetManager {
     let prefix = '';
     if(shift) {
       if(this.selected_dataset) {
-        const p = this.selected_dataset.name.split(UI.PREFIXER);
+        const p = UI.prefixesAndName(this.selected_dataset.name);
         p[p.length - 1] = '';
         prefix = p.join(UI.PREFIXER);
       } else if(this.clicked_object) {
