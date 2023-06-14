@@ -307,7 +307,7 @@ class Controller {
         pan = [s[0]];
     for(let i = 1; i < s.length; i++) {
       const j = pan.length - 1;
-      if(s[i].startsWidth(' ') || (i > 0 && pan[j].endsWith(' '))) {
+      if(s[i].startsWith(' ') || (i > 0 && pan[j].endsWith(' '))) {
         pan[j] += s[i];
       } else {
         pan.push(s[i]);
