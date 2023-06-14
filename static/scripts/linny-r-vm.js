@@ -834,7 +834,7 @@ class ExpressionParser {
         return [stat, list, anchor1, offset1, anchor2, offset2];
       }
       this.error = `No entities that match pattern "${patstr}"` +
-          (attr ? ' and have attribute ' + attr : '');
+          (attr ? ' and have attribute ' + attr : ' when no attribute is specified');
       return false;
     }
     

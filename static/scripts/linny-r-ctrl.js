@@ -313,6 +313,7 @@ class Controller {
         pan.push(s[i]);
       }
     }
+    return pan;
   }
   
   nameToID(name) {
