@@ -9304,7 +9304,13 @@ class GUIDatasetManager extends DatasetManager {
         dl = [],
         dnl = [],
         sd = this.selected_dataset,
-        ioclass = ['', 'import', 'export'];
+        ioclass = ['', 'import', 'export'],
+        ciPrefixCompare = (a, b) => {
+            const
+                pa = a.split(':_').join('  '),
+                pb = b.split(':_').join('  ');
+            return ciCompare(pa, pb);
+          };
     for(let d in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(d) &&
          // NOTE: do not list "black-boxed" entities
         !d.startsWith(UI.BLACK_BOX) &&
@@ -9315,7 +9321,7 @@ class GUIDatasetManager extends DatasetManager {
         dnl.push(d);
       }
     }
-    dnl.sort(ciCompare);
+    dnl.sort(ciPrefixCompare);
     // First determine indentation levels, prefixes and names 
     const
         indent = [],
@@ -9323,18 +9329,16 @@ class GUIDatasetManager extends DatasetManager {
         names = [],
         pref_names = {},
         xids = [];
-    let max_indent = 0;
     for(let i = 0; i < dnl.length; i++) {
       const pref = UI.prefixesAndName(MODEL.datasets[dnl[i]].name);
+      // NOTE: only the name part (so no prefixes at all) will be shown
       names.push(pref.pop());
       indent.push(pref.length);
-      max_indent = Math.max(pref.length);
       // NOTE: ignore case but join again with ": " because prefixes
       // can contain any character; only the prefixer is "reserved"
       const pref_id = pref.join(UI.PREFIXER).toLowerCase();
       pref_ids.push(pref_id);
-      // NOTE: only the name part (so no prefixes at all) will be shown
-      pref_names[pref_id] = pref.pop();
+      pref_names[pref_id] = pref;
     }
     let sdid = 'dstr',
         prev_id = '',
@@ -9351,19 +9355,40 @@ class GUIDatasetManager extends DatasetManager {
       }
       // NOTE: empty string should not add a collapse/expand row
       if(pid && pid != prev_id && xids.indexOf(pid) < 0) {
-        // Add a "collapse" row for the new prefix
-        dl.push(['<tr data-prefix="', pid, '" class="dataset',
-            '" onclick="DATASET_MANAGER.selectPrefixRow(event);"><td>',
-            // NOTE: data-prefix="x" signals that this is an extra row
-            (indent[i] > 0 ?
-                '<div data-prefix="x" style="width: ' + indent[i] * indent_px +
-                'px"></div>' :
-                ''),
-            '<div data-prefix="x" class="tree-btn">',
-            (this.expanded_rows.indexOf(pid) >= 0 ? '\u25BC' : '\u25BA'),
-            '</div>', pref_names[pid], '</td></tr>'].join(''));
-        // Add to the list to prevent multiple c/x-rows for the same prefix
-        xids.push(pid);
+        // NOTE: XX: aa may be followed by XX: YY: ZZ: bb, which requires
+        // *two* collapsable lines: XX: YY and XX: YY: ZZ: before adding
+        // XX: YY: ZZ: bb
+        const
+            ps = pid.split(UI.PREFIXER),
+            pps = prev_id.split(UI.PREFIXER),
+            pn = pref_names[pid],
+            lpl = [];
+        let lindent = 0;
+        // Ignore identical leading prefixes
+        while(ps.length > 0 && pps.length > 0 && ps[0] === pps[0]) {
+          lpl.push(ps.shift());
+          pps.shift();
+          pn.shift();
+          lindent++;
+        }
+        // Add a "collapse" row for each new prefix
+        while(ps.length > 0) {
+          lpl.push(ps.shift());
+          lindent++;
+          const lpid = lpl.join(UI.PREFIXER);
+          dl.push(['<tr data-prefix="', lpid, '" class="dataset',
+              '" onclick="DATASET_MANAGER.selectPrefixRow(event);"><td>',
+              // NOTE: data-prefix="x" signals that this is an extra row
+              (lindent > 0 ?
+                  '<div data-prefix="x" style="width: ' + lindent * indent_px +
+                  'px"></div>' :
+                  ''),
+              '<div data-prefix="x" class="tree-btn">',
+              (this.expanded_rows.indexOf(lpid) >= 0 ? '\u25BC' : '\u25BA'),
+              '</div>', pn.shift(), '</td></tr>'].join(''));
+          // Add to the list to prevent multiple c/x-rows for the same prefix
+          xids.push(lpid);
+        }
       }
       prev_id = pid;
       let cls = ioclass[MODEL.ioType(d)];
