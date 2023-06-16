@@ -9608,9 +9608,15 @@ class GUIDatasetManager extends DatasetManager {
         p[p.length - 1] = '';
         prefix = p.join(UI.PREFIXER);
       } else if(this.clicked_object) {
-        const td = this.clicked_object.firstChild;
-        if(td && td.firstElementChild.dataset.prefix === 'x') {
-          prefix = td.lastChild.textContent + UI.PREFIXER;
+        let tr = this.clicked_object;
+        while(tr) {
+          const td = tr.firstChild;
+          if(td && td.firstElementChild.dataset.prefix === 'x') {
+            prefix = td.lastChild.textContent + UI.PREFIXER + prefix;
+            tr = tr.previousSibling;
+          } else {
+            tr = null;
+          }
         }
       }
     }
