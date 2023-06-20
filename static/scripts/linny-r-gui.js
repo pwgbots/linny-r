@@ -5346,17 +5346,20 @@ class GUIController extends Controller {
     if(!this.updateExpressionInput(
         'process-IL', 'initial level', p.initial_level)) return false;
     // Store original expression string
-    const pxt = p.pace_expression.text;
+    const
+        px = p.pace_expression,
+        pxt = p.pace_expression.text;
     // Validate expression
     if(!this.updateExpressionInput('process-pace', 'level change frequency',
-        p.pace_expression)) return false;
+        px)) return false;
     // NOTE: pace expression must be *static* and >= 1
-    n = p.pace_expression.result(1);
-    if(!p.pace_expression.isStatic || n < 1) {
+    n = px.result(1);
+    if(!px.isStatic || n < 1) {
       md.element('pace').focus();
       this.warn('Level change frequency must be static and &ge; 1');
       // Restore original expression string
-      p.pace_expression.text = pxt;
+      px.text = pxt;
+      px.code = null;
       return false;
     }
     // Ignore fraction if a real number was entered.
@@ -9119,6 +9122,8 @@ class GUIDatasetManager extends DatasetManager {
         'click', () => DATASET_MANAGER.editExpression());
     document.getElementById('ds-delete-modif-btn').addEventListener(
         'click', () => DATASET_MANAGER.deleteModifier());
+    document.getElementById('ds-convert-modif-btn').addEventListener(
+        'click', () => DATASET_MANAGER.promptToConvertModifiers());
     // Modifier table
     this.modifier_table = document.getElementById('dataset-modif-table');
     // Modal dialogs
@@ -9132,6 +9137,11 @@ class GUIDatasetManager extends DatasetManager {
         'click', () => DATASET_MANAGER.renameDataset());
     this.rename_modal.cancel.addEventListener(
         'click', () => DATASET_MANAGER.rename_modal.hide());
+    this.conversion_modal = new ModalDialog('convert-modifiers');
+    this.conversion_modal.ok.addEventListener(
+        'click', () => DATASET_MANAGER.convertModifiers());
+    this.conversion_modal.cancel.addEventListener(
+        'click', () => DATASET_MANAGER.conversion_modal.hide());
     this.new_selector_modal = new ModalDialog('new-selector');
     this.new_selector_modal.ok.addEventListener(
         'click', () => DATASET_MANAGER.newModifier());
@@ -9166,6 +9176,7 @@ class GUIDatasetManager extends DatasetManager {
 
   reset() {
     super.reset();
+    this.selected_prefix_row = null;
     this.selected_modifier = null;
     this.edited_expression = null;
     this.filter_pattern = null;
@@ -9235,7 +9246,7 @@ class GUIDatasetManager extends DatasetManager {
           row = this.dataset_table.rows[i],
           // Get the first DIV in the first TD of this row
           first_div = row.firstChild.firstElementChild,
-          btn = first_div.dataset.prefix === 'x'; 
+          btn = first_div.dataset.prefix === 'x';
       let p = row.dataset.prefix,
           x = this.expanded_rows.indexOf(p) >= 0, 
           show = !p || x;
@@ -9281,13 +9292,38 @@ class GUIDatasetManager extends DatasetManager {
     this.hideCollapsedRows();
   }
   
+  rowByPrefix(prefix) {
+    // Returns first table row with the specified prefix
+    if(!prefix) return null;
+    let lcp = prefix.toLowerCase(),
+        pl = lcp.split(': ');
+    // Remove trailing ': '
+    if(lcp.endsWith(': ')) {
+      pl.pop();
+      lcp = pl.join(': ');
+    }
+    while(pl.length > 0) {
+      addDistinct(pl.join(': '), this.expanded_rows);
+      pl.pop();
+    }
+    this.hideCollapsedRows();
+    for(let i = 0; i < this.dataset_table.rows.length; i++) {
+      const r = this.dataset_table.rows[i];
+      if(r.dataset.prefix === lcp) return r;
+    }
+    return null;
+  }
+
   selectPrefixRow(e) {
     // Selects expand/collapse prefix row
     this.focal_table = this.dataset_table;
-    let r = e.target;
+    // NOTE: `e` can also be a string specifying the prefix to select
+    let r = e.target || this.rowByPrefix(e);
+    if(!r) return;
     // Modeler may have clicked on the expand/collapse triangle;
     const toggle = r.classList.contains('tree-btn');
     while(r.tagName !== 'TR') r = r.parentNode;
+    this.selected_prefix_row = r;
     const sel = this.dataset_table.getElementsByClassName('sel-set');
     this.selected_dataset = null;
     if(sel.length > 0) {
@@ -9295,7 +9331,9 @@ class GUIDatasetManager extends DatasetManager {
       this.updatePanes();
     }
     r.classList.add('sel-set');
+    if(!e.target) r.scrollIntoView({block: 'center'});
     if(toggle || e.altKey || this.doubleClicked(r)) this.togglePrefixRow(e);
+    UI.enableButtons('ds-rename');      
   }
   
   updateDialog() {
@@ -9423,7 +9461,7 @@ class GUIDatasetManager extends DatasetManager {
   updatePanes() {
     const
         sd = this.selected_dataset,
-        btns = 'ds-data ds-rename ds-clone ds-delete';
+        btns = 'ds-data ds-clone ds-delete ds-rename';
     if(sd) {
       this.properties.style.display = 'block';
       document.getElementById('dataset-default').innerHTML =
@@ -9458,6 +9496,7 @@ class GUIDatasetManager extends DatasetManager {
     } else {
       this.properties.style.display = 'none';
       UI.disableButtons(btns);
+      if(this.selected_prefix_row) UI.enableButtons('ds-rename');
     }
     this.updateModifiers();
   }
@@ -9515,6 +9554,17 @@ class GUIDatasetManager extends DatasetManager {
       UI.enableButtons(btns);
     } else {
       UI.disableButtons(btns);
+    }
+    // Check if dataset appears to "misuse" dataset modifiers
+    const
+        pml = sd.inferPrefixableModifiers,
+        e = document.getElementById('ds-convert-modif-btn');
+    if(pml.length > 0) {
+      e.style.display = 'inline-block';
+      e.title = 'Convert '+ pluralS(pml.length, 'modifier') +
+          ' to prefixed dataset(s)';
+    } else {
+      e.style.display = 'none'; 
     }
   }
   
@@ -9598,6 +9648,22 @@ class GUIDatasetManager extends DatasetManager {
     this.updateModifiers();
   }
   
+  get selectedPrefix() {
+    // Returns the selected prefix (with its trailing colon-space)
+    let prefix = '',
+        tr = this.selected_prefix_row;
+    while(tr) {
+      const td = tr.firstElementChild;
+      if(td && td.firstElementChild.dataset.prefix === 'x') {
+        prefix = td.lastChild.textContent + UI.PREFIXER + prefix;
+        tr = tr.previousSibling;
+      } else {
+        tr = null;
+      }
+    }
+    return prefix;
+  }
+  
   promptForDataset(shift=false) {
     // Shift signifies: add prefix of selected dataset (if any) to
     // the name field of the dialog
@@ -9607,17 +9673,8 @@ class GUIDatasetManager extends DatasetManager {
         const p = UI.prefixesAndName(this.selected_dataset.name);
         p[p.length - 1] = '';
         prefix = p.join(UI.PREFIXER);
-      } else if(this.clicked_object) {
-        let tr = this.clicked_object;
-        while(tr) {
-          const td = tr.firstChild;
-          if(td && td.firstElementChild.dataset.prefix === 'x') {
-            prefix = td.lastChild.textContent + UI.PREFIXER + prefix;
-            tr = tr.previousSibling;
-          } else {
-            tr = null;
-          }
-        }
+      } else if(this.selected_prefix) {
+        prefix = this.selectedPrefix;
       }
     }
     this.new_modal.element('name').value = prefix;
@@ -9637,8 +9694,13 @@ class GUIDatasetManager extends DatasetManager {
   promptForName() {
     // Prompts the modeler for a new name for the selected dataset (if any)
     if(this.selected_dataset) {
+      this.rename_modal.element('title').innerText = 'Rename dataset';
       this.rename_modal.element('name').value =
           this.selected_dataset.displayName;
+      this.rename_modal.show('name');
+    } else if(this.selected_prefix_row) {
+      this.rename_modal.element('title').innerText = 'Rename datasets by prefix';
+      this.rename_modal.element('name').value = this.selectedPrefix.slice(0, -2);
       this.rename_modal.show('name');
     }
   }
@@ -9654,16 +9716,67 @@ class GUIDatasetManager extends DatasetManager {
       // Then try to rename -- this may generate a warning
       if(this.selected_dataset.rename(n)) {
         this.rename_modal.hide();
-        this.updateDialog();
-        // Also update Chart manager and Experiment viewer, as these may
-        // display a variable name for this dataset
-        CHART_MANAGER.updateDialog();
         if(EXPERIMENT_MANAGER.selected_experiment) {
           EXPERIMENT_MANAGER.selected_experiment.inferVariables();
         }
-        EXPERIMENT_MANAGER.updateDialog();
+        UI.updateControllerDialogs('CDEFJX');
+      }
+    } else if(this.selected_prefix_row) {
+      // Create a list of datasets to be renamed
+      let e = this.rename_modal.element('name'),
+          prefix = e.value.trim();
+      e.focus();
+      while(prefix.endsWith(':')) prefix = prefix.slice(0, -1);
+      // NOTE: prefix may be empty string, but otherwise should be a valid name
+      if(prefix && !UI.validName(prefix)) {
+        UI.warn('Invalid prefix');
+        return;
+      }
+      prefix += UI.PREFIXER;
+      const
+          oldpref = this.selectedPrefix,
+          key = oldpref.toLowerCase().split(UI.PREFIXER).join(':_'),
+          newkey = prefix.toLowerCase().split(UI.PREFIXER).join(':_'),
+          dsl = [];
+      // No change if new prefix is identical to old prefix
+      if(oldpref !== prefix) { 
+        for(let k in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(k)) {
+          if(k.startsWith(key)) dsl.push(k);
+        }
+        // NOTE: no check needed for mere upper/lower case changes
+        if(newkey !== key) {
+          let nc = 0;
+          for(let i = 0; i < dsl.length; i++) {
+            let nk = newkey + dsl[i].substring(key.length);
+            if(MODEL.datasets[nk]) nc++;
+          }
+          if(nc) {
+            UI.warn('Renaming ' + pluralS(dsl.length, 'dataset') +
+                ' would cause ' + pluralS(nc, 'name conflict'));
+            return;
+          }
+        }
+        // Reset counts of effects of a rename operation
+        this.entity_count = 0;
+        this.expression_count = 0;
+        // Rename datasets one by one, suppressing notifications
+        for(let i = 0; i < dsl.length; i++) {
+          const d = MODEL.datasets[dsl[i]];
+          d.rename(d.displayName.replace(oldpref, prefix), false);
+        }
+        let msg = 'Renamed ' + pluralS(dsl.length, 'dataset');
+        if(MODEL.variable_count) msg += ', and updated ' +
+            pluralS(MODEL.variable_count, 'variable') + ' in ' +
+            pluralS(MODEL.expression_count, 'expression');
+        UI.notify(msg);
+        if(EXPERIMENT_MANAGER.selected_experiment) {
+          EXPERIMENT_MANAGER.selected_experiment.inferVariables();
+        }
+        UI.updateControllerDialogs('CDEFJX');
+        this.selectPrefixRow(prefix);
       }
     }
+    this.rename_modal.hide();
   }
 
   cloneDataset() {
@@ -9803,16 +9916,13 @@ class GUIDatasetManager extends DatasetManager {
     this.deleteModifier();
     this.selected_modifier = m;
     // Update all chartvariables referencing this dataset + old selector
+    const vl = MODEL.datasetChartVariables;
     let cv_cnt = 0;
-    for(let i = 0; i < MODEL.charts.length; i++) {
-      const c = MODEL.charts[i];
-      for(let j = 0; j < c.variables.length; j++) {
-        const v = c.variables[j];
-        if(v.object === this.selected_dataset &&
-            v.attribute === oldm.selector) {
-          v.attribute = m.selector;
-          cv_cnt++;
-        }
+    for(let i = 0; i < vl.length; i++) {
+      if(v.object === this.selected_dataset &&
+          v.attribute === oldm.selector) {
+        v.attribute = m.selector;
+        cv_cnt++;
       }
     }
     // Also replace old selector in all expressions (count these as well)
@@ -9826,7 +9936,7 @@ class GUIDatasetManager extends DatasetManager {
       UI.notify('Updated ' +  msg.join(' and '));
       // Also update these stay-on-top dialogs, as they may display a
       // variable name for this dataset + modifier
-      UI.updateControllerDialogs('CDEFX');
+      UI.updateControllerDialogs('CDEFJX');
     }
     // NOTE: update dimensions only if dataset now has 2 or more modifiers
     // (ignoring those with wildcards)
@@ -9876,6 +9986,130 @@ class GUIDatasetManager extends DatasetManager {
       this.updateModifiers();
       MODEL.updateDimensions();
     }
+  }
+
+  promptToConvertModifiers() {
+    // Convert modifiers of selected dataset to new prefixed datasets
+    const
+        ds = this.selected_dataset,
+        md = this.conversion_modal;
+    if(ds) {
+      md.element('prefix').value = ds.displayName;
+      md.show('prefix');
+    }
+  }
+  
+  convertModifiers() {
+    // Convert modifiers of selected dataset to new prefixed datasets
+    if(!this.selected_dataset) return;
+    const
+        ds = this.selected_dataset,
+        md = this.conversion_modal,
+        e = md.element('prefix');
+    let prefix = e.value.trim(),
+        vcount = 0;
+    e.focus();
+    while(prefix.endsWith(':')) prefix = prefix.slice(0, -1);
+    // NOTE: prefix may be empty string, but otherwise should be a valid name
+    if(prefix && !UI.validName(prefix)) {
+      UI.warn('Invalid prefix');
+      return;
+    }
+    if(prefix) prefix += UI.PREFIXER;
+    const
+        dsn = ds.displayName,
+        pml = ds.inferPrefixableModifiers,
+        xl = MODEL.allExpressions,
+        vl = MODEL.datasetVariables,
+        nl = MODEL.notesWithTags;
+    for(let i = 0; i < pml.length; i++) {
+      // Create prefixed dataset with correct default value
+      const
+          m = pml[i],
+          sel = m.selector,
+          newds = MODEL.addDataset(prefix + sel);
+      if(newds) {
+        // Retain properties of the "parent" dataset
+        newds.scale_unit = ds.scale_unit;
+        newds.time_scale = ds.time_scale;
+        newds.time_unit = ds.time_unit;
+        // Set modifier's expression result as default value
+        newds.default_value = m.expression.result(1);
+        // Remove the modifier from the dataset
+        delete ds.modifiers[UI.nameToID(sel)];
+        // If it was the dataset default modifier, clear this default
+        if(sel === ds.default_selector) ds.default_selector = '';
+        // Rename variable in charts
+        const
+            from = dsn + UI.OA_SEPARATOR + sel,
+            to = newds.displayName;
+        for(let j = 0; j < vl.length; j++) {
+          const v = vl[j];
+          // NOTE: variable should match original dataset + selector
+          if(v.displayName === from) {
+            // Change to new dataset WITHOUT selector
+            v.object = newds;
+            v.attribute = '';
+            vcount++;
+          }
+        }
+        // Rename variable in the Sensitivity Analysis
+        for(let j = 0; j < MODEL.sensitivity_parameters.length; j++) {
+          if(MODEL.sensitivity_parameters[j] === from) {
+            MODEL.sensitivity_parameters[j] = to;
+            vcount++;
+          }
+        }
+        for(let j = 0; j < MODEL.sensitivity_outcomes.length; j++) {
+          if(MODEL.sensitivity_outcomes[j] === from) {
+            MODEL.sensitivity_outcomes[j] = to;
+            vcount++;
+          }
+        }
+        // Rename variable in expressions and notes
+        const re = new RegExp(
+            '\\[\\s*' + escapeRegex(from).replace(/\s+/g, '\\s+') +
+            // NOTE: pattern ends at any character that is invalid
+            // for dataset selectors (unlike equation names)
+            '\\s*[^a-zA-Z0-9\\+\\-\\%\\_]');
+        for(let j = 0; j < xl.length; j++) {
+          const
+              x = xl[j],
+              matches = x.text.match(re);
+          if(matches) {
+            for(let k = 0; k < matches.length; k++) {
+              x.text = x.text.replaceAll(matches[k], matches[k].replace(from, to));
+              vcount ++;
+            }
+            // Force recompilation
+            x.code = null;
+          }
+        }
+        for(let j = 0; j < nl.length; j++) {
+          const
+              n = nl[j],
+              matches = n.contents.match(re);
+          if(matches) {
+            for(let k = 0; k < matches.length; k++) {
+              n.contents = n.contents.replaceAll(matches[k], matches[k].replace(from, to));
+              vcount ++;
+            }
+            // Note fields must be parsed again
+            n.parsed = false;
+          }
+        }
+      }
+    }
+    if(vcount) UI.notify('Renamed ' + pluralS(vcount, 'variable') +
+        ' throughout the model');
+    // Delete the original dataset unless it has series data
+    if(ds.data.length === 0) this.deleteDataset();
+    MODEL.updateDimensions();
+    this.selected_dataset = null;
+    this.selected_prefix_row = null;
+    this.updateDialog();
+    md.hide();
+    this.selectPrefixRow(prefix);
   }
 
   updateLine() {
@@ -10238,7 +10472,7 @@ class EquationManager {
       UI.notify('Updated ' +  msg.join(' and '));
       // Also update these stay-on-top dialogs, as they may display a
       // variable name for this dataset + modifier
-      UI.updateControllerDialogs('CDEFX');
+      UI.updateControllerDialogs('CDEFJX');
     }
     // Always close the name prompt dialog, and update the equation manager
     this.rename_modal.hide();
@@ -14769,7 +15003,7 @@ class Finder {
       const
           raw = escapeRegex(se.displayName),
           re = new RegExp(
-              '\\[\\s*' + raw.replace(/\s+/g, '\\s+') + '\\s*[\\|\\@\\]]');
+              '\\[\\s*!?' + raw.replace(/\s+/g, '\\s+') + '\\s*[\\|\\@\\]]');
       // Check actor weight expressions
       for(let k in MODEL.actors) if(MODEL.actors.hasOwnProperty(k)) {
         const a = MODEL.actors[k];

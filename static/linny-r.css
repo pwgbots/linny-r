@@ -10,7 +10,7 @@ file that implements the graphical user interface for Linny-R.
 */
 
 /*
-Copyright (c) 2017-2022 Delft University of Technology
+Copyright (c) 2017-2023 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -2107,10 +2107,7 @@ div.tree-btn {
   color: #909090;
   margin-right: 3px;
   cursor: pointer;
-}
-
-div.tree-btn {
-  margin-left: -9px;
+  margin-left: -13px;
 }
 
 div.modif::before {
@@ -2314,6 +2311,17 @@ td.equation-expression {
   position: absolute;
   left: 110px;
   bottom: 5px;
+}
+
+/* CONVERT MODIFIERS modal dialog */
+#convert-modifiers-dlg {
+  width: 220px;
+  height: 84px;
+}
+
+#convert-modifiers-prefix {
+  margin: 3px;
+  width: calc(100% - 8px);
 }
 
 /* SERIES modal dialog */

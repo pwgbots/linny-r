@@ -120,6 +120,9 @@ class LinnyRModel {
     // Set the indicator that the model has not been solved yet
     this.set_up = false;
     this.solved = false;
+    // Reset counts of effects of a rename operation
+    this.variable_count = 0;
+    this.expression_count = 0;
   }
   
   // NOTE: a model can also be the entity for the documentation manager,
@@ -565,7 +568,7 @@ class LinnyRModel {
     }
     return [];
   }
-
+  
   inferParentCluster(obj) {
     // Find the best "parent" cluster for link or constraint `obj`
     let p, q;
@@ -632,6 +635,14 @@ class LinnyRModel {
       if(this.experiments[i].title === t) return i;
     }
     return -1;
+  }
+  
+  isDimensionSelector(s) {
+    // Returns TRUE if `s` is a dimension selector in some experiment
+    for(let i = 0; i < this.experiments.length; i++) {
+      if(this.experiments[i].isDimensionSelector(s)) return true;
+    }
+    return false;
   }
 
   canLink(from, to) {
@@ -915,7 +926,7 @@ class LinnyRModel {
       for(let i = 0; i < c.notes.length; i++) {
         const
             n = c.notes[i],
-            tags = n.contents.match(/\[\[[^\]]+\]\]/g);
+            tags = n.tagList;
         if(tags) {
           for(let i = 0; i < tags.length; i++) {
             const
@@ -2024,46 +2035,74 @@ class LinnyRModel {
       }
     }
   }
+
+  get datasetVariables() {
+    // Returns list with all ChartVariable objects in this model that
+    // reference a regular dataset, i.e., not an equation
+    const vl = [];
+    for(let i = 0; i < MODEL.charts.length; i++) {
+      const c = MODEL.charts[i];
+      for(let j = 0; j < c.variables.length; j++) {
+        const v = c.variables[j];
+        if(v.object instanceof Dataset &&
+            v.object !== MODEL.equations_dataset) vl.push(v);
+      }
+    }
+    return vl;
+  }
+  
+  get notesWithTags() {
+    // Returns a list with all notes having tags [[...]] in this model
+    const nl = [];
+    for(let k in this.clusters) if(this.clusters.hasOwnProperty(k)) {
+      const c = this.clusters[k];
+      for(let i = 0; i < c.notes.length; i++) {
+        const n = c.notes[i];
+        if(n.tagList) nl.push(n);
+      }
+    }
+    return nl;
+  }
   
   get allExpressions() {
-    // Returns list of all Expression objects
+    // Returns list of all Expression objects in this model
     // NOTE: start with dataset expressions, so that when recompiling
     // their `level-based` property is set before recompiling the
     // other expressions
-    const x = [];
+    const xl = [];
     for(let k in this.datasets) if(this.datasets.hasOwnProperty(k)) {
       const ds = this.datasets[k];
       // NOTE: dataset modifier expressions include the equations
       for(let m in ds.modifiers) if(ds.modifiers.hasOwnProperty(m)) {
-        x.push(ds.modifiers[m].expression);
+        xl.push(ds.modifiers[m].expression);
       }
     }
     for(let k in this.actors) if(this.actors.hasOwnProperty(k)) {
-      x.push(this.actors[k].weight);
+      xl.push(this.actors[k].weight);
     }
     for(let k in this.processes) if(this.processes.hasOwnProperty(k)) {
       const p = this.processes[k];
-      x.push(p.lower_bound, p.upper_bound, p.initial_level, p.pace_expression);
+      xl.push(p.lower_bound, p.upper_bound, p.initial_level, p.pace_expression);
     }
     for(let k in this.products) if(this.products.hasOwnProperty(k)) {
       const p = this.products[k];
-      x.push(p.lower_bound, p.upper_bound, p.initial_level, p.price);
+      xl.push(p.lower_bound, p.upper_bound, p.initial_level, p.price);
     }
     for(let k in this.clusters) if(this.clusters.hasOwnProperty(k)) {
       const c = this.clusters[k];
       for(let i = 0; i < c.notes.length; i++) {
         const n = c.notes[i];
-        x.push(n.color);
+        xl.push(n.color);
       }
     }
     for(let k in this.links) if(this.links.hasOwnProperty(k)) {
       const l = this.links[k];
-      x.push(l.relative_rate, l.flow_delay);
+      xl.push(l.relative_rate, l.flow_delay);
     }
-    return x;
+    return xl;
   }
 
-  replaceEntityInExpressions(en1, en2) {
+  replaceEntityInExpressions(en1, en2, notify=true) {
     // Replace entity name `en1` by `en2` in all variables in all expressions
     // (provided that they are not identical)
     if(en1 === en2) return;
@@ -2089,8 +2128,12 @@ class LinnyRModel {
       }
     }
     if(ioc.replace_count) {
-      UI.notify(`Renamed ${pluralS(ioc.replace_count, 'variable')} in ` +
-          pluralS(ioc.expression_count, 'expression'));
+      this.variable_count += ioc.replace_count;
+      this.expression_count += ioc.expression_count; 
+      if(notify) {
+        UI.notify(`Renamed ${pluralS(ioc.replace_count, 'variable')} in ` +
+            pluralS(ioc.expression_count, 'expression'));
+      }
     }
     // Also rename entities in parameters and outcomes of sensitivity analysis
     for(let i = 0; i < this.sensitivity_parameters.length; i++) {
@@ -4470,12 +4513,17 @@ class Note extends ObjectWithXYWH {
     }
   }
   
+  get tagList() {
+    // Returns a list of matches for [[...]], or NULL if none
+    return this.contents.match(/\[\[[^\]]+\]\]/g);
+  }
+  
   parseFields() {
     // Fills the list of fields by parsing all [[...]] tags in the text
     // NOTE: this does not affect the text itself; tags will be replaced
     // by numerical values only when drawing the note
     this.fields.length = 0;
-    const tags = this.contents.match(/\[\[[^\]]+\]\]/g);
+    const tags = this.tagList();
     if(tags) {
       for(let i = 0; i < tags.length; i++) {
         const
@@ -4582,7 +4630,7 @@ class Note extends ObjectWithXYWH {
     // Return a list with names of entities used in fields
     const
         fel = [],
-        tags = this.contents.match(/\[\[[^\]]+\]\]/g);
+        tags = this.tagList;
     for(let i = 0; i < tags.length; i++) {
       const
           tag = tags[i],
@@ -7887,6 +7935,27 @@ class Dataset {
     return true;
   }
   
+  get inferPrefixableModifiers() {
+    // Returns list of dataset modifiers with expressions that do not
+    // reference any variable and hence could probably better be represented
+    // by a prefixed dataset having the expression value as its default
+    const pml = [];
+    if(this !== this.equations_dataset) {
+      const sl = this.plainSelectors;
+      for(let i = 0; i < sl.length; i++) {
+        if(!MODEL.isDimensionSelector(sl[i])) {
+          const
+              m = this.modifiers[sl[i].toLowerCase()],
+              x = m.expression;
+          // Static expressions without variables can also be used
+          // as dataset default value
+          if(x.isStatic && x.text.indexOf('[') < 0) pml.push(m);
+        }
+      }
+    }
+    return pml;
+  }
+
   get timeStepDuration() {
     // Returns duration of 1 time step on the time scale of this dataset
     return this.time_scale * VM.time_unit_values[this.time_unit];
@@ -8193,8 +8262,10 @@ class Dataset {
     }
   }
   
-  rename(name) {
+  rename(name, notify=true) {
     // Change the name of this dataset
+    // When `notify` is FALSE, notifications are suppressed while the
+    // number of affected datasets and expressions are counted
     // NOTE: prevent renaming the equations dataset (just in case...)
     if(this === MODEL.equations_dataset) return;
     name = UI.cleanName(name);
@@ -8214,7 +8285,7 @@ class Dataset {
     this.name = name;
     MODEL.datasets[new_id] = this;
     if(old_id !== new_id) delete MODEL.datasets[old_id];
-    MODEL.replaceEntityInExpressions(old_name, name);
+    MODEL.replaceEntityInExpressions(old_name, name, notify);
     return MODEL.datasets[new_id];
   }
   
@@ -10134,6 +10205,17 @@ class Experiment {
     }
     // No matching selectors => return FALSE
     return index;
+  }
+  
+  isDimensionSelector(s) {
+    // Returns TRUE if `s` is a dimension selector in this experiment
+    for(let i = 0; i < this.dimensions.length; i++) {
+      if(this.dimensions[i].indexOf(s) >= 0) return true;
+    }
+    if(this.settings_selectors.indexOf(s) >= 0) return true;
+    if(this.combination_selectors.indexOf(s) >= 0) return true;
+    if(this.actor_selectors.indexOf(s) >= 0) return true;
+    return false;
   }
   
   get asXML() {

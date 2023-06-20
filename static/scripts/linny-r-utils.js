@@ -65,8 +65,11 @@ function pluralS(n, s, special='') {
 function safeStrToFloat(str, val=0) {
   // Returns numeric value of floating point string, interpreting both
   // dot and comma as decimal point
-  // NOTE: returns default value val if str is empty, null or undefined
-  const f = (str ? parseFloat(str.replace(',', '.')) : val);
+  // NOTE: returns default value `val` if `str` is empty, null or undefined,
+  // or contains a character that is invalid in a number 
+  if(!str || str.match(/[^0-9eE\.\,\+\-]/)) return val;
+  str = str.replace(',', '.');
+  const f = (str ? parseFloat(str) : val);
   return (isNaN(f) ? val : f);
 }
 

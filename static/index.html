@@ -28,7 +28,7 @@ implementation is made available via the Linny-R web site.
 -->
 
 <!--
-Copyright (c) 2017-2022 Delft University of Technology
+Copyright (c) 2017-2023 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -1585,6 +1585,9 @@ Start with = to find exact match, with ~ to match first characters">
       <img id="ds-delete-modif-btn" class="btn disab"
            src="images/delete.png" title="Delete selected modifier"
            style="margin-left: 20px">
+      <img id="ds-convert-modif-btn" class="btn enab blink"
+           src="images/dataset.png" title="Convert modifiers to prefixed datasets"
+           style="margin-left: 20px; display: none">
     </div>
     <div id="dataset-resize" class="resizer"></div>
   </div>
@@ -1605,7 +1608,7 @@ Start with = to find exact match, with ~ to match first characters">
   <div id="rename-dataset-modal" class="modal">
     <div id="rename-dataset-dlg" class="inp-dlg">
       <div class="dlg-title">
-        Rename dataset
+        <span id="rename-dataset-title">Rename dataset</span>
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
@@ -1641,6 +1644,23 @@ NOTE: * and ? will be interpreted as wildcards"
              title="Can contain only alphanumeric characters, +, -, and %" 
              maxlength="10" autocomplete="off">
       <div id="rename-selector-label">(1 to 10 characters)</div>
+    </div>
+  </div>
+
+  <!-- the CONVERT MODIFIER prompts for the new name of a dataset -->
+  <div id="convert-modifiers-modal" class="modal">
+    <div id="convert-modifiers-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Convert modifiers to datasets
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div style="margin: 4px">
+        Each modifier will become a dataset
+        <tt><em>prefix</em>:&nbsp;<em>selector</em></tt>
+        using this prefix: 
+      </div>
+      <input id="convert-modifiers-prefix" type="text" autocomplete="off">
     </div>
   </div>
 
