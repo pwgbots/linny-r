@@ -10011,11 +10011,11 @@ class GUIDatasetManager extends DatasetManager {
     e.focus();
     while(prefix.endsWith(':')) prefix = prefix.slice(0, -1);
     // NOTE: prefix may be empty string, but otherwise should be a valid name
-    if(prefix && !UI.validName(prefix)) {
+    if(!UI.validName(prefix)) {
       UI.warn('Invalid prefix');
       return;
     }
-    if(prefix) prefix += UI.PREFIXER;
+    prefix += UI.PREFIXER;
     const
         dsn = ds.displayName,
         pml = ds.inferPrefixableModifiers,
@@ -10068,17 +10068,24 @@ class GUIDatasetManager extends DatasetManager {
         }
         // Rename variable in expressions and notes
         const re = new RegExp(
-            '\\[\\s*' + escapeRegex(from).replace(/\s+/g, '\\s+') +
-            // NOTE: pattern ends at any character that is invalid
-            // for dataset selectors (unlike equation names)
-            '\\s*[^a-zA-Z0-9\\+\\-\\%\\_]');
+            // Handle multiple spaces between words
+            '\\[\\s*' + escapeRegex(from).replace(/\s+/g, '\\s+')
+            // Handle spaces around the separator |
+            .replace('\\|', '\\s*\\|\\s*') +
+            // Pattern ends at any character that is invalid for a
+            // dataset modifier selector (unlike equation names)
+            '\\s*[^a-zA-Z0-9\\+\\-\\%\\_]', 'gi');
         for(let j = 0; j < xl.length; j++) {
           const
               x = xl[j],
               matches = x.text.match(re);
           if(matches) {
             for(let k = 0; k < matches.length; k++) {
-              x.text = x.text.replaceAll(matches[k], matches[k].replace(from, to));
+              // NOTE: each match will start with the opening bracket,
+              // but end with the first "non-selector" character, which
+              // will typically be ']', but may also be '@' (and now that
+              // units can be converted, also the '>' of the arrow '->')
+              x.text = x.text.replace(matches[k], '[' + to + matches[k].slice(-1));
               vcount ++;
             }
             // Force recompilation
@@ -10091,7 +10098,8 @@ class GUIDatasetManager extends DatasetManager {
               matches = n.contents.match(re);
           if(matches) {
             for(let k = 0; k < matches.length; k++) {
-              n.contents = n.contents.replaceAll(matches[k], matches[k].replace(from, to));
+              // See NOTE above for the use of `slice` here
+              n.contents = n.contents.replace(matches[k], '[' + to + matches[k].slice(-1));
               vcount ++;
             }
             // Note fields must be parsed again

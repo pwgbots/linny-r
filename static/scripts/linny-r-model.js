@@ -4523,7 +4523,7 @@ class Note extends ObjectWithXYWH {
     // NOTE: this does not affect the text itself; tags will be replaced
     // by numerical values only when drawing the note
     this.fields.length = 0;
-    const tags = this.tagList();
+    const tags = this.tagList;
     if(tags) {
       for(let i = 0; i < tags.length; i++) {
         const
@@ -4654,7 +4654,7 @@ class Note extends ObjectWithXYWH {
     if(en1 === en2) return;
     const
         raw = en1.split(/\s+/).join('\\\\s+'),
-        re = new RegExp('\\[\\[\\s*' + raw + '\\s*(\\->|\\||\\])', 'g'),
+        re = new RegExp('\\[\\[\\s*' + raw + '\\s*(\\->|\\||\\])', 'gi'),
         tags = this.contents.match(re);
     if(tags) {
       for(let i = 0; i < tags.length; i++) {
