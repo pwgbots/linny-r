@@ -1573,6 +1573,73 @@ class LinnyRModel {
     return true;
   }
   
+  get selectionAsXML() {
+    // Returns XML for the selected entities, and also for the entities
+    // referenced by expressions for their attributes.
+    // NOTE: the name and actor name of the focal cluster are added as
+    // attributes of the main node to permit "smart" renaming of
+    // entities when PASTE would result in name conflicts.
+    if(this.selection.length <= 0) return '';
+    const
+        fc_name = this.focal_cluster.name,
+        fc_actor = this.focal_cluster.actor.name,
+        entities = {
+          Cluster: [],
+          Link: [],
+          Constraint: [],
+          Note: [],
+          Product: [],
+          Process: []
+        },
+        extras = [],
+        from_tos = [],
+        xml = [],
+        ft_xml = [],
+        extra_xml = [];
+    for(let i = 0; i < this.selection.length; i++) {
+      const obj = this.selection[i];
+      entities[obj.type].push(obj);
+    }
+    for(let i = 0; i < entities.Note.length; i++) {
+      xml.push(entities.Note[i].asXML);
+    }
+    for(let i = 0; i < entities.Product.length; i++) {
+      xml.push(entities.Product[i].asXML);
+    }
+    for(let i = 0; i < entities.Process.length; i++) {
+      xml.push(entities.Process[i].asXML);
+    }
+    for(let i = 0; i < entities.Cluster.length; i++) {
+      xml.push(entities.Cluster[i].asXML);
+    }
+    for(let i = 0; i < entities.Link.length; i++) {
+      const l = entities.Link[i];
+      if(this.selection.indexOf(l.from_node) < 0) addDistinct(l.from_node, from_tos);
+      if(this.selection.indexOf(l.to_node) < 0) addDistinct(l.to_node, from_tos);
+      xml.push(l.asXML);
+    }
+    for(let i = 0; i < entities.Constraint.length; i++) {
+      const c = entities.Constraint[i];
+      if(this.selection.indexOf(c.from_node) < 0) addDistinct(c.from_node, from_tos);
+      if(this.selection.indexOf(c.to_node) < 0) addDistinct(c.to_node, from_tos);
+      xml.push(c.asXML);
+    }
+    for(let i = 0; i < from_tos.length; i++) {
+      const p = from_tos[i];
+      ft_xml.push('<from-to type="', p.type, '" name="', xmlEncoded(p.name));
+      if(p instanceof Process) ft_xml.push('" actor-name="', xmlEncoded(p.actor.name));
+      ft_xml.push('"></from-to>');
+    }
+    for(let i = 0; i < extras.length; i++) extra_xml.push(extras[i].asXML);
+    return ['<copy model-timestamp="', this.time_created.getTime(),
+        '" cluster-name="', xmlEncoded(fc_name),
+        '" cluster-actor="', xmlEncoded(fc_actor),
+        '"><entities>', xml.join(''),
+        '</entities><from-tos>', ft_xml.join(''),
+        '</from-tos><extras>', extra_xml.join(''),
+        '</extras></copy>'].join('');
+  }
+  
   dropSelectionIntoCluster(c) {
     // Move all selected nodes to cluster `c`
     let n = 0,
@@ -9758,7 +9825,7 @@ class ExperimentRunResult {
     return ['<run-result', (this.x_variable ? ' x-variable="1"' : ''),
       (this.was_ignored ? ' ignored="1"' : ''),
       '><object-id>', xmlEncoded(this.object_id),
-      '</object-id><attribute>', this.attribute,
+      '</object-id><attribute>', xmlEncoded(this.attribute),
       '</attribute><count>', this.N,
       '</count><sum>', this.sum,
       '</sum><mean>', this.mean,
@@ -9776,7 +9843,7 @@ class ExperimentRunResult {
     this.x_variable = nodeParameterValue(node, 'x-variable') === '1';
     this.was_ignored = nodeParameterValue(node, 'ignored') === '1';
     this.object_id = xmlDecoded(nodeContentByTag(node, 'object-id'));
-    this.attribute = nodeContentByTag(node, 'attribute');
+    this.attribute = xmlDecoded(nodeContentByTag(node, 'attribute'));
     this.N = safeStrToInt(nodeContentByTag(node, 'count'));
     this.sum = safeStrToFloat(nodeContentByTag(node, 'sum'));
     this.mean = safeStrToFloat(nodeContentByTag(node, 'mean'));

@@ -3026,7 +3026,7 @@ class GUIController extends Controller {
     }
     // Vertical tool bar buttons
     this.buttons.clone.addEventListener('click',
-        () => UI.promptForCloning());
+        (event) => UI.promptForCloning(event.shiftKey));
     this.buttons['delete'].addEventListener('click',
         () => {
           UNDO_STACK.push('delete');
@@ -5081,8 +5081,11 @@ class GUIController extends Controller {
     }
   }
   
-  promptForCloning() {
+  promptForCloning(shift) {
     // Opens CLONE modal
+    if(shift) {
+      this.copySelection();
+    }
     const n = MODEL.selection.length;
     if(n > 0) {
       const md = UI.modals.clone;
@@ -5137,7 +5140,25 @@ class GUIController extends Controller {
   cancelCloneSelection() {
     this.modals.clone.hide();
     this.updateButtons();
-  }  
+  }
+  
+  copySelection() {
+    // Save selection as XML in local storage of the browser
+    const xml = MODEL.selectionAsXML;
+console.log('HERE copy xml', xml);
+    window.localStorage.setItem('Linny-R-selection-XML', xml);
+    this.updateButtons();
+  }
+  
+  pasteSelection() {
+    // If selection has been saved as XML in local storage, test to
+    // see whether PASTE would result in name conflicts, and if so,
+    // open the name conflict resolution window
+    const xml = window.localStorage.getItem('Linny-R-selection-XML');
+    if(xml) {
+      // @@ TO DO!
+    }
+  }
   
   //
   // Interaction with modal dialogs to modify model or entity properties
@@ -6469,7 +6490,7 @@ class GUIFileManager {
   }
 
   renderDiagramAsPNG() {
-    localStorage.removeItem('png-url');
+    window.localStorage.removeItem('png-url');
     UI.paper.fitToSize();
     MODEL.alignToGrid();
     this.renderSVGAsPNG(UI.paper.svg.outerHTML);
@@ -6495,7 +6516,7 @@ class GUIFileManager {
         })
       .then((data) => {
           // Pass URL of image to the newly opened browser window
-          localStorage.setItem('png-url', data);
+          window.localStorage.setItem('png-url', data);
         })
       .catch((err) => UI.warn(UI.WARNING.NO_CONNECTION, err));
   }
@@ -11343,7 +11364,7 @@ class GUIChartManager extends ChartManager {
   }
   
   renderChartAsPNG() {
-    localStorage.removeItem('png-url');
+    window.localStorage.removeItem('png-url');
     FILE_MANAGER.renderSVGAsPNG(MODEL.charts[this.chart_index].svg);
   }
 
