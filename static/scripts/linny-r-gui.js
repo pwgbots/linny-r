@@ -2887,7 +2887,7 @@ class GUIController extends Controller {
       'J': 'sensitivity', // J for "Jitter"
       'K': 'reset', // reset model and clear results from graph
       'L': 'load',
-      'M': 'monitor',
+      'M': 'monitor', // Ctrl-Alt-M will open the model settings dialog
       // Ctrl-N will still open a new browser window
       'O': 'chart',  // O for "Output", as it can be charts as wel as data 
       'P': 'diagram', // P for PNG (Portable Network Graphics image)
@@ -2896,7 +2896,7 @@ class GUIController extends Controller {
       'S': 'save',
       // Ctrl-T will still open a new browser tab
       'U': 'parent',  // U for "move UP in cluster hierarchy"
-      'V': 'settings',
+      'V': 'paste',
       // Ctrl-W will still close the browser window
       'X': 'experiment',
       'Y': 'redo',
@@ -2906,7 +2906,7 @@ class GUIController extends Controller {
     // Initialize controller buttons
     this.node_btns = ['process', 'product', 'link', 'constraint',
         'cluster', 'module', 'note'];
-    this.edit_btns = ['clone', 'delete', 'undo', 'redo'];
+    this.edit_btns = ['clone', 'paste', 'delete', 'undo', 'redo'];
     this.model_btns = ['settings', 'save', 'repository', 'actors', 'dataset',
         'equation', 'chart', 'sensitivity', 'experiment', 'diagram',
         'savediagram', 'finder', 'monitor', 'solve'];
@@ -3026,7 +3026,15 @@ class GUIController extends Controller {
     }
     // Vertical tool bar buttons
     this.buttons.clone.addEventListener('click',
-        (event) => UI.promptForCloning(event.shiftKey));
+        (event) => {
+          if(event.altKey) {
+            UI.promptForCloning();
+          } else {
+            UI.copySelection();
+          }
+        });
+    this.buttons.paste.addEventListener('click',
+        () => UI.pasteSelection());
     this.buttons['delete'].addEventListener('click',
         () => {
           UNDO_STACK.push('delete');
@@ -3057,6 +3065,12 @@ class GUIController extends Controller {
         (event) => UI.stepBack(event));
     this.buttons.stepforward.addEventListener('click',
         (event) => UI.stepForward(event));
+    document.getElementById('prev-issue').addEventListener('click',
+        () => VM.updateIssuePanel(-1));
+    document.getElementById('issue-nr').addEventListener('click',
+        () => VM.jumpToIssue());
+    document.getElementById('next-issue').addEventListener('click',
+        () => VM.updateIssuePanel(1));
     this.buttons.recall.addEventListener('click',
         // Recall button toggles the documentation dialog
         () => UI.buttons.documentation.dispatchEvent(new Event('click')));
@@ -3722,7 +3736,7 @@ class GUIController extends Controller {
     // Updates the buttons on the main GUI toolbars
     const
         node_btns = 'process product link constraint cluster note ',
-        edit_btns = 'clone delete undo redo ',
+        edit_btns = 'clone paste delete undo redo ',
         model_btns = 'settings save actors dataset equation chart ' +
             'diagram savediagram finder monitor solve';
     if(MODEL === null) {
@@ -3749,6 +3763,7 @@ class GUIController extends Controller {
     this.active_button = this.stayActiveButton;
     this.disableButtons(edit_btns);
     if(MODEL.selection.length > 0) this.enableButtons('clone delete');
+    if(this.canPaste) this.enableButtons('paste');
     // Only allow target seeking when some target or process constraint is defined
     if(MODEL.hasTargets) this.enableButtons('solve');
     var u = UNDO_STACK.canUndo;
@@ -4424,6 +4439,15 @@ class GUIController extends Controller {
         this.stepBack(e);
       } else if(e.keyCode === 39) {
         this.stepForward(e);
+      } else if(e.altKey && [67, 77].indexOf(e.keyCode) >= 0) {
+        // Special shortcut keys for "clone selection" and "model settings"
+        const be = new Event('click');
+        be.altKey = true;
+        if(e.keyCode === 67) {
+          this.buttons.clone.dispatchEvent(be);
+        } else {
+          this.buttons.settings.dispatchEvent(be);
+        }
       } else if(!e.shiftKey && !e.altKey &&
           (!topmod || [65, 67, 86].indexOf(e.keyCode) < 0)) {
         // Interpret special keys as shortcuts unless a modal dialog is open
@@ -5081,11 +5105,8 @@ class GUIController extends Controller {
     }
   }
   
-  promptForCloning(shift) {
+  promptForCloning() {
     // Opens CLONE modal
-    if(shift) {
-      this.copySelection();
-    }
     const n = MODEL.selection.length;
     if(n > 0) {
       const md = UI.modals.clone;
@@ -5146,8 +5167,23 @@ class GUIController extends Controller {
     // Save selection as XML in local storage of the browser
     const xml = MODEL.selectionAsXML;
 console.log('HERE copy xml', xml);
-    window.localStorage.setItem('Linny-R-selection-XML', xml);
-    this.updateButtons();
+    if(xml) {
+      window.localStorage.setItem('Linny-R-selection-XML', xml);
+      this.updateButtons();
+    }
+  }
+  
+  get canPaste() {
+    const xml = window.localStorage.getItem('Linny-R-selection-XML');
+    if(xml) {
+      const timestamp = xml.match(/<copy timestamp="(\d+)"/);
+      if(timestamp) { 
+        if(Date.now() - parseInt(timestamp[1]) < 8*3600000) return true;
+      }
+      // Remove XML from local storage if older than 8 hours
+      window.localStorage.removeItem('Linny-R-selection-XML');
+    }
+    return false;
   }
   
   pasteSelection() {
@@ -5157,6 +5193,7 @@ console.log('HERE copy xml', xml);
     const xml = window.localStorage.getItem('Linny-R-selection-XML');
     if(xml) {
       // @@ TO DO!
+      console.log('HERE paste');
     }
   }
   

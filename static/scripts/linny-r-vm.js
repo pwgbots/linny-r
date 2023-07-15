@@ -1428,6 +1428,8 @@ class VirtualMachine {
     this.lines = '';
     // String specifying a numeric issue (empty if none)
     this.numeric_issue = '';
+    // Warnings are stored in a list to permit browsing through them
+    this.issue_list = [];
     // The call stack tracks evaluation of "nested" expression variables
     this.call_stack = [];
     this.block_count = 0;
@@ -1553,6 +1555,9 @@ class VirtualMachine {
       this.ERROR, this.CYCLIC, this.DIV_ZERO, this.BAD_CALC, this.ARRAY_INDEX,
       this.BAD_REF, this.UNDERFLOW, this.OVERFLOW, this.INVALID, this.PARAMS,
       this.UNKNOWN_ERROR, this.UNDEFINED, this.NOT_COMPUTED, this.COMPUTING];
+    
+    // Prefix for warning messages that are logged in the monitor
+    this.WARNING = '-- Warning: ';
 
     // Solver constants indicating constraint type
     // NOTE: these correspond to the codes used by LP_solve; when generating
@@ -1695,6 +1700,10 @@ class VirtualMachine {
     // Initialize error counters (error count will be reset to 0 for each block)
     this.error_count = 0;
     this.block_issues = 0;
+    // Clear issue list with warnings and hide issue panel
+    this.issue_list.length = 0;
+    this.issue_index = -1;
+    this.updateIssuePanel();
     // NOTE: special tracking of potential solver license errors
     this.license_expired = 0;
     // Reset solver result arrays
@@ -2085,6 +2094,10 @@ class VirtualMachine {
       this.messages[block - 1] = '';
     }
     this.messages[block - 1] += msg + '\n';
+    if(msg.startsWith(this.WARNING)) {
+      this.error_count++;
+      this.issue_list.push(msg);
+    }
     // Show message on console or in Monitor dialog
     MONITOR.logMessage(block, msg);
   }
@@ -2123,6 +2136,62 @@ class VirtualMachine {
       }
       MONITOR.shown_block = 1;
       MONITOR.updateContent('msg');
+    }
+  }
+  
+  updateIssuePanel(change=0) {
+    const
+        count = this.issue_list.length,
+        panel = document.getElementById('issue-panel');
+    if(count > 0) {
+      const
+         prev = document.getElementById('prev-issue'),
+         next = document.getElementById('next-issue'),
+         nr = document.getElementById('issue-nr');
+      panel.title = pluralS(count, 'issue') +
+          ' occurred - click on number, \u25C1 or \u25B7 to view what and when';
+      if(this.issue_index === -1) {
+        this.issue_index = 0;
+      } else if(change) {
+        this.issue_index += change;
+        setTimeout(() => VM.jumpToIssue(), 10);
+      }
+      nr.innerText = this.issue_index + 1;
+      if(this.issue_index <= 0) {
+        prev.classList.add('disab');
+      } else {
+        prev.classList.remove('disab');
+      }
+      if(this.issue_index >= count - 1) {
+        next.classList.add('disab');
+      } else {
+        next.classList.remove('disab');
+      }
+      panel.style.display = 'table-cell';
+    } else {
+      panel.style.display = 'none';
+      this.issue_index = -1;
+    }
+  }
+  
+  jumpToIssue() {
+    // Set time step to the one of the warning message for the issue
+    // index, redraw the diagram if needed, and display the message
+    // on the infoline
+    if(this.issue_index >= 0) {
+      const
+          issue = this.issue_list[this.issue_index],
+          po = issue.indexOf('(t='),
+          pc = issue.indexOf(')', po),
+          t = parseInt(issue.substring(po + 3, pc - 1));
+      if(MODEL.t !== t) {
+        MODEL.t = t;
+        UI.updateTimeStep();
+        UI.drawDiagram(MODEL);
+      }
+      UI.info_line.classList.remove('error', 'notification');
+      UI.info_line.classList.add('warning');
+      UI.info_line.innerHTML = issue.substring(pc + 2);
     }
   }
 
@@ -3627,14 +3696,12 @@ class VirtualMachine {
         a.cash_flow[b] = a.cash_in[b] - a.cash_out[b];
         // Count occurrences of a negative cash flow (threshold -0.5 cent)
         if(a.cash_in[b] < -0.005) {
-          this.logMessage(block, `-- Warning: (t=${b}${round}) ` +
+          this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
               a.displayName + ' cash IN = ' + a.cash_in[b].toPrecision(2));
-          this.error_count++;
         }
         if(a.cash_out[b] < -0.005) {
-          this.logMessage(block, `-- Warning: (t=${b}${round}) ` +
+          this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
               a.displayName + ' cash IN = ' + a.cash_out[b].toPrecision(2));
-          this.error_count++;
         }
         // Advance column offset in tableau by the # cols per time step
         j += this.cols;
@@ -3754,7 +3821,7 @@ class VirtualMachine {
                 v[1].constraint.slack_info[b] = v[0];
               }
               if(absl > VM.SIG_DIF_FROM_ZERO) {
-                this.logMessage(block, `-- Warning: (t=${b}${round}) ` +
+                this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
                     `${v[1].displayName} ${v[0]} slack = ${this.sig4Dig(slack)}`);
                 if(v[1] instanceof Product) {
                   const ppc = v[1].productPositionClusters;
@@ -3762,7 +3829,6 @@ class VirtualMachine {
                     ppc[ci].usesSlack(b, v[1], v[0]);
                   }
                 }
-                this.error_count++;
               } else if(CONFIGURATION.slight_slack_notices) {
                 this.logMessage(block, '-- Notice: (t=' + b + round + ') ' +
                    v[1].displayName + ' ' + v[0] + ' slack = ' +
@@ -3932,9 +3998,8 @@ class VirtualMachine {
       b = bb;
       for(let i = 0; i < this.chunk_length; i++) {
         if(!MODEL.calculateCostPrices(b)) {
-          this.logMessage(block, '-- Warning: (t=' + b +
-              ') Invalid cost prices due to negative flow(s)');
-          this.error_count++;
+          this.logMessage(block, `${this.WARNING}(t=${b}) ` +
+              'Invalid cost prices due to negative flow(s)');
         }
         // move to the next time step of the block
         b++;
@@ -4729,9 +4794,11 @@ Solver status = ${json.status}`);
       // If experiment is active, signal the manager
       if(MODEL.running_experiment) EXPERIMENT_MANAGER.processRun();
       // Warn modeler if any issues occurred
-      if(this.block_issues) UI.warn('Issues occurred in ' +
-          pluralS(this.block_issues, 'block') +
-          ' -- check messages in monitor');
+      if(this.block_issues) {
+        UI.warn('Issues occurred in ' + pluralS(this.block_issues, 'block') +
+          ' -- details can be viewed in the monitor and by using \u25C1 \u25B7');
+        this.updateIssuePanel();
+      }
       if(this.license_expired > 0) {
         // Special message to draw attention to this critical error
         UI.alert('SOLVER LICENSE EXPIRED: Please check!');

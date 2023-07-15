@@ -189,6 +189,20 @@ function ellipsedText(text, n=50, m=10) {
 // Functions used when comparing two Linny-R models
 //
 
+function earlierVersion(v1, v2) {
+  // Compares two version numbers and returns TRUE iff `v1` is earlier
+  // than `v2`
+  v1 = v1.split('.');
+  v2 = v2.split('.');
+  for(let i = 0; i < Math.min(v1.length, v2.length); i++) {
+    // NOTE: for legacy JS models, the major version number evaluates as 0
+    if(safeStrToInt(v1[i]) < safeStrToInt(v2[i])) return true;
+    if(safeStrToInt(v1[i]) > safeStrToInt(v2[i])) return false;
+  }
+  // Fall-through: same version numbers => NOT earlier
+  return false;
+}
+
 function differences(a, b, props) {
   // Compares values of properties (in list `props`) of entities `a` and `b`,
   // and returns a "dictionary" object with differences

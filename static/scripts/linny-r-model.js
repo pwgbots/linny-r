@@ -1631,7 +1631,8 @@ class LinnyRModel {
       ft_xml.push('"></from-to>');
     }
     for(let i = 0; i < extras.length; i++) extra_xml.push(extras[i].asXML);
-    return ['<copy model-timestamp="', this.time_created.getTime(),
+    return ['<copy timestamp="', Date.now(),
+        '" model-timestamp="', this.time_created.getTime(),
         '" cluster-name="', xmlEncoded(fc_name),
         '" cluster-actor="', xmlEncoded(fc_actor),
         '"><entities>', xml.join(''),
@@ -9843,7 +9844,12 @@ class ExperimentRunResult {
     this.x_variable = nodeParameterValue(node, 'x-variable') === '1';
     this.was_ignored = nodeParameterValue(node, 'ignored') === '1';
     this.object_id = xmlDecoded(nodeContentByTag(node, 'object-id'));
-    this.attribute = xmlDecoded(nodeContentByTag(node, 'attribute'));
+    // NOTE: special check to guarantee upward compatibility to version
+    // 1.3.0 and higher
+    let attr = nodeContentByTag(node, 'attribute');
+    if(this.object_id === UI.EQUATIONS_DATASET_ID &&
+        !earlierVersion(MODEL.version, '1.3.0')) attr = xmlDecoded(attr);
+    this.attribute = attr;
     this.N = safeStrToInt(nodeContentByTag(node, 'count'));
     this.sum = safeStrToFloat(nodeContentByTag(node, 'sum'));
     this.mean = safeStrToFloat(nodeContentByTag(node, 'mean'));

@@ -413,6 +413,7 @@ textarea {
 #zoom-sep,
 #step-sep,
 #info-line,
+#issue-panel,
 #autosave-sep {
   border-right: 1px solid #e2d8e8;
 }
@@ -505,6 +506,36 @@ div.warning-msg.first-msg {
 div.notification-msg.first-msg {
   background: SkyBlue;
   color: black;
+}
+
+#issue-panel {
+  display: none;
+  background-color: Yellow;
+  white-space: nowrap;
+  padding: 0 3px;
+}
+
+#issue-nr {
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+#prev-issue,
+#next-issue {
+  cursor: pointer;
+}
+
+#prev-issue:hover,
+#issue-nr:hover,
+#next-issue:hover {
+  color: Orange;
+}
+
+#prev-issue.disab,
+#next-issue.disab {
+  cursor: default;
+  pointer-events: none;
+  color: #e8d898;
 }
 
 /* Modal dialogs cover the entire browser window with a dark,
