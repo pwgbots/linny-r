@@ -2877,7 +2877,7 @@ class GUIController extends Controller {
     this.shortcuts = {
       'A': 'actors',
       'B': 'repository', // B for "Browse"
-      'C': 'clone',
+      'C': 'clone', // button and Ctrl-C now copies; Alt-C clones
       'D': 'dataset',
       'E': 'equation',
       'F': 'finder',
@@ -2887,7 +2887,7 @@ class GUIController extends Controller {
       'J': 'sensitivity', // J for "Jitter"
       'K': 'reset', // reset model and clear results from graph
       'L': 'load',
-      'M': 'monitor', // Ctrl-Alt-M will open the model settings dialog
+      'M': 'monitor', // Alt-M will open the model settings dialog
       // Ctrl-N will still open a new browser window
       'O': 'chart',  // O for "Output", as it can be charts as wel as data 
       'P': 'diagram', // P for PNG (Portable Network Graphics image)
@@ -3066,11 +3066,11 @@ class GUIController extends Controller {
     this.buttons.stepforward.addEventListener('click',
         (event) => UI.stepForward(event));
     document.getElementById('prev-issue').addEventListener('click',
-        () => VM.updateIssuePanel(-1));
+        () => UI.updateIssuePanel(-1));
     document.getElementById('issue-nr').addEventListener('click',
-        () => VM.jumpToIssue());
+        () => UI.jumpToIssue());
     document.getElementById('next-issue').addEventListener('click',
-        () => VM.updateIssuePanel(1));
+        () => UI.updateIssuePanel(1));
     this.buttons.recall.addEventListener('click',
         // Recall button toggles the documentation dialog
         () => UI.buttons.documentation.dispatchEvent(new Event('click')));
@@ -3460,6 +3460,62 @@ class GUIController extends Controller {
     this.constraining_node = null;
     this.start_sel_x = -1;
     this.start_sel_y = -1;
+  }
+
+  updateIssuePanel(change=0) {
+    const
+        count = VM.issue_list.length,
+        panel = document.getElementById('issue-panel');
+    if(count > 0) {
+      const
+         prev = document.getElementById('prev-issue'),
+         next = document.getElementById('next-issue'),
+         nr = document.getElementById('issue-nr');
+      panel.title = pluralS(count, 'issue') +
+          ' occurred - click on number, \u25C1 or \u25B7 to view what and when';
+      if(VM.issue_index === -1) {
+        VM.issue_index = 0;
+      } else if(change) {
+        VM.issue_index += change;
+        setTimeout(() => UI.jumpToIssue(), 10);
+      }
+      nr.innerText = VM.issue_index + 1;
+      if(VM.issue_index <= 0) {
+        prev.classList.add('disab');
+      } else {
+        prev.classList.remove('disab');
+      }
+      if(this.issue_index >= count - 1) {
+        next.classList.add('disab');
+      } else {
+        next.classList.remove('disab');
+      }
+      panel.style.display = 'table-cell';
+    } else {
+      panel.style.display = 'none';
+      VM.issue_index = -1;
+    }
+  }
+  
+  jumpToIssue() {
+    // Set time step to the one of the warning message for the issue
+    // index, redraw the diagram if needed, and display the message
+    // on the infoline
+    if(VM.issue_index >= 0) {
+      const
+          issue = VM.issue_list[VM.issue_index],
+          po = issue.indexOf('(t='),
+          pc = issue.indexOf(')', po),
+          t = parseInt(issue.substring(po + 3, pc - 1));
+      if(MODEL.t !== t) {
+        MODEL.t = t;
+        this.updateTimeStep();
+        this.drawDiagram(MODEL);
+      }
+      this.info_line.classList.remove('error', 'notification');
+      this.info_line.classList.add('warning');
+      this.info_line.innerHTML = issue.substring(pc + 2);
+    }
   }
 
   get doubleClicked() {
@@ -10659,6 +10715,12 @@ class GUIChartManager extends ChartManager {
         'click', () => CHART_MANAGER.renameEquation());
     document.getElementById('chart-edit-equation-btn').addEventListener(
         'click', () => CHART_MANAGER.editEquation());
+    document.getElementById('variable-color').addEventListener(
+        'mouseenter', () => CHART_MANAGER.showPasteColor());
+    document.getElementById('variable-color').addEventListener(
+        'mouseleave', () => CHART_MANAGER.hidePasteColor());
+    document.getElementById('variable-color').addEventListener(
+        'click', (event) => CHART_MANAGER.copyPasteColor(event));
     // NOTE: uses the color picker developed by James Daniel
     this.color_picker = new iro.ColorPicker("#color-picker", {
         width: 92,
@@ -10706,6 +10768,7 @@ class GUIChartManager extends ChartManager {
     this.options_shown = true;
     this.setRunsChart(false);
     this.last_time_selected = 0;
+    this.paste_color = '';
   }
   
   enterKey() {
@@ -11146,7 +11209,16 @@ class GUIChartManager extends ChartManager {
     this.variable_index = vi;
     this.updateDialog();
   }
-    
+  
+  setColorPicker(color) {
+    // Robust way to set iro color picker color
+    try {
+      this.color_picker.color.hexString = color;
+    } catch(e) {
+      this.color_picker.color.rgbString = color;
+    }
+  }
+  
   editVariable() {
     // Shows the edit (or rather: format) variable dialog
     if(this.chart_index >= 0 && this.variable_index >= 0) {
@@ -11156,11 +11228,7 @@ class GUIChartManager extends ChartManager {
       this.variable_modal.element('scale').value = VM.sig4Dig(cv.scale_factor);
       this.variable_modal.element('width').value = VM.sig4Dig(cv.line_width);
       this.variable_modal.element('color').style.backgroundColor = cv.color;
-      try {
-        this.color_picker.color.hexString = cv.color;
-      } catch(e) {
-        this.color_picker.color.rgbString = cv.color;
-      }
+      this.setColorPicker(cv.color);
       // Show change equation buttons only for equation variables
       if(cv.object === MODEL.equations_dataset) {
         this.change_equation_btns.style.display = 'block';
@@ -11168,6 +11236,34 @@ class GUIChartManager extends ChartManager {
         this.change_equation_btns.style.display = 'none';
       }
       this.variable_modal.show();
+    }
+  }
+  
+  showPasteColor() {
+    // Show last copied color (if any) as smaller square next to color box
+    if(this.paste_color) {
+      const pc = this.variable_modal.element('paste-color');
+      pc.style.backgroundColor = this.paste_color;
+      pc.style.display = 'inline-block';
+    }
+  }
+  
+  hidePasteColor() {
+    // Hide paste color box
+    this.variable_modal.element('paste-color').style.display = 'none';
+  }
+  
+  copyPasteColor(event) {
+    // Store the current color as past color, or set it to the current
+    // paste color if this is defined and the Shift key was pressed
+    event.stopPropagation();
+    const cbox = this.variable_modal.element('color');
+    if(event.shiftKey && this.paste_color) {
+      cbox.style.backgroundColor = this.paste_color;
+      this.setColorPicker(this.paste_color);
+    } else {
+      this.paste_color = cbox.style.backgroundColor;
+      this.showPasteColor();
     }
   }
   

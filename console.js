@@ -196,7 +196,7 @@ class ConsoleMonitor {
     return true;
   }
 
-  submitBlockToSolver(bcode) {
+  submitBlockToSolver() {
     let top = MODEL.timeout_period;
     if(VM.max_solver_time && top > VM.max_solver_time) {
       top = VM.max_solver_time;
@@ -211,7 +211,7 @@ class ConsoleMonitor {
             token: VM.solver_token,
             block: VM.block_count,
             round: VM.round_sequence[VM.current_round],
-            data: bcode,
+            data: VM.lines,
             timeout: top
           }));
       VM.processServerResponse(data);

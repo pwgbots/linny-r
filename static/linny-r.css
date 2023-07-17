@@ -2799,6 +2799,17 @@ img.v-disab {
   height: 15px;
   border: 1px solid Black;
   background-color: #c00000;
+  cursor: pointer;
+}
+
+#variable-paste-color {
+  display: none;
+  vertical-align: top;
+  margin-left: 3px;
+  width: 13px;
+  height: 13px;
+  border: 1px solid Silver;
+  background-color: #c00000;
 }
 
 #variable-scale {

@@ -1703,7 +1703,7 @@ class VirtualMachine {
     // Clear issue list with warnings and hide issue panel
     this.issue_list.length = 0;
     this.issue_index = -1;
-    this.updateIssuePanel();
+    UI.updateIssuePanel();
     // NOTE: special tracking of potential solver license errors
     this.license_expired = 0;
     // Reset solver result arrays
@@ -2139,62 +2139,6 @@ class VirtualMachine {
     }
   }
   
-  updateIssuePanel(change=0) {
-    const
-        count = this.issue_list.length,
-        panel = document.getElementById('issue-panel');
-    if(count > 0) {
-      const
-         prev = document.getElementById('prev-issue'),
-         next = document.getElementById('next-issue'),
-         nr = document.getElementById('issue-nr');
-      panel.title = pluralS(count, 'issue') +
-          ' occurred - click on number, \u25C1 or \u25B7 to view what and when';
-      if(this.issue_index === -1) {
-        this.issue_index = 0;
-      } else if(change) {
-        this.issue_index += change;
-        setTimeout(() => VM.jumpToIssue(), 10);
-      }
-      nr.innerText = this.issue_index + 1;
-      if(this.issue_index <= 0) {
-        prev.classList.add('disab');
-      } else {
-        prev.classList.remove('disab');
-      }
-      if(this.issue_index >= count - 1) {
-        next.classList.add('disab');
-      } else {
-        next.classList.remove('disab');
-      }
-      panel.style.display = 'table-cell';
-    } else {
-      panel.style.display = 'none';
-      this.issue_index = -1;
-    }
-  }
-  
-  jumpToIssue() {
-    // Set time step to the one of the warning message for the issue
-    // index, redraw the diagram if needed, and display the message
-    // on the infoline
-    if(this.issue_index >= 0) {
-      const
-          issue = this.issue_list[this.issue_index],
-          po = issue.indexOf('(t='),
-          pc = issue.indexOf(')', po),
-          t = parseInt(issue.substring(po + 3, pc - 1));
-      if(MODEL.t !== t) {
-        MODEL.t = t;
-        UI.updateTimeStep();
-        UI.drawDiagram(MODEL);
-      }
-      UI.info_line.classList.remove('error', 'notification');
-      UI.info_line.classList.add('warning');
-      UI.info_line.innerHTML = issue.substring(pc + 2);
-    }
-  }
-
   startTimer() {
     // Record time of this reset
     this.reset_time = new Date().getTime();
@@ -4797,7 +4741,7 @@ Solver status = ${json.status}`);
       if(this.block_issues) {
         UI.warn('Issues occurred in ' + pluralS(this.block_issues, 'block') +
           ' -- details can be viewed in the monitor and by using \u25C1 \u25B7');
-        this.updateIssuePanel();
+        UI.updateIssuePanel();
       }
       if(this.license_expired > 0) {
         // Special message to draw attention to this critical error

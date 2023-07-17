@@ -483,6 +483,7 @@ class Controller {
   rotatingIcon() {}
   setProgressNeedle() {}
   updateTimeStep() {}
+  updateIssuePanel() {}
   updateDraggableDialogs() {}
   logHeapSize() {}
   

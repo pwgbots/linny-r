@@ -1601,7 +1601,8 @@ class LinnyRModel {
       entities[obj.type].push(obj);
     }
     for(let i = 0; i < entities.Note.length; i++) {
-      xml.push(entities.Note[i].asXML);
+      const n = entities.Note[i];
+      xml.push(n.asXML);
     }
     for(let i = 0; i < entities.Product.length; i++) {
       xml.push(entities.Product[i].asXML);
