@@ -5222,10 +5222,11 @@ class GUIController extends Controller {
   copySelection() {
     // Save selection as XML in local storage of the browser
     const xml = MODEL.selectionAsXML;
-console.log('HERE copy xml', xml);
+//console.log('HERE copy xml', xml);
     if(xml) {
       window.localStorage.setItem('Linny-R-selection-XML', xml);
       this.updateButtons();
+      this.notify('Selection copied, but cannot be pasted yet -- Use Alt-C to clone');
     }
   }
   
@@ -5249,7 +5250,7 @@ console.log('HERE copy xml', xml);
     const xml = window.localStorage.getItem('Linny-R-selection-XML');
     if(xml) {
       // @@ TO DO!
-      console.log('HERE paste');
+      this.notify('Paste not implemented yet -- WORK IN PROGRESS!');
     }
   }
   
