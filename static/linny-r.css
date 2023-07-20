@@ -2468,12 +2468,18 @@ td.equation-expression {
 #series-remote {
   position: absolute;
   top: 134px;
-  left: 3px;
-  width: calc(100% - 8px);
+  left: 2px;
+  width: calc(100% - 5px);
+}
+
+#series-clip {
+  height: 12px;
+  width: 132x;
+  vertical-align: middle;
 }
 
 #series-url {
-  width: 100%;
+  width: calc(100% - 17px);
   font-size: 12px;
 }
 

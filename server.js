@@ -847,20 +847,19 @@ function repoDelete(res, name, file) {
 // Dataset dialog
 
 function anyOSpath(p) {
-  // Helper function that converts Unix path notation (with slashes) to
-  // Windows notation if needed
-  if(p.indexOf('/') < 0) return p;
-  p = p.split('/');
+  // Helper function that converts any path notation to platform notation
+  // based on the predominant separator
+  const
+     s_parts = p.split('/'),
+     bs_parts = p.split('\\'),
+     parts = (s_parts.length > bs_parts.length ? s_parts : bs_parts);
   // On macOS machines, paths start with a slash, so first substring is empty
-  if(p[0].length === 0) {
-      // In that case, add the leading slash
-    return '/' + path.join(...p);
-  } else if(p[0].endsWith(':') && path.sep === '\\') {
+  if(parts[0].endsWith(':') && path.sep === '\\') {
     // On Windows machines, add a backslash after the disk (if specified)
-    path[0] += path.sep;
+    parts[0] += path.sep;
   }
   // Reassemble path for the OS of this machine
-  return path.join(...p);
+  return path.join(...parts);
 }
 
 function loadData(res, url) {
@@ -881,7 +880,11 @@ function loadData(res, url) {
       servePlainText(res, `ERROR: Invalid URL <tt>${url}</tt>`);
     }
   } else {
-    const fp = anyOSpath(url);
+    let fp = anyOSpath(url);
+    if(!(fp.startsWith('/') || fp.startsWith('\\') || fp.indexOf(':\\') > 0)) {
+      // Relative path => add path to user/data directory
+      fp = path.join(WORKSPACE.data, fp);
+    }
     fs.readFile(fp, 'utf8', (err, data) => {
         if(err) {
           console.log(err);
@@ -1568,6 +1571,7 @@ function createWorkspace() {
       autosave: path.join(SETTINGS.user_dir, 'autosave'),
       channel: path.join(SETTINGS.user_dir, 'channel'),
       callback: path.join(SETTINGS.user_dir, 'callback'),
+      data: path.join(SETTINGS.user_dir, 'data'),
       diagrams: path.join(SETTINGS.user_dir, 'diagrams'),
       modules: path.join(SETTINGS.user_dir, 'modules'),
       solver_output: path.join(SETTINGS.user_dir, 'solver'),

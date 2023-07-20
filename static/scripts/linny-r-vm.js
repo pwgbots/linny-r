@@ -4856,11 +4856,12 @@ Solver status = ${json.status}`);
         return;
       } else {
         // Wait no longer, but warn user that data may be incomplete
-        dsl = [];
+        const dsl = [];
         for(let i = 0; i < MODEL.loading_datasets.length; i++) {
           dsl.push(MODEL.loading_datasets[i].displayName);
         }
-        UI.warn(`Loading datasets (${dsl.join(', ')}) takes too long`);
+        UI.warn('Loading of ' + pluralS(dsl.length, 'dataset') + ' (' +
+            dsl.join(', ') + ') takes too long');
       }
     }
     if(MONITOR.connectToServer()) {

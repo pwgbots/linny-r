@@ -3555,81 +3555,6 @@ class GUIController extends Controller {
   // Methods related to draggable & resizable dialogs
   //
   
-  toggleDialog(e) {
-    e = e || window.event;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    // Infer dialog identifier from target element
-    const
-        dlg = e.target.id.split('-')[0],
-        tde = document.getElementById(dlg + '-dlg'),
-        was_hidden = this.hidden(tde.id);
-    let mgr = tde.getAttribute('data-manager');
-    if(mgr) mgr = window[mgr];
-    // NOTE: prevent modeler from viewing charts while an experiment is running
-    if(dlg === 'chart' && was_hidden && MODEL.running_experiment) {
-      UI.notify(UI.NOTICE.NO_CHARTS);
-      mgr.visible = false;
-      return;
-    }
-    this.toggle(tde.id);
-    if(mgr) mgr.visible = was_hidden;
-    // Open at position after last drag (recorded in DOM data attributes)
-    let t = tde.getAttribute('data-top'),
-        l = tde.getAttribute('data-left');
-    // Make dialog appear in screen center the first time it is shown
-    if(t === null || l === null) {
-      const cs = window.getComputedStyle(tde);
-      t = ((window.innerHeight - parseFloat(cs.height)) / 2) + 'px';
-      l = ((window.innerWidth - parseFloat(cs.width)) / 2) + 'px';
-      tde.style.top = t;
-      tde.style.left = l;
-    }
-    if(!this.hidden(tde.id)) {
-      // Add dialog to "showing" list, and adjust z-indices
-      this.dr_dialog_order.push(tde);
-      this.reorderDialogs();
-      // Update the diagram if its manager has been specified
-      if(mgr) {
-        mgr.visible = true;
-        mgr.updateDialog();
-        if(mgr === DOCUMENTATION_MANAGER) {
-          if(this.info_line.innerHTML.length === 0) {
-            mgr.title.innerHTML = 'About Linny-R';
-            mgr.viewer.innerHTML = mgr.about_linny_r;
-            mgr.edit_btn.classList.remove('enab');
-            mgr.edit_btn.classList.add('disab');
-          }
-          UI.drawDiagram(MODEL);
-        }
-      }
-    } else {
-      const doi = this.dr_dialog_order.indexOf(tde);
-      // NOTE: doi should ALWAYS be >= 0 because dialog WAS showing
-      if(doi >= 0) {
-        this.dr_dialog_order.splice(doi, 1);
-        this.reorderDialogs();
-      }
-      if(mgr) {
-        mgr.visible = true;
-        if(mgr === DOCUMENTATION_MANAGER) {
-          mgr.visible = false;
-          mgr.title.innerHTML = 'Documentation';
-          UI.drawDiagram(MODEL);
-        }
-      }
-    }
-    UI.buttons[dlg].classList.toggle('stay-activ');
-  }
-  
-  reorderDialogs() {
-    let z = 10;
-    for(let i = 0; i < this.dr_dialog_order.length; i++) {
-      this.dr_dialog_order[i].style.zIndex = z;
-      z += 5;
-    }
-  }
-  
   draggableDialog(d) {
     // Make dialog draggable
     const
@@ -3755,7 +3680,7 @@ class GUIController extends Controller {
       UI.dr_dialog.style.width = Math.max(minw, w + dw) + 'px';
       UI.dr_dialog.style.height = Math.max(minh, h + dh) + 'px';
       // Update the dialog if its manager has been specified
-      const mgr = UI.dr_dialog.getAttribute('data-manager');
+      const mgr = UI.dr_dialog.dataset.manager;
       if(mgr) window[mgr].updateDialog();
     }
   
@@ -3763,6 +3688,90 @@ class GUIController extends Controller {
       // Stop moving when mouse button is released
       document.onmouseup = null;
       document.onmousemove = null;
+    }
+  }
+  
+  toggleDialog(e) {
+    // Hide dialog if visible, or show it if not, and update the
+    // order of appearance so that this dialog appears on top
+    e = e || window.event;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    // Infer dialog identifier from target element
+    const
+        dlg = e.target.id.split('-')[0],
+        tde = document.getElementById(dlg + '-dlg');
+    // NOTE: manager attribute is a string, e.g. 'MONITOR' or 'CHART_MANAGER'
+    let mgr = tde.dataset.manager,
+        was_hidden = this.hidden(tde.id);
+    if(mgr) {
+      // Dialog has a manager object => let `mgr` point to it
+      mgr = window[mgr];
+      // Manager object attributes are more reliable than DOM element
+      // style attributes, so update the visibility status
+      was_hidden = !mgr.visible;
+    }
+    // NOTE: modeler should not view charts while an experiment is
+    // running, so do NOT toggle when the Chart Manager is NOT visible 
+    if(dlg === 'chart' && was_hidden && MODEL.running_experiment) {
+      UI.notify(UI.NOTICE.NO_CHARTS);
+      return;
+    }
+    // Otherwise, toggle the dialog visibility
+    this.toggle(tde.id);
+    UI.buttons[dlg].classList.toggle('stay-activ');
+    if(mgr) mgr.visible = was_hidden;
+    let t, l;
+    if(top in tde.dataset && left in tde.dataset) {
+      // Open at position after last drag (recorded in DOM data attributes)
+      t = tde.dataset.top;
+      l = tde.dataset.left;
+    } else {
+      // Make dialog appear in screen center the first time it is shown
+      const cs = window.getComputedStyle(tde);
+      t = ((window.innerHeight - parseFloat(cs.height)) / 2) + 'px';
+      l = ((window.innerWidth - parseFloat(cs.width)) / 2) + 'px';
+      tde.style.top = t;
+      tde.style.left = l;
+    }
+    if(was_hidden) {
+      // Add activated dialog to "showing" list, and adjust z-indices
+      this.dr_dialog_order.push(tde);
+      this.reorderDialogs();
+      // Update the diagram if its manager has been specified
+      if(mgr) {
+        mgr.updateDialog();
+        if(mgr === DOCUMENTATION_MANAGER) {
+          if(this.info_line.innerHTML.length === 0) {
+            mgr.title.innerHTML = 'About Linny-R';
+            mgr.viewer.innerHTML = mgr.about_linny_r;
+            mgr.edit_btn.classList.remove('enab');
+            mgr.edit_btn.classList.add('disab');
+          }
+          UI.drawDiagram(MODEL);
+        }
+      }
+    } else {
+      const doi = this.dr_dialog_order.indexOf(tde);
+      // NOTE: doi should ALWAYS be >= 0 because dialog WAS showing
+      if(doi >= 0) {
+        this.dr_dialog_order.splice(doi, 1);
+        this.reorderDialogs();
+      }
+      if(mgr === DOCUMENTATION_MANAGER) {
+        mgr.title.innerHTML = 'Documentation';
+        UI.drawDiagram(MODEL);
+      }
+    }
+  }
+  
+  reorderDialogs() {
+    // Set z-index of draggable dialogs according to their order
+    // (most recently shown or clicked on top)
+    let z = 10;
+    for(let i = 0; i < this.dr_dialog_order.length; i++) {
+      this.dr_dialog_order[i].style.zIndex = z;
+      z += 5;
     }
   }
   
@@ -5975,7 +5984,7 @@ class GUIMonitor {
         (event) => {
             const el = event.target;
             el.classList.add('sel-pb');
-            MONITOR.showBlock(el.getAttribute('data-blk'));
+            MONITOR.showBlock(el.dataset.blk);
           },
         false);
     this.progress_bar.appendChild(n);

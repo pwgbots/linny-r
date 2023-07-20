@@ -113,10 +113,14 @@ Possible options are:
   channel=[identifier]  will start listening at the specified channel
                         (FUTURE OPTION)
   check                 will report whether current version is up-to-date
-  model=[path]          will load model file in [path]
+  data-dir=[path]       will look for series data files in [path] instead of
+                        (main)/user/data
+  model=[path]          will load model file specified by [path]
   module=[name@repo]    will load model [name] from repository [repo]
                         (if @repo is blank, repository "local host" is used)
                         (FUTURE OPTION)
+  report=[name]         will write run results to [name]-series.txt and
+                        [name]-stats.txt in (workspace)/reports
   run                   will run the loaded model
   solver=[name]         will select solver [name], or warn if not found
                         (name choices: Gurobi or LP_solve)
@@ -247,11 +251,81 @@ class ConsoleMonitor {
 } // END of class ConsoleMonitor
 
 
+// NOTE: This implementation is very incomplete, still!
+class ConsoleRepositoryBrowser {
+  constructor() {
+    this.repositories = [];
+    this.repository_index = -1; 
+    this.module_index = -1;
+    // Get the repository list from the modules
+    this.getRepositories();
+    this.reset();
+  }
+  
+  reset() {
+    this.visible = false;
+  }
+
+  get isLocalHost() {
+    // Returns TRUE if first repository on the list is 'local host'
+    return this.repositories.length > 0 &&
+      this.repositories[0].name === 'local host';
+  }
+
+  getRepositories() {
+    // Gets the list of repository names from the server
+    this.repositories.length = 0;
+    // @@TO DO!!
+  }
+  
+  repositoryByName(n) {
+    // Returns the repository having name `n` if already known, otherwise NULL
+    for(let i = 0; i < this.repositories.length; i++) {
+      if(this.repositories[i].name === n) {
+        return this.repositories[i];
+      }
+    }
+    return null;
+  }
+  
+  asFileName(s) {
+    // NOTE: asFileName is implemented as function (see below) to permit
+    // its use prior to instantiation of the RepositoryBrowser
+    return stringToFileName(s);
+  }
+  
+}
+
+function stringToFileName(s) {
+  // Returns string `s` with whitespace converted to a single dash, and
+  // special characters converted to underscores
+  return s.normalize('NFKD').trim()
+      .replace(/[\s\-]+/g, '-')
+      .replace(/[^A-Za-z0-9_\-]/g, '_')
+      .replace(/^[\-\_]+|[\-\_]+$/g, '');
+}
+
 // CLASS ConsoleFileManager allows loading and saving models and diagrams, and
 // handles the interaction with the MILP solver via `exec` calls and files
 // stored on the modeler's computer
 class ConsoleFileManager {
 
+  anyOSpath(p) {
+    // Helper function that converts any path notation to platform notation
+    // based on the predominant separator
+    const
+       s_parts = p.split('/'),
+       bs_parts = p.split('\\'),
+       parts = (s_parts.length > bs_parts.length ? s_parts : bs_parts);
+    // On macOS machines, paths start with a slash, so first substring is empty
+    if(parts[0].endsWith(':') && path.sep === '\\') {
+      // On Windows machines, add a backslash after the disk (if specified)
+      parts[0] += path.sep;
+    }
+    // Reassemble path for the OS of this machine
+    return path.join(...parts);
+  }
+  
   getRemoteData(dataset, url) {
     // Gets data from a URL, or from a file on the local host 
     if(url === '') return;
@@ -281,7 +355,13 @@ class ConsoleFileManager {
         console.log('ERROR: Invalid URL', url);
       }
     } else {
-      const fp = anyOSpath(url);
+      let fp = this.anyOSpath(url);
+      if(!(fp.startsWith('/') || fp.startsWith('\\') || fp.indexOf(':\\') > 0)) {
+        // Relative path => add path to specified data path or to the
+        // default location user/data
+        fp = path.join(SETTINGS.data_path || WORKSPACE.data, fp);
+        console.log('Full path: ', fp);
+      }
       fs.readFile(fp, 'utf8', (err, data) => {
           if(err) {
             console.log(err);
@@ -352,6 +432,17 @@ class ConsoleFileManager {
               (data) => { if(MODEL.parseXML(data)) callback(MODEL); });
         }
       });
+  }
+
+  writeStringToFile(s, fp) {
+    // Write string `s` to path `fp`
+    try {
+      fs.writeFileSync(fp, s);
+      console.log(pluralS(s.length, 'character') + ' written to file ' + fp);
+    } catch(err) {
+      console.log(err);
+      console.log('ERROR: Failed to write data to file ' +  fp);
+    }
   }
 
 } // END of class ConsoleFileManager
@@ -702,7 +793,9 @@ function commandLineSettings() {
   const settings = {
       cli_name: (PLATFORM.startsWith('win') ? 'Command Prompt' : 'Terminal'),
       check: false,
+      data_path: '',
       preferred_solver: '',
+      report: '',
       run: false,
       solver: '',
       solver_path: '',
@@ -758,6 +851,31 @@ function commandLineSettings() {
         } catch(err) {
           console.log(`ERROR: File "${av[1]}" not found`);
           process.exit();
+        }
+      } else if(av[0] === 'data-dir') {
+        // Set path (if valid) to override default data directory
+        const dp = av[1];
+        try {
+          // See whether the directory already exists
+          try {
+            fs.accessSync(dp, fs.constants.R_OK | fs.constants.W_O);
+          } catch(err) {
+            // If not, try to create it
+            fs.mkdirSync(dp);
+            console.log('Created data directory:', dp);
+          }
+          settings.data_path = dp;
+        } catch(err) {
+          console.log(err.message);
+          console.log('ERROR: Failed to create data directory:', dp);
+        }
+      } else if(av[0] === 'report') {
+        // Set report file name (if valid)
+        const rfn = stringToFileName(av[1]);
+        if(/^[A-Za-z0-9]+/.test(rfn)) {
+          settings.report = path.join(settings.user_dir, 'reports', rfn);
+        } else {
+          console.log(`WARNING: Invalid report file name "{$rfn}"`);
         }
       } else if(av[0] === 'module') {
         // Add default repository is none specified
@@ -882,10 +1000,13 @@ function createWorkspace() {
   }
   // Define the sub-directory paths
   const ws = {
+      autosave: path.join(SETTINGS.user_dir, 'autosave'),
       channel: path.join(SETTINGS.user_dir, 'channel'),
       callback: path.join(SETTINGS.user_dir, 'callback'),
+      data: path.join(SETTINGS.user_dir, 'data'),
       diagrams: path.join(SETTINGS.user_dir, 'diagrams'),
       modules: path.join(SETTINGS.user_dir, 'modules'),
+      reports: path.join(SETTINGS.user_dir, 'reports'),
       solver_output: path.join(SETTINGS.user_dir, 'solver'),
     };
   // Create these sub-directories if not aready there
@@ -968,7 +1089,7 @@ PROMPTER.questionPrompt = (str) => {
 // Initialize the Linny-R console components as global variables
 global.UI = new Controller();
 global.VM = new VirtualMachine();
-//global.REPOSITORY_BROWSER = new ConsoleRepositoryBrowser(),  // still to re-code
+global.REPOSITORY_BROWSER = new ConsoleRepositoryBrowser();
 global.FILE_MANAGER = new ConsoleFileManager();
 global.DATASET_MANAGER = new DatasetManager();
 global.CHART_MANAGER = new ChartManager();
@@ -990,8 +1111,19 @@ if(SETTINGS.model_path) {
         MONITOR.show_log = SETTINGS.verbose;
         VM.callback = () => {
             const od = model.outputData;
-            console.log(od[0]);
-            console.log(od[1]);
+            // Output data is two-string list [time series, statistics]
+            if(SETTINGS.report) {
+              // Output time series
+              FILE_MANAGER.writeStringToFile(od[0],
+                  SETTINGS.report + '-series.txt');
+              // Output statistics
+              FILE_MANAGER.writeStringToFile(od[1],
+                  SETTINGS.report + '-stats.txt');
+            } else {
+              // Output strings to console
+              console.log(od[0]);
+              console.log(od[1]);
+            }
             VM.callback = null;
         };
         VM.solveModel();
