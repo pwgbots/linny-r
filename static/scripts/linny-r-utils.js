@@ -256,8 +256,9 @@ function markFirstDifference(s1, s2) {
 //
 
 function ciCompare(a, b) {
-  // Performs case-insensitive comparison
-  return a.localeCompare(b, undefined, {sensitivity: 'base'});
+  // Performs case-insensitive comparison that does differentiate
+  // between accented characters (as this differentiates between identifiers)
+  return a.localeCompare(b, undefined, {sensitivity: 'accent'});
 }
 
 function endsWithDigits(str) {
@@ -437,6 +438,13 @@ function compareSelectors(s1, s2) {
 function addDistinct(e, list) {
   // Adds element `e` to `list` only if it does not already occur in `list`
   if(list.indexOf(e) < 0) list.push(e);
+}
+
+function mergeDistinct(list, into) {
+  // Adds elements of `list` to `into` if not already in `into`
+  for(let i = 0; i < list.length; i++) {
+    addDistinct(list[i], into);
+  }
 }
 
 function setString(sl) {

@@ -277,6 +277,21 @@ class LinnyRModel {
     return null;
   }
 
+  productByID(id) {
+    if(this.products.hasOwnProperty(id)) return this.products[id];
+    return null;
+  }
+  
+  processByID(id) {
+    if(this.processes.hasOwnProperty(id)) return this.processes[id];
+    return null;
+  }
+  
+  clusterByID(id) {
+    if(this.clusters.hasOwnProperty(id)) return this.clusters[id];
+    return null;
+  }
+  
   nodeBoxByID(id) {
     if(this.products.hasOwnProperty(id)) return this.products[id];
     if(this.processes.hasOwnProperty(id)) return this.processes[id];
@@ -1572,7 +1587,7 @@ class LinnyRModel {
     }
     return true;
   }
-  
+
   get selectionAsXML() {
     // Returns XML for the selected entities, and also for the entities
     // referenced by expressions for their attributes.
@@ -1595,34 +1610,92 @@ class LinnyRModel {
         from_tos = [],
         xml = [],
         ft_xml = [],
-        extra_xml = [];
+        extra_xml = [],
+        selected_xml = [];
     for(let i = 0; i < this.selection.length; i++) {
       const obj = this.selection[i];
       entities[obj.type].push(obj);
+      selected_xml.push('<sel>' + xmlEncoded(obj.displayName) + '</sel>');
     }
+    // Expand clusters by adding all its model entities to their respective
+    // lists
+    for(let i = 0; i < entities.Cluster.length; i++) {
+      const c = entities.Cluster[i];
+      c.clearAllProcesses();
+      c.categorizeEntities();
+      // All processes and products in (sub)clusters must be copied
+      mergeDistinct(c.all_processes, entities.Process);
+      mergeDistinct(c.all_products, entities.Product);
+      // Likewise for all related links and constraints
+      mergeDistinct(c.related_links, entities.Link);
+      mergeDistinct(c.related_constraints, entities.Constraint);
+      // NOTE: add entities referenced by notes within selected clusters
+      // to `extras`, but not the XML for these notes, as this is already
+      // part of the clusters' XML
+      const an = c.allNotes;
+      // Add selected notes as these must also be checked for "extras"
+      mergeDistinct(entities.Note, an);
+      for(let i = 0; i < an.length; i++) {
+        const n = an[i];
+        mergeDistinct(n.color.referencedEntities, extras);
+        for(let i = 0; i < n.fields.length; i++) {
+          addDistinct(n.object, extras);
+        }
+      }
+    }
+    // Only add the XML for notes in the selection
     for(let i = 0; i < entities.Note.length; i++) {
-      const n = entities.Note[i];
       xml.push(n.asXML);
     }
     for(let i = 0; i < entities.Product.length; i++) {
-      xml.push(entities.Product[i].asXML);
+      const p = entities.Product[i];
+      mergeDistinct(p.lower_bound.referencedEntities, extras);
+      mergeDistinct(p.upper_bound.referencedEntities, extras);
+      mergeDistinct(p.initial_level.referencedEntities, extras);
+      mergeDistinct(p.price.referencedEntities, extras);
+      xml.push(p.asXML);
     }
     for(let i = 0; i < entities.Process.length; i++) {
-      xml.push(entities.Process[i].asXML);
+      const p = entities.Process[i];
+      mergeDistinct(p.lower_bound.referencedEntities, extras);
+      mergeDistinct(p.upper_bound.referencedEntities, extras);
+      mergeDistinct(p.initial_level.referencedEntities, extras);
+      mergeDistinct(p.pace_expression.referencedEntities, extras);
+      xml.push(p.asXML);
     }
+    // Only now add the XML for the selected clusters
     for(let i = 0; i < entities.Cluster.length; i++) {
       xml.push(entities.Cluster[i].asXML);
     }
+    // Add all links that have (implicitly via clusters) been selected
     for(let i = 0; i < entities.Link.length; i++) {
       const l = entities.Link[i];
-      if(this.selection.indexOf(l.from_node) < 0) addDistinct(l.from_node, from_tos);
-      if(this.selection.indexOf(l.to_node) < 0) addDistinct(l.to_node, from_tos);
+      // NOTE: the FROM and/or TO node need not be selected; if not, put
+      // them in a separate list
+      if(entities.Process.indexOf(l.from_node) < 0 &&
+          entities.Product.indexOf(l.from_node) < 0) {
+        addDistinct(l.from_node, from_tos);
+      }
+      if(entities.Process.indexOf(l.to_node) < 0 &&
+          entities.Product.indexOf(l.to_node) < 0) {
+        addDistinct(l.to_node, from_tos);
+      }
+      mergeDistinct(l.relative_rate.referencedEntities, extras);
+      mergeDistinct(l.flow_delay.referencedEntities, extras);
       xml.push(l.asXML);
     }
     for(let i = 0; i < entities.Constraint.length; i++) {
       const c = entities.Constraint[i];
-      if(this.selection.indexOf(c.from_node) < 0) addDistinct(c.from_node, from_tos);
-      if(this.selection.indexOf(c.to_node) < 0) addDistinct(c.to_node, from_tos);
+      // NOTE: the FROM and/or TO node need not be selected; if not, put
+      // them in a separate list
+      if(entities.Process.indexOf(c.from_node) < 0 &&
+          entities.Product.indexOf(c.from_node) < 0) {
+        addDistinct(c.from_node, from_tos);
+      }
+      if(entities.Process.indexOf(c.to_node) < 0 &&
+          entities.Product.indexOf(c.to_node) < 0) {
+        addDistinct(c.to_node, from_tos);
+      }
       xml.push(c.asXML);
     }
     for(let i = 0; i < from_tos.length; i++) {
@@ -1631,7 +1704,9 @@ class LinnyRModel {
       if(p instanceof Process) ft_xml.push('" actor-name="', xmlEncoded(p.actor.name));
       ft_xml.push('"></from-to>');
     }
-    for(let i = 0; i < extras.length; i++) extra_xml.push(extras[i].asXML);
+    for(let i = 0; i < extras.length; i++) {
+      extra_xml.push(extras[i].asXML);
+    }
     return ['<copy timestamp="', Date.now(),
         '" model-timestamp="', this.time_created.getTime(),
         '" cluster-name="', xmlEncoded(fc_name),
@@ -1639,7 +1714,8 @@ class LinnyRModel {
         '"><entities>', xml.join(''),
         '</entities><from-tos>', ft_xml.join(''),
         '</from-tos><extras>', extra_xml.join(''),
-        '</extras></copy>'].join('');
+        '</extras><selection>', selected_xml.join(''),
+        '</selection></copy>'].join('');
   }
   
   dropSelectionIntoCluster(c) {
@@ -4375,7 +4451,10 @@ class Actor {
   
   rename(name) {
     // Change the name of this actor
-    name = UI.cleanName(name);
+    // NOTE: since version 1.3.2, colons are prohibited in actor names to
+    // avoid confusion with prefixed entities; they are silently removed
+    // to avoid model compatibility issues
+    name = UI.cleanName(name).replace(':', '');
     if(!UI.validName(name)) {
       UI.warn(UI.WARNING.INVALID_ACTOR_NAME);
       return null;
@@ -5414,6 +5493,7 @@ class Cluster extends NodeBox {
   get asXML() {
     let xml;
     const
+        cmnts = xmlEncoded(this.comments),
         flags = (this.collapsed ? ' collapsed="1"' : '') +
             (this.ignore ? ' ignore="1"' : '') +
             (this.black_box ? ' black-box="1"' : '') +
@@ -5422,7 +5502,8 @@ class Cluster extends NodeBox {
         '</name><owner>', xmlEncoded(this.actor.name),
         '</owner><x-coord>', this.x,
         '</x-coord><y-coord>', this.y,
-        '</y-coord><process-set>'].join('');
+        '</y-coord><comments>', cmnts,
+        '</comments><process-set>'].join('');
     for(let i = 0; i < this.processes.length; i++) {
       let n = this.processes[i].displayName;
       const id = UI.nameToID(n);
@@ -5458,6 +5539,7 @@ class Cluster extends NodeBox {
   initFromXML(node) {
     this.x = safeStrToInt(nodeContentByTag(node, 'x-coord'));
     this.y = safeStrToInt(nodeContentByTag(node, 'y-coord'));
+    this.comments = xmlDecoded(nodeContentByTag(node, 'comments'));
     this.collapsed = nodeParameterValue(node, 'collapsed') === '1';
     this.ignore = nodeParameterValue(node, 'ignore') === '1';
     this.black_box = nodeParameterValue(node, 'black-box') === '1';
@@ -5468,8 +5550,8 @@ class Cluster extends NodeBox {
         name,
         actor;
         
-    // NOTE: to compensate for shameful bug in earlier version, look for
-    // "product-positions" node and for "notes" node in the process-set,
+    // NOTE: to compensate for a shameful bug in an earlier version, look
+    // for "product-positions" node and for "notes" node in the process-set,
     // as it may have been put there instead of in the cluster node itself
     const
         hidden_pp = childNodeByTag(n, 'product-positions'),
@@ -5649,12 +5731,18 @@ class Cluster extends NodeBox {
       addDistinct(this.product_positions[i].product, prods);
     }
     for(let i = 0; i < this.sub_clusters.length; i++) {
-      const ap = this.sub_clusters[i].allProducts; // recursion!
-      for(let j = 0; j < ap.length; j++) {
-        addDistinct(ap[j], prods);
-      }
+      mergeDistinct(this.sub_clusters[i].allProducts, prods); // recursion!
     }
     return prods;
+  }
+  
+  get allNotes() {
+    // Return the set of all notes in this cluster and its subclusters
+    let notes = this.notes.slice();
+    for(let i = 0; i < this.sub_clusters.length; i++) {
+      notes = notes.concat(this.sub_clusters[i].allNotes); // recursion!
+    }
+    return notes;
   }
 
   clearAllProcesses() {
@@ -6897,7 +6985,7 @@ class Process extends Node {
     // The production level in time T thus corresponds to decision variable
     // X[Math.floor((T-1) / PACE + 1]
     this.pace = 1;
-    this.pace_expression = new Expression(this, 'PACE', '1');
+    this.pace_expression = new Expression(this, 'LCF', '1');
     // NOTE: processes have NO input attributes other than LB, UB and IL
     // for processes, the default bounds are [0, +INF]
     this.equal_bounds = false;

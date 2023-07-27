@@ -122,6 +122,8 @@ function checkNodeModule(name) {
   }
 }
 
+// Currently, these external solvers are supported:
+const SUPPORTED_SOLVERS = ['gurobi', 'scip', 'lp_solve'];
 
 // Load class MILPSolver
 const MILPSolver = require('./static/scripts/linny-r-milp.js');
@@ -1422,7 +1424,7 @@ function commandLineSettings() {
           settings.port = n;
         }
       } else if(av[0] === 'solver') {
-        if(av[1] !== 'gurobi' && av[1] !== 'lp_solve') {
+        if(SUPPORTED_SOLVERS.indexOf(av[1]) < 0) {
           console.log(`WARNING: Unknown solver "${av[1]}"`);
         } else {
           settings.preferred_solver = av[1];
@@ -1455,6 +1457,7 @@ function commandLineSettings() {
   // Check whether MILP solver(s) and Inkscape have been installed
   const path_list = process.env.PATH.split(path.delimiter);
   let gurobi_path = '',
+      scip_path = '',
       match,
       max_v = -1;
   for(let i = 0; i < path_list.length; i++) {
@@ -1463,6 +1466,8 @@ function commandLineSettings() {
       gurobi_path = path_list[i];
       max_v = parseInt(match[1]);
     }
+    match = path_list[i].match(/[\/\\]scip[^\/\\]+[\/\\]bin/i);
+    if(match) scip_path = path_list[i];
     match = path_list[i].match(/inkscape/i);
     if(match) settings.inkscape = path_list[i];
   }
@@ -1493,11 +1498,27 @@ function commandLineSettings() {
           'WARNING: Failed to access the Gurobi command line application');
     }
   }
+  // Check if scip(.exe) exists in its directory
+  let sp = path.join(scip_path, 'scip' + (PLATFORM.startsWith('win') ? '.exe' : ''));
+  const need_scip = !settings.solver || settings.preferred_solver === 'scip';
+  try {
+    fs.accessSync(sp, fs.constants.X_OK);
+    console.log('Path to SCIP:', sp);
+    if(need_scip) {
+      settings.solver = 'scip';
+      settings.solver_path = sp;
+    }
+  } catch(err) {
+    // Only report error if SCIP is needed
+    if(need_scip) {
+      console.log(err.message);
+      console.log('WARNING: SCIP application not found in', sp);
+    }
+  }
   // Check if lp_solve(.exe) exists in working directory
-  const
-      sp = path.join(WORKING_DIRECTORY,
-          'lp_solve' + (PLATFORM.startsWith('win') ? '.exe' : '')),
-      need_lps = !settings.solver || settings.preferred_solver === 'lp_solve';
+  sp = path.join(WORKING_DIRECTORY,
+          'lp_solve' + (PLATFORM.startsWith('win') ? '.exe' : '')); 
+  const need_lps = !settings.solver || settings.preferred_solver === 'lp_solve';
   try {
     fs.accessSync(sp, fs.constants.X_OK);
     console.log('Path to LP_solve:', sp);

@@ -136,7 +136,7 @@ class Controller {
       ACTOR_PROPS: ['weight', 'comments'],
       CLUSTER_PROPS: ['comments', 'collapsed', 'ignore'],
       PROCESS_PROPS: ['comments', 'lower_bound', 'upper_bound', 'initial_level',
-        'pace', 'equal_bounds', 'level_to_zero', 'integer_level', 'collapsed'],
+        'pace_expression', 'equal_bounds', 'level_to_zero', 'integer_level', 'collapsed'],
       PRODUCT_PROPS: ['comments', 'lower_bound', 'upper_bound', 'initial_level',
         'scale_unit', 'equal_bounds', 'price', 'is_source', 'is_sink', 'is_buffer',
         'is_data', 'integer_level', 'no_slack'],
@@ -314,6 +314,21 @@ class Controller {
       }
     }
     return pan;
+  }
+  
+  sharedPrefix(n1, n2) {
+    const
+        pan1 = this.prefixesAndName(n1),
+        pan2 = this.prefixesAndName(n2),
+        l = Math.min(pan1.length - 1, pan2.length - 1),
+        shared = [];
+    let i = 0;
+    while(i < l && ciCompare(pan1[i], pan2[i]) === 0) {
+      // NOTE: if identical except for case, prefer "Abc" over "aBc" 
+      shared.push(pan1[i] < pan2[i] ? pan1[i] : pan2[i]);
+      i++;
+    }
+    return shared.join(this.PREFIXER);
   }
   
   nameToID(name) {

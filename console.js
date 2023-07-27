@@ -86,6 +86,9 @@ console.log('Platform:', PLATFORM, '(' + os.type() + ')');
 console.log('Module directory:', MODULE_DIRECTORY);
 console.log('Working directory:', WORKING_DIRECTORY);
 
+// Currently, these external solvers are supported:
+const SUPPORTED_SOLVERS = ['gurobi', 'scip', 'lp_solve'];
+
 const
     // Load the MILP solver (dependent on Node.js: `fs`, `os` and `path`)
     MILPSolver = require('./static/scripts/linny-r-milp.js'),
@@ -123,7 +126,7 @@ Possible options are:
                         [name]-stats.txt in (workspace)/reports
   run                   will run the loaded model
   solver=[name]         will select solver [name], or warn if not found
-                        (name choices: Gurobi or LP_solve)
+                        (name choices: Gurobi, SCIP or LP_solve)
   user=[identifier]     user ID will be used to log onto remote servers
   verbose               will output solver messages to the console
   workspace=[path]      will create workspace in [path] instead of (main)/user
@@ -817,7 +820,7 @@ function commandLineSettings() {
       const av = lca.split('=');
       if(av.length === 1) av.push('');
       if(av[0] === 'solver') {
-        if(av[1] !== 'gurobi' && av[1] !== 'lp_solve') {
+        if(SUPPORTED_SOLVERS.indexOf(av[1]) < 0) {
           console.log(`WARNING: Unknown solver "${av[1]}"`);
         } else {
           settings.preferred_solver = av[1];
@@ -920,6 +923,7 @@ function commandLineSettings() {
   // Check whether MILP solver(s) and Inkscape have been installed
   const path_list = process.env.PATH.split(path.delimiter);
   let gurobi_path = '',
+      scip_path = '',
       match,
       max_v = -1;
   for(let i = 0; i < path_list.length; i++) {
@@ -928,6 +932,8 @@ function commandLineSettings() {
       gurobi_path = path_list[i];
       max_v = parseInt(match[1]);
     }
+    match = path_list[i].match(/[\/\\]scip[^\/\\]+[\/\\]bin/i);
+    if(match) scip_path = path_list[i];
     match = path_list[i].match(/inkscape/i);
     if(match) settings.inkscape = path_list[i];
   }
@@ -956,6 +962,23 @@ function commandLineSettings() {
       console.log(err.message);
       console.log(
           'WARNING: Failed to access the Gurobi command line application');
+    }
+  }
+  // Check if scip(.exe) exists in its directory
+  let sp = path.join(scip_path, 'scip' + (PLATFORM.startsWith('win') ? '.exe' : ''));
+  const need_scip = !settings.solver || settings.preferred_solver === 'scip';
+  try {
+    fs.accessSync(sp, fs.constants.X_OK);
+    console.log('Path to SCIP:', sp);
+    if(need_scip) {
+      settings.solver = 'scip';
+      settings.solver_path = sp;
+    }
+  } catch(err) {
+    // Only report error if SCIP is needed
+    if(need_scip) {
+      console.log(err.message);
+      console.log('WARNING: SCIP application not found in', sp);
     }
   }
   // Check if lp_solve(.exe) exists in main directory

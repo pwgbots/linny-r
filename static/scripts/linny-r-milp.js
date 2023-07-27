@@ -82,6 +82,42 @@ module.exports = class MILPSolver {
        14: 'Optimization still in progress',
        15: 'User-specified objective limit has been reached'
       };
+    } else if(this.id === 'scip') {
+      this.ext = '.lp';
+      this.user_model = path.join(workspace.solver_output, 'usr_model.lp');
+      this.solver_model = path.join(workspace.solver_output, 'solver_model.lp');
+      this.solution = path.join(workspace.solver_output, 'model.sol');
+      this.log = path.join(workspace.solver_output, 'model.log');
+      // NOTE: SCIP command line accepts space separated commands ...
+      this.args = [
+          'read', this.user_model,
+          'write problem', this.solver_model,
+          'set limit time', 300,
+          'optimize',
+          'write solution', this.solution,
+          'quit'
+        ];
+      // ... when SCIP is called with -c option; then commands must be
+      // enclosed in double quotes; SCIP outputs its messages to the
+      // terminal, so these must be caputured in a log file
+      this.solve_cmd = 'scip -c "' + this.args.join(' ') + '" >' + this.log;
+      this.errors = {
+        1: 'User interrupt',
+        2: 'Node limit reached',
+        3: 'Total node limit reached',
+        4: 'Stalling node limit reached',
+        5: 'Time limit reached',
+        6: 'Memory limit reached',
+        7: 'Gap limit reached',
+        8: 'Solution limit reached',
+        9: 'Solution improvement limit reached',
+       10: 'Restart limit reached',
+       11: 'Optimal solution found',
+       12: 'Problem is infeasible',
+       13: 'Problem is unbounded',
+       14: 'Problem is either infeasible or unbounded',
+       15: 'Solver terminated by user'
+      };
     } else if(this.id === 'lp_solve') {
       // Execute file commands differ across platforms
       if(os.platform().startsWith('win')) {
@@ -129,8 +165,12 @@ module.exports = class MILPSolver {
         error: '',
         messages: []
       };
-    let timeout = parseInt(sp.get('timeout'));
+    // Number of columns (= decision variables) is passed to ensure
+    // that solution vector is complete and its values are placed in
+    // the correct order
+    result.columns = parseInt(sp.get('columns')) || 0;
     // Default timeout per block is 30 seconds
+    let timeout = parseInt(sp.get('timeout'));
     if(isNaN(timeout)) timeout = 30;
     if(!this.id) {
       result.status = -999;
@@ -165,19 +205,24 @@ module.exports = class MILPSolver {
           // (2) the shell option must be set to TRUE (so the command is
           //     executed within an OS shell script) or LP_solve will interpret
           //     the first argument as the model file, and complain
-          // (3) output must be ignored, as LP_solve will output many warnings
-          //     about 0-value coefficients, and these would otherwise also
+          // (3) output must be ignored, as LP_solve warnings should not also
           //     appear on the console
           // (4) prevent Windows opening a visible sub-process shell window
           const
               cmd = this.solve_cmd + ' ' + this.args.join(' '),
               options = {shell: true, stdio: 'ignore', windowsHide: true};
-          spawn = child_process.spawnSync(cmd,  options);
-        } else {          
+          spawn = child_process.spawnSync(cmd, options);
+        } else if(this.id === 'gurobi') {          
+          // When using Gurobi, the standard way with arguments works well
           this.args[0] = 'TimeLimit=' + timeout;
-          // When using Gurobi, the standard way works well
           const options = {windowsHide: true};
           spawn = child_process.spawnSync(this.solver_path, this.args, options);
+        } else if(this.id === 'scip') {          
+          // When using SCIP, take the LP_solve approach
+          const
+              cmd = this.solve_cmd.replace(/limit time \d+/, `limit time ${timeout}`),
+              options = {shell: true, stdio: 'ignore', windowsHide: true};
+          spawn = child_process.spawnSync(cmd, options);
         }
         status = spawn.status;
       } catch(err) {
@@ -200,7 +245,37 @@ module.exports = class MILPSolver {
   
   processSolverOutput(result) {
     // Read solver output files and return solution (or error)
-    const x_values = [];
+    const
+        x_values = [],
+        x_dict = {},
+        getValuesFromDict = () => {
+          // Returns a result vector for as many real numbers (as strings!)
+          // as there are columns (0 if not reported by the solver)
+          // (1) Sort on variable name
+          const vlist = Object.keys(x_dict).sort();
+          // Start with column 1
+          let col = 1;
+          for(let i = 0; i < vlist.length; i++) {
+            const
+                v = vlist[i],
+                // Variable names have zero-padded column numbers, e.g. "X001"
+                vnr = parseInt(v.substring(1));
+            // Add zeros for unreported variables until column number matches
+            while(col < vnr) {
+              x_values.push('0');
+              col++;
+            }
+            x_values.push(x_dict[v]);
+            col++;
+          }
+          // Add zeros to vector for remaining columns
+          while(col <= result.columns) {
+            x_values.push('0');
+            col++;
+          }
+          // No return value; function operates on x_values
+        };
+
     if(this.id === 'gurobi') {
       // `messages` must be an array of strings
       result.messages = fs.readFileSync(this.log, 'utf8').split(os.EOL);
@@ -236,6 +311,60 @@ module.exports = class MILPSolver {
           result.error = 'No solution found';
         }
       }
+    } else if(this.id === 'scip') {
+      result.seconds = 0;
+      // `messages` must be an array of strings
+      result.messages = fs.readFileSync(this.log, 'utf8').split(os.EOL);
+      let solved = false,
+          output = [];
+      if(result.status !== 0) {
+        // Non-zero solver exit code indicates serious trouble
+        result.error = 'SCIP solver terminated with error';
+      } else {
+        try {
+          output = fs.readFileSync(
+              this.solution, 'utf8').trim().split(os.EOL);
+        } catch(err) {
+          console.log('No SCIP solution file');
+        }
+        // Look in messages for solver status and solving time
+        for(let i = 0; i < result.messages.length; i++) {
+          const m = result.messages[i];
+          if(m.startsWith('SCIP Status')) {
+            if(m.indexOf('problem is solved') >= 0) {
+              solved = true;
+            } else if(m.indexOf('interrupted') >= 0) {
+              if(m.indexOf('time limit') >= 0) {
+                result.status = 5;
+              } else if(m.indexOf('memory limit') >= 0) {
+                result.status = 6;
+              } else if(m.indexOf('infeasible') >= 0) {
+                result.status = (m.indexOf('unbounded') >= 0 ? 14 : 12);
+              } else if(m.indexOf('unbounded') >= 0) {
+                result.status = 13;
+              }
+              result.error = this.errors[result.status];
+            }
+          } else if (m.startsWith('Solving Time')) {
+            result.seconds = parseFloat(m.split(':')[1]);
+          }
+        }
+      }
+      if(solved) {
+        // Look for line with first variable
+        let i = 0;
+        while(i < output.length && !output[i].startsWith('X')) i++;
+        // Fill dictionary with variable name: value entries 
+        while(i < output.length) {
+          const v = output[i].split(/\s+/);
+          x_dict[v[0]] = v[1];
+          i++;
+        }
+        // Fill the solution vector, adding 0 for missing columns
+        getValuesFromDict();
+      } else {
+        console.log('No solution found');
+      }
     } else if(this.id === 'lp_solve') {
       // Read solver messages from file
       // NOTE: Linny-R client expects a list of strings
@@ -246,7 +375,7 @@ module.exports = class MILPSolver {
       result.seconds = 0;
       let i = 0,
           solved = false;
-      while(i< output.length && !solved) {
+      while(i < output.length && !solved) {
         msgs.push(output[i]);
         const m = output[i].match(/in total (\d+\.\d+) seconds/);
         if(m && m.length > 1) result.seconds = parseFloat(m[1]);
@@ -255,14 +384,16 @@ module.exports = class MILPSolver {
       }
       result.messages = msgs;
       if(solved) {
-        while(i < output.length && !output[i].startsWith('C1')) i++;
+        // Look for line with first variable
+        while(i < output.length && !output[i].startsWith('X')) i++;
+        // Fill dictionary with variable name: value entries 
         while(i < output.length) {
-          let v = output[i].replace(/C\d+\s*/, '');
-          // Remove variable names from result output
-          v = parseFloat(v);
-          x_values.push(v);
+          const v = output[i].split(/\s+/);
+          x_dict[v[0]] = v[1];
           i++;
         }
+        // Fill the solution vector, adding 0 for missing columns
+        getValuesFromDict();
       } else {
         console.log('No solution found');
       }

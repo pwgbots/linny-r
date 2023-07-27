@@ -77,6 +77,24 @@ class Expression {
     return MODEL.timeStepDuration;
   }
   
+  get referencedEntities() {
+    // Returns a list of entities referenced in this expression
+    if(this.text.indexOf('[') < 0) return [];
+    const
+        el = [],
+        ml = [...this.text.matchAll(/\[(\{[^\}]+\}){0,1}([^\]]+)\]/g)];
+    for(let i = 0; i < ml.length; i++) {
+      const n = ml[i][2].trim();
+      let sep = n.lastIndexOf('|');
+      if(sep < 0) sep = n.lastIndexOf('@');
+      const
+          en = (sep < 0 ? n : n.substring(0, sep)),
+          e = MODEL.objectByName(en.trim());
+      if(e) addDistinct(e, el);
+    }
+    return el;
+  }
+  
   update(parser) {
     // Must be called after successful compilation by the expression parser
     this.text = parser.expr;
@@ -216,7 +234,7 @@ class Expression {
     if(!this.compiled) this.compile();
     return this.is_static;
   }
-
+  
   trace(action) {
     // Adds step stack (if any) and action to the trace.
     if(DEBUGGING) {
@@ -343,7 +361,7 @@ class Expression {
     }
     return v[t];
   }
-  
+
   get asAttribute() {
     // Returns the result for the current time step if the model has been solved
     // (special values as human-readable string), or the expression as text
@@ -1604,8 +1622,9 @@ class VirtualMachine {
     this.attribute_names = {
       'LB':  'lower bound',
       'UB':  'upper bound',
-      'L':   'level',
       'IL':  'initial level',
+      'LCF': 'level change frequency',
+      'L':   'level',
       'P':   'price',
       'CP':  'cost price',
       'HCP': 'highest cost price',
@@ -1622,21 +1641,21 @@ class VirtualMachine {
     // NOTE: defaults are level (L), link flow (F), cluster cash flow (CF),
     // actor cash flow (CF); dataset value (no attribute)
     // NOTE: exogenous properties first, then the computed properties
-    this.process_attr = ['LB', 'UB', 'IL', 'L', 'CI', 'CO', 'CF', 'CP'];
+    this.process_attr = ['LB', 'UB', 'IL', 'LCF', 'L', 'CI', 'CO', 'CF', 'CP'];
     this.product_attr = ['LB', 'UB', 'IL', 'P', 'L', 'CP', 'HCP'];
     this.cluster_attr = ['CI', 'CO', 'CF'];
     this.link_attr = ['R', 'D', 'SOC', 'F'];
     this.constraint_attr = ['SOC', 'A'];
     this.actor_attr = ['W', 'CI', 'CO', 'CF'];
     // Only expression attributes can be used for sensitivity analysis
-    this.expression_attr = ['LB', 'UB', 'IL', 'P', 'R', 'W'];
+    this.expression_attr = ['LB', 'UB', 'IL', 'LCF', 'P', 'R', 'D', 'W'];
     // Attributes per entity type letter
     this.attribute_codes = {
       A: this.actor_attr,
       B: this.constraint_attr,
       C: this.cluster_attr,
-      D: ['D'],
-      E: ['X'],
+      D: ['DSM'], // ("dataset modifier" -- placeholder value, not used)
+      E: ['X'],   // ("expression" -- placeholder value, not used)
       L: this.link_attr,
       P: this.process_attr,
       Q: this.product_attr
@@ -2282,8 +2301,7 @@ class VirtualMachine {
     let l = '';
     for(let i = 0; i < vcnt; i++) {
       const obj = this.variables[i][1];
-      let v = (this.solver_name === 'lp_solve' ?
-               'C' + (i+1) : 'X' + (i+1).toString().padStart(z, '0'));
+      let v = 'X' + (i+1).toString().padStart(z, '0');
       v += '     '.slice(v.length) + obj.displayName;
       const p = (obj instanceof Process && obj.pace > 1 ? ' 1/' + obj.pace : '');
       l += v + ' [' + this.variables[i][0] + p + ']\n';
@@ -2297,8 +2315,7 @@ class VirtualMachine {
             obj = this.chunk_variables[i][1],
             // NOTE: chunk offset takes into account that indices are 0-based
             cvi = chof + i;
-        let v = (this.solver_name === 'lp_solve' ?
-                 'C' + cvi : 'X' + cvi.toString().padStart(z, '0'));
+        let v = 'X' + cvi.toString().padStart(z, '0');
         v += '     '.slice(v.length) + obj.displayName;
         l += v + ' [' + this.chunk_variables[i][0] + ']\n';
       }
@@ -3607,11 +3624,11 @@ class VirtualMachine {
     // simulation end time)
     const
         ncv = this.chunk_variables.length,
+        ncv_msg = (ncv ? ' minus ' + pluralS(ncv, 'singular variable') : ''),
         xratio = (x.length - ncv) / this.cols,
         xbl = Math.floor(xratio);
     if(xbl < xratio) console.log('ANOMALY: solution vector length', x.length,
-        'minus', ncv, 'singular variables is not a multiple of # columns',
-        this.cols);
+        ncv_msg + ' is not a multiple of # columns', this.cols);
     if(xbl < abl) {
       console.log('Cropping actual block length', abl,
           'to solved block length', xbl);
@@ -4257,13 +4274,42 @@ class VirtualMachine {
         (this.block_count - 1) * MODEL.block_length;
   }
   
-  writeLpSolveFormat() {
+  get columnsInBlock() {
+    // Returns the actual block length plus the number of chunk variables
+    return this.actualBlockLength * this.cols + this.chunk_variables.length;
+  }
+  
+  writeLpFormat(cplex=false) {
     // NOTE: actual block length `abl` of last block is likely to be
     // shorter than the standard, as it should not go beyond the end time
-    const abl = this.actualBlockLength;
+
+
+    const
+        abl = this.actualBlockLength,
+        // Get the number digits for variable names
+        z = this.columnsInBlock.toString().length,
+        // LP_solve uses semicolon as separator between equations
+        EOL = (cplex ? '\n' : ';\n'),
+        // Local function that returns variable symbol (e.g. X001) with
+        // its coefficient if specified (e.g., -0.123 X001) in the
+        // most compact notation
+        vbl = (index, c=false) => {
+            const v = 'X' + index.toString().padStart(z, '0');
+            if(c === false) return v; // Only the symbol
+            if(c === -1) return ` -${v}`; // No coefficient needed
+            if(c < 0) return ` ${c} ${v}`; // Number had minus sign
+            if(c === 1) return ` +${v}`; // No coefficient needed
+            return ` +${c} ${v}`; // Prefix coefficient with +
+            // NOTE: this may return  +0 X001
+          };
+
     this.numeric_issue = '';
     // First add the objective (always MAXimize)
-    this.lines = '/* Objective function */\nmax:\n';
+    if(cplex) {
+      this.lines = 'Maximize\n';
+    } else {
+      this.lines = '/* Objective function */\nmax:\n';
+    }
     let c,
         p,
         line = '';
@@ -4277,25 +4323,7 @@ class VirtualMachine {
           this.setNumericIssue(c, p, 'objective function coefficient');
           break;
         }
-        if(c === -1) {
-          // No coefficient needed
-          line += ' -C' + p;
-        } else if(c < 0) {
-          // Minus sign already included in c
-          line += ' ' + c + ' C' + p;
-        } else if (c === 1) {
-          // No coefficient needed
-          line += ' +C' + p;
-        } else {
-          // Prefix coefficient with + sign
-          // NOTE: do NOT check for near-zero -- see note below!
-          line += ' +' + c + ' C' + p; 
-        }
-      } else {
-        // Add variable with coefficient 0 to the objective
-        // NOTE: This may result in warnings by the solver; however, this is
-        // needed to maintain the variables in their order, so do not modify!
-        line += ' +0 C' + p;
+        line += vbl(p, c);
       }
       // Keep lines under approx. 110 chars
       if(line.length >= 100) {
@@ -4303,10 +4331,14 @@ class VirtualMachine {
         line = '';
       }
     }
-    this.lines += line + ';\n';
+    this.lines += line + EOL;
     line = '';
     // Add the row constraints
-    this.lines += '\n/* Constraints */\n';
+    if(cplex) {
+      this.lines += '\nSubject To\n';
+    } else {
+      this.lines += '\n/* Constraints */\n';
+    }
     n = this.matrix.length;
     for(let r = 0; r < n; r++) {
       const row = this.matrix[r];
@@ -4316,16 +4348,8 @@ class VirtualMachine {
           this.setNumericIssue(c, p, 'constraint coefficient');
           break;
         }
-        if(c === -1) {
-          line += ' -C' + p;
-        } else if(c < 0) {
-          line += ' ' + c + ' C' + p;
-        } else if (c === 1) {
-          line += ' +C' + p;
-        } else {
-          line += ' +' + c + ' C' + p; 
-        }
-        // Keep lines under approx. 80 chars
+        line += vbl(p, c);
+        // Keep lines under approx. 110 chars
         if(line.length >= 100) {
           this.lines += line + '\n';
           line = '';
@@ -4333,11 +4357,15 @@ class VirtualMachine {
       }
       c = this.right_hand_side[r];
       this.lines += line + ' ' +
-          this.constraint_symbols[this.constraint_types[r]] + ' ' + c + ';\n';
+          this.constraint_symbols[this.constraint_types[r]] + ' ' + c + EOL;
       line = '';
     }
     // Add the variable bounds
-    this.lines += '\n/* Variable bounds */\n';
+    if(cplex) {
+      this.lines += '\nBounds\n';
+    } else {
+      this.lines += '\n/* Variable bounds */\n';
+    }
     n = abl * this.cols;
     for(p = 1; p <= n; p++) {
       let lb = null,
@@ -4359,44 +4387,115 @@ class VirtualMachine {
       }
       line = '';
       if(lb === ub) {
-        if(lb !== null) line = 'C' + p + ' = ' + lb;
+        if(lb !== null) line = ` ${vbl(p)} = ${lb}`;
       } else {
-        line = 'C' + p;
         // NOTE: by default, lower bound of variables is 0
-        if(lb !== null && lb !== 0) line = lb + ' <= ' + line;
-        if(ub !== null) line += ' <= ' + ub;
+        line = ` ${vbl(p)}`;
+        if(cplex) {
+          // Explicitly denote free variables
+          if(lb === null && ub === null && !this.is_binary[p]) {
+            line += ' free';
+          } else {
+            // Separate lines for LB and UB if specified
+            if(ub !== null) line += ' <= ' + ub;
+            if(lb !== null && lb !== 0) line += `\n ${vbl(p)} >= ${lb}`;
+          }
+        } else {
+          // Bounds can be specified on a single line: lb <= X001 <= ub
+          if(lb !== null && lb !== 0) line = lb + ' <= ' + line;
+          if(ub !== null) line += ' <= ' + ub;
+        }
       }
-      if(line) this.lines += line + ';\n';
+      if(line) this.lines += line + EOL;
     }
     // Add the special variable types
-    const v_set = [];
-    // NOTE: for binary variables, add the constraint <= 1
-    for(let i in this.is_binary) if(Number(i)) {
-      this.lines += 'C' + i + ' <= 1;\n';
-      v_set.push('C' + i);
-    }
-    for(let i in this.is_integer) if(Number(i)) v_set.push('C' + i);
-    if(v_set.length > 0) this.lines += 'int ' + v_set.join(', ') + ';\n';
-    // Clear the INT variable list
-    v_set.length = 0;
-    // Add the semi-continuous variables
-    for(let i in this.is_semi_continuous) if(Number(i)) v_set.push('C' + i);
-    if(v_set.length > 0) this.lines += 'sec ' + v_set.join(', ') + ';\n';
-    // Add the SOS section
-    if(this.sos_var_indices.length > 0) {
-      this.lines += 'sos\n';
-      let sos = 1;
-      for(let j = 0; j < abl; j++) {
-        for(let i = 0; i < this.sos_var_indices.length; i++) {
-          v_set.length = 0;
-          let vi = this.sos_var_indices[i][0] + j * this.cols;
-          const n = this.sos_var_indices[i][1];
-          for(let j = 1; j <= n; j++)  {
-            v_set.push('C' + vi);
-            vi++;
+    if(cplex) {
+      line = '';
+      let scv = 0;
+      for(let i in this.is_binary) if(Number(i)) {
+        line += ' ' + vbl(i);
+        scv++;
+        // Max. 10 variables per line
+        if(scv >= 10) line += '\n';
+      }
+      if(scv) {
+        this.lines += `Binary\n${line}\n`;
+        line = '';
+        scv = 0;
+      }
+      for(let i in this.is_integer) if(Number(i)) {
+        line += ' ' + vbl(i);
+        scv++;
+        // Max. 10 variables per line
+        if(scv >= 10) line += '\n';
+      }
+      if(scv) {
+        this.lines += `General\n${line}\n`;
+        line = '';
+        scv = 0;
+      }
+      for(let i in this.is_semi_continuous) if(Number(i)) {
+        line += ' '+ vbl(i);
+        scv++;
+        // Max. 10 variables per line
+        if(scv >= 10) line += '\n';
+      }
+      if(scv) {
+        this.lines += `Semi-continuous\n${line}\n`;
+        line = '';
+        scv = 0;
+      }
+      if(this.sos_var_indices.length > 0) {
+        this.lines += 'SOS\n';
+        let sos = 0;
+        const v_set = [];
+        for(let j = 0; j < abl; j++) {
+          for(let i = 0; i < this.sos_var_indices.length; i++) {
+            v_set.length = 0;
+            let vi = this.sos_var_indices[i][0] + j * this.cols;
+            const n = this.sos_var_indices[i][1];
+            for(let j = 1; j <= n; j++)  {
+              v_set.push(`${vbl(vi)}:${j}`);
+              vi++;
+            }
+            this.lines += ` s${sos}: S2:: ${v_set.join(' ')}\n`;
+            sos++;
           }
-          this.lines += `SOS${sos}: ${v_set.join(',')} <= 2;\n`;
-          sos++;
+        }
+      }
+      this.lines += 'End';
+    } else {
+      // NOTE: LP_solve does not differentiate between binary and integer,
+      // so for binary variables, the constraint <= 1 must be added
+      const v_set = [];
+      for(let i in this.is_binary) if(Number(i)) {
+        const v = vbl(i);
+        this.lines += `${v} <= 1;\n`;
+        v_set.push(v);
+      }
+      for(let i in this.is_integer) if(Number(i)) v_set.push(vbl(i));
+      if(v_set.length > 0) this.lines += 'int ' + v_set.join(', ') + ';\n';
+      // Clear the INT variable list
+      v_set.length = 0;
+      // Add the semi-continuous variables
+      for(let i in this.is_semi_continuous) if(Number(i)) v_set.push(vbl(i));
+      if(v_set.length > 0) this.lines += 'sec ' + v_set.join(', ') + ';\n';
+      // Add the SOS section
+      if(this.sos_var_indices.length > 0) {
+        this.lines += 'sos\n';
+        let sos = 1;
+        for(let j = 0; j < abl; j++) {
+          for(let i = 0; i < this.sos_var_indices.length; i++) {
+            v_set.length = 0;
+            let vi = this.sos_var_indices[i][0] + j * this.cols;
+            const n = this.sos_var_indices[i][1];
+            for(let j = 1; j <= n; j++)  {
+              v_set.push(vbl(vi));
+              vi++;
+            }
+            this.lines += `SOS${sos}: ${v_set.join(',')} <= 2;\n`;
+            sos++;
+          }
         }
       }
     }
@@ -4485,7 +4584,16 @@ class VirtualMachine {
     this.lines += 'COLUMNS\n';
     for(c = 1; c <= ncol; c++) {
       const col_lbl = '    X' + c.toString().padStart(this.decimals, '0') + '  ';
-      this.lines += col_lbl + cols[c].join('\n' + col_lbl) + '\n';
+      // NOTE: if processes have no in- or outgoing links their decision
+      // variable does not occur in any constraint, and this may cause
+      // problems for solvers that cannot handle columns having a blank
+      // row name (e.g., CPLEX). To prevent errors, these columns are
+      // given coefficient 0 in the OBJ row
+      if(cols[c].length) {
+        this.lines += col_lbl + cols[c].join('\n' + col_lbl) + '\n';
+      } else {
+        this.lines += col_lbl + ' OBJ 0\n';
+      }
     }
     // Free up memory
     cols.length = 0;
@@ -4537,7 +4645,7 @@ class VirtualMachine {
         }
       }
       bnd = ' BND  X' + p.toString().padStart(this.decimals, '0') + '  ';
-      /* MPS format bound types:
+      /* Gurobi uses these MPS format bound types:
           LO 	lower bound
           UP 	upper bound
           FX 	variable is fixed at the specified value
@@ -4617,12 +4725,14 @@ class VirtualMachine {
   }
   
   get noSolutionStatus() {
-    // Returns set of status codes that sindicate that solver did not return
+    // Returns set of status codes that indicate that solver did not return
     // a solution (so look-ahead should be conserved)
     if(this.solver_name === 'lp_solve') {
       return [-2, 2, 6];
     } else if(this.solver_name === 'gurobi') {
       return [1, 3, 4, 6, 11, 12, 14];
+    } else if(this.solver_name === 'scip') {
+      return [];
     } else {
       return [];
     }
@@ -4780,10 +4890,15 @@ Solver status = ${json.status}`);
       this.show_progress = false;
     }
     // Generate lines of code in format that should be accepted by solver
-    if(this.solver_name === 'lp_solve') {
-      this.writeLpSolveFormat();
-    } else if(this.solver_name === 'gurobi') {
+    if(this.solver_name === 'gurobi') {
       this.writeMPSFormat();
+    } else if(this.solver_name === 'scip' || this.solver_name === 'cplex') {
+      // NOTE: the CPLEX LP format that is also used by SCIP differs from
+      // the LP_solve format that was used by the first versions of Linny-R;
+      // TRUE indicates "CPLEX format"
+      this.writeLpFormat(true);
+    } else if(this.solver_name === 'lp_solve') {
+      this.writeLpFormat(false);
     } else {
       this.numeric_issue = 'solver name: ' + this.solver_name;
     }

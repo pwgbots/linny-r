@@ -4053,6 +4053,7 @@ span.sd-clear {
   height: 111px;
 }
 
+#paste-dlg,
 #include-dlg {
   width: 320px;
   height: min-content;
@@ -4078,6 +4079,7 @@ span.sd-clear {
   margin-left: 9px;
 }
 
+#paste-scroll-area,
 #include-scroll-area {
   margin: 2px;
   height: min-content;
@@ -4086,6 +4088,60 @@ span.sd-clear {
   border-top: none;
   overflow-x: hidden;
   overflow-y: auto;
+}
+
+div.paste-tactic {
+  display: inline-block;
+  vertical-align: top;
+  padding-top: 3px;
+}
+
+div.paste-select::before {
+  content: ' \1F872';
+  margin-right: 3px;
+}
+
+div.paste-select {
+  display: inline-block;
+  font-size: 12px;
+  max-width: calc(100% - 25px);
+  margin: 2px;
+}
+
+#paste-prefix,
+#paste-actor {
+  width: 150px;
+  font-size: 12px;
+  height: 17px !important;
+  margin-left: 1px;
+}
+
+#paste-from-prefix,
+#paste-to-prefix,
+#paste-from-actor,
+#paste-to-actor {
+  max-width: 220px;
+  overflow: clip;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#paste-from-prefix {
+  color: #6060c0;
+}
+
+#paste-to-prefix {
+  color: #0000c0;
+}
+
+#paste-from-actor {
+  font-style: italic;
+  color: #8050a0;
+}
+
+#paste-to-actor {
+  font-style: italic;
+  color: #600080;
 }
 
 tr.i-param {

@@ -2804,7 +2804,65 @@ where X can be one or several of these letters: ABCDELPQ">
       </div>
     </div>
   </div>
-  
+
+  <!-- the PASTE dialog prompts for a prefix and parameter bindings -->
+  <div id="paste-modal" class="modal">
+    <div id="paste-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Name conflict resolution strategy
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div id="paste-ftp" class="paste-option">
+        <div id="paste-ftp-box" class="box checked"></div>
+        <div class="paste-tactic">
+          Change <span id="paste-from-prefix"></span>&hellip;
+          to <span id="paste-to-prefix"></span>&hellip;
+        </div>
+      </div>
+      <div id="paste-fta" class="paste-option">
+        <div id="paste-fta-box" class="box checked"></div>
+        <div class="paste-tactic">
+          Change actor <span id="paste-from-actor"></span>
+          to <span id="paste-to-actor"></span>
+        </div>
+      </div>
+      <div class="paste-option">
+        <div id="paste-a-box" class="box checked"></div>
+        <div class="paste-tactic">
+          <label>If no actor, add:</label>
+          <input id="paste-actor" type="text"
+                 placeholder="(no actor)" autocomplete="off">
+        </div>
+      </div>
+      <div class="paste-option">
+        <div id="paste-p-box" class="box checked"></div>
+        <div class="paste-tactic">
+          <label>Add prefix:</label>
+          <input id="paste-prefix" type="text"
+                 placeholder="(none)" autocomplete="off">
+        </div>
+      </div>
+      <div class="paste-option">
+        <div id="paste-inc-box" class="box checked"></div>
+        <div class="paste-tactic">
+          Auto-increment tail number
+        </div>
+      </div>
+      <div class="paste-option">
+        <div id="paste-near-box" class="box checked"></div>
+        <div class="paste-tactic">
+          Link to nearest eligible node
+        </div>
+      </div>
+      <div style="font-weight: bold; margin:4px 2px 2px 2px">
+        Mapping of nodes to link from/to:
+      </div>
+      <div id="paste-scroll-area">
+      </div>
+    </div>
+  </div>  
+
   <!--- rotating Linny-R logo icon -->
   <div id="rotating-icon">
     <div>

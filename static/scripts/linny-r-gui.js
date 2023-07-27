@@ -3237,6 +3237,14 @@ class GUIController extends Controller {
     this.modals.replace.cancel.addEventListener('click',
         () => UI.modals.replace.hide());
     
+    // The PASTE dialog appears when name conflicts must be resolved
+    this.paste_modal = new ModalDialog('paste');
+    this.paste_modal.ok.addEventListener('click',
+        () => UI.setPasteMapping());
+    this.paste_modal.cancel.addEventListener('click',
+        () => UI.paste_modal.hide());
+    
+    // The CHECK UPDATE dialog appears when a new version is detected
     this.check_update_modal = new ModalDialog('check-update');
     this.check_update_modal.ok.addEventListener('click',
         () => UI.shutDownServer());
@@ -5231,7 +5239,6 @@ class GUIController extends Controller {
   copySelection() {
     // Save selection as XML in local storage of the browser
     const xml = MODEL.selectionAsXML;
-//console.log('HERE copy xml', xml);
     if(xml) {
       window.localStorage.setItem('Linny-R-selection-XML', xml);
       this.updateButtons();
@@ -5252,15 +5259,333 @@ class GUIController extends Controller {
     return false;
   }
   
-  pasteSelection() {
+  promptForMapping(mapping) {
+    // Prompt user to specify name conflict resolution strategy
+    console.log('HERE prompt for mapping', mapping);
+    const md = this.paste_modal;
+    md.mapping = mapping;
+    md.element('from-prefix').innerText = mapping.from_prefix || '';
+    md.element('to-prefix').innerText = mapping.to_prefix || '';
+    md.element('ftp').style.display = (mapping.from_prefix ? 'block' : 'none');
+    md.element('from-actor').innerText = mapping.from_actor || '';
+    md.element('to-actor').innerText = mapping.to_actor || '';
+    md.element('fta').style.display = (mapping.from_actor ? 'block' : 'none');
+    md.element('actor').value = mapping.actor || '';
+    md.element('prefix').value = mapping.prefix || '';
+    const
+        ft = Object.keys(mapping.from_to).sort(ciCompare),
+        sl = [];
+    if(ft.length) {
+      // Add selectors for unresolved FROM/TO nodes
+      for(let i = 0; i < ft.length; i++) {
+        const ti = mapping.from_to[ft[i]];
+        if(ft[i] === ti) {
+          sl.push('<div class="paste-option"><span>', ft[i], '</span> ',
+              '<div class="paste-select"><select id="paste-ft-', i,
+              '" style="font-size: 12px"><option value="', ti, '">', ti,
+              '</option></select></div></div>');
+        }
+      }
+      md.element('scroll-area').innerHTML = sl.join('');
+    }
+    // Open dialog, which will call pasteSelection(...) on OK
+    this.paste_modal.show();
+  }
+  
+  setPasteMapping() {
+    // Updates the paste mapping as specified by the modeler and then
+    // proceeds to paste
+    const
+        md = this.paste_modal,
+        mapping = Object.assign(md.mapping, {});
+    mapping.actor = md.element('actor').value;
+    mapping.prefix = md.element('prefix').value.trim();
+    mapping.increment = true;
+    this.pasteSelection(mapping);
+  }
+  
+  pasteSelection(mapping={}) {
     // If selection has been saved as XML in local storage, test to
     // see whether PASTE would result in name conflicts, and if so,
     // open the name conflict resolution window
-    const xml = window.localStorage.getItem('Linny-R-selection-XML');
-    if(xml) {
-      // @@ TO DO!
-      this.notify('Paste not implemented yet -- WORK IN PROGRESS!');
+    let xml = window.localStorage.getItem('Linny-R-selection-XML');
+console.log('HERE xml', xml);
+    try {
+      xml = parseXML(xml);
+    } catch(e) {
+      console.log(e);
+      this.alert('Paste failed due to invalid XML');
+      return;
     }
+
+    // For now, while still implementing:
+    this.notify('Paste not fully implemented yet -- WORK IN PROGRESS!');
+
+    const
+        entities_node = childNodeByTag(xml, 'entities'),
+        from_tos_node = childNodeByTag(xml, 'from-tos'),
+        extras_node = childNodeByTag(xml, 'extras'),
+        selection_node = childNodeByTag(xml, 'selection'),
+        actor_names = [],
+        new_entities = [],
+        name_map = {},
+        name_conflicts = [];
+            
+    // AUXILIARY FUNCTIONS
+    
+    function fullName(node) {
+      // Returns full entity name inferred from XML node data
+      if(node.nodeName === 'from-to') {
+        const
+            n = xmlDecoded(nodeParameterValue(node, 'name')),
+            an = xmlDecoded(nodeParameterValue(node, 'actor-name'));
+        if(an && an !== UI.NO_ACTOR) {
+          addDistinct(an, actor_names);
+          return `${n} (${an})`;
+        }
+        return n;
+      }
+      if(node.nodeName !== 'link' && node.nodeName !== 'constraint') {
+        const
+            n = xmlDecoded(nodeContentByTag(node, 'name')),
+            an = xmlDecoded(nodeContentByTag(node, 'actor-name'));
+        if(an && an !== UI.NO_ACTOR) {
+          addDistinct(an, actor_names);
+          return `${n} (${an})`;
+        }
+        return n;
+      } else {
+        let fn = xmlDecoded(nodeContentByTag(node, 'from-name')),
+            fa = xmlDecoded(nodeContentByTag(node, 'from-owner')),
+            tn = xmlDecoded(nodeContentByTag(node, 'to-name')),
+            ta = xmlDecoded(nodeContentByTag(node, 'to-owner')),
+            arrow = (node.nodeName === 'link' ? UI.LINK_ARROW : UI.CONSTRAINT_ARROW);
+        if(fa && fa !== UI.NO_ACTOR) {
+          addDistinct(fa, actor_names);
+          fn = `${fn} (${fa})`;
+        }
+        if(ta && ta !== UI.NO_ACTOR) {
+          addDistinct(ta, actor_names);
+          tn = `${tn} (${ta})`;
+        }
+        return `${fn}${arrow}${tn}`;
+      }
+    }
+    
+    function nameAndActor(name) {
+      // Returns tuple [entity name, actor name] if `name` ends with
+      // a parenthesized string that identifies an actor in the selection
+      const ai = name.lastIndexOf(' (');
+      if(ai < 0) return [name, ''];
+      let actor = name.slice(ai + 2, -1);
+      // Test whether parenthesized string denotes an actor
+      if(actor_names.indexOf(actor) >= 0 || actor === mapping.actor ||
+          actor === mapping.from_actor || actor === mapping.to_actor) {
+        name = name.substring(0, ai);
+      } else {
+        actor = '';
+      }
+      return [name, actor];
+    }
+
+    function mappedName(n) {
+      // Returns full name `n` modified according to the mapping
+      // NOTE: links and constraints require two mappings (recursion!)
+      if(n.indexOf(UI.LINK_ARROW) > 0) {
+        const ft = n.split(UI.LINK_ARROW);
+        return mappedName(ft[0]) + UI.LINK_ARROW + mappedName(ft[1]);
+      }
+      if(n.indexOf(UI.CONSTRAINT_ARROW) > 0) {
+        const ft = n.split(UI.CONSTRAINT_ARROW);
+        return mappedName(ft[0]) + UI.CONSTRAINT_ARROW + mappedName(ft[1]);
+      }
+      // Mapping precedence order:
+      // (1) prefix inherited from cluster
+      // (2) actor name inherited from cluster
+      // (3) actor name specified by modeler
+      // (4) prefix specified by modeler
+      // (5) auto-increment tail number
+      // (6) nearest eligible node
+      if(mapping.from_prefix && n.startsWith(mapping.from_prefix)) {
+        return n.replace(mapping.from_prefix, mapping.to_prefix);
+      }
+      if(mapping.from_actor) {
+        const ai = n.lastIndexOf(mapping.from_actor);
+        if(ai > 0) return n.substring(0, ai) + mapping.to_actor;
+      }
+      // NOTE: specified actor cannot override existing actor
+      if(mapping.actor && !nameAndActor(n)[1]) {
+        return `${n} (${mapping.actor})`;
+      }
+      if(mapping.prefix) {
+        return mapping.prefix + UI.PREFIXER + n;
+      }
+      let nr = endsWithDigits(n);
+      if(mapping.increment && nr) {
+        return n.replace(new RegExp(nr + '$'), parseInt(nr) + 1);
+      }
+      // No mapping => return original name
+      return n;
+    }
+
+    function nameConflicts(node) {
+      // Maps names of entities defined by the child nodes of `node`
+      // while detecting name conflicts
+      for(let i = 0; i < node.childNodes.length; i++) {
+        const c = node.childNodes[i];
+        if(c.nodeName !== 'link' && c.nodeName !== 'constraint') {
+          const
+              fn = fullName(c),
+              mn = mappedName(fn);
+          // Name conflict occurs when the mapped name is already in use
+          // in the target model, or when the original name is mapped onto
+          // different names (this might occur due to modeler input)
+          if(MODEL.objectByName(mn) || (name_map[fn] && name_map[fn] !== mn)) {
+            addDistinct(fn, name_conflicts);
+          } else {
+            name_map[fn] = mn;
+          }
+        }
+      }
+    }
+    
+    function addEntityFromNode(node) {
+      // Adds entity to model based on XML node data and mapping
+      // NOTE: do not add if an entity having this type and mapped name
+      // already exists; name conflicts accross entity types may occur
+      // and result in error messages
+      const
+          et = node.nodeName,
+          fn = fullName(node),
+          mn = mappedName(fn);
+      let obj;
+      if(et === 'process' && !MODEL.processByID(UI.nameToID(mn))) {
+        const
+           na = nameAndActor(mn),
+           new_actor = !MODEL.actorByID(UI.nameToID(na[1]));
+        obj = MODEL.addProcess(na[0], na[1], node);
+        if(obj) {
+          obj.code = '';
+          obj.setCode();
+          if(new_actor) new_entities.push(obj.actor);
+          new_entities.push(obj);
+        }
+      } else if(et === 'product' && !MODEL.productByID(UI.nameToID(mn))) {
+        obj = MODEL.addProduct(mn, node);
+        if(obj) {
+          obj.code = '';
+          obj.setCode();
+          new_entities.push(obj);
+        }
+      } else if(et === 'cluster' && !MODEL.clusterByID(UI.nameToID(mn))) {
+        const
+           na = nameAndActor(mn),
+           new_actor = !MODEL.actorByID(UI.nameToID(na[1]));
+        obj = MODEL.addCluster(na[0], na[1], node);
+        if(obj) {
+          if(new_actor) new_entities.push(obj.actor);
+          new_entities.push(obj);
+        }
+      } else if(et === 'dataset' && !MODEL.datasetByID(UI.nameToID(mn))) {
+        obj = MODEL.addDataset(mn, node);
+        if(obj) new_entities.push(obj);
+      } else if(et === 'link' || et === 'constraint') {
+        const
+            ft = mn.split(et === 'link' ? UI.LINK_ARROW : UI.CONSTRAINT_ARROW),
+            fl = MODEL.objectByName(ft[0]),
+            tl = MODEL.objectByName(ft[1]);
+        if(fl && tl) {
+          obj = (et === 'link' ?
+              MODEL.addLink(fl, tl, node) :
+              MODEL.addConstraint(fl, tl, node));
+          if(obj) new_entities.push(obj);
+        } else {
+          UI.alert(`Failed to paste ${et} ${fn} as ${mn}`);
+        }
+      }
+    }
+    
+    const
+        mts = nodeParameterValue(xml, 'model-timestamp'),
+        cn = nodeParameterValue(xml, 'cluster-name'),
+        ca = nodeParameterValue(xml, 'cluster-actor'),
+        fc = MODEL.focal_cluster,
+        fcn = fc.name,
+        fca = fc.actor.name,
+        sp = this.sharedPrefix(cn, fcn),
+        fpn = (cn === UI.TOP_CLUSTER_NAME ? '' : cn.replace(sp, '')),
+        tpn = (fcn === UI.TOP_CLUSTER_NAME ? '' : fcn.replace(sp, ''));
+    // Infer mapping from XML data and focal cluster name & actor name 
+    mapping.shared_prefix = sp;
+    mapping.from_prefix = (fpn ? sp + fpn + UI.PREFIXER : sp);
+    mapping.to_prefix = (tpn ? sp + tpn + UI.PREFIXER : sp);
+    mapping.from_actor = (ca === UI.NO_ACTOR ? '' : ca);
+    mapping.to_actor = (fca === UI.NO_ACTOR ? '' : fca);
+    // Prompt for mapping when pasting to the same model and cluster
+    if(parseInt(mts) === MODEL.time_created.getTime() &&
+        ca === fca && mapping.from_prefix === mapping.to_prefix &&
+        !(mapping.prefix || mapping.actor || mapping.increment)) {
+      this.promptForMapping(mapping);
+      return;
+    }
+    // Also prompt if FROM and/or TO nodes are not selected, and map to
+    // existing entities
+    if(from_tos_node.childNodes.length && !mapping.from_to) {
+      const ft_map = {};
+      for(let i = 0; i < from_tos_node.childNodes.length; i++) {
+        const
+            c = from_tos_node.childNodes[i],
+            fn = fullName(c),
+            mn = mappedName(fn);
+        if(MODEL.objectByName(mn)) ft_map[fn] = mn;
+      }
+      // Prompt only for FROM/TO nodes that map to existing nodes
+      if(Object.keys(ft_map).length) {
+        mapping.from_to = ft_map;
+        this.promptForMapping(mapping);
+        return;
+      }
+    }
+
+    // Only check for selected entities and from-to's; extra's should be
+    // used if they exist, or should be created when copying to a different
+    // model
+    name_map.length = 0;
+    nameConflicts(entities_node);
+    nameConflicts(from_tos_node);
+    if(name_conflicts.length) {
+      UI.notify(pluralS(name_conflicts.length, 'name conflict'));
+console.log('HERE name conflicts', name_conflicts);
+      return;
+    }
+    
+    // No conflicts => add all
+console.log('HERE name map', name_map);
+    for(let i = 0; i < extras_node.childNodes.length; i++) {
+      addEntityFromNode(extras_node.childNodes[i]);
+    }
+    for(let i = 0; i < from_tos_node.childNodes.length; i++) {
+      addEntityFromNode(from_tos_node.childNodes[i]);
+    }
+    for(let i = 0; i < entities_node.childNodes.length; i++) {
+      addEntityFromNode(entities_node.childNodes[i]);
+    }
+    // Update diagram, showing newly added nodes as selection
+    MODEL.clearSelection();
+    for(let i = 0; i < selection_node.childNodes.length; i++) {
+      const
+          n = xmlDecoded(nodeContent(selection_node.childNodes[i])),
+          obj = MODEL.objectByName(mappedName(n));
+      if(obj) {
+        // NOTE: selected products must be positioned
+        if(obj instanceof Product) MODEL.focal_cluster.addProductPosition(obj);
+        MODEL.select(obj);
+      }
+    }
+    // Force redrawing the selection to ensure that links to positioned
+    // products are displayed as arrows instead of block arrows
+    fc.clearAllProcesses();
+    UI.drawDiagram(MODEL);
   }
   
   //
@@ -6235,6 +6560,7 @@ UI.logHeapSize(`BEFORE creating post data`);
             token: VM.solver_token,
             block: VM.block_count,
             round: VM.round_sequence[VM.current_round],
+            columns: VM.columnsInBlock,
             data: VM.lines,
             timeout: top
           });
@@ -7687,7 +8013,9 @@ class ActorManager {
         xp = new ExpressionParser(x);
     if(n !== UI.NO_ACTOR) {
       nn = this.actor_name.value.trim();
-      if(!UI.validName(nn)) {
+      // NOTE: prohibit colons in actor names to avoid confusion with
+      // prefixed entities
+      if(!UI.validName(nn) || nn.indexOf(':') >= 0) {
         UI.warn(UI.WARNING.INVALID_ACTOR_NAME);
         return false;
       }
