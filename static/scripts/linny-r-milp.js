@@ -82,6 +82,27 @@ module.exports = class MILPSolver {
        14: 'Optimization still in progress',
        15: 'User-specified objective limit has been reached'
       };
+    } else if(this.id === 'cplex') {
+      this.ext = '.lp';
+      this.user_model = path.join(workspace.solver_output, 'usr_model.lp');
+      this.solver_model = path.join(workspace.solver_output, 'solver_model.lp');
+      this.solution = path.join(workspace.solver_output, 'model.sol');
+      // NOTE: CPLEX log file is located in the Linny-R working directory
+      this.log = path.join(workspace.solver_output, 'cplex.log');
+      // NOTE: CPLEX command line accepts space separated commands ...
+      this.args = [
+          'read ' + this.user_model,
+          'write ' + this.solver_model + ' lp',
+          'set timelimit 300',
+          'optimize',
+          'write ' + this.solution + ' 0',
+          'quit'
+        ];
+      // ... when CPLEX is called with -c option; then each command must be
+      // enclosed in double quotes; SCIP outputs its messages to a log file
+      // terminal, so these must be caputured in a log file
+      this.solve_cmd = 'cplex -c "' + this.args.join('" "') + '"';
+      this.errors = {};
     } else if(this.id === 'scip') {
       this.ext = '.lp';
       this.user_model = path.join(workspace.solver_output, 'usr_model.lp');
@@ -217,6 +238,18 @@ module.exports = class MILPSolver {
           this.args[0] = 'TimeLimit=' + timeout;
           const options = {windowsHide: true};
           spawn = child_process.spawnSync(this.solver_path, this.args, options);
+        } else if(this.id === 'cplex') {          
+          // Delete previous solver model file (if any)
+          try {
+            if(this.solver_model) fs.unlinkSync(this.solver_model);
+          } catch(err) {
+            // Ignore error
+          }
+          // Spawn using the LP_solve approach
+          const
+              cmd = this.solve_cmd.replace(/timelimit \d+/, `timelimit ${timeout}`),
+              options = {shell: true, cwd: 'user/solver', stdio: 'ignore', windowsHide: true};
+          spawn = child_process.spawnSync(cmd, options);
         } else if(this.id === 'scip') {          
           // When using SCIP, take the LP_solve approach
           const
@@ -311,6 +344,64 @@ module.exports = class MILPSolver {
           result.error = 'No solution found';
         }
       }
+    } else if(this.id === 'cplex') {
+      result.seconds = 0;
+      const
+          msg = fs.readFileSync(this.log, 'utf8'),
+          no_license = (msg.indexOf('No license found') >= 0);
+      // `messages` must be an array of strings
+      result.messages = msg.split(os.EOL);
+      let solved = false,
+          output = [];
+      if(no_license) {
+        result.error = 'Too many variables for unlicensed CPLEX solver';
+        result.status = -13;
+      } else if(result.status !== 0) {
+        // Non-zero solver exit code indicates serious trouble
+        result.error = 'CPLEX solver terminated with error';
+        result.status = -13;
+      } else {
+        try {
+          output = fs.readFileSync(this.solution, 'utf8').trim();
+          if(output.indexOf('CPLEXSolution') >= 0) {
+            solved = true;
+            output = output.split(os.EOL);
+          }
+        } catch(err) {
+          console.log('No CPLEX solution file');
+        }
+      }
+      if(solved) {
+        // CPLEX saves solution as XML, but for now just extract the
+        // status and then the variables
+        let i = 0;
+        while(i < output.length) {
+          const s = output[i].split('"');
+          if(s[0].indexOf('objectiveValue') >= 0) {
+            result.obj = s[1];
+          } else if(s[0].indexOf('solutionStatusValue') >= 0) {
+            result.status = s[1];
+          } else if(s[0].indexOf('solutionStatusString') >= 0) {
+            result.error = s[1];
+            break;
+          }
+          i++;
+        }
+        if(['1', '101', '102'].indexOf(result.status) >= 0) {
+          result.status = 0;
+          result.error = '';
+        }
+        // Fill dictionary with variable name: value entries 
+        while(i < output.length) {
+          const m = output[i].match(/^.*name="(X[^"]+)".*value="([^"]+)"/);
+          if(m !== null)  x_dict[m[1]] = m[2];
+          i++;
+        }
+        // Fill the solution vector, adding 0 for missing columns
+        getValuesFromDict();
+      } else {
+        console.log('No solution found');
+      }
     } else if(this.id === 'scip') {
       result.seconds = 0;
       // `messages` must be an array of strings
@@ -332,19 +423,21 @@ module.exports = class MILPSolver {
           const m = result.messages[i];
           if(m.startsWith('SCIP Status')) {
             if(m.indexOf('problem is solved') >= 0) {
-              solved = true;
+              if(m.indexOf('infeasible') >= 0) {
+                result.status = (m.indexOf('unbounded') >= 0 ? 14 : 12);
+              } else if(m.indexOf('unbounded') >= 0) {
+                result.status = 13;
+              } else {
+                solved = true;
+              }
             } else if(m.indexOf('interrupted') >= 0) {
               if(m.indexOf('time limit') >= 0) {
                 result.status = 5;
               } else if(m.indexOf('memory limit') >= 0) {
                 result.status = 6;
-              } else if(m.indexOf('infeasible') >= 0) {
-                result.status = (m.indexOf('unbounded') >= 0 ? 14 : 12);
-              } else if(m.indexOf('unbounded') >= 0) {
-                result.status = 13;
               }
-              result.error = this.errors[result.status];
             }
+            if(result.status) result.error = this.errors[result.status];
           } else if (m.startsWith('Solving Time')) {
             result.seconds = parseFloat(m.split(':')[1]);
           }

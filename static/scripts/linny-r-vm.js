@@ -2249,7 +2249,7 @@ class VirtualMachine {
     }
     // NOTES:
     // (1) Processes have NO slack variables, because sufficient slack is
-    //     provided by addinng slack variables to products; these slack
+    //     provided by adding slack variables to products; these slack
     //     variables will have high cost penalty values in the objective
     //     function, to serve as "last resort" to still obtain a solution when
     //     the "real" product levels are overconstrained
@@ -2352,7 +2352,7 @@ class VirtualMachine {
         }
       }
       // Likewise get the upper bound
-      if(p.equal_bounds) {
+      if(p.equal_bounds && p.lower_bound.defined) {
         u = l;
       } else if(p.upper_bound.defined) {
         if(p.upper_bound.isStatic) {
@@ -2575,9 +2575,9 @@ class VirtualMachine {
       // efficient, while cash flows are inferred properties and will not
       // result in an "unbounded problem" error message from the solver
       this.code.push(
-          [VMI_set_const_bounds, [a.cash_in_var_index,
+          [VMI_set_bounds, [a.cash_in_var_index,
               VM.MINUS_INFINITY, VM.PLUS_INFINITY, true]],
-          [VMI_set_const_bounds, [a.cash_out_var_index,
+          [VMI_set_bounds, [a.cash_out_var_index,
               VM.MINUS_INFINITY, VM.PLUS_INFINITY, true]]
       );
     }
@@ -2590,18 +2590,17 @@ class VirtualMachine {
       if(!MODEL.ignored_entities[k]) {
         p = MODEL.processes[k];
         lbx = p.lower_bound;
-        ubx = (p.equal_bounds ? lbx : p.upper_bound);
+        // NOTE: if UB = LB, set UB to LB only if LB is defined,
+        // because LB expressions default to -INF while UB expressions
+        // default to + INF
+        ubx = (p.equal_bounds && lbx.defined ? lbx : p.upper_bound);
+        if(lbx.isStatic) lbx = lbx.result(0);
+        if(ubx.isStatic) ubx = ubx.result(0);
         // NOTE: pass TRUE as fourth parameter to indicate that +INF
         // and -INF can be coded as the infinity values used by the
         // solver, rather than the Linny-R values used to detect
         // unbounded problems
-        if(lbx.isStatic && ubx.isStatic) {
-          this.code.push([VMI_set_const_bounds,
-              [p.level_var_index, lbx.result(0), ubx.result(0), true]]);
-        } else {
-          this.code.push([VMI_set_var_bounds,
-              [p.level_var_index, lbx, ubx, true]]);
-        }
+        this.code.push([VMI_set_bounds, [p.level_var_index, lbx, ubx, true]]);
         // Add level variable index to "fixed" list for specified rounds
         const rf = p.actor.round_flags;
         if(rf != 0) {
@@ -2629,17 +2628,17 @@ class VirtualMachine {
           // If no slack, the bound constraints can be set on the
           // variables themselves
           lbx = p.lower_bound;
-          ubx = (p.equal_bounds ? lbx : p.upper_bound);
-          if(lbx.isStatic && ubx.isStatic) {
-            this.code.push([VMI_set_const_bounds,
-                [vi, lbx.result(0), ubx.result(0)]]);
-          } else {
-            this.code.push([VMI_set_var_bounds, [vi, lbx, ubx]]);
-          }
+          // NOTE: if UB = LB, set UB to LB only if LB is defined,
+          // because LB expressions default to -INF while UB expressions
+          // default to + INF
+          ubx = (p.equal_bounds && lbx.defined ? lbx : p.upper_bound);
+          if(lbx.isStatic) lbx = lbx.result(0);
+          if(ubx.isStatic) ubx = ubx.result(0);
+          this.code.push([VMI_set_bounds, [vi, lbx, ubx]]);
         } else {
           // Otherwise, set bounds of stock variable to -INF and +INF,
           // as product constraints will be added later on
-          this.code.push([VMI_set_const_bounds,
+          this.code.push([VMI_set_bounds,
               [vi, VM.MINUS_INFINITY, VM.PLUS_INFINITY]]);
         }
       }
@@ -3224,7 +3223,7 @@ class VirtualMachine {
         // To deal with this, the default equations will NOT be set when UB <= 0,
         // while the "exceptional" equations (q.v.) will NOT be set when UB > 0.
         // This can be realized using a special VM instruction:
-        ubx = (p.equal_bounds && p.lower_bound.text ? p.lower_bound : p.upper_bound);
+        ubx = (p.equal_bounds && p.lower_bound.defined ? p.lower_bound : p.upper_bound);
         this.code.push([VMI_set_add_constraints_flag, [ubx, '>', 0]]);
 
         // NOTE: if UB <= 0 the following constraints will be prepared but NOT added   
@@ -4731,8 +4730,6 @@ class VirtualMachine {
       return [-2, 2, 6];
     } else if(this.solver_name === 'gurobi') {
       return [1, 3, 4, 6, 11, 12, 14];
-    } else if(this.solver_name === 'scip') {
-      return [];
     } else {
       return [];
     }
@@ -6446,8 +6443,8 @@ from) the k'th coefficient.
 
 */
 
-function VMI_set_const_bounds(args) {
-  // `args`: [var_index, number, number]
+function VMI_set_bounds(args) {
+  // `args`: [var_index, number or expression, number or expression]
   const
       vi = args[0],
       vbl = VM.variables[vi - 1][1],
@@ -6465,7 +6462,8 @@ function VMI_set_const_bounds(args) {
     // if this is the first round
     if(VM.current_round) {
       l = vbl.actualLevel(VM.t);
-      //PATCH!!
+      // QUICK PATCH! should resolve that small non-zero process levels
+      // computed in prior round make problem infeasible 
       if(l < 0.0005) l = 0;
     } else {
       l = 0;
@@ -6474,17 +6472,22 @@ function VMI_set_const_bounds(args) {
     fixed = ' (FIXED ' + vbl.displayName + ')';
   } else {
     // Set bounds as specified by the two arguments
-    l = (args[1] === VM.UNDEFINED ? 0 : args[1]),
-    u = Math.min(args[2], inf_val);
+    l = args[1];
+    if(l instanceof Expression) l = l.result(VM.t);
+    if(l === VM.UNDEFINED) l = 0;
+    u = args[2];
+    if(u instanceof Expression) u = u.result(VM.t);
+    u = Math.min(u, VM.PLUS_INFINITY);
     if(solver_inf) {
       if(l === VM.MINUS_INFINITY) l = -inf_val;
       if(u === VM.PLUS_INFINITY) u = inf_val;
     }
     fixed = '';
   }
-  // NOTE: to check, add this to the condition below: fixed !== ''
+  // NOTE: to see in the console whether fixing across rounds works, insert
+  // "fixed !== '' || " before DEBUGGING below
   if(DEBUGGING) {
-    console.log(['set_const_bounds [', k, '] ', vbl.displayName, ' t = ', VM.t,
+    console.log(['set_bounds [', k, '] ', vbl.displayName, ' t = ', VM.t,
       ' LB = ', VM.sig4Dig(l), ', UB = ', VM.sig4Dig(u), fixed].join(''));
   }
   // NOTE: since the VM vectors for lower bounds and upper bounds are
@@ -6508,61 +6511,6 @@ function VMI_set_const_bounds(args) {
       VM.upper_bounds[cvi] = u;
       VM.upper_bounds[cvi + 1] = u;
     }
-  }
-}
-
-function VMI_set_var_bounds(args) {
-  // `args`: [var_index, expression, expression]
-  const
-      vi = args[0],
-      vbl = VM.variables[vi - 1][1],
-      k = VM.offset + vi,
-      r = VM.round_letters.indexOf(VM.round_sequence[VM.current_round]),
-      // Optional fourth parameter indicates whether the solver's
-      // infinity values should be used
-      solver_inf = args.length > 3 && args[3],
-      inf_val = (solver_inf ? VM.SOLVER_PLUS_INFINITY : VM.PLUS_INFINITY);
-  let l,
-      u,
-      fixed = (vi in VM.fixed_var_indices[r - 1]);
-  if(fixed) {
-    // Set both bounds equal to the level set in the previous round, or to 0
-    // if this is the first round
-    if(VM.current_round) {
-      l = vbl.actualLevel(VM.t);
-    } else {
-      l = 0;
-    }
-    u = l;
-    fixed = ' (FIXED ' + vbl.displayName + ')';
-  } else {
-    l = args[1].result(VM.t);
-    if(l === VM.UNDEFINED) l = 0;
-    u = Math.min(args[2].result(VM.t), inf_val);
-    if(solver_inf) {
-      if(l === VM.MINUS_INFINITY) l = -inf_val;
-      if(u === VM.PLUS_INFINITY) u = inf_val;
-    }
-    fixed = '';
-  }
-  // Here, too, no need to set default values
-  if(Math.abs(l) > VM.NEAR_ZERO || u !== inf_val) {
-    VM.lower_bounds[k] = l; 
-    VM.upper_bounds[k] = u;
-    // Check for peak increase -- see comments in VMI_set_const_bound
-    if(vbl.peak_inc_var_index >= 0) {
-      u = Math.max(0, u - vbl.b_peak[VM.block_count - 1]);
-      const
-          cvi = VM.chunk_offset + vbl.peak_inc_var_index,
-          piub = VM.upper_bounds[cvi];
-      if(piub) u = Math.max(piub, u);
-      VM.upper_bounds[cvi] = u;
-      VM.upper_bounds[cvi + 1] = u;
-    }
-  }
-  if(DEBUGGING) {
-    console.log(['set_var_bounds [', k, '] ', vbl.displayName, ' t = ', VM.t,
-      ' LB = ', l, ', UB = ', u, fixed].join(''));
   }
 }
 

@@ -87,7 +87,7 @@ console.log('Module directory:', MODULE_DIRECTORY);
 console.log('Working directory:', WORKING_DIRECTORY);
 
 // Currently, these external solvers are supported:
-const SUPPORTED_SOLVERS = ['gurobi', 'scip', 'lp_solve'];
+const SUPPORTED_SOLVERS = ['gurobi', 'cplex', 'scip', 'lp_solve'];
 
 const
     // Load the MILP solver (dependent on Node.js: `fs`, `os` and `path`)
@@ -126,7 +126,7 @@ Possible options are:
                         [name]-stats.txt in (workspace)/reports
   run                   will run the loaded model
   solver=[name]         will select solver [name], or warn if not found
-                        (name choices: Gurobi, SCIP or LP_solve)
+                        (name choices: Gurobi, CPLEX, SCIP or LP_solve)
   user=[identifier]     user ID will be used to log onto remote servers
   verbose               will output solver messages to the console
   workspace=[path]      will create workspace in [path] instead of (main)/user
@@ -964,8 +964,25 @@ function commandLineSettings() {
           'WARNING: Failed to access the Gurobi command line application');
     }
   }
+  // Check if cplex(.exe) exists in its directory
+  let sp = path.join(cplex_path, 'cplex' + (PLATFORM.startsWith('win') ? '.exe' : ''));
+  const need_cplex = !settings.solver || settings.preferred_solver === 'cplex';
+  try {
+    fs.accessSync(sp, fs.constants.X_OK);
+    console.log('Path to CPLEX:', sp);
+    if(need_cplex) {
+      settings.solver = 'cplex';
+      settings.solver_path = sp;
+    }
+  } catch(err) {
+    // Only report error if CPLEX is needed
+    if(need_cplex) {
+      console.log(err.message);
+      console.log('WARNING: CPLEX application not found in', sp);
+    }
+  }
   // Check if scip(.exe) exists in its directory
-  let sp = path.join(scip_path, 'scip' + (PLATFORM.startsWith('win') ? '.exe' : ''));
+  sp = path.join(scip_path, 'scip' + (PLATFORM.startsWith('win') ? '.exe' : ''));
   const need_scip = !settings.solver || settings.preferred_solver === 'scip';
   try {
     fs.accessSync(sp, fs.constants.X_OK);
@@ -982,10 +999,9 @@ function commandLineSettings() {
     }
   }
   // Check if lp_solve(.exe) exists in main directory
-  const
-      sp = path.join(WORKING_DIRECTORY,
-          'lp_solve' + (PLATFORM.startsWith('win') ? '.exe' : '')),
-      need_lps = !settings.solver || settings.preferred_solver === 'lp_solve';
+  sp = path.join(WORKING_DIRECTORY,
+      'lp_solve' + (PLATFORM.startsWith('win') ? '.exe' : ''));
+  const need_lps = !settings.solver || settings.preferred_solver === 'lp_solve';
   try {
     fs.accessSync(sp, fs.constants.X_OK);
     console.log('Path to LP_solve:', sp);

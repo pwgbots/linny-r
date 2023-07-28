@@ -123,7 +123,7 @@ function checkNodeModule(name) {
 }
 
 // Currently, these external solvers are supported:
-const SUPPORTED_SOLVERS = ['gurobi', 'scip', 'lp_solve'];
+const SUPPORTED_SOLVERS = ['gurobi', 'cplex', 'scip', 'lp_solve'];
 
 // Load class MILPSolver
 const MILPSolver = require('./static/scripts/linny-r-milp.js');
@@ -1458,6 +1458,7 @@ function commandLineSettings() {
   const path_list = process.env.PATH.split(path.delimiter);
   let gurobi_path = '',
       scip_path = '',
+      cplex_path = '',
       match,
       max_v = -1;
   for(let i = 0; i < path_list.length; i++) {
@@ -1468,6 +1469,8 @@ function commandLineSettings() {
     }
     match = path_list[i].match(/[\/\\]scip[^\/\\]+[\/\\]bin/i);
     if(match) scip_path = path_list[i];
+    match = path_list[i].match(/[\/\\]cplex[\/\\]bin/i);
+    if(match) cplex_path = path_list[i];
     match = path_list[i].match(/inkscape/i);
     if(match) settings.inkscape = path_list[i];
   }
@@ -1498,8 +1501,25 @@ function commandLineSettings() {
           'WARNING: Failed to access the Gurobi command line application');
     }
   }
+  // Check if cplex(.exe) exists in its directory
+  let sp = path.join(cplex_path, 'cplex' + (PLATFORM.startsWith('win') ? '.exe' : ''));
+  const need_cplex = !settings.solver || settings.preferred_solver === 'cplex';
+  try {
+    fs.accessSync(sp, fs.constants.X_OK);
+    console.log('Path to CPLEX:', sp);
+    if(need_cplex) {
+      settings.solver = 'cplex';
+      settings.solver_path = sp;
+    }
+  } catch(err) {
+    // Only report error if CPLEX is needed
+    if(need_cplex) {
+      console.log(err.message);
+      console.log('WARNING: CPLEX application not found in', sp);
+    }
+  }
   // Check if scip(.exe) exists in its directory
-  let sp = path.join(scip_path, 'scip' + (PLATFORM.startsWith('win') ? '.exe' : ''));
+  sp = path.join(scip_path, 'scip' + (PLATFORM.startsWith('win') ? '.exe' : ''));
   const need_scip = !settings.solver || settings.preferred_solver === 'scip';
   try {
     fs.accessSync(sp, fs.constants.X_OK);
@@ -1595,7 +1615,7 @@ function createWorkspace() {
       data: path.join(SETTINGS.user_dir, 'data'),
       diagrams: path.join(SETTINGS.user_dir, 'diagrams'),
       modules: path.join(SETTINGS.user_dir, 'modules'),
-      solver_output: path.join(SETTINGS.user_dir, 'solver'),
+      solver_output: path.join(SETTINGS.user_dir, 'solver')
     };
   // Create these sub-directories if not aready there
   try {
