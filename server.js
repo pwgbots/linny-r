@@ -1467,10 +1467,25 @@ function commandLineSettings() {
       gurobi_path = path_list[i];
       max_v = parseInt(match[1]);
     }
+    match = path_list[i].match(/[\/\\]cplex[\/\\]bin/i);
+    if(match) {
+      cplex_path = path_list[i];
+    } else {
+      // NOTE: CPLEX may create its own environment variable for its paths
+      match = path_list[i].match(/%(.*cplex.*)%/i);
+      if(match) {
+        const cpl = process.env[match[1]].split(path.delimiter);
+        for(let i = 0; i < cpl.length; i++) {
+          match = cpl[i].match(/[\/\\]cplex[\/\\]bin/i);
+          if(match) {
+            cplex_path = cpl[i];
+            break;
+          }
+        }
+      }
+    }
     match = path_list[i].match(/[\/\\]scip[^\/\\]+[\/\\]bin/i);
     if(match) scip_path = path_list[i];
-    match = path_list[i].match(/[\/\\]cplex[\/\\]bin/i);
-    if(match) cplex_path = path_list[i];
     match = path_list[i].match(/inkscape/i);
     if(match) settings.inkscape = path_list[i];
   }
