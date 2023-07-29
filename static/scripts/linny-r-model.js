@@ -1609,16 +1609,20 @@ class LinnyRModel {
         extras = [],
         from_tos = [],
         xml = [],
-        ft_xml = [],
         extra_xml = [],
+        ft_xml = [],
+        selc_xml = [],
         selected_xml = [];
     for(let i = 0; i < this.selection.length; i++) {
       const obj = this.selection[i];
       entities[obj.type].push(obj);
-      selected_xml.push('<sel>' + xmlEncoded(obj.displayName) + '</sel>');
+      if(obj instanceof Cluster) selc_xml.push(
+          '<selc name="', xmlEncoded(obj.name),
+          '" actor-name="', xmlEncoded(obj.actor.name), '"></selc>');
+      selected_xml.push(`<sel>${xmlEncoded(obj.displayName)}</sel>`);
     }
-    // Expand clusters by adding all its model entities to their respective
-    // lists
+    // Expand (sub)clusters by adding all their model entities to their
+    // respective lists
     for(let i = 0; i < entities.Cluster.length; i++) {
       const c = entities.Cluster[i];
       c.clearAllProcesses();
@@ -1714,7 +1718,8 @@ class LinnyRModel {
         '"><entities>', xml.join(''),
         '</entities><from-tos>', ft_xml.join(''),
         '</from-tos><extras>', extra_xml.join(''),
-        '</extras><selection>', selected_xml.join(''),
+        '</extras><selected-clusters>', selc_xml.join(''),
+        '</selected-clusters><selection>', selected_xml.join(''),
         '</selection></copy>'].join('');
   }
   

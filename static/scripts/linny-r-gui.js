@@ -5273,9 +5273,30 @@ class GUIController extends Controller {
     md.element('actor').value = mapping.actor || '';
     md.element('prefix').value = mapping.prefix || '';
     const
-        ft = Object.keys(mapping.from_to).sort(ciCompare),
+        tc = (mapping.top_clusters ?
+            Object.keys(mapping.top_clusters).sort(ciCompare) : []),
+        ft = (mapping.from_to ?
+            Object.keys(mapping.from_to).sort(ciCompare) : []),
         sl = [];
+    if(tc.length) {
+      sl.push('<div style="font-weight: bold; margin:4px 2px 2px 2px">',
+        'Names for top-level clusters:</div>');
+      // Add text inputs for selected cluster nodes
+      for(let i = 0; i < tc.length; i++) {
+        const
+            ti = mapping.top_clusters[tc[i]],
+            state = (ti === tc[i] ? 'color: #e09000; ' :
+                this.validName(ti) ? 'color: #0000c0; ' :
+                'font-style: italic; color: red; ');
+        sl.push('<div class="paste-option"><span>', tc[i], '</span> ',
+            '<div class="paste-select"><input id="paste-selc-', i,
+            '" type="text" style="', state, 'font-size: 12px" value="',
+            ti, '"></div></div>');
+      }
+    }
     if(ft.length) {
+      sl.push('<div style="font-weight: bold; margin:4px 2px 2px 2px">',
+        'Mapping of nodes to link from/to:</div>');
       // Add selectors for unresolved FROM/TO nodes
       for(let i = 0; i < ft.length; i++) {
         const ti = mapping.from_to[ft[i]];
@@ -5286,8 +5307,8 @@ class GUIController extends Controller {
               '</option></select></div></div>');
         }
       }
-      md.element('scroll-area').innerHTML = sl.join('');
     }
+    md.element('scroll-area').innerHTML = sl.join('');
     // Open dialog, which will call pasteSelection(...) on OK
     this.paste_modal.show();
   }
@@ -5297,10 +5318,18 @@ class GUIController extends Controller {
     // proceeds to paste
     const
         md = this.paste_modal,
-        mapping = Object.assign(md.mapping, {});
+        mapping = Object.assign(md.mapping, {}),
+        tc = (mapping.top_clusters ?
+            Object.keys(mapping.top_clusters).sort(ciCompare) : []),
+        ft = (mapping.from_to ?
+            Object.keys(mapping.from_to).sort(ciCompare) : []);
     mapping.actor = md.element('actor').value;
     mapping.prefix = md.element('prefix').value.trim();
     mapping.increment = true;
+    for(let i = 0; i < tc.length; i++) {
+      const cn = md.element('selc-' + i).value.trim();
+      if(this.validName(cn)) mapping.top_clusters[tc[i]] = cn;
+    }
     this.pasteSelection(mapping);
   }
   
@@ -5325,6 +5354,7 @@ console.log('HERE xml', xml);
         entities_node = childNodeByTag(xml, 'entities'),
         from_tos_node = childNodeByTag(xml, 'from-tos'),
         extras_node = childNodeByTag(xml, 'extras'),
+        selc_node = childNodeByTag(xml, 'selected-clusters'),
         selection_node = childNodeByTag(xml, 'selection'),
         actor_names = [],
         new_entities = [],
@@ -5335,7 +5365,7 @@ console.log('HERE xml', xml);
     
     function fullName(node) {
       // Returns full entity name inferred from XML node data
-      if(node.nodeName === 'from-to') {
+      if(node.nodeName === 'from-to' || node.nodeName === 'selc') {
         const
             n = xmlDecoded(nodeParameterValue(node, 'name')),
             an = xmlDecoded(nodeParameterValue(node, 'actor-name'));
@@ -5525,6 +5555,17 @@ console.log('HERE xml', xml);
     if(parseInt(mts) === MODEL.time_created.getTime() &&
         ca === fca && mapping.from_prefix === mapping.to_prefix &&
         !(mapping.prefix || mapping.actor || mapping.increment)) {
+      // Prompt for names of selected cluster nodes
+      if(selc_node.childNodes.length && !mapping.prefix) {
+        mapping.top_clusters = {};
+        for(let i = 0; i < selc_node.childNodes.length; i++) {
+          const
+              c = selc_node.childNodes[i],
+              fn = fullName(c),
+              mn = mappedName(fn);
+          mapping.top_clusters[fn] = mn;
+        }
+      }
       this.promptForMapping(mapping);
       return;
     }

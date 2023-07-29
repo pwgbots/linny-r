@@ -3774,7 +3774,7 @@ class VirtualMachine {
           for(let k = 0; k < l; k++) {
             const
                 vi = svl[k],
-                slack = x[vi + j],
+                slack = parseFloat(x[vi + j]),
                 absl = Math.abs(slack);
             if(absl > VM.NEAR_ZERO) {
               const v = this.variables[vi - 1];
