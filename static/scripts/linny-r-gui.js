@@ -6525,11 +6525,12 @@ class GUIMonitor {
           })
         .then((data) => {
             try {
-              const jsr = JSON.parse(data);
-              if(jsr.solver !== VM.solver_name) {
-                UI.notify(`Solver on ${jsr.server} is ${jsr.solver}`);              
-              }
+              const
+                  jsr = JSON.parse(data),
+                  svr = `Solver on ${jsr.server} is ${jsr.solver}`;
+              if(jsr.solver !== VM.solver_name) UI.notify(svr);              
               VM.solver_name = jsr.solver;
+              document.getElementById('host-logo').title  = svr;
             } catch(err) {
               console.log(err, data);
               UI.alert('ERROR: Unexpected data from server: ' +

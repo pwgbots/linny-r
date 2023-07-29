@@ -3255,19 +3255,22 @@ class VirtualMachine {
         if(ubx.isStatic) {
           // If UB is very high (typically: undefined, so +INF), try to infer
           // a lower value for UB to use for the ON/OFF binary
-          let ub = ubx.result(0);
+          let ub = ubx.result(0),
+              hub = ub;
           if(ub > VM.MEGA_UPPER_BOUND) {
-            ub = p.highestUpperBound([]);
+            hub = p.highestUpperBound([]);
             // If UB still very high, warn modeler on infoline and in monitor
-            if(ub > VM.MEGA_UPPER_BOUND) {
-              const msg = 'High upper bound (' + this.sig4Dig(ub) +
+            if(hub > VM.MEGA_UPPER_BOUND) {
+              const msg = 'High upper bound (' + this.sig4Dig(hub) +
                   ') for <strong>' + p.displayName + '</strong>' +
                   ' will compromise computation of its binary variables';
               UI.warn(msg);
               this.logMessage(this.block_count,
                   'WARNING: ' + msg.replace(/<\/?strong>/g, '"'));
             }
-          } else {
+          }
+          if(hub !== ub) {
+            ub = hub;
             this.logMessage(this.block_count,
                 `Inferred upper bound for ${p.displayName}: ${this.sig4Dig(ub)}`);
           }

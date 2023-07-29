@@ -3236,6 +3236,7 @@ class LinnyRModel {
       for(let i = 0; i < constraints.length; i++) {
         const
             c = constraints[i],
+            // NOTE: constraints in list have levels greater than near-zero
             fl = c.from_node.actualLevel(t),
             tl = c.to_node.actualLevel(t);
         let tcp;
@@ -3306,10 +3307,10 @@ class LinnyRModel {
                 if(af > VM.NEAR_ZERO) {
                   // Prevent division by zero
                   // NOTE: level can be zero even if actual flow > 0!
-                  const al = p.actualLevel(dt);
+                  const al = p.nonZeroLevel(dt);
                   // NOTE: scale to level only when level > 1, or fixed
                   // costs for start-up or first commit will be amplified 
-                  if(al > VM.ON_OFF_THRESHOLD) cp -= pr * af / Math.max(al, 1);
+                  if(al > VM.NEAR_ZERO) cp -= pr * af / Math.max(al, 1);
                 }
               }
             }
@@ -3428,8 +3429,8 @@ class LinnyRModel {
         p.cost_price[t] = cp;
         // For stocks, the CP includes stock price on t-1
         if(p.is_buffer) {
-          const prevl = p.actualLevel(t-1);
-          if(prevl > 0) {
+          const prevl = p.nonZeroLevel(t-1);
+          if(prevl > VM.NEAR_ZERO) {
             cp = (cnp +  prevl * p.stockPrice(t-1)) / (qnp + prevl);
           }
           p.stock_price[t] = cp;
@@ -3486,7 +3487,7 @@ class LinnyRModel {
         // Then (also) look for links having AF = 0 ...
         for(let i = links.length-1; i >= 0; i--) {
           const af = links[i].actualFlow(t);
-          if(Math.abs(af) < VM.SIG_DIF_FROM_ZERO) {
+          if(Math.abs(af) < VM.NEAR_ZERO) {
             // ... and set their UCP to 0
             links[i].unit_cost_price = 0;
             links.splice(i, 1);
@@ -3522,7 +3523,7 @@ class LinnyRModel {
       let hcp = VM.MINUS_INFINITY;
       for(let i = 0; i < p.inputs.length; i++) {
         const l = p.inputs[i];
-        if(l.from_node instanceof Process && l.actualFlow(t) > 0) {
+        if(l.from_node instanceof Process && l.actualFlow(t) > VM.NEAR_ZERO) {
           const ld = l.actualDelay(t);
           // NOTE: only consider the allocated share of cost
           let cp = l.from_node.costPrice(t - ld) * l.share_of_cost;
