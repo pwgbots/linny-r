@@ -165,7 +165,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 // Inform user that newer version exists
                 UI.check_update_modal.element('msg').innerHTML = [
                     '<a href="', GITHUB_REPOSITORY,
-                    '/wiki/Linny-R-version-history#%EF%B8%8F-current-',
+                    '/wiki/Linny-R-version-history#version-',
                     info[1].replaceAll('.', ''), '" ',
                     'title="Click to view version release notes" ',
                     'target="_blank">Version <strong>',
@@ -354,7 +354,7 @@ and move the cursor over the status bar">
     <img id="clone-btn" class="btn disab sep" src="images/clone.png"
          title="Copy selection (Ctrl-C) &ndash; Alt-click to clone (Alt-C)">
     <img id="paste-btn" class="btn disab sep" src="images/paste.png"
-         title="Paste selection (Ctrl-V) -- WORK IN PROGESS!">
+         title="Paste selection (Ctrl-V)">
     <img id="delete-btn" class="btn disab sep" src="images/delete.png"
          title="Delete">
     <img id="undo-btn" class="btn enab" src="images/undo.png"
@@ -1098,7 +1098,7 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
   <div id="note-modal" class="modal">
     <div id="note-dlg" class="inp-dlg">
       <div class="dlg-title">
-        <span id="note-action">Add</span> note
+        <span id="note-action">Add</span> note <span id="note-number"></span>
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
@@ -1280,6 +1280,9 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
     <div id="process-dlg" class="inp-dlg">
       <div class="dlg-title">
         Process properties
+        <div class="simbtn">
+          <img id="process-sim-btn" class="btn sim enab" src="images/process.png">
+        </div>
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
@@ -2848,15 +2851,6 @@ where X can be one or several of these letters: ABCDELPQ">
         <div class="paste-tactic">
           Auto-increment tail number
         </div>
-      </div>
-      <div class="paste-option">
-        <div id="paste-near-box" class="box checked"></div>
-        <div class="paste-tactic">
-          Link to nearest eligible node
-        </div>
-      </div>
-      <div style="font-weight: bold; margin:4px 2px 2px 2px">
-        Mapping of nodes to link from/to:
       </div>
       <div id="paste-scroll-area">
       </div>

@@ -327,42 +327,147 @@ function patternList(str) {
 }
 
 function patternMatch(str, patterns) {
-  // Returns TRUE when `str` matches the &|^-pattern
-  // NOTE: if a pattern starts with equals sign = then `str` must
+  // Returns TRUE when `str` matches the &|^-pattern.
+  // NOTE: If a pattern starts with equals sign = then `str` must
   // equal the rest of the pattern to match; if it starts with a tilde
-  // ~ then `str` must start with the rest of the pattern to match 
+  // ~ then `str` must start with the rest of the pattern to match.
   for(let i = 0; i < patterns.length; i++) {
     const p = patterns[i];
+    // NOTE: `p` is an OR sub-pattern that tests for a set of "plus"
+    // sub-sub-patterns (all of which should match) and a set of "min"
+    // sub-sub-patters (all should NOT match)
     let pm,
+        re,
         match = true;
-    for(let j = 0; j < p.plus.length; j++) {
+    for(let j = 0; match && j < p.plus.length; j++) {
       pm = p.plus[j];
       if(pm.startsWith('=')) {
-        match = match && str === pm.substring(1);
+        match = (str === pm.substring(1));
       } else if(pm.startsWith('~')) {
-        match = match && str.startsWith(pm.substring(1));
+        match = str.startsWith(pm.substring(1));
       } else {
-        match = match && str.indexOf(pm) >= 0;
+        match = (str.indexOf(pm) >= 0);
+      }
+      // If no match, check whether pattern contains wildcards 
+      if(!match && pm.indexOf('#') >= 0) {
+        // If so, rematch using regular expression that tests for a
+        // number or a ?? wildcard
+        let res = pm.split('#');
+        for(let i = 0; i < res.length; i++) {
+          res[i] = escapeRegex(res[i]);
+        }
+        res = res.join('(\\d+|\\?\\?)');
+        if(pm.startsWith('=')) {
+          res = '^' + res + '$';
+        } else if(pm.startsWith('~')) {
+          res = '^' + res;
+        }
+        re = new RegExp(res, 'g');
+        match = re.test(str);
       }
     }
-    for(let j = 0; j < p.min.length; j++) {
+    // Any "min" match indicates NO match for this sub-pattern,
+    for(let j = 0; match && j < p.min.length; j++) {
       pm = p.min[j];
       if(pm.startsWith('=')) {
-        match = match && str !== pm.substring(1);
+        match = (str !== pm.substring(1));
       } else if(pm.startsWith('~')) {
-        match = match && !str.startsWith(pm.substring(1));
+        match = !str.startsWith(pm.substring(1));
       } else {
-        match = match && str.indexOf(pm) < 0;
+        match = (str.indexOf(pm) < 0);
+      }
+      // If still matching, check whether pattern contains wildcards 
+      if(match && pm.indexOf('#') >= 0) {
+        // If so, now "negatively" rematch using regular expressions
+        let res = pm.split('#');
+        for(let i = 0; i < res.length; i++) {
+          res[i] = escapeRegex(res[i]);
+        }
+        res = res.join('(\\d+|\\?\\?)');
+        if(pm.startsWith('=')) {
+          res = '^' + res + '$';
+        } else if(pm.startsWith('~')) {
+          res = '^' + res;
+        }
+        re = new RegExp(res, 'g');
+        match = !re.test(str);
       }
     }
+    // Iterating through OR list, so any match indicates TRUE
     if(match) return true;
   }
+  return false;
+}
+
+function matchingWildcardNumber(str, patterns) {
+  // Returns the number that, when substituted for #, caused `str` to
+  // match with the pattern list `patterns`, or FALSE if no such number
+  // exists.
+  // First get the list of all groups of consecutive digits in `str`.
+  let nlist = str.match(/(\d+)/g);
+  // If none, then evidently no number caused the match.
+  if(!nlist) return false;
+  // Now for each number check whether `str` still matches when the
+  // number is replaced by the wildcard #.
+  const mlist = [];
+  for(let i = 0; i < nlist.length; i++) {
+    const
+        rstr = str.replaceAll(nlist[i], '#'),
+        pm = patternMatch(rstr, patterns);
+    // If it still matches, add it to the list.
+    if(pm) addDistinct(nlist[i], mlist);
+  }
+  // NOTE This is only a quick and dirty heuristic. For intricate patterns
+  // there may be mutliple matches, and there may be false positives for
+  // patterns like "abc1#2" (so a hashtag with adjacent digits) but for
+  // now this is good enough.
+  if(mlist.length) return mlist[0];
   return false;
 }
 
 function escapeRegex(str) {
   // Returns `str` with its RegEx special characters escaped
   return str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+}
+
+function wildcardMatchRegex(name, equation=false) {
+  // Returns a RegEx object that will match wildcards in an entity name
+  // with an integer number (\d+), or NULL if `name` does not contain
+  // wildcards
+  // By default, # denotes a wildcard, but this may be changed to ??
+  // when an equation name is parsed
+  const sl = name.split(equation ? '??' : '#');
+  if(sl.length < 2) return null;
+  for(let i = 0; i < sl.length; i++) {
+    sl[i] = escapeRegex(sl[i]);
+  }
+  // NOTE: match against integer numbers, but also match for ?? because
+  // wildcard equation entities also match!
+  return new RegExp(`^${sl.join('(\\d+|\\?\\?)')}$`, 'gi');
+}
+
+function wildcardFormat(name, modifier=false) {
+  // Returns string with CSS classes if it contains wildcards
+  // NOTE: modifiers can contain * and single ? as wildcards;
+  // equation names can contain at most one ?? as wildcard
+  const re = (modifier ? /(\?+|\*)/ : /(\?\?)/g);
+  return name.replace(re, '<span class="wildcard">$1</span>');
+}
+
+function matchingNumber(m, s) {
+  // Returns an integer value if string `m` matches selector pattern `s`
+  // (where asterisks match 0 or more characters, and question marks 1
+  // character) and the matching parts jointly denote an integer.
+  let raw = s.replace(/\*/g, '(.*)').replace(/\?/g, '(.)'),
+      match = m.match(new RegExp(`^${raw}$`)),
+      n = '';
+  if(match) {
+    // Concatenate all matching characters (need not be digits)
+    m = match.slice(1).join('');
+    n = parseInt(m);
+  }
+  // Return number only if when match is parsed as integer
+  return (n == m ? n : false);
 }
 
 function compareSelectors(s1, s2) {
@@ -517,6 +622,23 @@ function xmlDecoded(str) {
     ).replace(/\&amp;/g, '&').replace(/\$\$\\n/g, '\n\n');
 }
 
+function customizeXML(str) {
+  // NOTE: this function can be customized to pre-process a model file,
+  // for example to rename entities in one go -- USE WITH CARE!
+  // First modify `str` -- by default, do nothing
+  
+
+  if(str.indexOf('<author>Emma van Kleef</author>') >= 0) {
+    str = str.replace(/is-information="1"><name>Line (\d+): switch</g,
+                      'is-information="1" no-slack="1"><name>Line $1: switch<');
+    str = str.replace(/: zon/g, ': solar');
+  }
+
+
+  // Finally, return the modified string
+  return str;
+}
+
 function cleanXML(node) {
   // Removes all unnamed text nodes and comment nodes from the XML
   // subtree under node
@@ -536,7 +658,7 @@ function cleanXML(node) {
 function parseXML(xml) {
   // Parses string `xml` into an XML document, and returns its root node
   // (or null if errors)
-  xml = XML_PARSER.parseFromString(xml, 'application/xml');
+  xml = XML_PARSER.parseFromString(customizeXML(xml), 'application/xml');
   const
       de = xml.documentElement,
       pe = de.getElementsByTagName('parsererror').item(0);

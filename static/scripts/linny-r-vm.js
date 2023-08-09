@@ -36,36 +36,56 @@ SOFTWARE.
 // CLASS Expression (for all potentially time-dependent model parameters)
 class Expression {
   constructor(obj, attr, text) {
+    // Expressions are typically defined for some attribute of some
+    // entity -- legacy convention is to refer to a model entity
+    // as `object` rather than `entity`.
     this.object = obj;
     this.attribute = attr;
     this.text = text;
-     // A stack for local time step (to allow lazy evaluation)
+     // A stack for local time step (to allow lazy evaluation).
     this.step = [];
-    // An operand stack for computation (elements must be numeric)
+    // An operand stack for computation (elements must be numeric).
     this.stack = []; 
-    // NOTE: code = NULL indicates: not compiled yet
+    // NOTE: code = NULL indicates: not compiled yet.
     this.code = null;
-    // NOTE: use a semaphore to prevent cyclic recursion
+    // NOTE: Use a semaphore to prevent cyclic recursion.
     this.compiling = false;
-    // While compiling, check whether any operand depends on time
+    // While compiling, check whether any operand depends on time.
     this.is_static = true;
-    // Likewise, check whether any operand is computed by the solver
+    // Likewise, check whether any operand is computed by the solver.
     this.is_level_based = false;
-    // NOTE: VM expects result to be an array, even when expression is static
+    // NOTE: VM expects result to be an array, even when expression is static.
     this.vector = [VM.NOT_COMPUTED];
     // For dataset *wildcard* modifier expressions, results are stored in a
-    // separate vector for each wildcard number (list expands "lazily")
-    this.wildcard_vectors = [];
+    // separate vector for each wildcard number. The set of vectors expands
+    // "lazily", as new entries (number: vector) are added only when the
+    // expression is evaluated for a different wildcard number.
+    // For all other expressions (typically properties of nodes), the
+    // normal expression vector is used.
+    // NOTE: Wildcard expressions merit special treatment when plotted in
+    // a chart.
+    this.wildcard_vectors = {};
+    // NOTE: `wildcard_number` is used -- only during code execution --
+    // by VMI_push_dataset_modifier (read and/or write) and by
+    // VMI_push_contextual_number (read only). 
+    this.wildcard_vector_index = false;
     // Special instructions can store results as cache properties to save
-    // (re)computation time; cache is cleared when expression is reset
+    // (re)computation time; cache is cleared when expression is reset.
     this.cache = {};
+  }
+  
+  get isWildcardExpression() {
+    // Returns TRUE if the owner is a dataset, and the attribute contains
+    // wildcards.
+    return this.object instanceof Dataset &&
+        this.object.isWildcardSelector(this.attribute); 
   }
   
   get variableName() {
     // Return the name of the variable computed by this expression
-    if(this.attribute === 'C') return 'note color expression';
     if(this.object === MODEL.equations_dataset) return 'equation ' + this.attribute;
-    return this.object.displayName + UI.OA_SEPARATOR + this.attribute;
+    if(this.object) return this.object.displayName + UI.OA_SEPARATOR + this.attribute;
+    return 'Unknown variable (no object)';
   }
   
   get timeStepDuration() {
@@ -78,7 +98,7 @@ class Expression {
   }
   
   get referencedEntities() {
-    // Returns a list of entities referenced in this expression
+    // Returns a list of entities referenced in this expression.
     if(this.text.indexOf('[') < 0) return [];
     const
         el = [],
@@ -110,11 +130,8 @@ class Expression {
     // Clears result of previous computation (if any)
     this.step.length = 0;
     this.stack.length = 0;
-    // NOTE: `wildcard_number` is used only during code execution;
-    // then it may be set only by VMI_push_dataset_modifier,
-    // and read only by VMI_push_selector_wildcard
-    this.wildcard_number = false;
-    this.wildcard_vectors = [];
+    this.wildcard_vectors = {};
+    this.wildcard_vector_index = false;
     this.cache = {};
     this.compile(); // if(!this.compiled)  REMOVED to ensure correct isStatic!! 
     // Static expressions only need a vector with one element (having index 0)
@@ -141,20 +158,18 @@ class Expression {
   }
 
   compile() {
-    // Do not compile recursively
+    // Do not compile recursively.
     if(this.compiling) return;
-    // Set the "compiling" flag to prevent cyclic recursion
+    // Set the "compiling" flag to prevent cyclic recursion.
     this.compiling = true;
-    // Clear the VM instruction list
+    // Clear the VM instruction list.
     this.code = null;
     const xp = new ExpressionParser(this.text, this.object, this.attribute);
     if(xp.error === '') {
-      // NOTE: except for dataset modifiers and note colors, expressions
+      // NOTE: Except for dataset modifiers and note colors, expressions
       // should not be based on levels-still-to-be-computed-by-the-solver,
-      // so caution the modeler when this appears to be the case
-      // NOTE: when note color expressions are edited, they are compiled
-      // to check their syntax; then their object is null
-      if(xp.is_level_based && this.object &&
+      // so caution the modeler when this appears to be the case.
+      if(xp.is_level_based &&
           !(this.object instanceof Dataset || this.object instanceof Note)) {
         // NOTE: this should not occur, so log more details
         console.log('Level-based issue:',
@@ -176,7 +191,7 @@ class Expression {
   }
 
   get asXML() {
-    // Returns XML-encoded expression (after replacing "black-boxed" entities) 
+    // Returns XML-encoded expression after replacing "black-boxed" entities. 
     let text = this.text;
     if(MODEL.black_box) {
       // Get all entity names that occur in this expression
@@ -219,17 +234,21 @@ class Expression {
   }
   
   get defined() {
+    // Returns TRUE if the expression string is not empty.
     return this.text !== '';
   }
   
   get compiled() {
+    // Returns TRUE if there is code for this expression.
+    // NOTE: The expression parser sets `code` to NULL when compiling an
+    // empty string. 
     return this.code !== null;
   }
 
   get isStatic() {
-    // Returns is_static property AFTER compiling if not compiled yet
-    // NOTE: to prevent cylic recursion, return FALSE if this expression is
-    // already being compiled
+    // Returns is_static property AFTER compiling if not compiled yet.
+    // NOTE: To prevent cylic recursion, return FALSE if this expression is
+    // already being compiled.
     if(this.compiling) return false;
     if(!this.compiled) this.compile();
     return this.is_static;
@@ -287,7 +306,7 @@ class Expression {
     // Compute a value only once
     if(v[t] !== VM.NOT_COMPUTED) return true;
     // Provide selector context for # (number = FALSE => no wildcard match)
-    this.wildcard_number = number;
+    this.wildcard_vector_index = number;
     // Push this expression onto the call stack
     VM.call_stack.push(this);
     // Push time step in case a VMI_push_var instruction references
@@ -325,7 +344,7 @@ class Expression {
     this.step.pop();
     this.trace('--STOP: ' + this.variableName);
     // Clear context for #
-    this.wildcard_number = false;
+    this.wildcard_vector_index = false;
     // If error, display the call stack (only once)
     // NOTE: "undefined", "not computed" and "still computing" are NOT
     // problematic unless they result in an error (stack over/underflow)
@@ -346,6 +365,7 @@ class Expression {
     // "initial value" (these follow from the variables used in the expression)
     // Select the vector to use
     const v = this.chooseVector(number);
+    if(!v) return VM.UNDEFINED;
     if(t < 0 || this.isStatic) t = 0;
     if(t >= v.length) return VM.UNDEFINED;
     if(v[t] === VM.NOT_COMPUTED || v[t] === VM.COMPUTING) {
@@ -487,46 +507,130 @@ class Expression {
 
 // CLASS ExpressionParser
 // Instances of ExpressionParser compile expressions into code, i.e.,
-// an array of VM instructions. The optional parameters `owner` and `attribute`
-// are used to prefix "local" entities, and to implement modifier expressions
-// that contain the dot that (when used within brackets) denotes the data value
-// of the dataset
+// an array of VM instructions. The optional parameters `owner` and
+// `attribute` are used to prefix "local" entities, and also to implement
+// modifier expressions that contain the "dot" that (when used within
+// brackets) denotes the data value of the dataset.
+
+// Since version 1.4.0, a leading colon indicates that the variable
+// "inherits" the prefixes of its owner. Thus, for example, in the expression
+// for the upper bound of proces "Storage: Li-ion: battery 1", the variable
+// [:capacity] will be interpreted as [Storage: Li-ion: capacity].
+// The prefixed name will be parsed normally, so if "Storage: Li-ion: capacity"
+// identifies an array-type dataset, [:capacity@#] will work, since the
+// value of # can be inferred from the expression owner's name
+// "Storage: Li-ion: battery 1".
+
+// Also since version 1.4.0, the context sensitive number # can also be used
+// as a "wildcard" in an entity name. This is useful mainly when combined with
+// wildcard equations with names like "eq??ion" which can then be referred to
+// in expressions not only as "eq12ion" (then # in the expression for the
+// wildcard equation evaluates as 12), but also as "eq#ion" (then # in the
+// expression for the wildcard equation will have the value of # in the
+// "calling" expression. This permits, for example, defining as single
+// equation "partial load ??" with expression "[P#|L] / [P#|UB]", and then
+// using the variable [partial load 1] to compute the partial load for
+// process P1.
+// NOTES:
+// (1) This will (for now) NOT apply recursively, so [partial load #] cannot
+// be used in some other wildcard equation like, for example, "percent load ??"
+// having expression "100 * [partial load #]". This restriction follows from
+// the present limitation that only ONE context-sensitive number exists, which
+// makes that "nested" wildcard expressions can always be rewritten as a single
+// expression.
+// (2) The # may be used in patterns, so when a model comprises processes
+// P1 and P2, and products Q2 and Q3, and a wildcard equation "total level ??"
+// with expression "[SUM$#|L]", then [total level 1] will evaluate as the level
+// of P1, and [total level 2] as the level of P2 plus the level of Q3.
+
 class ExpressionParser {
   constructor(text, owner=null, attribute='') {
-    // `text` is the expression string to be parsed
+    // `text` is the expression string to be parsed.
     this.expr = text;
+    // NOTE: When expressions for dataset modifiers or equations are
+    // parsed, `owner` is their dataset, and `attribute` is their name.
     this.owner = owner;
+    this.owner_prefix = '';
     this.attribute = attribute;
-    // If `owner` is a dataset, then it is the dataset denoted by . (dot)
-    this.dataset = (owner instanceof Dataset ? owner : null);
-    this.selector = (this.dataset ? attribute : '');
+    this.dataset = null;
+    this.dot = null;
+    this.selector = '';
+    this.context_number =  '';
+    this.wildcard_selector = false;
+    this.wildcard_equation = false;
+    // Always infer the value for the context-sensitive number #.
+    // NOTE: this will be "?" if `owner` is a dataset modifier with
+    // wildcards in its selector; this indicates that the value of #
+    // cannot be inferred at compile time.
+    if(owner) {
+      this.context_number = owner.numberContext;
+      // NOTE: The owner prefix includes the trailing colon+space.
+      if(owner instanceof Link || owner instanceof Constraint) {
+        // For links and constraints, use the longest prefix that
+        // their nodes have in common.
+        this.owner_prefix = UI.sharedPrefix(owner.from_node.displayName,
+            owner.to_node.displayName) + UI.PREFIXER;
+      } else if(owner === MODEL.equations_dataset) {
+        this.owner_prefix = UI.completePrefix(attribute);
+      } else {
+        this.owner_prefix = UI.completePrefix(owner.displayName);
+      }
+      if(owner instanceof Dataset) {
+        this.dataset = owner;
+        // The attribute (if specified) is a dataset modifier selector.
+        this.selector = attribute;
+        // Record whether this selector contains wildcards.
+        this.wildcard_selector = owner.isWildcardSelector(attribute);
+        if(owner === MODEL.equations_dataset) {
+          // Reocrd that the owner is a wildcard equation.
+          this.wildcard_equation = this.wildcard_selector;
+        } else {
+          // For "normal" modifier expressions, the "dot" (.) can be used
+          // to refer to the dataset of the modifier.
+          this.dot = this.dataset;
+        }
+      }
+    }
+    // Immediately compile; this may generate warnings
     this.compile();
   }
-  
-  log(msg) {
-    if(false) { // Set to TRUE to profile dynamic expressions
-      console.log(`Expression for ${this.owner.displayName}|${this.attribute}
-          ${this.expr}\n${msg}`);
+
+  get ownerName() {
+    // FOR TRACING & DEBUGGING: Returns the owner of this equation (if any).
+    if(!this.owner) return '(no owner)';
+    let n = this.owner.displayName;
+    if(this.attribute) n += '|' + this.attribute;
+    if(this.wildcard_selector) {
+      n += ' [wildcard ' + (this.wildcard_equation ? 'equation' : 'modifier') +
+          (this.context_number ? ' # = ' + this.context_number : '') + ']';
     }
+    return n;
   }
 
-  // Checks whether name fits this pattern:
+  log(msg) {
+    // FOR TRACING & DEBUGGING: Logs a message to the console.
+    if(true) return;
+    // Set the above IF condition to FALSE to profile dynamic expressions.
+    console.log(`Expression for ${this.ownerName}: ${this.expr}\n${msg}`);
+  }
+
+  // The method parseVariable(name) checks whether `name` fits this pattern:
   //   {run}statistic$entity|attribute@offset_1:offset_2
   // allowing spaces within {run} and around | and @ and :
   // The entity is mandatory, but {run} and statistic$ are optional, and
   // attribute and offset have defaults.
-  // Returns array [object, anchor_1, offset_1, anchor_2, offset_2] if the
-  // pattern matches and no statistic, or the 6-element array
+  // It returns array [object, anchor_1, offset_1, anchor_2, offset_2] if
+  // the pattern matches and no statistic, or the 6-element array
   // [statistic, object list, anchor, offset, anchor_2, offset_2]
-  // if a valid statistic is specified; otherwise FALSE.
+  // if a valid statistic is specified; otherwise it returns FALSE.
   // The object is either a vector or an expression, or a special object
   // (dataset specifier, experiment run specifier or unit balance specifier)
   // NOTE: this array is used as argument for the virtual machine instructions
-  // VMI_push_var, VMI_push_statistic and VMI_push_run_result 
+  // VMI_push_var, VMI_push_statistic and VMI_push_run_result.
   parseVariable(name) {
-    // Reduce whitespace to single space
+    // Reduce whitespace to single space.
     name = name.replace(/\s+/g, ' ');
-    // Initialize possible components
+    // Initialize possible components.
     let obj = null,
         attr = '',
         use_data = false,
@@ -539,6 +643,7 @@ class ExpressionParser {
         args = null,
         s = name.split('@');
     if(s.length > 1) {
+      // [variable@offset] where offset has form (anchor1)number1(:(anchor2)number 2)   
       // Offsets make expression dynamic (for now, ignore exceptional cases)
       this.is_static = false;
       this.log('dynamic because of offset');
@@ -586,9 +691,7 @@ class ExpressionParser {
         }
         // Check whether # anchor is meaningful for this expression
         if((anchor1 === '#' || anchor2 === '#') &&
-            !(this.selector.indexOf('*') >= 0 ||
-                this.selector.indexOf('?') >= 0 ||
-                this.owner.numberContext)) {
+            !(this.wildcard_selector || this.context_number)) {
           // Log debugging information for this error
           console.log(this.owner.displayName, this.owner.type, this.selector);
           this.error = 'Anchor # is undefined in this context';
@@ -597,7 +700,8 @@ class ExpressionParser {
       }
     }
     // Run specifier (optional) must be leading and braced
-    // Specifier format: {method$title|run} where method and title are optional
+    // Specifier format: {method$title|run} where method and title are
+    // optional -- NOTE: # in title or run is NOT seen as a wildcard
     if(name.startsWith('{')) {
       s = name.split('}');
       if(s.length > 1) {
@@ -631,20 +735,29 @@ class ExpressionParser {
         }
         s = s.split('#');
         let rn = (s.length > 1 ? s[1].trim() : false);
-        // Experiment specifier may contain selectors
+        // Experiment specifier may contain modifier selectors.
         s = s[0].trim().split(UI.OA_SEPARATOR);
         if(s.length > 1) {
-          // If so, the selector list may indicate the run number
-          // NOTE: permit selectors to be separated by various characters
+          // If so, the selector list may indicate the run number.
+          // NOTE: permit selectors to be separated by various characters.
           x.r = s.slice(1).join('|').split(/[\|\,\.\:\;\/\s]+/g);
         }
         if(rn) {
+          // NOTE: Special notation for run numbers to permit modelers
+          // to chart results as if run numbers are on the time axis
+          // (with a given step size). The chart will be made as usual,
+          // i.e., plot a point for each time step t, but the value v[t]
+          // will then stay the same for the time interval that corresponds
+          // to simulation period length / number of runs.
+          // NOTE: This will fail to produce a meaningful chart when the
+          // simulation period is small compared to the number of runs.
           if(rn.startsWith('n')) {
-            // #n may be followed by a range, or defaults to 0 - last run number
-            // Of this range, the i-th number will be used, where i equals
+            // #n may be followed by a range, or this range defaults to
+            // 0 - last run number. Of this range, the i-th number will
+            // be used, where i is computes as:
             // floor(current time step * number of runs / period length)
             const range = rn.substring(1);
-            // Call rangeToList only to validate the range syntax
+            // Call rangeToList only to validate the range syntax.
             if(rangeToList(range)) {
               x.nr = range;
               this.is_static = false;
@@ -653,12 +766,12 @@ class ExpressionParser {
               msg = `Invalid experiment run number range "${range}"`;
             }
           } else {
-            // Explicit run number
+            // Explicit run number is specified.
             const n = parseInt(rn);
             if(isNaN(n)) {
               msg = `Invalid experiment run number "${rn}"`;
             } else {
-              // Explicit run number overrules selector list
+              // Explicit run number overrules selector list.
               x.r = n;
             }
           }
@@ -666,7 +779,7 @@ class ExpressionParser {
         // NOTE: s[0] still holds the experiment title
         s = s[0].trim();
         if(s) {
-          // NOTE: title cannot be parametrized
+          // NOTE: title cannot be parametrized with a # wildcard
           const n = MODEL.indexOfExperiment(s);
           if(n < 0) {
             msg = `Unknown experiment "${s}"`;
@@ -674,24 +787,30 @@ class ExpressionParser {
             x.x = MODEL.experiments[n];
           }
         }
-        // Variable name may start with a (case insensitive) statistic specifier
+        // Variable name may start with a (case insensitive) statistic
+        // specifier such as SUM or MEAN
         s = name.split('$');
         if(s.length > 1) {
           const stat = s[0].trim().toUpperCase();
-          // NOTE: simply ignore $ unless it indicates a valid statistic
+          // NOTE: simply ignore $ (i.e., consider it as part of the
+          // variable name) unless it is preceded by a valid statistic
           if(VM.outcome_statistics.indexOf(stat) >= 0) {
             x.s = stat;
             name = s[1].trim();
           }
         }
+        // Variable name may start with a colon to denote that the owner
+        // prefix should be added.
+        name = UI.colonPrefixedName(name, this.owner_prefix);
         if(x.x) {
-          // NOTE: variable name may be parametrized
-          const vpar = name.split('\\');
-          if(vpar.length > 1) {
-            // @@ TO DO!
-          }
           // Look up name in experiment outcomes list
           x.v = x.x.resultIndex(name);
+          if(x.v < 0 && name.indexOf('#') >= 0 && this.context_number) {
+            // Variable name may be parametrized with #, but not in
+            // expressions for wildcard selectors
+            name = name.replace('#', this.context_number);
+            x.v = x.x.resultIndex(name);
+          }
           if(x.v < 0) {
             msg = ['Variable "', name, '" is not a result of experiment "',
               x.x.displayName, '"'].join('');
@@ -699,15 +818,22 @@ class ExpressionParser {
         } else {
           // Check outcome list of ALL experiments
           for(let i = 0; i < MODEL.experiments.length; i++) {
-            if(MODEL.experiments[i].resultIndex(name) >= 0) {
+            let xri = MODEL.experiments[i].resultIndex(name);
+            if(xri < 0 && name.indexOf('#') >= 0 && this.context_number) {
+              // Variable name may be parametrized with #, but not in
+              // expressions for wildcard selectors
+              name = name.replace('#', this.context_number);
+              xri = MODEL.experiments[i].resultIndex(name);
+            }
+            if(xri >= 0) {
               // If some match is found, the name specifies a variable
-              x.v = name;
+              x.v = xri;
               break;
             }
           }
         }
-        // NOTE: experiment may still be FALSE, as this will be interpreted as
-        // "use current experiment", but run number should be specified 
+        // NOTE: experiment may still be FALSE, as this will be interpreted
+        // as "use current experiment", but run number should be specified.
         if(!msg) {
           if(x.r === false && x.t === false) {
             msg = 'Experiment run not specified';
@@ -719,107 +845,139 @@ class ExpressionParser {
           this.error = msg;
           return false;
         }
-        // Notify modeler when two statistics are used
+        // Notify modeler when two statistics are used.
         if(x.s && x.m) {
           UI.notify(`Method statistic (${x.m}) does not apply to ` +
               `run result statistic (${x.s})`);
         }
-        // NOTE: using AGGREGATED run results does NOT make the expression
-        // dynamic, so only set is_static to FALSE if NO statistic or method 
+        // NOTE: Using AGGREGATED run results does NOT make the expression
+        // dynamic, so only set is_static to FALSE if NO statistic or method.
         if(!x.s && !x.m) {
           this.is_static = false;
           this.log('dynamic because UNaggregated experiment result');
         }
-        // For experiment run results, default anchor is 't'
+        // For experiment run results, default anchor is 't'.
         if(!anchor1) anchor1 = 't';
         if(!anchor2) anchor2 = 't';
-        // NOTE: compiler will recognize `x` to indicate "push run results"
+        // NOTE: compiler will recognize `x` to indicate "push run results".
         return [x, anchor1, offset1, anchor2, offset2];
       }
     }
     
     //
-    // NOTE: for experiment results, the method will ALWAYS have returned
-    // a result, so what follows does not apply to experiment results
+    // NOTE: For experiment results, the method will ALWAYS have returned
+    // a result, so what follows does not apply to experiment results.
     //
     
-    // Attribute name (optional) follows object-attribute separator |
+    // If reached this stage, variable must be like this:
+    // [(statistic$)entity name pattern(|attribute)]
+    // Attribute name (optional) follows the object-attribute separator |
     s = name.split(UI.OA_SEPARATOR);
     if(s.length > 1) {
-      // Attribute is string after LAST separator ...
+      // Attribute is string after the LAST separator...
       attr = s.pop().trim();
-      // ... so restore name if itself contains other separators
+      // ... so restore `name` in case itself contains other separators.
       name = s.join(UI.OA_SEPARATOR).trim();
       if(!attr) {
         // Explicit *empty* attribute, e.g., [name|]
-        // NOTE: this matters for datasets having specifiers: the vertical
+        // NOTE: This matters for datasets having specifiers: the vertical
         // bar indicates "do not infer a modifier from a running experiment,
-        // but use the data"
+        // but use the data".
         use_data = true;
       } else if(attr.startsWith('=')) {
         // Attribute starting with = indicates cluster balance
-        // NOTE: empty string is considered as "any unit"
+        // NOTE: empty string is considered as "any unit".
         cluster_balance_unit = attr.substring(1).trim();
+      } else if(attr.indexOf('?') >= 0 || attr.indexOf('#') >= 0) {
+        // Wildcard selectors of dataset modifiers cannot be used.
+        this.error = `Invalid attribute "${attr}"`;
+        return false;
       }
     }
 
-    // Check whether statistic is specified
+    // Check whether a statistic is specified.
     let pat = name.split('$');
     if(pat.length > 1 &&
         VM.statistic_operators.indexOf(pat[0].toUpperCase()) >= 0) {
-      // For statistics, default anchor is 't'
+      // For statistics, default anchor is 't'.
       if(!anchor1) anchor1 = 't';
       if(!anchor2) anchor2 = 't';
-      // Check whether unit balance for clusters is asked for
+      // Check whether unit balance for clusters is asked for.
       if(cluster_balance_unit !== false) {
         this.error = 'Aggregation of unit balance over clusters is not supported';
         return false;
       }
-      // Consider only the first $ as statistic separator ... 
+      // Consider only the first $ as statistic separator. 
       const stat = pat.shift().toUpperCase();
-      // Reassemble pattern string, which may itself contain $
+      // Reassemble pattern string, which may itself contain $.
       pat = pat.join('$');
-      // Special case: dataset "dot" is NOT a pattern
+      // Special case: dataset "dot" is NOT a pattern.
       if(pat === '.') {
-        // NOTE: "dot" dataset is not level-dependent, and statistics over its
-        // vector do NOT make the expression dynamic
-        if(this.dataset) {
-          return [stat, [this.dataset.vector], anchor1, offset1, anchor2, offset2];
+        // NOTE: The "dot" dataset is not level-dependent, and statistics
+        // over its vector do NOT make the expression dynamic.
+        if(this.dot) {
+          return [stat, [this.dot.vector], anchor1, offset1, anchor2, offset2];
         } else {
-          msg = UI.ERROR.NO_DATASET_DOT;
+          this.error = UI.ERROR.NO_DATASET_DOT;
           return false;
         }
       }
-      // @@@TO DO: also deal with "prefix inheritance" when pattern starts with :
-      // By default, consider all entity types
+      // Deal with "prefix inheritance" when pattern starts with a colon.
+      if(pat.startsWith(':')) {
+        // Add a "must start with" AND condition to all OR clauses of the
+        // pattern.
+        // NOTE: Issues may occur when prefix contains &, ^ or # (@@TO DO?)
+        const oc = pat.substring(1).split('|');
+        for(let i = 0; i < oc.length; i++) {
+          oc[i] = `~${this.owner_prefix}&${oc[i]}`;
+        }
+        pat = oc.join('|');
+      }
+      // NOTE: For patterns, assume that # *always* denotes the context-
+      // sensitive number #, because if modelers wishes to include
+      // ANY number, they can make their pattern less selective.
+      if(this.context_number) pat = pat.replace('#', this.context_number);
+      // By default, consider all entity types.
       let et = VM.entity_letters,
           patstr = pat;
-      // Selection may be limited to specific entity types by prefic "...?"
+      // Selection may be limited to specific entity types by prefix "...?"
+      // where ... is one or more entity letters (A for actor, etc.).
       if(/^[ABCDELPQ]+\?/i.test(pat)) {
         pat = pat.split('?');
         et = pat[0].toUpperCase();
         pat = pat.slice(1).join('=');
       }
-      // Get the name pattern
+      // Get the name pattern.
       pat = patternList(pat);
-      // Infer the entity type(s) from the attribute (if defined)
+      // Infer the entity type(s) from the attribute (if defined).
       const
           list = [],
-          // NOTE: optional second parameter `et` may limit the returned list
+          // NOTE: The optional second parameter `et` will limit the
+          // returned list to the specified entity types.
           ewa = MODEL.entitiesWithAttribute(attr, et);
-      // Create list of expression objects for the matching entities
+      // Create list of expression objects for the matching entities.
+      // Also create a "dict" with for each matching wildcard number
+      // the matching entities as a separate list. This will permit
+      // narrowing the selection at run time, based on the expression's
+      // wildcard number.
+      const wdict = {};
       for(let i = 0; i < ewa.length; i++) {
         const e = ewa[i];
         if(patternMatch(e.displayName, pat)) {
-          // NOTE: attribute may be a single value, a vector, or an expression
+          const mnr = matchingWildcardNumber(e.displayName, pat);
+          // NOTE: Attribute may be a single value, a vector, or an expression.
           obj = e.attributeValue(attr);
-          // Neither a single value nor a vector => must be an expression
+          // If neither a single value nor a vector, it must be an expression.
           if(obj === null) obj = e.attributeExpression(attr);
-          // Double-check: only add it if it is not NULL
+          // Double-check: only add it if it is not NULL.
           if(obj) {
             list.push(obj);
+            if(mnr) {
+              if(!wdict[mnr]) wdict[mnr] = [];
+              wdict[mnr].push(obj);
+            }
             // Expression becomes dynamic if any element that is added is
-            // neither a single value nor a static expression
+            // neither a single value nor a static expression.
             if(Array.isArray(obj) ||
                 (obj instanceof Expression && !obj.isStatic)) {
               this.is_static = false;
@@ -828,15 +986,18 @@ class ExpressionParser {
           }
         }
       }
-      // NOTE: also add expressions for equations that match
-      const edm = MODEL.equations_dataset.modifiers;
-      for(let k in edm) if(edm.hasOwnProperty(k)) {
-        const m = edm[k];
-        if(patternMatch(m.selector, pat)) {
-          list.push(m.expression);
-          if(!m.expression.isStatic) {
-            this.is_static = false;
-            this.log('dynamic because matching equation is dynamic');
+      // NOTE: If no attribute is specified, also add expressions for
+      // equations that match UNLESS entity type specifier excludes them.
+      if(!attr && (!et || et.indexOf('E') >= 0)) {
+        const edm = MODEL.equations_dataset.modifiers;
+        for(let k in edm) if(edm.hasOwnProperty(k)) {
+          const m = edm[k];
+          if(patternMatch(m.selector, pat)) {
+            list.push(m.expression);
+            if(!m.expression.isStatic) {
+              this.is_static = false;
+              this.log('dynamic because matching equation is dynamic');
+            }
           }
         }
       }
@@ -848,8 +1009,10 @@ class ExpressionParser {
             VM.level_based_attr.indexOf(attr) >= 0 &&
                 anchor1 === 't' && offset1 === 0 &&
                 anchor2 === 't' && offset2 === 0;
-        // NOTE: compiler will recognize 6-element list as a "statistic"
-        return [stat, list, anchor1, offset1, anchor2, offset2];
+        const args = [stat, list, anchor1, offset1, anchor2, offset2];
+        if(Object.keys(wdict).length > 0) args.push(wdict);
+        // NOTE: Compiler will recognize 6- or 7-element list as a "statistic"
+        return args;
       }
       this.error = `No entities that match pattern "${patstr}"` +
           (attr ? ' and have attribute ' + attr : ' when no attribute is specified');
@@ -857,180 +1020,345 @@ class ExpressionParser {
     }
     
     //
-    // NOTE: for statistics, the method will ALWAYS have returned a result,
-    // so what follows does not apply to statistics results
+    // NOTE: For statistics, the method will ALWAYS have returned a result,
+    // so what follows does not apply to statistics results, but only to
+    // "plain" variables like [entity name(|attribute)].
     //
     
-    let by_reference = false;
-    if(name === '.') {
-      // NOTE: when name is a single dot, it refers to the data of a dataset
-      obj = this.dataset;
-      if(!obj) msg = UI.ERROR.NO_DATASET_DOT;
-    } else if(!name && !attr && this.dataset) {
-      // This accepts auto-referencing variables like [@t-1]
-      // Dataset modifier expressions can reference themselves, provided that
-      // an offset is specified
-      // This makes the expression dynamic
-      this.is_static = false;
-      this.log('dynamic because of self-reference');
+    // For all entity types except array-type datasets, the default anchor
+    // for offsets is the current time step `t`.
+    if(!(this.dataset && this.dataset.array)) {
       if(!anchor1) anchor1 = 't';
       if(!anchor2) anchor2 = 't';
+    }
+    // First handle this special case: no name or attribute. This is valid
+    // only for dataset modifier expressions (and hence also equations).
+    // Variables like [@t-1] are interpreted as a self-reference. This is
+    // meaningful when a *negative* offset is specified to denote "use the
+    // value of this expression for some earlier time step".
+    // NOTES:
+    // (1) This makes the expression dynamic.
+    // (2) It does not apply to array-type datasets, as these have no
+    //     time dimension.
+    if(!name && !attr && this.dataset && !this.dataset.array) {
+      this.is_static = false;
+      this.log('dynamic because of self-reference');
       if(('cips'.indexOf(anchor1) >= 0 || anchor1 === 't' && offset1 < 0) &&
           ('cips'.indexOf(anchor2) >= 0 ||anchor2 === 't' && offset2 < 0)) {
         // The `xv` attribute will be recognized by VMI_push_var to denote
-        // "use the vector of the expression for which this VMI is code"
+        // "use the vector of the expression for which this VMI is code".
         return [{xv: true, dv: this.dataset.defaultValue},
             anchor1, offset1, anchor2, offset2];
-      } else {
-        this.error = 'Expression can reference only previous values of itself';
-        return false;
       }
-    } else {
-      // Check for special case: pass variable reference instead of by value
-      if(name.startsWith('!')) {
-        by_reference = true;
-        name = name.substring(1);
+      msg = 'Expression can reference only previous values of itself';
+    }
+    // A leading "!" denotes: pass variable reference instead of its value.
+    // NOTE: This also applies to the "dot", so [!.] is a valid variable.
+    let by_reference = name.startsWith('!');
+    if(by_reference) name = name.substring(1);
+    // When `name` is a single dot, it refers to the dataset for which the
+    // modifier expression is being parsed. Like all datasets, the "dot"
+    // may also have an attribute.
+    if(name === '.') {
+      obj = this.dot;
+      if(!obj) msg = UI.ERROR.NO_DATASET_DOT;
+    } else if(name.indexOf('??') >= 0) {
+      msg = 'Use # as wildcard, not ??';
+    }
+    if(msg) {
+      this.error = msg;
+      return false;
+    }
+    // Check whether name refers to a Linny-R entity defined by the model.
+    if(!obj) {
+      // Variable name may start with a colon to denote that the owner
+      // prefix should be added.
+      name = UI.colonPrefixedName(name, this.owner_prefix);
+      // Start with wildcard equations, as these are likely to be few
+      // (so a quick scan) and constitute a special case.
+      const
+          id = UI.nameToID(name),
+          w = MODEL.wildcardEquationByID(id);
+      if(w) {
+        // Variable matches wildcard equation w[0] with number w[1],
+        // so this equation must be evaluated for that number.
+        return [
+            {d: w[0].dataset, s: w[1], x: w[0].expression},
+            anchor1, offset1, anchor2, offset2];        
       }
-      if(!msg) { 
-        // Check whether name refers to a Linny-R entity defined by the model
-        obj = MODEL.objectByName(name);
-        // If dataset modifier, it is the name of an equation...
-        if(obj instanceof DatasetModifier) {
-          // ... so "map" it onto the equations dataset + selector
-          attr = obj.selector;
-          obj = MODEL.equations_dataset;
+      // If no match, try to match the object ID with any type of entity.
+      obj = MODEL.objectByID(id);
+    }
+    // If not, retry if wildcards can be substituted.
+    if(!obj && name.indexOf('#') >= 0) {
+      if(this.context_number) {
+        obj = MODEL.objectByName(name.replace('#', this.context_number));
+      }
+      if(!obj) {
+        // If immediate substitution of # does not identify an entity,
+        // then name may still refer to a wildcard equation.
+        const wcname = name.replace('#', '??');
+        // Check for self-reference.
+        if(wcname === this.attribute) {
+          msg = 'Equation cannot reference itself';
+        } else {
+          obj = MODEL.equationByID(UI.nameToID(wcname));
+          if(obj) {
+            // Special case: parsed variable references a wildcard
+            // equation (so `obj` is an instance of DatasetModifier).
+            if(!(this.wildcard_equation || this.context_number)) {
+              msg = UI.ERROR.NO_NUMBER_CONTEXT;
+            } else {
+              // Acceptable reference to a wildcard equation.
+              if(!obj.expression.isStatic) {
+                this.is_static = false;
+                this.log('dynamic because wildcard equation is dynamic');
+              }
+              // NOTE: The referenced expression may be level-dependent.
+              this.is_level_based = this.is_level_based ||
+                  obj.expression.is_level_based;
+              // NOTE: Pass a question mark "?" as selector when one
+              // wildcard equation references another; otherwise, pass
+              // the context number as integer.
+              let cnr;
+              if(this.wildcard_equation) {
+                cnr = '?';
+              } else {
+                cnr = parseInt(this.context_number);
+                // NOTE: Let script break if context number is not numeric.
+                if(isNaN(cnr) ) throw ['FATAL ERROR in expression for ',
+                    this.ownerName, ' while parsing variable "', name,
+                    '"\nContext number "', this.context_number,
+                    '" is not a number\nExpression: ', this.expr].join('');
+              } 
+              // Use the context number as "selector" parameter of the VMI.
+              return [
+                  {d: obj.dataset, s: cnr, x: obj.expression},
+                  anchor1, offset1, anchor2, offset2];
+            }
+          }
         }
       }
+      if(!obj) {
+        // Final possibility is a match with a tail-numbered entity name.
+        // NOTE: also pass `attr` so that only entities having this
+        // attribute will match.
+        const ame = MODEL.allMatchingEntities(wildcardMatchRegex(name), attr);
+        if(ame.length > 0) {
+          // NOTE: Some attributes make this expression level-dependent.
+          const uca = attr.toUpperCase();
+          this.is_level_based = this.is_level_based ||
+             VM.level_based_attr.indexOf(uca) >= 0;
+          // Pass the eligible entities along with the selector, so that
+          // at run time the VM can match with the value of #.
+          // NOTE: Also pass whether the entity should be pushed
+          // "by reference".
+          return [
+              {ee: ame, n: name, a: uca, br: by_reference},
+              anchor1, offset1, anchor2, offset2];
+        }
+        // Wildcard selector, but no number context for #.
+        msg = UI.ERROR.NO_NUMBER_CONTEXT;
+      }
     }
+    if(msg) {
+      this.error = msg;
+      return false;
+    }
+    // Now `obj` refers to a model entity (ABCDELPQ).
+    // This parseVariable(...) function must return a tuple like this:
+    // [object or vector, anchor 1, offset 1, anchor 2, offset 2]
+    // because this will be passed along with the VM instruction that
+    // pushes the variable on the operand stack of this expression.
     if(obj === null) {
       msg = `Unknown entity "${name}"`;
-    } else if(obj === this.dataset && attr === this.selector) {
-      // Prevent cyclic reference
-      msg = (obj === MODEL.equations_dataset ?
-          'Equation' : 'Dataset modifier expression') +
-          ' must not reference itself';
     } else if(obj.array &&
         (anchor1 && '#ijk'.indexOf(anchor1) < 0 ||
          anchor2 && '#ijk'.indexOf(anchor2) < 0)) {
+      // Only indices (i, j, k) and the # number can index arrays, as arrays
+      // have no time dimension, while all other anchors relate to time.
       msg = 'Invalid anchor(s) for array-type dataset ' + obj.displayName;
     } else {
-      // NOTE: except for array-type datasets, the default anchor is 't';
-      // for array-type datasets in expressions for array-type datasets,
-      // the SPECIAL anchor is '^' to indicate "use parent anchor"
-      const default_anchor = (obj.array ?
-          (this.dataset && this.dataset.array ? '^' : '') : 't');
-      if(!anchor1) anchor1 = default_anchor;
-      if(!anchor2) anchor2 = default_anchor;
-      // If "by reference", return the object itself plus its attribute
-      if(by_reference) {
-        return [{r: obj, a: attr}, anchor1, offset1, anchor2, offset2];
-      }
-      if(obj === this.dataset && attr === '' && !obj.array) {
-        // When dataset modifier expression refers to its dataset without
-        // selector, then this is equivalent to [.] (use the series data
-        // vector) unless it is an array, since then the series data is
-        // not a time-scaled vector => special case 
-        args = obj.vector;
-      } else if(attr === '') {
-        // For all other variables, assume default attribute
-        attr = obj.defaultAttribute;
-        // For a dataset, check whether the VMI_push_dataset_modifier should be
-        // used. This is the case for array-type datasets, and for datasets
-        // having modifiers UNLESS the modeler used a vertical bar to indicate
-        // "use the data"
-        if(obj instanceof Dataset &&
-            (obj.array || (!use_data && obj.selectorList.length > 0))) {
-          if(obj.data.length > 1 || obj.data.length > 0 && !obj.periodic ||
-              !obj.allModifiersAreStatic) {
-            // No explicit selector => dynamic unless no time series data, and
-            // ALL modifier expressions are static
-            this.is_static = false;
-            this.log('dynamic because dataset without explicit selector is used');
-          }
-          // NOTE: also pass the "use data" flag so that experiment selectors
-          // will be ignored if the modeler coded the vertical bar
-          return [{d: obj, ud: use_data}, anchor1, offset1, anchor2, offset2];
-        }
+      // If the variable denotes an equation or a dataset with a selector,
+      // check whether this is the "owner" of the expression being parsed. 
+      let sel = '',
+          xtype = '';
+      if(obj instanceof DatasetModifier) {
+        sel = obj.selector;
+        xtype = 'Equation';
       } else if(obj instanceof Dataset) {
-        const mm =  obj.matchingModifiers([attr]);
-        // If attribute matches a wildcard modifier, pass the modifier
-        // expression for this wildcard AND the specified attribute
-        if(mm.length > 0) {
-          const nr = endsWithDigits(attr);
-          if(!mm[0].expression.isStatic) {
-            this.is_static = false;
-            this.log('dynamic because dataset modifier expression is dynamic');
-          }
-          // NOTE: the attribute is relevant only to set the context for #,
-          // so if it ends on digits, put the number in the VM instruction
-          // to save execution time
-          return [{d: obj, s: (nr ? parseInt(nr) : attr),
-              x: mm[0].expression}, anchor1, offset1, anchor2, offset2];
-        }
+        sel = attr;
+        xtype = 'Dataset modifier expression';
       }
-      // NOTE: args can now be a single value, a vector, or NULL
-      if(args === null) args = obj.attributeValue(attr);
-      if(Array.isArray(args)) {
-        if(obj instanceof Dataset) {
-          if(obj.data.length > 1 || obj.data.length > 0 && !obj.periodic) {
-            this.is_static = false;
-            this.log('dynamic because dataset vector is used');
-          }
-        } else if(VM.level_based_attr.indexOf(attr) >= 0) {
-          this.is_static = false;
-          this.log('dynamic because level-based attribute');
-        } else {
-          // Unusual (?) combi, so let's assume dynamic
-          this.is_static = false;
-          this.log('probably dynamic --  check below:'); 
-          console.log(obj.displayName, obj, attr, args);
-        }
+      // In variable names, wildcards are denoted as #, so also check for
+      // the (unlikely) case that [eq#x] is used in the expression for a
+      // wildcard equation or dataset modifier with name "eq??x".
+      if(sel && (sel === this.selector ||
+          sel.replace('#', '??') === this.selector)) {
+        // Match indicates a cyclic reference
+        msg = `${xtype} must not reference itself`;
       }
-      // If not a single value or vector, it must be an expression
-      if(args === null) args = obj.attributeExpression(attr);
-      if(args === null) {
-        // Only NOW check whether unit balance for clusters is asked for
-        if(cluster_balance_unit !== false && obj instanceof Cluster) {
-          // NOTE: cluster balance ALWAYS makes expression level-based        
-          this.is_level_based = true;
-          // @TO DO: rethink whether this will indeed also make this expression
-          // dynamic
+    }
+    if(msg) {
+      this.error = msg;
+      return false;
+    }
+    // If `obj` is a dataset *modifier*, it must be a "normal" equation...
+    if(obj instanceof DatasetModifier) {
+      // ... so "map" it onto the equations dataset + selector...
+      attr = obj.selector;
+      obj = MODEL.equations_dataset;
+    }
+    // ... so now it will be processed the same way dataset modifiers
+    // are processed, especially when they have a tail number.
+    
+    // Set default anchors in case no anchors are specified.
+    // Except for array-type datasets, the default anchor is 't';
+    // for array-type datasets in expressions for array-type datasets,
+    // the SPECIAL anchor is '^' to indicate "use parent anchor"
+    // (which will be the parent's context-sensitive number #)
+    const default_anchor = (obj.array ?
+        (this.dataset && this.dataset.array ? '^' : '') : 't');
+    if(!anchor1) anchor1 = default_anchor;
+    if(!anchor2) anchor2 = default_anchor;
+
+    // If "by reference", return the object itself plus its attribute
+    if(by_reference) {
+      return [{r: obj, a: attr}, anchor1, offset1, anchor2, offset2];
+    }
+    if(obj === this.dataset && attr === '' && !obj.array) {
+      // When dataset modifier expression refers to its dataset without
+      // selector, then this is equivalent to [.] (use the series data
+      // vector) unless it is an array, since then the series data is
+      // not a time-scaled vector => special case 
+      args = obj.vector;
+    } else if(attr === '') {
+      // For all other variables, assume default attribute if none specified
+      attr = obj.defaultAttribute;
+      // For a dataset, check whether the VMI_push_dataset_modifier should be
+      // used. This is the case for array-type datasets, and for datasets
+      // having modifiers UNLESS the modeler used a vertical bar to indicate
+      // "use the data"
+      if(obj instanceof Dataset &&
+          (obj.array || (!use_data && obj.selectorList.length > 0))) {
+        if(obj.data.length > 1 || (obj.data.length > 0 && !obj.periodic) ||
+            !obj.allModifiersAreStatic) {
+          // No explicit selector => dynamic unless no time series data, and
+          // ALL modifier expressions are static
           this.is_static = false;
-          this.log('dynamic because cluster balance is believed to be dynamic');
-          // NOTE: VM instructions VMI_push_var will recognize this special case
-          return [{c: obj, u: cluster_balance_unit},
-              anchor1, offset1, anchor2, offset2];
+          this.log('dynamic because dataset without explicit selector is used');
         }
-        // Fall-through: invalid attribute for this object
-        msg = `${obj.type} entities have no attribute "${attr}"`;
+        // NOTE: Also pass the "use data" flag so that experiment selectors
+        // will be ignored if the modeler coded the vertical bar.
+        return [{d: obj, ud: use_data}, anchor1, offset1, anchor2, offset2];
+      }
+    } else if(obj instanceof Dataset) {
+      // For datasets, the attribute must be a modifier selector, so first
+      // check if this dataset has a modifier that matches `attr`.
+      const mm = obj.matchingModifiers([attr]);
+      if(mm.length === 0) {
+        // No match indicates unknown attribute.
+        this.error = `Dataset ${obj.displayName} has no modifier with selector "${attr}"`;
+        return false;
       } else {
-        if(args instanceof Expression) {
-          this.is_static = this.is_static && args.isStatic;
+        // NOTE: Multiple matches are impossible because `attr` cannot
+        // contain wildcards; hence this is a unique match, so the modifier
+        // expression is known.
+        const m = mm[0];
+        if(!m.expression.isStatic) {
+          this.is_static = false;
+          this.log('dynamic because dataset modifier expression is dynamic');
         }
-        args = [args, anchor1, offset1, anchor2, offset2];
+        // NOTE: a single match may be due to wildcard(s) in the modifier,
+        // e.g., a variable [dataset|abc] matches with a modifier having
+        // wildcard selector "a?b", or [dataset|a12] matches with "a*".
+        // In such cases, if the selector matches an integer like "a12"
+        // in the example above, this number (12) should be used as
+        // number context (overriding the number of the dataset, so
+        // for [datset34|a12], the number context is '12' and not '34').
+        let mcn = matchingNumber(attr, m.selector);
+        if(mcn === false) {
+          // NOTE: When no matching number if found, `attr` may still
+          // contain a ?? wildcard. If it indeed identifies a wildcard
+          // equation, then "?" should be passed to the VM instruction.
+          if(obj === MODEL.equations_dataset && attr.indexOf('??') >= 0) {
+            mcn = '?';
+          } else {
+            // Ensure that `mcn` is either an integer value or FALSE.
+            mcn = endsWithDigits(obj.name) || this.context_number || false;
+          }
+        }
+        // Pass the dataset, the context number # (or FALSE) in place, and the
+        // modifier expression 
+        return [
+            {d: m.dataset, s: mcn, x: m.expression},
+            anchor1, offset1, anchor2, offset2];
       }
     }
-    if(msg === '') {
-      // Check whether the attribute is level-based (i.e., can be computed only
-      // after optimizing a block) while no offset is defined to use prior data
-      this.is_level_based = this.is_level_based ||
-          // NOTE: dataset modifier expressions may be level_based
-          obj instanceof Dataset && attr && args[0].is_level_based ||
-          // NOTE: assume NOT level_based if anchor & offset are specified
-          VM.level_based_attr.indexOf(attr) >= 0 &&
-              anchor1 === 't' && offset1 === 0 &&
-              anchor2 === 't' && offset2 === 0;
-      return args;
+    // NOTE: `args` can now be a single value, a vector, or NULL.
+    if(args === null) args = obj.attributeValue(attr);
+    if(Array.isArray(args)) {
+      if(obj instanceof Dataset) {
+        if(obj.data.length > 1 || obj.data.length > 0 && !obj.periodic) {
+          this.is_static = false;
+          this.log('dynamic because dataset vector is used');
+        }
+      } else if(VM.level_based_attr.indexOf(attr) >= 0) {
+        this.is_static = false;
+        this.log('dynamic because level-based attribute');
+      } else {
+        // Unusual (?) combi, so let's assume dynamic
+        this.is_static = false;
+        this.log('probably dynamic --  check below:'); 
+        console.log(obj.displayName, obj, attr, args);
+      }
     }
-    this.error = msg;
-    return false;
+    // If not a single value or vector, it must be an expression
+    if(args === null) args = obj.attributeExpression(attr);
+    if(args === null) {
+      // Only NOW check whether unit balance for clusters is asked for
+      if(cluster_balance_unit !== false && obj instanceof Cluster) {
+        // NOTE: cluster balance ALWAYS makes expression level-based        
+        this.is_level_based = true;
+        // @TO DO: rethink whether this will indeed also make this expression
+        // dynamic
+        this.is_static = false;
+        this.log('dynamic because cluster balance is believed to be dynamic');
+        // NOTE: VM instructions VMI_push_var will recognize this special case
+        return [{c: obj, u: cluster_balance_unit},
+            anchor1, offset1, anchor2, offset2];
+      }
+      // Fall-through: invalid attribute for this object
+      msg = `${obj.type} entities have no attribute "${attr}"`;
+    } else {
+      if(args instanceof Expression) {
+        this.is_static = this.is_static && args.isStatic;
+      }
+      args = [args, anchor1, offset1, anchor2, offset2];
+    }
+    if(msg) {
+      this.error = msg;
+      return false;
+    }
+    // Now `args` should be a valid argument for a VM instruction that
+    // pushes an operand on the evaluation stack
+    // Check whether the attribute is level-based (i.e., can be computed only
+    // after optimizing a block) while no offset is defined to use prior data
+    this.is_level_based = this.is_level_based ||
+        // NOTE: dataset modifier expressions may be level_based
+        obj instanceof Dataset && attr && args[0].is_level_based ||
+        // NOTE: assume NOT level_based if anchor & offset are specified
+        VM.level_based_attr.indexOf(attr) >= 0 &&
+            anchor1 === 't' && offset1 === 0 &&
+            anchor2 === 't' && offset2 === 0;
+    return args;
   }
 
-  // Gets the next substring in the expression that is a valid symbol
-  // while advancing the position-in-text (pit) and length-of-symbol (los),
-  // which are used to highlight the position of a syntax error in the
-  // expression editor
   getSymbol() {
+    // Gets the next substring in the expression that is a valid symbol
+    // while advancing the position-in-text (`pit`) and length-of-symbol
+    // (`los`), which are used to highlight the position of a syntax error
+    // in the expression editor
     let c, f, i, l, v;
     this.prev_sym = this.sym;
     this.sym = null;
@@ -1130,7 +1458,7 @@ class ExpressionParser {
         if(this.selector.indexOf('*') >= 0 ||
             this.selector.indexOf('?') >= 0 ||
             this.owner.numberContext) {
-          this.sym = VMI_push_selector_wildcard;
+          this.sym = VMI_push_contextual_number;
         } else {
           this.error = '# is undefined in this context';
         }
@@ -1241,6 +1569,8 @@ class ExpressionParser {
     // Compiles expression into array of VM instructions `code`
     // NOTE: always create a new code array instance, as it will typically
     // become the code attribute of an expression object
+    if(DEBUGGING) console.log('COMPILING', this.ownerName, ':\n',
+        this.expr, '\ncontext number =', this.context_number);
     this.code = [];
     // Position in text
     this.pit = 0;
@@ -1347,7 +1677,7 @@ class ExpressionParser {
           // start by popping the FALSE result of the IF condition
           this.code.push([VMI_pop_false, null]);
         }
-        // END of new code
+        // END of new code for IF-THEN-ELSE
 
         this.op_stack.push(this.sym);
       } else if(this.sym !== null) {
@@ -1356,11 +1686,13 @@ class ExpressionParser {
           this.code.push([this.sym, null]);
         } else if(Array.isArray(this.sym)) {
           // Either a statistic, a dataset (array-type or with modifier),
-          // an experiment run result, or a variable
-          if(this.sym.length === 6) {
+          // an experiment run result, or a variable.
+          if(this.sym.length >= 6) {
             this.code.push([VMI_push_statistic, this.sym]);
           } else if(this.sym[0].hasOwnProperty('d')) {
             this.code.push([VMI_push_dataset_modifier, this.sym]);
+          } else if(this.sym[0].hasOwnProperty('ee')) {
+            this.code.push([VMI_push_wildcard_entity, this.sym]);
           } else if(this.sym[0].hasOwnProperty('x')) {
             this.code.push([VMI_push_run_result, this.sym]);
           } else if(this.sym[0].hasOwnProperty('r')) {
@@ -1392,8 +1724,7 @@ class ExpressionParser {
         this.error = 'Invalid parameter list';
       }
     }
-    if(DEBUGGING) console.log('PARSED',
-        this.owner.displayName + '|' + this.attribute, ':',
+    if(DEBUGGING) console.log('PARSED', this.ownerName, ':',
         this.expr, this.code);
   }
 
@@ -4261,9 +4592,8 @@ class VirtualMachine {
     } else if(this.error_codes.indexOf(n) < 0) {
       err += '? value = ' + n;
     }
-    const msg = `Numeric issue: ${err} for ${this.numeric_issue}`;
-    this.logMessage(msg);
-    UI.alert(msg);
+    this.logMessage(this.block_count, err);
+    UI.alert(err);
   }
   
   get actualBlockLength() {
@@ -4849,8 +5179,13 @@ Solver status = ${json.status}`);
       if(MODEL.running_experiment) EXPERIMENT_MANAGER.processRun();
       // Warn modeler if any issues occurred
       if(this.block_issues) {
-        UI.warn('Issues occurred in ' + pluralS(this.block_issues, 'block') +
-          ' -- details can be viewed in the monitor and by using \u25C1 \u25B7');
+        let msg = 'Issues occurred in ' +
+            pluralS(this.block_issues, 'block') +
+            ' -- details can be viewed in the monitor';
+        if(VM.issue_list.length) {
+          msg += ' and by using \u25C1 \u25B7';
+        }
+        UI.warn(msg);
         UI.updateIssuePanel();
       }
       if(this.license_expired > 0) {
@@ -5230,11 +5565,11 @@ function VMI_push_second(x, empty) {
   pushTimeStepsPerTimeUnit(x, 'second');
 }
 
-function VMI_push_selector_wildcard(x, empty) {
-  // Pushes the numeric value of the wildcard match
+function VMI_push_contextual_number(x, empty) {
+  // Pushes the numeric value of the context-sensitive number #
   const n = valueOfNumberSign(x);
   if(DEBUGGING) {
-    console.log('push selector wildcard = ' + VM.sig2Dig(n));
+    console.log('push contextual number: # = ' + VM.sig2Dig(n));
   }
   x.push(n);
 }
@@ -5242,118 +5577,121 @@ function VMI_push_selector_wildcard(x, empty) {
 /* VM instruction helper functions */
 
 function valueOfNumberSign(x) {
-  // Pushes the numeric value of the # sign in its local context
+  // Pushes the numeric value of the # sign for the context of expression `x`
   // NOTE: this can be a wildcard match, an active experiment run selector
-  // ending on digits, or an entity name ending on digits
+  // ending on digits, or tne number context of an entity. The latter typically
+  // is the number its name or any of its prefixes ends on, but notes are
+  // more "creative" and can return the number context of nearby entities.
   let s = 'NO SELECTOR',
       m = 'NO MATCH',
-      n = 0;
-  // NOTE: give wildcard selectors precedence over experiment selectors
-  // because wildcard selector is an immediate property of the dataset
-  // modifier expressions, so "closer" to the expression than the
-  // experiment selectors that identify the run
-  if(x.wildcard_number !== false) {
-    n = x.wildcard_number;
+      n = VM.UNDEFINED;
+  // NOTE: Give wildcard selectors precedence over experiment selectors
+  // because a wildcard selector is an immediate property of the dataset
+  // modifier expression, and hence "closer" to the expression than the
+  // experiment selectors that identify the run.
+  if(x.wildcard_vector_index !== false) {
+    n = x.wildcard_vector_index;
     s = x.attribute;
     m = 'wildcard';
   } else {
-    if(x.object instanceof Dataset && x.attribute) {
-      s = x.attribute;
-      if(!endsWithDigits(m) && MODEL.running_experiment) {
-        const sl = MODEL.running_experiment.activeCombination;
-        if(sl) {
-          // Let `m` be the selector for the current experiment run
-          m = sl[0];
+    // Check whether `x` is a dataset modifier expression.
+    // NOTE: This includes equations.
+    if(x.object instanceof Dataset) {
+      if(x.attribute) {
+        s = x.attribute;
+      } else {
+        // Selector may also be defined by a running experiment.
+        if(MODEL.running_experiment) {
+          // Let `m` be the primary selector for the current experiment run.
+          const sl = MODEL.running_experiment.activeCombination;
+          if(sl) {
+            m = sl[0];
+            s = 'experiment';
+          }
         }
       }
     }
-    // If selector contains no wildcards, check if entity name ends with digits
+    // If selector contains no wildcards, get number context (typically
+    // inferred from a number in the name of the object)
     if(s.indexOf('*') < 0 && s.indexOf('?') < 0) {
       const d = x.object.numberContext;
       if(d) {
-        s = '*';
+        s = x.object.displayName;
         m = d;
+        n = parseInt(d);
       }
-    }
-    if(m !== 'NO MATCH') {
-      // Asterisk matches 0 or more characters, question mark 1 character
-      let raw = s.replace(/\*/g, '(.*)').replace(/\?/g, '(.)'),
-          match = m.match(new RegExp(raw));
-      if(match) {
-        // Concatenate all matching characters (need not be digits)
-        m = '';
-        for(let i = 1; i < match.length; i++) m += match[i];
-        // Try to convert to an integer
-        n = parseInt(m);
-        // Default to 0
-        if(isNaN(n)) n = 0;
-      }
+    } else if(m !== 'NO MATCH') {
+      // If matching `m` against `s` do not yield an integer string,
+      // use UNDEFINED
+      n = matchingNumber(m, s) || VM.UNDEFINED;
     }
   }
+  // For datasets, set the parent anchor to be the context-sensitive number
   if(x.object instanceof Dataset) x.object.parent_anchor = n;
   if(DEBUGGING) {
-    console.log('context for # in expression for ' +
-      `${x.object.displayName}${x.attribute ? '|' + x.attribute : ''}
+    console.log(`context for # in expression for ${x.variableName}
 - expression: ${x.text}
-- inferred value of # ${s} => ${m} => ${VM.sig2Dig(n)}`, x.code);
+- inferred value of # ${s} => ${m} => ${n}`, x.code);
   }
   return n;
 }
 
 function relativeTimeStep(t, anchor, offset, dtm, x) {
-  // Returns the relative time step, given t, anchor, offset, delta-t-multiplier
-  // and the expression being evaluated (to provide context for anchor #)
-  // NOTE: t = 1 corresponds with first time step of simulation period
-  
-  // Anchors are checked for in order of *expected* frequency of occurrence
+  // Returns the relative time step, given t, anchor, offset,
+  // delta-t-multiplier and the expression being evaluated (to provide
+  // context for anchor #).
+  // NOTE: t = 1 corresponds with first time step of simulation period.
+  // Anchors are checked for in order of *expected* frequency of occurrence.
   if(anchor === 't') {
-    // Offset relative to current time step (most likely to occur)
+    // Offset relative to current time step (most likely to occur).
     return Math.floor(t + offset);
   }
-  if(anchor === 'r') {
-    // Offset relative to current time step, scaled to time unit of run
-    return Math.floor((t + offset) * dtm);
-  }
-  if(anchor === 'c') {
-    // Relative to start of current optimization block
-    return Math.trunc(t / MODEL.block_length) * MODEL.block_length + offset;
-  }
-  if(anchor === 'p') {
-    // Relative to start of previous optimization block
-    return (Math.trunc(t / MODEL.block_length) - 1) * MODEL.block_length + offset;
-  }
-  if(anchor === 'n') {
-    // Relative to start of next optimization block
-    return (Math.trunc(t / MODEL.block_length) + 1) * MODEL.block_length + offset;
-  }
-  if(anchor === 'l') {
-    // Last: offset relative to the last index in the vector
-    return MODEL.end_period - MODEL.start_period + 1 + offset;
-  }
-  if(anchor === 's') {
-    // Scaled: offset is scaled to time unit of run
-    return Math.floor(offset * dtm);
-  }
-  if('ijk'.indexOf(anchor) >= 0) {
-    // Index: offset is added to the iterator index i, j or k
-    return valueOfIndexVariable(anchor) + offset;
-  }
   if(anchor === '#') {
-    // Index: offset is added to the inferred value of the # symbol
+    // Index: offset is added to the inferred value of the # symbol.
     return valueOfNumberSign(x) + offset;
   }
   if(anchor === '^') {
-    // Inherited index: offset is added to anchor of "parent" dataset
+    // Inherited index (for dataset modifier expressions): offset is added
+    // to the anchor of the modifier's dataset. 
     if(x.object.array) {
       if(DEBUGGING) {
         console.log('Parent anchor', x.object.parent_anchor);
       }
+      // NOTE: For not array-type datasets, ^ is equivalent to #
       return x.object.parent_anchor;
     }
     return valueOfNumberSign(x) + offset;
   }
-  // Fall-through: offset relative to the initial value index (0)
-  // NOTE: this also applies to anchor f (First) 
+  if('ijk'.indexOf(anchor) >= 0) {
+    // Index: offset is added to the iterator index i, j or k.
+    return valueOfIndexVariable(anchor) + offset;
+  }
+  if(anchor === 'r') {
+    // Offset relative to current time step, scaled to time unit of run.
+    return Math.floor((t + offset) * dtm);
+  }
+  if(anchor === 'c') {
+    // Relative to start of current optimization block.
+    return Math.trunc(t / MODEL.block_length) * MODEL.block_length + offset;
+  }
+  if(anchor === 'p') {
+    // Relative to start of previous optimization block.
+    return (Math.trunc(t / MODEL.block_length) - 1) * MODEL.block_length + offset;
+  }
+  if(anchor === 'n') {
+    // Relative to start of next optimization block.
+    return (Math.trunc(t / MODEL.block_length) + 1) * MODEL.block_length + offset;
+  }
+  if(anchor === 'l') {
+    // Last: offset relative to the last index in the vector.
+    return MODEL.end_period - MODEL.start_period + 1 + offset;
+  }
+  if(anchor === 's') {
+    // Scaled: offset is scaled to time unit of run.
+    return Math.floor(offset * dtm);
+  }
+  // Fall-through: offset relative to the initial value index (0).
+  // NOTE: this also applies to anchor f (First).
   return offset;
 }
 
@@ -5433,9 +5771,9 @@ function VMI_push_var(x, args) {
 }
 
 function VMI_push_entity(x, args) {
-  // Pushes a special "entity reference" object based on `args`, being the list
-  // [obj, anchor1, offset1, anchor2, offset2] where `obj` has the format
-  // {r: entity object, a: attribute}
+  // Pushes a special "entity reference" object based on `args`, being the
+  // list [obj, anchor1, offset1, anchor2, offset2] where `obj` has the
+  // format {r: entity object, a: attribute}
   // The object that is pushed on the stack passes the entity, the attribute
   // to use, and the time interval
   const
@@ -5451,35 +5789,93 @@ function VMI_push_entity(x, args) {
   x.push(er);
 }
 
+function VMI_push_wildcard_entity(x, args) {
+  // Pushes the value of (or reference to) an entity attribute, based on
+  // `args`, being the list [obj, anchor1, offset1, anchor2, offset2]
+  // where `obj` has the format {ee: list of eligible entities,
+  // n: name (with wildcard #), a: attribute, br: by reference (boolean)}
+  // First select the first entity in `ee` that matches the wildcard vector
+  // index of the expression `x` being executed.
+  const
+      el = args[0].ee,
+      nn = args[0].n.replace('#', x.wildcard_vector_index);
+  let obj = null;
+  for(let i = 0; !obj && i < el.length; i++) {
+    if(el[i].name === nn) obj = el[i];
+  }
+  // If no match, then this indicates a bad reference.
+  if(!obj) {
+    console.log(`ERROR: no match for "${nn}" in eligible entity list`, el);
+    x.push(VM.BAD_REF);
+    return;
+  }
+  // Otherwise, if `br` indicates "by reference", then VMI_push_entity can
+  // be called with the appropriate parameters.
+  const attr = args[0].a || obj.defaultAttribute;
+  if(args[0].br) {
+    args[0] = {r: obj, a: attr};
+    VMI_push_entity(x, args);
+    return;
+  }
+  // Otherwise, if the entity is a dataset modifier, this must be an
+  // equation (identified by its name, not by a modifier selector) so
+  // push the result of this equation using the wildcard vector index
+  // of the expression that is being computed.
+  if(obj instanceof DatasetModifier) {
+    args[0] = {d: obj.dataset, s: x.wildcard_vector_index, x: obj.expression};
+    VMI_push_dataset_modifier(x, args);
+    return;
+  }
+  // Otherwise, it can be a vector type attribute or an expression.
+  let v = obj.attributeValue(attr);
+  if(v === null) v = obj.attributeExpression(attr);
+  // If no match, then this indicates a bad reference.
+  if(v === null) {
+    console.log(`ERROR: bad variable "${obj.displayName}" with attribute "${attr}"`);
+    x.push(VM.BAD_REF);
+    return;
+  }
+  // Otherwise, VMI_push_var can be called with `v` as first argument.
+  args[0] = v;
+  VMI_push_var(x, args);
+}
+
 function VMI_push_dataset_modifier(x, args) {
-  // NOTE: the first argument specifies the dataset `d` and (optionally!) the
-  // modifier selector `s`, and expression `x`;
-  // if not specified, the modifier to be used must be inferred from the
-  // running experiment UNLESS the field `ud` ("use data") is defined for the
-  // first argument and equals TRUE
+  // NOTE: the first argument specifies the dataset `d` and (optionally!)
+  // the modifier selector `s`, and expression `x`.
+  // If `s` is a number, then the result of `x` must be computed with
+  // this number als wildcard number.
+  // If `s` is not specified, the modifier to be used must be inferred from
+  // the running experiment UNLESS the field `ud` ("use data") is defined
+  // for the first argument, and evaluates as TRUE.
+  // NOTE: Ensure that number 0 is not interpreted as FALSE. 
+  let ms = (args[0].s === 0 || args[0].s) ? args[0].s : false;
   const
       ds = args[0].d,
-      // NOTE: `ud`, `ms`, and `mx` may get value "undefined"!
-      ud = args[0].ud,
-      ms = args[0].s,
-      mx = args[0].x,
-      // NOTE: use the "local" time step for expression x, i.e., the top value
-      // of the expression's time step stack `x.step`
+      ud = args[0].ud || false,
+      mx = args[0].x || null,
+      // NOTE: Use the "local" time step for expression x, i.e., the top
+      // value of the expression's time step stack `x.step`.
       tot = twoOffsetTimeStep(x.step[x.step.length - 1],
           args[1], args[2], args[3], args[4], 1, x);
+  // NOTE: Sanity check to facilitate debugging; if no dataset is provided,
+  // the script will still break at the LET statement below.
+  if(!ds) console.log('ERROR: VMI_push_dataset_modifier without dataset',
+      x.variableName, x.code);
   let t = tot[0],
       obj = ds.vector;
+      
   if(ds.array) {
-    // For array, do NOT adjust "index" t to model run period
-    // NOTE: indices start at 1, but array is zero-based
+    // For array-type datasets, do NOT adjust "index" t to model run period.
+    // NOTE: Indices start at 1, but arrays are zero-based, so subtract 1.
     t--;
-    // When periodic, adjust t to fall within the vector length
+    // When data is periodic, adjust `t` to fall within the vector length.
     if(ds.periodic && obj.length > 0) {
       t = t % obj.length;
       if(t < 0) t += obj.length;
     }
     if(args[1] === '#' || args[3] === '#') {
-      // NOTE: add 1, since (parent) anchors are 1-based
+      // NOTE: Add 1 because (parent) anchors are 1-based.
       ds.parent_anchor = t + 1;
       if(DEBUGGING) {
         console.log('ANCHOR for:', ds.displayName, '=', ds.parent_anchor);
@@ -5487,48 +5883,56 @@ function VMI_push_dataset_modifier(x, args) {
     }
   } else {
     // Negative time step is evaluated as t = 0 (initial value), t beyond
-    // optimization period is evaluated as its last time step
-    // NOTE: By default, use the dataset vector value for t
+    // optimization period is evaluated as its last time step.
+    // NOTE: By default, use the dataset vector value for `t`.
     t = Math.max(0, Math.min(
         MODEL.end_period - MODEL.start_period + MODEL.look_ahead + 1, t));
   }
-  if(ms) {
-    // If modifier selector is specified, use the associated expression
+  if(ms !== false) {
+    // If a modifier selector is specified, use the associated expression.
     obj = mx;
+    // If '?' is passed as selector, use the wildcard vector index of the
+    // expression that is being computed.
+    if(ms === '?') ms = x.wildcard_vector_index;
   } else if(!ud) {
+    // In no selector and not "use data", check whether a running experiment
+    // defines the expression to use. If not, `obj` will be the dataset
+    // vector (so same as when "use data" is set).
     obj = ds.activeModifierExpression;
   }
-  // By default, use the dataset default value
+  // Now determine what value `v` should be pushed onto the expression stack.
+  // By default, use the dataset default value.
   let v = ds.defaultValue,
+      // NOTE: `obstr` is used only when debugging, to log `obj` in human-
+      // readable format.
       obstr = (obj instanceof Expression ?
           obj.text : '[' + obj.toString() + ']');
   if(Array.isArray(obj)) {
-    // Object is a vector
+    // Object is a vector.
     if(t >= 0 && t < obj.length) {
       v = obj[t];
     } else if(ds.array && t >= obj.length) {
-      // Set error value if array index is out of bounds
+      // Set error value if array index is out of bounds.
       v = VM.ARRAY_INDEX;
       VM.out_of_bounds_array = ds.displayName;
-      VM.out_of_bounds_msg = `Index ${t + 1} not in array dataset ` +
+      VM.out_of_bounds_msg = `Index ${VM.sig2Dig(t + 1)} not in array dataset ` +
           `${ds.displayName}, which has length ${obj.length}`;
       console.log(VM.out_of_bounds_msg);
     }
-    // Fall through: no change to `v` => dataset default value is pushed
+    // Fall through: no change to `v` => dataset default value is pushed.
   } else {
-    // Object is an expression
-    // NOTE: readjust t when obj is expression for *array-type* dataset modifier
+    // Object is an expression.
+    // NOTE: Readjust `t` when `obj` is an expression for an *array-type*
+    // dataset modifier.
     if(obj.object instanceof Dataset && obj.object.array) t++;
-    // Pass modifier selector (if specified; may be undefined) so that result
+    // Pass modifier selector (if specified; may be FALSE) so that result
     // will be recomputed with this selector as context for #
-    // Also pass equation parameters (if specified; may be undefined) so that
-    // these will be used as the actual values of the formal parameters 
     v = obj.result(t, ms);
   }
   // Trace only now that time step t has been computed
   if(DEBUGGING) {
     console.log('push dataset modifier:', obstr,
-        tot[1] + (tot[2] ? ':' + tot[2] : ''), ' value = ', VM.sig4Dig(v));
+        tot[1] + (tot[2] ? ':' + tot[2] : ''), 'value =', VM.sig4Dig(v));
     console.log('  --', x.text, ' for owner ', x.object.displayName, x.attribute);
   }
   // NOTE: if value is exceptional ("undefined", etc.), use default value
@@ -5654,8 +6058,8 @@ function VMI_push_statistic(x, args) {
   // of MAX, MEAN, MIN, N, SD, SUM, and VAR, and `list` is a list of vectors
   // NOTE: each statistic may also be "suffixed" by NZ to denote that only
   // non-zero numbers should be considered
-  let stat = args[0];
-  const list = args[1];
+  let stat = args[0],
+      list = args[1];
   if(!list) {
     // Special case: null or empty list => push zero
     if(DEBUGGING) {
@@ -5664,8 +6068,17 @@ function VMI_push_statistic(x, args) {
     x.push(0);
     return;
   }
-  const anchor1 = args[2], offset1 = args[3],
-        anchor2 = args[4], offset2 = args[5];
+  const
+      anchor1 = args[2],
+      offset1 = args[3],
+      anchor2 = args[4],
+      offset2 = args[5],
+      wdict = args[6] || false;
+  // If defined, the wildcard dictionary provides subsets of `list`
+  // to be used when the wildcard number of the expression is set.
+  if(wdict && x.wildcard_vector_index !== false) {
+    list = wdict[x.wildcard_vector_index] || [];
+  }
   // If no list specified, the result is undefined
   if(!Array.isArray(list) || list.length === 0) {
     x.push(VM.UNDEFINED);
@@ -5724,13 +6137,20 @@ function VMI_push_statistic(x, args) {
       }
       // Push value unless it is zero and NZ is TRUE, or if it is undefined
       // (this will occur when a variable has been deleted)
-      if(v <= VM.PLUS_INFINITY && (!nz || Math.abs(v) < VM.NEAR_ZERO)) {
+      if(v <= VM.PLUS_INFINITY && (!nz || Math.abs(v) > VM.NEAR_ZERO)) {
         vlist.push(v);
       }
     }
   }
-  // If no values remain, the result is zero (as ALL values were zero)
-  const n = vlist.length;
+  const
+      n = vlist.length,
+      // NOTE: count is the number of values used in the statistic 
+      count = (nz ? n : list.length);
+  if(stat === 'N') {
+    x.push(count);
+    return;
+  }
+  // If no non-zero values remain, all statistics are zero (as ALL values were zero)
   if(n === 0) {
     x.push(0);
     return;          
@@ -5744,10 +6164,6 @@ function VMI_push_statistic(x, args) {
     x.push(Math.max(...vlist));
     return;
   }
-  if(stat === 'N') {
-    x.push(n);
-    return;
-  }
   // For all remaining statistics, the sum must be calculated
   let sum = 0;
   for(let i = 0; i < n; i++) {
@@ -5759,7 +6175,7 @@ function VMI_push_statistic(x, args) {
   }
   // Now statistic must be either MEAN, SD or VAR, so start with the mean
   // NOTE: no more need to check for division by zero
-  const mean = sum / n;
+  const mean = sum / count;
   if(stat === 'MEAN') {
     x.push(mean);
     return;
@@ -5770,11 +6186,11 @@ function VMI_push_statistic(x, args) {
     sumsq += Math.pow(vlist[i] - mean, 2);
   }
   if(stat === 'VAR') {
-    x.push(sumsq / n);
+    x.push(sumsq / count);
     return;
   }
   if(stat === 'SD') {
-    x.push(Math.sqrt(sumsq / n));
+    x.push(Math.sqrt(sumsq / count));
     return;
   }
   // Fall-through: unknown statistic
@@ -7145,7 +7561,7 @@ const
       VMI_push_look_ahead, VMI_push_round, VMI_push_last_round,
       VMI_push_number_of_rounds, VMI_push_run_number, VMI_push_number_of_runs,
       VMI_push_random, VMI_push_delta_t, VMI_push_true, VMI_push_false,
-      VMI_push_pi, VMI_push_infinity, VMI_push_selector_wildcard,
+      VMI_push_pi, VMI_push_infinity, VMI_push_contextual_number,
       VMI_push_i, VMI_push_j, VMI_push_k,
       VMI_push_year, VMI_push_week, VMI_push_day, VMI_push_hour,
       VMI_push_minute, VMI_push_second],

@@ -328,6 +328,31 @@ class LinnyRModel {
     return null;
   }
   
+  wildcardEquationByID(id) {
+    // Returns the tuple [dataset modifier, number] holding the first
+    // wildcard equation for which the ID (e.g., "abc ??") matches with
+    // `id`, or NULL if no match is found.
+    // NOTE: `id` must contain a number, not a wildcard.
+    if(!this.equations_dataset) return null;
+    const ids = Object.keys(this.equations_dataset.modifiers);
+    for(let i = 0; i < ids.length; i++) {
+      // Skip the modifier ID is identical to `id` (see NOTE above).
+      if(ids[i] !== id) {
+        const re = wildcardMatchRegex(ids[i], true);
+        if(re) {
+          const m = [...id.matchAll(re)];
+          if(m.length > 0) {
+            const n = parseInt(m[0][1]);
+            if(n || n === 0) {
+              return [this.equations_dataset.modifiers[ids[i]], n];
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }  
+  
   namedObjectByID(id) {
     // NOTE: not only entities, but also equations are "named objects", meaning
     // that their name must be unique in a model (unlike the titles of charts
@@ -361,8 +386,8 @@ class LinnyRModel {
   }
 
   objectByName(name) {
-    // Looks up a named object based on its display name
-    // NOTE: top cluster is uniquely identified by its name
+    // Looks up a named object based on its display name.
+    // NOTE: Top cluster is uniquely identified by its name.
     if(name === UI.TOP_CLUSTER_NAME || name === UI.FORMER_TOP_CLUSTER_NAME) {
       return this.clusters[UI.nameToID(UI.TOP_CLUSTER_NAME)];
     }
@@ -389,7 +414,7 @@ class LinnyRModel {
     // No link? then standard conversion to ID
     return this.namedObjectByID(UI.nameToID(name));
   }
-
+  
   setByType(type) {
     // Returns a "dictionary" object with entities of the specified types
     if(type === 'Process') return this.processes;
@@ -450,6 +475,46 @@ class LinnyRModel {
     return list;
   }
   
+  allMatchingEntities(re, attr='') {
+    // NOTE: this routine is computationally intensive as it performs matches
+    // on the display names of entities while iterating over all relevant sets
+    const
+        me = [],
+        res = re.toString();
+        
+    function scan(dict) {
+      // Try to match all entities in `dict` 
+      for(let k in dict) if(dict.hasOwnProperty(k)) {
+        const
+            e = dict[k],
+            m = [...e.displayName.matchAll(re)];
+        if(m.length > 0) {
+          // If matches, ensure that the groups have identical values
+          const n = parseInt(m[0][1]);
+          let same = true;
+          for(let i = 1; same && i < m.length; i++) {
+            same = parseInt(m[i][1]) === n;
+          }
+          // If so, add the entity to the set
+          if(same) me.push(e);
+        }
+      }  
+    }
+    
+    // Links limit the search (constraints have no attributes => skip)
+    if(res.indexOf(UI.LINK_ARROW) >= 0) {
+      scan(this.links);
+    } else {
+      if(!attr || VM.actor_attr.indexOf(attr) >= 0) scan(this.actors);
+      if(!attr || VM.cluster_attr.indexOf(attr) >= 0) scan(this.clusters);
+      if(!attr) scan(this.datasets);
+      if(!attr || VM.process_attr.indexOf(attr) >= 0) scan(this.processes);
+      if(!attr || VM.product_attr.indexOf(attr) >= 0) scan(this.products);
+      if(!attr && this.equations_dataset) scan(this.equations_dataset.modifiers);
+    }
+    return me;
+  }
+
   get clustersToIgnore() {
     // Returns a "dictionary" with all clusters that are to be ignored
     const cti = {};
@@ -1221,17 +1286,17 @@ class LinnyRModel {
     if(name === UI.EQUATIONS_DATASET_NAME) {
       // When including a module, the current equations must be saved,
       // then the newly parsed dataset must have its modifiers prefixed,
-      // and then be merged with the original equations dataset
+      // and then be merged with the original equations dataset.
       if(IO_CONTEXT) eqds = this.equations_dataset;
       // When equations dataset is added, recognize it as such, or its
-      // modifier selectors may be rejected while initializing from XML
+      // modifier selectors may be rejected while initializing from XML.
       this.equations_dataset = d;
     }
     if(node) d.initFromXML(node);
     if(eqds) {
-      // Restore pointer to original equations dataset
+      // Restore pointer to original equations dataset.
       this.equations_dataset = eqds;
-      // Return the extended equations dataset
+      // Return the extended equations dataset.
       return eqds;
     } else {
       this.datasets[id] = d;
@@ -1357,9 +1422,9 @@ class LinnyRModel {
     if(!this.align_to_grid) return;
     let move = false;
     const fc = this.focal_cluster;
-    for(let i = 0; i < fc.notes.length; i++) {
-      move = fc.notes[i].alignToGrid() || move;
-    }
+    // NOTE: Do not align notes to the grid. This will permit more
+    // precise positioning, while aligning will not improve the layout
+    // of the diagram because notes are not connected to arrows.
     for(let i = 0; i < fc.processes.length; i++) {
       move = fc.processes[i].alignToGrid() || move;
     }
@@ -1510,7 +1575,8 @@ class LinnyRModel {
   }
   
   get clusterOrProcessInSelection() {
-    // Return TRUE if current selection contains at least one cluster or process
+    // Return TRUE if current selection contains at least one cluster
+    // or process.
     for(let i = 0; i < this.selection.length; i++) {
       const obj = this.selection[i];
       if(obj instanceof Cluster || obj instanceof Process) return true;
@@ -1519,9 +1585,9 @@ class LinnyRModel {
   }
 
   moveSelection(dx, dy){
-    // Move all selected nodes unless cursor was not moved
-    // NOTE: no undo, as moves are incremental; the original positions have been
-    // stored on MOUSE DOWN
+    // Move all selected nodes unless cursor was not moved.
+    // NOTE: No undo, as moves are incremental; the original positions
+    // have been stored on MOUSE DOWN.
     if(dx === 0 && dy === 0) return;
     let obj,
         minx = 0,
@@ -1587,6 +1653,23 @@ class LinnyRModel {
     }
     return true;
   }
+  
+  eligibleFromToNodes(type) {
+    // Returns a list of nodes of given type (Process, Product or Data)
+    // that are visible in the focal cluster
+    const
+        fc = this.focal_cluster,
+        el = [];
+    if(type === 'Process') {
+      for(let i = 0; i < fc.processes.length; i++) el.push(fc.processes[i]);
+    } else {
+      for(let i = 0; i < fc.product_positions.length; i++) {
+        const p = fc.product_positions[i].product;
+        if((type === 'Data' && p.is_data) || !p.is_data) el.push(p);
+      }
+    }
+    return el;
+  }
 
   get selectionAsXML() {
     // Returns XML for the selected entities, and also for the entities
@@ -1649,7 +1732,7 @@ class LinnyRModel {
     }
     // Only add the XML for notes in the selection
     for(let i = 0; i < entities.Note.length; i++) {
-      xml.push(n.asXML);
+      xml.push(entities.Note[i].asXML);
     }
     for(let i = 0; i < entities.Product.length; i++) {
       const p = entities.Product[i];
@@ -1705,7 +1788,11 @@ class LinnyRModel {
     for(let i = 0; i < from_tos.length; i++) {
       const p = from_tos[i];
       ft_xml.push('<from-to type="', p.type, '" name="', xmlEncoded(p.name));
-      if(p instanceof Process) ft_xml.push('" actor-name="', xmlEncoded(p.actor.name));
+      if(p instanceof Process) {
+        ft_xml.push('" actor-name="', xmlEncoded(p.actor.name));
+      } else if(p.is_data) {
+        ft_xml.push('" is-data="1');
+      }
       ft_xml.push('"></from-to>');
     }
     for(let i = 0; i < extras.length; i++) {
@@ -1824,7 +1911,7 @@ class LinnyRModel {
       for(let i = 0; i < notes.length; i++) {
         const c = this.addNote();
         if(c) {
-          c.copyPropertiesFrom(notes[i]);
+          c.copyPropertiesFrom(notes[i], renumber);
           c.x += 100;
           c.y += 100;
           cloned_selection.push(c);
@@ -2188,7 +2275,7 @@ class LinnyRModel {
 
   get datasetVariables() {
     // Returns list with all ChartVariable objects in this model that
-    // reference a regular dataset, i.e., not an equation
+    // reference a regular dataset, i.e., not an equation.
     const vl = [];
     for(let i = 0; i < MODEL.charts.length; i++) {
       const c = MODEL.charts[i];
@@ -2354,19 +2441,21 @@ class LinnyRModel {
   
   parseXML(data) {
     // Parse data string into XML tree
-    try {
+//    try {
       // NOTE: Convert %23 back to # (escaped by function saveModel)
       const xml = parseXML(data.replace(/%23/g, '#'));
       // NOTE: loading, not including => make sure that IO context is NULL
       IO_CONTEXT = null;
       this.initFromXML(xml);
       return true;
+/*
     } catch(err) {
       // Cursor is set to WAITING when loading starts
       UI.normalCursor();
       UI.alert('Error while parsing model: ' + err);
       return false;
     }
+*/
   }
 
   initFromXML(node) {
@@ -2961,7 +3050,14 @@ class LinnyRModel {
   }
   
   resetExpressions() {
-    // Create a new vector for all expression attributes of all model entities
+    // Create a new vector for all expression attributes of all model
+    // entities, using the appropriate default value.
+
+    // Ensure that the equations dataset must have default value UNDEFINED
+    // so the modeler is warned when a wildcard equation fails to obtain
+    // a valid wildcard number. 
+    this.equations_dataset.default_value = VM.UNDEFINED;
+
     let obj, l, p;
     for(obj in this.actors) if(this.actors.hasOwnProperty(obj)) {
       p = this.actors[obj];
@@ -2979,9 +3075,7 @@ class LinnyRModel {
       this.cleanVector(p.cash_in, 0, 0);
       this.cleanVector(p.cash_out, 0, 0);
       // NOTE: note fields also must be reset
-      for(let i = 0; i < p.notes.length; i++) {
-        p.notes[i].parsed = false;
-      }
+      p.resetNoteFields();
     }
     for(obj in this.processes) if(this.processes.hasOwnProperty(obj)) {
       p = this.processes[obj];
@@ -4521,7 +4615,8 @@ class ObjectWithXYWH {
   }
 
   alignToGrid() {
-    // Align this object to the grid, and return TRUE if this involved a move
+    // Align this object to the grid, and return TRUE if this involved
+    // a move
     const
         ox = this.x,
         oy = this.y,
@@ -4542,22 +4637,29 @@ class ObjectWithXYWH {
 } // END of CLASS ObjectWithXYWH
 
 
-// CLASS NoteField: numeric value of "field" [[dataset]] in note text 
+// CLASS NoteField: numeric value of "field" [[variable]] in note text 
 class NoteField {
-  constructor(f, o, u='1', m=1) {
+  constructor(n, f, o, u='1', m=1, w=false) {
+    // `n` is the note that "owns" this note field
     // `f` holds the unmodified tag string [[dataset]] to be replaced by
     // the value of vector or expression `o` for the current time step;
-    // if specified, `u` is the unit of the value to be displayed, and
-    // `m` is the multiplier for the value to be displayed
+    // if specified, `u` is the unit of the value to be displayed,
+    // `m` is the multiplier for the value to be displayed, and `w` is
+    // the wildcard number to use in a wildcard equation
+    this.note = n;
     this.field = f;
     this.object = o;
     this.unit = u;
     this.multiplier = m;
+    this.wildcard_number = (w ? parseInt(w) : false);
   }
   
   get value() {
     // Returns the numeric value of this note field as a numeric string
     // followed by its unit (unless this is 1)
+    // If object is the note, this means field [[#]] (note number context)
+    // If this is undefined (empty string) display a double question mark
+    if(this.object === this.note) return this.note.numberContext || '\u2047';
     let v = VM.UNDEFINED;
     const t = MODEL.t;
     if(Array.isArray(this.object)) {
@@ -4569,7 +4671,7 @@ class NoteField {
       v = MODEL.flowBalance(this.object, t);
     } else if(this.object instanceof Expression) {
       // Object is an expression
-      v = this.object.result(t);
+      v = this.object.result(t, this.wildcard_number);
     } else if(typeof this.object === 'number') {
       v = this.object;
     } else {
@@ -4594,7 +4696,7 @@ class Note extends ObjectWithXYWH {
     super(cluster);
     const dt = new Date();
     // NOTE: use timestamp in msec to generate a unique identifier
-    this.timestamp = dt.getTime(); 
+    this.timestamp = dt.getTime();
     this.contents = '';
     this.lines = [];
     this.fields = [];
@@ -4610,15 +4712,66 @@ class Note extends ObjectWithXYWH {
     return 'Note';
   }
   
+  get clusterPrefix() {
+    // Returns the name of the cluster containing this note, followed
+    // by a colon+space, except when this cluster is the top cluster.
+    if(this.cluster === MODEL.top_cluster) return '';
+    return this.cluster.displayName + UI.PREFIXER;
+  }
+  
   get displayName() {
-    return `Note #${this.cluster.notes.indexOf(this) + 1} in ` +
-        this.cluster.displayName;
+    const
+        n = this.number,
+        type = (n ? `Numbered note #${n}` : 'Note');
+    return `${this.clusterPrefix}${type} at (${this.x}, ${this.y})`;
+  }
+  
+  get number() {
+    // Returns the number of this note if specified (e.g. as #123).
+    // NOTE: this only applies to notes having note fields.
+    const m = this.contents.replace(/\s+/g, ' ')
+        .match(/^[^\]]*#(\d+).*\[\[[^\]]+\]\]/);
+    if(m) return m[1];
+    return '';
   }
   
   get numberContext() {
-    // Returns the string to be used to evaluate #
-    // NOTE: this does not apply to notes, so return empty string
-    return '';
+    // Returns the string to be used to evaluate #. For notes this is
+    // their note number if specified, otherwise the number context of a
+    // nearby enode, and otherwise the number context of their cluster.
+    let n = this.number;
+    if(n) return n;
+    n = this.nearbyNode;
+    if(n) return n.numberContext;
+    return this.cluster.numberContext;
+  }
+  
+  get nearbyNode() {
+    // Returns a node in the cluster of this note that is closest to this
+    // note (Euclidian distance between center points), but with at most
+    // 30 pixel units between their rims.
+    const
+        c = this.cluster,
+        nodes = c.processes.concat(c.product_positions, c.sub_clusters);
+    let nn = nodes[0] || null;
+    if(nn) {
+      let md = 1e+10;
+      // Find the nearest node
+      for(let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        const
+            dx = (n.x - this.x),
+            dy = (n.y - this.y),
+            d = Math.sqrt(dx*dx + dy*dy);
+        if(d < md) {
+          nn = n;
+          md = d;
+        }
+      }
+      if(Math.abs(nn.x - this.x) < (nn.width + this.width) / 2 + 30 &&
+          Math.abs(nn.y - this.y) < (nn.height + this.height) / 2 + 30) return nn;
+    }
+    return null;
   }
   
   get asXML() {
@@ -4655,27 +4808,27 @@ class Note extends ObjectWithXYWH {
   }
 
   setCluster(c) {
-    // Place this note into the specified cluster `c`
+    // Place this note into the specified cluster `c`.
     if(this.cluster) {
-      // Remove this note from its current cluster's note list
+      // Remove this note from its current cluster's note list.
       const i = this.cluster.notes.indexOf(this);
       if(i >= 0) this.cluster.notes.splice(i, 1);
       // Set its new cluster pointer...
       this.cluster = c;
-      // ... and add it to the new cluster's note list
+      // ... and add it to the new cluster's note list.
       if(c.notes.indexOf(this) < 0) c.notes.push(this);
     }
   }
   
   get tagList() {
-    // Returns a list of matches for [[...]], or NULL if none
+    // Returns a list of matches for [[...]], or NULL if none.
     return this.contents.match(/\[\[[^\]]+\]\]/g);
   }
   
   parseFields() {
-    // Fills the list of fields by parsing all [[...]] tags in the text
+    // Fills the list of fields by parsing all [[...]] tags in the text.
     // NOTE: this does not affect the text itself; tags will be replaced
-    // by numerical values only when drawing the note
+    // by numerical values only when drawing the note.
     this.fields.length = 0;
     const tags = this.tagList;
     if(tags) {
@@ -4685,19 +4838,25 @@ class Note extends ObjectWithXYWH {
             inner = tag.slice(2, tag.length - 2).trim(),
             bar = inner.lastIndexOf('|'),
             arrow = inner.lastIndexOf('->');
-        // Check if a unit conversion scalar was specified
+        // Special case: [[#]] denotes the number context of this note.
+        if(tag.replace(/\s+/, '') === '[[#]]') {
+          this.fields.push(new NoteField(this, tag, this));
+          // Done, so move on to the next tag
+          continue;
+        }
+        // Check if a unit conversion scalar was specified.
         let ena,
             from_unit = '1',
             to_unit = '',
             multiplier = 1;
         if(arrow > bar) {
-          // Now for sure it is entity->unit or entity|attr->unit
+          // Now for sure it is entity->unit or entity|attr->unit.
           ena = inner.split('->');
           // As example, assume that unit = 'kWh' (so the value of the
-          // field should be displayed in kilowatthour)
-          // NOTE: use .trim() instead of UI.cleanName(...) here;
-          // this forces the modeler to be exact, and that permits proper
-          // renaming of scale units in note fields
+          // field should be displayed in kilowatthour).
+          // NOTE: use .trim() instead of UI.cleanName(...) here. This
+          // forces the modeler to be exact, and that permits proper
+          // renaming of scale units in note fields.
           to_unit = ena[1].trim();
           ena = ena[0].split('|');
           if(!MODEL.scale_units.hasOwnProperty(to_unit)) {
@@ -4707,27 +4866,56 @@ class Note extends ObjectWithXYWH {
         } else {
           ena = inner.split('|');
         }
-        // Look up entity for name and attribute
-        const obj = MODEL.objectByName(ena[0].trim());
-        if(obj instanceof DatasetModifier) {
-          // NOTE: equations are (for now) dimensionless => unit '1'
+        // Look up entity for name and attribute.
+        // NOTE: A leading colon denotes "prefix with cluster name". 
+        let en = UI.colonPrefixedName(ena[0].trim(), this.clusterPrefix),
+            id = UI.nameToID(en),
+            // First try to match `id` with the IDs of wildcard equations,
+            // (e.g., "abc 123" would match with "abc ??").
+            w = MODEL.wildcardEquationByID(id),
+            obj = null,
+            wildcard = false;
+        if(w) {
+          // If wildcard equation match, w[0] is the equation (instance
+          // of DatasetModifier), and w[1] the matching number.
+          obj = w[0];
+          wildcard = w[1];
+        } else {
+          obj = MODEL.objectByID(id);
+        }
+        // If not found, this may be due to # wildcards in the name.
+        if(!obj && en.indexOf('#') >= 0) {
+          // First try substituting # by the context number. 
+          const numcon = this.numberContext;
+          obj = MODEL.objectByName(en.replace('#', numcon));
+          // If no match, check whether the name matches a wildcard equation.
+          if(!obj) {
+            obj = MODEL.equationByID(UI.nameToID(en.replace('#', '??')));
+            if(obj) wildcard = numcon;
+          }
+        }
+        if(!obj) {
+          UI.warn(`Unknown model entity "${en}"`);
+        } else if(obj instanceof DatasetModifier) {
+          // NOTE: equations are (for now) dimensionless => unit '1'.
           if(obj.dataset !== MODEL.equations_dataset) {
             from_unit = obj.dataset.scale_unit;
             multiplier = MODEL.unitConversionMultiplier(from_unit, to_unit);
           }
-          this.fields.push(new NoteField(tag, obj.expression, to_unit, multiplier));
+          this.fields.push(new NoteField(this, tag, obj.expression, to_unit,
+              multiplier, wildcard));
         } else if(obj) {
-          // If attribute omitted, use default attribute of entity type
+          // If attribute omitted, use default attribute of entity type.
           const attr = (ena.length > 1 ? ena[1].trim() : obj.defaultAttribute);
           let val = null;
-          // NOTE: for datasets, use the active modifier
+          // NOTE: for datasets, use the active modifier if no attribute.
           if(!attr && obj instanceof Dataset) {
             val = obj.activeModifierExpression;
           } else {
-            // Variable may specify a vector-type attribute
+            // Variable may specify a vector-type attribute.
             val = obj.attributeValue(attr);
           }
-          // If not, it may be a cluster unit balance
+          // If not, it may be a cluster unit balance.
           if(!val && attr.startsWith('=') && obj instanceof Cluster) {
             val = {c: obj, u: attr.substring(1).trim()};
             from_unit = val.u;
@@ -4753,9 +4941,20 @@ class Note extends ObjectWithXYWH {
           } else if(attr === 'CI' || attr === 'CO' || attr === 'CF') {
             from_unit = MODEL.currency_unit;
           }
-          // If not, it may be an expression-type attribute
+          // If still no value, `attr` may be an expression-type attribute.
           if(!val) {
             val = obj.attributeExpression(attr);
+            // For wildcard expressions, provide the tail number of `attr`
+            // as number context.
+            if(val && val.isWildcardExpression) {
+              const nr = matchingNumber(attr, val.attribute);
+              if(nr) {
+                wildcard = nr;
+              } else {
+                UI.warn(`Attribute "${attr}" does not provide a number`);
+                continue;
+              }
+            }
             if(obj instanceof Product) {
               if(attr === 'IL' || attr === 'LB' || attr === 'UB') {
                 from_unit = obj.scale_unit;
@@ -4764,16 +4963,15 @@ class Note extends ObjectWithXYWH {
               }
             }
           }
-          // If no TO unit, add the FROM unit 
+          // If no TO unit, add the FROM unit.
           if(to_unit === '') to_unit = from_unit;
           if(val) {
             multiplier = MODEL.unitConversionMultiplier(from_unit, to_unit);
-            this.fields.push(new NoteField(tag, val, to_unit, multiplier));
+            this.fields.push(new NoteField(this, tag, val, to_unit,
+                multiplier, wildcard));
           } else {
             UI.warn(`Unknown ${obj.type.toLowerCase()} attribute "${attr}"`);
           }
-        } else {
-          UI.warn(`Unknown model entity "${ena[0].trim()}"`);
         }
       }
     }
@@ -4781,20 +4979,24 @@ class Note extends ObjectWithXYWH {
   }
 
   get fieldEntities() {
-    // Return a list with names of entities used in fields
+    // Return a list with names of entities used in fields.
     const
         fel = [],
         tags = this.tagList;
     for(let i = 0; i < tags.length; i++) {
       const
           tag = tags[i],
-          inner = tag.slice(2, tag.length - 2).trim(),
+          // Trim brackets and padding spaces on both sides, and then
+          // expand leading colons that denote prefixes.
+          inner = UI.colonPrefixedName(tag.slice(2, tag.length - 2).trim()),
           vb = inner.lastIndexOf('|'),
           ua = inner.lastIndexOf('->');
       if(vb >= 0) {
+        // Vertical bar? Then the entity name is the left part.
         addDistinct(inner.slice(0, vb), fel);
       } else if(ua >= 0 &&
           MODEL.scale_units.hasOwnProperty(inner.slice(ua + 2))) {
+        // Unit arrow? Then trim the "->unit" part.
         addDistinct(inner.slice(0, ua), fel);
       } else {
         addDistinct(inner, fel);
@@ -4818,29 +5020,30 @@ class Note extends ObjectWithXYWH {
   }
   
   rewriteFields(en1, en2) {
-    // Rename fields that reference entity name `en1` to reference `en2` instead
-    // NOTE: this does not affect the expression code
+    // Rename fields that reference entity name `en1` to reference `en2`
+    // instead.
+    // NOTE: This does not affect the expression code.
     if(en1 === en2) return;
     for(let i = 0; i < this.fields.length; i++) {
       const
           f = this.fields[i],
-          // Trim the double brackets on both sides
-          tag = f.field.slice(2, f.field.length - 2);
-      // Separate tag into variable and attribute + offset string (if any)
+          // Trim the double brackets and padding spaces on both sides.
+          tag = f.field.slice(2, f.field.length - 2).trim();
+      // Separate tag into variable and attribute + offset string (if any).
       let e = tag,
           a = '',
           vb = tag.lastIndexOf('|'),
           ua = tag.lastIndexOf('->');
       if(vb >= 0) {
         e = tag.slice(0, vb);
-        // NOTE: attribute string includes the vertical bar '|'
+        // NOTE: Attribute string includes the vertical bar '|'.
         a = tag.slice(vb);
       } else if(ua >= 0 && MODEL.scale_units.hasOwnProperty(tag.slice(ua + 2))) {
         e = tag.slice(0, ua);
-        // NOTE: attribute string includes the unit conversion arrow '->'
+        // NOTE: Attribute string includes the unit conversion arrow '->'.
         a = tag.slice(ua);
       }
-      // Check for match
+      // Check for match.
       const r = UI.replaceEntity(e, en1, en2);
       if(r) {
         e = `[[${r}${a}]]`;
@@ -4851,6 +5054,8 @@ class Note extends ObjectWithXYWH {
   }
   
   get evaluateFields() {
+    // Returns the text content of this note with all tags replaced
+    // by their note field values.
     if(!this.parsed) this.parseFields();
     let txt = this.contents;
     for(let i = 0; i < this.fields.length; i++) {
@@ -4861,51 +5066,66 @@ class Note extends ObjectWithXYWH {
   }
   
   resize() {
-    // Resizes the note; returns TRUE iff size has changed
+    // Resizes the note; returns TRUE iff size has changed.
     let txt = this.evaluateFields;
     const
         w = this.width,
         h = this.height,
-        // Minimumm note width of 10 characters
+        // Minimumm note width of 10 characters.
         n = Math.max(txt.length, 10),
         fh = UI.textSize('hj').height;
-    // Approximate the width to obtain a rectangle
+    // Approximate the width to obtain a rectangle.
     // NOTE: 3:1 may seem exagerated, but characters are higher than wide,
-    // and there will be more (short) lines due to newlines and wrapping
+    // and there will be more (short) lines due to newlines and wrapping.
     let tw = Math.ceil(3*Math.sqrt(n)) * fh / 2;
     this.lines = UI.stringToLineArray(txt, tw).join('\n');
     let bb = UI.textSize(this.lines, 8);
-    // Ensure that shape is wider than tall
+    // Aim to make the shape wider than tall.
     let nw = bb.width,
         nh = bb.height;
     while(bb.width < bb.height * 1.7) {
       tw *= 1.2;
       this.lines = UI.stringToLineArray(txt, tw).join('\n');
       bb = UI.textSize(this.lines, 8);
-      // Prevent infinite loop
+      // Prevent infinite loop.
       if(nw <= bb.width || nh > bb.height) break;
     }
     this.height = 1.05 * (bb.height + 6);
     this.width = bb.width + 6;
+    // Boolean return value indicates whether size has changed.
     return this.width != w || this.height != h;
   }
   
   containsPoint(mpx, mpy) {
+    // Returns TRUE iff given coordinates lie within the note rectangle.
     return (Math.abs(mpx - this.x) <= this.width / 2 &&
         Math.abs(mpy - this.y) <= this.height / 2);
   }
 
-  copyPropertiesFrom(n) {
-    // Set properties to be identical to those of note `n`
+  copyPropertiesFrom(n, renumber=false) {
+    // Sets properties to be identical to those of note `n`.
     this.x = n.x;
     this.y = n.y;
-    this.contents = n.contents;
+    let cont = n.contents;
+    if(renumber) {
+      // Renumbering only applies to notes having note fields; then the
+      // note number must be denoted like #123, and occur before the first
+      // note field.
+      const m = cont.match(/^[^\]]*#(\d+).*\[\[[^\]]+\]\]/);
+      if(m) {
+        const nn = this.cluster.nextAvailableNoteNumber(m[1]);
+        cont = cont.replace(/#\d+/, `#${nn}`);
+      }
+    }
+    this.contents = cont;
+    // NOTE: Renumbering does not affect the note fields or the color
+    // expression. This is a design choice; the modeler can use wildcards.
     this.color.text = n.color.text;
     this.parsed = false;
   }
 
   differences(n) {
-    // Return "dictionary" of differences, or NULL if none
+    // Return "dictionary" of differences, or NULL if none.
     const d = differences(this, n, UI.MC.NOTE_PROPS);
     if(Object.keys(d).length > 0) return d;
     return null;
@@ -4947,6 +5167,17 @@ class NodeBox extends ObjectWithXYWH {
     // NOTE: Display nothing if entity is "black-boxed"
     if(n.startsWith(UI.BLACK_BOX)) return '';
     n = `<em>${this.type}:</em> ${n}`;
+    // For clusters, add how many processes and products they contain
+    if(this instanceof Cluster) {
+      let d = '';
+      if(this.all_processes) {
+        const dl = [];
+        dl.push(pluralS(this.all_processes.length, 'process'));
+        dl.push(pluralS(this.all_products.length, 'product'));
+        d = dl.join(', ').toLowerCase();
+      }
+      if(d) n += `<span class="node-details">${d}</span>`;
+    }
     if(DEBUGGING && MODEL.solved) {
       n += ' [';
       if(this instanceof Process || this instanceof Product) {
@@ -4971,10 +5202,11 @@ class NodeBox extends ObjectWithXYWH {
   }
   
   get numberContext() {
-    // Returns the string to be used to evaluate #, so for clusters, processes
-    // and products this is the string of trailing digits (or empty if none)
-    // of the node name, or if that does not end with a number, the trailing
-    // digits of the first prefix (from right to left) that does
+    // Returns the string to be used to evaluate #, so for clusters,
+    // processes and products this is the string of trailing digits
+    // (or empty if none) of the node name, or if that does not end on
+    // a number, the trailing digits of the first prefix (from right to
+    // left) that does end on a number
     const sn = UI.prefixesAndName(this.name);
     let nc = endsWithDigits(sn.pop());
     while(!nc && sn.length > 0) {
@@ -4983,33 +5215,50 @@ class NodeBox extends ObjectWithXYWH {
     return nc;
   }
   
+  get similarNumberedEntities() {
+    // Returns a list of nodes of the same type that have a number
+    // context similar to this node.
+    const nc = this.numberContext;
+    if(!nc) return [];
+    const
+        re = wildcardMatchRegex(this.displayName.replace(nc, '#')),
+        nodes = MODEL.setByType(this.type),
+        similar = [];
+    for(let id in nodes) if(nodes.hasOwnProperty(id)) {
+      const n = nodes[id];
+      if(n.displayName.match(re)) similar.push(n);
+    }
+    return similar;
+  }
+  
   rename(name, actor_name) {
-    // Changes the name and/or actor name of this process, product or cluster
-    // NOTE: returns TRUE if rename was successful, FALSE on error, and a
-    // process, product or cluster if such entity having the new name already
-    // exists
+    // Changes the name and/or actor name of this node (process, product
+    // or cluster).
+    // NOTE: Returns TRUE if rename was successful, FALSE on error, and
+    // a process, product or cluster if such entity having the new name
+    // already exists.
     name = UI.cleanName(name);
     if(!UI.validName(name)) {
       UI.warningInvalidName(name);
       return false;
     }
-    // Compose the full name
+    // Compose the full name.
     if(actor_name === '') actor_name = UI.NO_ACTOR;
     let fn = name;
     if(actor_name != UI.NO_ACTOR) fn += ` (${actor_name})`;
     // Get the ID (derived from the full name) and check if MODEL already
-    // contains another entity with this ID
+    // contains another entity with this ID.
     const
         old_name = this.displayName,
         old_id = this.identifier,
         new_id = UI.nameToID(fn),
         n = MODEL.nodeBoxByID(new_id);
-    // If so, do NOT rename, but return this object instead
-    // NOTE: if entity with this name is THIS entity, it typically means
-    // a cosmetic name change (upper/lower case) which SHOULD be performed
+    // If so, do NOT rename, but return this object instead.
+    // NOTE: If entity with this name is THIS entity, it typically means
+    // a cosmetic name change (upper/lower case) which SHOULD be performed.
     if(n && n !== this) return n;
-    // Otherwise, if IDs differ, add this object under its new key, and remove
-    // its old entry
+    // Otherwise, if IDs differ, add this object under its new key, and
+    // remove its old entry.
     if(old_id != new_id) {
       if(this instanceof Process) {
         MODEL.processes[new_id] = this;
@@ -5021,21 +5270,21 @@ class NodeBox extends ObjectWithXYWH {
         MODEL.clusters[new_id] = this;
         delete MODEL.clusters[old_id];
       } else {
-        // NOTE: this should never happen => report an error
+        // NOTE: This should never happen => report an error.
         UI.alert('Can only rename processes, products and clusters');
         return false;
       }
     }
-    // Change this object's name and actor
+    // Change this object's name and actor.
     this.actor = MODEL.addActor(actor_name);
     this.name = name;
-    // Update actor list in case some actor name is no longer used
+    // Update actor list in case some actor name is no longer used.
     MODEL.cleanUpActors();
     MODEL.replaceEntityInExpressions(old_name, this.displayName);
     MODEL.inferIgnoredEntities();
-    // NOTE: renaming may affect the node's display size
+    // NOTE: Renaming may affect the node's display size.
     if(this.resize()) this.drawWithLinks();
-    // NOTE: only TRUE indicates a successful (cosmetic) name change
+    // NOTE: Only TRUE indicates a successful (cosmetic) name change.
     return true;
   }
   
@@ -5484,7 +5733,8 @@ class Cluster extends NodeBox {
   }
 
   attributeValue(a) {
-    // Return the computed result for attribute a  (for clusters always a vector)
+    // Return the computed result for attribute `a`
+    // For clusters, this is always a vector
     if(a === 'CF') return this.cash_flow;
     if(a === 'CI') return this.cash_in;
     if(a === 'CO') return this.cash_out;
@@ -5749,6 +5999,27 @@ class Cluster extends NodeBox {
       notes = notes.concat(this.sub_clusters[i].allNotes); // recursion!
     }
     return notes;
+  }
+
+  resetNoteFields() {
+  // Ensure that all note fields are parsed anew when a note in this
+  // cluster are drawn.
+    for(let i = 0; i < this.notes.length; i++) {
+      this.notes[i].parsed = false;
+    }
+  }
+
+  nextAvailableNoteNumber(n) {
+    // Returns the first integer greater than `n` that is not already in use
+    // by a note of this cluster
+    let nn = parseInt(n) + 1;
+    const nrs = [];
+    for(let i = 0; i < this.notes.length; i++) {
+      const nr = this.notes[i].number;
+      if(nr) nrs.push(parseInt(nr));
+    }
+    while(nrs.indexOf(nn) >= 0) nn++;
+    return nn;
   }
 
   clearAllProcesses() {
@@ -7153,6 +7424,7 @@ class Process extends Node {
   }
   
   get defaultAttribute() {
+    // Default attribute of processes is their level
     return 'L';
   }
 
@@ -7168,6 +7440,7 @@ class Process extends Node {
   }
 
   attributeExpression(a) {
+    // Processes have three expression attributes
     if(a === 'LB') return this.lower_bound;
     if(a === 'UB') {
       return (this.equal_bounds ? this.lower_bound : this.upper_bound);
@@ -7563,6 +7836,7 @@ class Product extends Node {
   }
 
   get defaultAttribute() {
+    // Products have their level as default attribute 
     return 'L';
   }
 
@@ -7576,6 +7850,7 @@ class Product extends Node {
   }
 
   attributeExpression(a) {
+    // Products have four expression attributes
     if(a === 'LB') return this.lower_bound;
     if(a === 'UB') {
       return (this.equal_bounds ? this.lower_bound : this.upper_bound);
@@ -7586,6 +7861,7 @@ class Product extends Node {
   }
 
   changeScaleUnit(name) {
+    // Changes the scale unit for this product to `name`
     let su = MODEL.addScaleUnit(name);
     if(su !== this.scale_unit) {
       this.scale_unit = su;
@@ -7873,6 +8149,7 @@ class Link {
   }
 
   get defaultAttribute() {
+    // For links, the default attribute is their actual flow
     return 'F';
   }
 
@@ -7884,6 +8161,7 @@ class Link {
   }
 
   attributeExpression(a) {
+    // Links have two expression attributes
     if(a === 'R') return this.relative_rate;
     if(a === 'D') return this.flow_delay;
     return null;
@@ -7984,20 +8262,45 @@ class DatasetModifier {
   }
 
   get hasWildcards() {
-    return this.selector.indexOf('*') >= 0 || this.selector.indexOf('?') >= 0; 
+    // Returns TRUE if this modifier contains wildcards
+    return this.dataset.isWildcardSelector(this.selector);
+  }
+
+  get numberContext() {
+    // Returns the string to be used to evaluate #.
+    // NOTE: If the selector contains wildcards, return "?" to indicate
+    // that the value of # cannot be inferred at compile time. 
+    if(this.hasWildcards) return '?'; 
+    // Otherwise, # is the string of digits at the end of the selector.
+    // NOTE: equation names are like entity names, so treat them as such,
+    // i.e., also check for prefixes that end on digits.
+    const sn = UI.prefixesAndName(this.name);
+    let nc = endsWithDigits(sn.pop());
+    while(!nc && sn.length > 0) {
+      nc = endsWithDigits(sn.pop());
+    }
+    // NOTE: if the selector has no tail number, return the number context
+    // of the dataset of this modifier.
+    return nc || this.dataset.numberContext;
   }
 
   match(s) {
-    if(this.hasWildcards) {
-      // NOTE: replace ? by . (any character) in pattern and * by .*
-      const re = new RegExp(
-          this.selector.replace(/\?/g, '.').replace(/\*/g, '.*'));
-      return re.test(s);
+    // Returns TRUE if string `s` matches with the wildcard pattern of
+    // the selector.
+    if(!this.hasWildcards) return s === this.selector;
+    let re;
+    if(this.dataset === MODEL.equations_dataset) {
+      // Equations wildcards only match with digits
+      re = wildcardMatchRegex(this.selector, true);
     } else {
-      return s === this.selector;
+      // Selector wildcards match with any character, so replace ? by .
+      // (any character) in pattern, and * by .*
+      const raw = this.selector.replace(/\?/g, '.').replace(/\*/g, '.*');
+      re = new RegExp(`^${raw}$`);
     }
+    return re.test(s);
   }
-
+  
 } // END of class DatasetModifier
 
 
@@ -8062,7 +8365,9 @@ class Dataset {
   }
   
   get numberContext() {
-    // Returns the string to be used to evaluate # (empty string if undefined)
+    // Returns the string to be used to evaluate #
+    // Like for nodes, this is the string of digits at the end of the
+    // dataset name (if any) or an empty string (to denote undefined)
     const sn = UI.prefixesAndName(this.name);
     let nc = endsWithDigits(sn.pop());
     while(!nc && sn.length > 0) {
@@ -8070,7 +8375,7 @@ class Dataset {
     }
     return nc;
   }
-
+  
   get selectorList() {
     // Returns sorted list of selectors (those with wildcards last)
     const sl = [];
@@ -8090,12 +8395,43 @@ class Dataset {
     return sl;
   }
   
-  get allModifiersAreStatic() {
-    // Returns TRUE if all modifier expressions are static
-    for(let k in this.modifiers) if(this.modifiers.hasOwnProperty(k)) {
-      if(!this.modifiers[k].expression.isStatic) return false;
+  isWildcardSelector(s) {
+    // Returns TRUE if `s` contains * or ?
+    // NOTE: for equations, the wildcard must be ??
+    if(this.dataset === MODEL.equations_dataset) return s.indexOf('??') >= 0;
+    return s.indexOf('*') >= 0 || s.indexOf('?') >= 0;
+  }
+  
+  matchingModifiers(l) {
+    // Returns the list of modifiers of this dataset (in order: from most
+    // to least specific) that match with 1 or more elements of `l`
+    const
+        sl = this.selectorList,
+        shared = [];
+    for(let i = 0; i < l.length; i++) {
+      for(let j = 0; j < sl.length; j++) {
+        const m = this.modifiers[UI.nameToID(sl[j])];
+        if(m.match(l[i])) addDistinct(m, shared);
+      }
+    }
+    return shared;
+  }
+
+  modifiersAreStatic(l) {
+    // Returns TRUE if expressions for all modifiers in `l` are static
+    // NOTE: `l` may be a list of modifiers or strings
+    for(let i = 0; i < l.length; i++) {
+      let sel = l[i];
+      if(sel instanceof DatasetModifier) sel = sel.selector;
+      if(this.modifiers.hasOwnProperty(sel) &&
+         !this.modifiers[sel].expression.isStatic) return false;
     }
     return true;
+  }
+  
+  get allModifiersAreStatic() {
+    // Returns TRUE if all modifier expressions are static
+    return this.modifiersAreStatic(Object.keys(this.modifiers));
   }
   
   get inferPrefixableModifiers() {
@@ -8141,21 +8477,6 @@ class Dataset {
     }
   }
   
-  matchingModifiers(l) {
-    // Returns the list of selectors of this dataset (in order: from most to
-    // least specific) that match with 1 or more elements of `l`
-    const
-        sl = this.selectorList,
-        shared = [];
-    for(let i = 0; i < l.length; i++) {
-      for(let j = 0; j < sl.length; j++) {
-        const m = this.modifiers[UI.nameToID(sl[j])];
-        if(m.match(l[i])) addDistinct(m, shared);
-      }
-    }
-    return shared;
-  }
-
   get dataString() {
     // Data is stored simply as semicolon-separated floating point numbers,
     // with N-digit precision to keep model files compact (default: N = 8)
@@ -8258,21 +8579,21 @@ class Dataset {
   }
   
   attributeValue(a) {
-    // Returns the computed result for attribute `a`
+    // Returns the computed result for attribute `a`.
     // NOTE: Datasets have ONE attribute (their vector) denoted by the empty
-    // string; all other "attributes" should be modifier selectors
+    // string; all other "attributes" should be modifier selectors, and
+    // their value should be obtained using attributeExpression (see below).
     if(a === '') return this.vector;
     return null;
   }
 
   attributeExpression(a) {
-    // Returns expression for selector `a`, or NULL if no such selector exists
-    // NOTE: selectors no longer are case-sensitive
+    // Returns expression for selector `a` (also considering wildcard
+    // modifiers), or NULL if no such selector exists.
+    // NOTE: selectors no longer are case-sensitive.
     if(a) {
-      a = UI.nameToID(a);
-      for(let m in this.modifiers) if(this.modifiers.hasOwnProperty(m)) {
-        if(m === a) return this.modifiers[m].expression;
-      }
+      const mm = this.matchingModifiers([a]);
+      if(mm.length > 0) return mm[0].expression;
     }
     return null;
   }
@@ -8303,15 +8624,22 @@ class Dataset {
     if(this === MODEL.equations_dataset) {
       // Equation identifiers cannot contain characters that have special
       // meaning in a variable identifier
-      s = s.replace(/[\*\?\|\[\]\{\}\@\#]/g, '');
+      s = s.replace(/[\*\|\[\]\{\}\@\#]/g, '');
       if(s !== selector) {
-        UI.warn('Equation name cannot contain [, ], {, }, |, @, #, * or ?');
+        UI.warn('Equation name cannot contain [, ], {, }, |, @, # or *');
+        return null;
+      }
+      // Wildcard selectors must be exactly 2 consecutive question marks,
+      // so reduce longer sequences (no warning)
+      s = s.replace(/\?\?+/g, '??');
+      if(s.split('??').length > 2) {
+        UI.warn('Equation name can contain only 1 wildcard');
         return null;
       }
       // Reduce inner spaces to one, and trim outer spaces
       s = s.replace(/\s+/g, ' ').trim();
-    // Then prefix it when the IO context argument is defined 
-    if(ioc) s = ioc.actualName(s);
+      // Then prefix it when the IO context argument is defined 
+      if(ioc) s = ioc.actualName(s);
       // If equation already exists, return its modifier
       const id = UI.nameToID(s);
       if(this.modifiers.hasOwnProperty(id)) return this.modifiers[id];
@@ -9749,6 +10077,9 @@ class ExperimentRunResult {
       }
     } else if(v instanceof Dataset) {
       // This dataset will be an "outcome" dataset => store statistics only
+      // @@TO DO: deal with wildcard equations: these will have *multiple*
+      // vectors associated with numbered entities (via #) and therefore
+      // *all* these results should be stored (with # replaced by its value)
       this.x_variable = false;
       this.object_id = v.identifier;
       if(v === MODEL.equations_dataset && a) {

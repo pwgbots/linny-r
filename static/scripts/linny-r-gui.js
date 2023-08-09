@@ -916,6 +916,8 @@ class Paper {
     for(let i = 0; i < fc.sub_clusters.length; i++) {
       fc.sub_clusters[i].clearHiddenIO();
     }
+    // NOTE: also ensure that notes will update their fields
+    fc.resetNoteFields();
     // Draw link arrows and constraints first, as all other entities are
     // slightly transparent so they cannot completely hide these lines
     for(let i = 0; i < fc.arrows.length; i++) {
@@ -953,6 +955,7 @@ class Paper {
       // Links and constraints are drawn separately, so do not draw those
       // contained in the selection 
       if(!(obj instanceof Link || obj instanceof Constraint)) {
+        if(obj instanceof Note) obj.parsed = false;
         UI.drawObject(obj, dx, dy);
       }
     }
@@ -1519,6 +1522,7 @@ class Paper {
       } else if(mf[0] > 1) {
         // Multi-flow arrow with flow data computed
         let clr = this.palette.active_process;
+        // Highlight if related process(es) are at upper bound
         if(mf[3]) ffill.fill = this.palette.at_process_ub_bar;
         s = VM.sig4Dig(mf[1]); 
         bb = this.numberSize(s, 10, 700);
@@ -2828,6 +2832,21 @@ class GUIController extends Controller {
   constructor() {
     super();
     this.console = false;
+    const
+        ua = window.navigator.userAgent.toLowerCase(),
+        browsers = [
+            ['edg', 'Edge'],
+            ['opr', 'Opera'],
+            ['chrome', 'Chrome'],
+            ['firefox', 'Firefox'],
+            ['safari', 'Safari']];
+    for(let i = 0; i < browsers.length; i++) {
+      const b = browsers[i];
+      if(ua.indexOf(b[0]) >= 0) {
+        this.browser_name = b[1];
+        break;
+      }
+    }
     // Display version number as clickable link (just below the Linny-R logo)
     this.version_number = LINNY_R_VERSION;
     this.version_div = document.getElementById('linny-r-version-number');
@@ -3484,8 +3503,7 @@ class GUIController extends Controller {
       if(VM.issue_index === -1) {
         VM.issue_index = 0;
       } else if(change) {
-        VM.issue_index += change;
-        setTimeout(() => UI.jumpToIssue(), 10);
+        VM.issue_index = Math.min(VM.issue_index + change, count - 1);
       }
       nr.innerText = VM.issue_index + 1;
       if(VM.issue_index <= 0) {
@@ -3493,12 +3511,13 @@ class GUIController extends Controller {
       } else {
         prev.classList.remove('disab');
       }
-      if(this.issue_index >= count - 1) {
+      if(VM.issue_index >= count - 1) {
         next.classList.add('disab');
       } else {
         next.classList.remove('disab');
       }
       panel.style.display = 'table-cell';
+      if(change) UI.jumpToIssue();
     } else {
       panel.style.display = 'none';
       VM.issue_index = -1;
@@ -4770,7 +4789,7 @@ class GUIController extends Controller {
 
   updateExpressionInput(id, name, x) {
     // Updates expression object `x` if input field identified by `id`
-    // contains a well-formed expression; if error, focuses on the field
+    // contains a well-formed expression. If error, focuses on the field
     // and shows the error while specifying the name of the field.
     const
         inp = document.getElementById(id),
@@ -5006,14 +5025,19 @@ class GUIController extends Controller {
         an,
         md;
     if(type === 'note') {
+      
       md = this.modals.note;
-      const cx = new Expression(null, '', '');
+      n = this.dbl_clicked_node;
+      const
+          editing = md.element('action').innerHTML === 'Edit',
+          cx = new Expression(editing ? n : null, '', 'C');
       if(this.updateExpressionInput('note-C', 'note color', cx)) {
-        if(md.element('action').innerHTML === 'Edit') {
+        if(editing) {
           n = this.dbl_clicked_node;
           this.dbl_clicked_node = null;
           UNDO_STACK.push('modify', n);
           n.contents = md.element('text').value;
+          n.color.owner = n;
           n.color.text = md.element('C').value;
           n.color.compile();
           n.parsed = false;
@@ -5024,10 +5048,10 @@ class GUIController extends Controller {
           n.y = this.add_y;
           n.contents = md.element('text').value;
           n.color.text = md.element('C').value;
-          n.color.compile();
           n.parsed = false;
           n.resize();
-          UNDO_STACK.push('add', n);
+          n.color.compile();
+          UNDO_STACK.push('add', n); 
         }
       }
     } else if(type === 'cluster') {
@@ -5242,7 +5266,8 @@ class GUIController extends Controller {
     if(xml) {
       window.localStorage.setItem('Linny-R-selection-XML', xml);
       this.updateButtons();
-      this.notify('Selection copied, but cannot be pasted yet -- Use Alt-C to clone');
+      const bn = (this.browser_name ? ` of ${this.browser_name}` : '');
+      this.notify('Selection copied to local storage' + bn);
     }
   }
   
@@ -5261,7 +5286,6 @@ class GUIController extends Controller {
   
   promptForMapping(mapping) {
     // Prompt user to specify name conflict resolution strategy
-    console.log('HERE prompt for mapping', mapping);
     const md = this.paste_modal;
     md.mapping = mapping;
     md.element('from-prefix').innerText = mapping.from_prefix || '';
@@ -5301,10 +5325,20 @@ class GUIController extends Controller {
       for(let i = 0; i < ft.length; i++) {
         const ti = mapping.from_to[ft[i]];
         if(ft[i] === ti) {
-          sl.push('<div class="paste-option"><span>', ft[i], '</span> ',
-              '<div class="paste-select"><select id="paste-ft-', i,
-              '" style="font-size: 12px"><option value="', ti, '">', ti,
-              '</option></select></div></div>');
+          const elig = MODEL.eligibleFromToNodes(mapping.from_to_type[ti]);
+          sl.push('<div class="paste-option"><span>', ft[i], '</span> ');
+          if(elig.length) {
+            sl.push('<div class="paste-select"><select id="paste-ft-', i,
+              '" style="font-size: 12px">');
+            for(let j = 0; j < elig.length; j++) {
+              const dn = elig[j].displayName;
+              sl.push('<option value="', dn, '">', dn, '</option>');
+            }
+            sl.push('</select></div>');
+          } else {
+            sl.push('<span><em>(no eligible node)</em></span');
+          }
+          sl.push('</div>');
         }
       }
     }
@@ -5330,6 +5364,12 @@ class GUIController extends Controller {
       const cn = md.element('selc-' + i).value.trim();
       if(this.validName(cn)) mapping.top_clusters[tc[i]] = cn;
     }
+    for(let i = 0; i < ft.length; i++) if(mapping.from_to[ft[i]] === ft[i]) {
+      const
+          ftn = md.element('ft-' + i).value,
+          fto = MODEL.objectByName(ftn);
+      if(fto) mapping.from_to[ft[i]] = ftn;
+    }
     this.pasteSelection(mapping);
   }
   
@@ -5338,7 +5378,6 @@ class GUIController extends Controller {
     // see whether PASTE would result in name conflicts, and if so,
     // open the name conflict resolution window
     let xml = window.localStorage.getItem('Linny-R-selection-XML');
-console.log('HERE xml', xml);
     try {
       xml = parseXML(xml);
     } catch(e) {
@@ -5346,9 +5385,6 @@ console.log('HERE xml', xml);
       this.alert('Paste failed due to invalid XML');
       return;
     }
-
-    // For now, while still implementing:
-    this.notify('Paste not fully implemented yet -- WORK IN PROGRESS!');
 
     const
         entities_node = childNodeByTag(xml, 'entities'),
@@ -5453,6 +5489,12 @@ console.log('HERE xml', xml);
       let nr = endsWithDigits(n);
       if(mapping.increment && nr) {
         return n.replace(new RegExp(nr + '$'), parseInt(nr) + 1);
+      }
+      if(mapping.top_clusters && mapping.top_clusters[n]) {
+        return mapping.top_clusters[n];
+      }
+      if(mapping.from_to && mapping.from_to[n]) {
+        return mapping.from_to[n];
       }
       // No mapping => return original name
       return n;
@@ -5572,36 +5614,41 @@ console.log('HERE xml', xml);
     // Also prompt if FROM and/or TO nodes are not selected, and map to
     // existing entities
     if(from_tos_node.childNodes.length && !mapping.from_to) {
-      const ft_map = {};
+      const
+          ft_map = {},
+          ft_type = {};
       for(let i = 0; i < from_tos_node.childNodes.length; i++) {
         const
             c = from_tos_node.childNodes[i],
             fn = fullName(c),
             mn = mappedName(fn);
-        if(MODEL.objectByName(mn)) ft_map[fn] = mn;
+        if(MODEL.objectByName(mn)) {
+          ft_map[fn] = mn;
+          ft_type[fn] = (nodeParameterValue(c, 'is-data') === '1' ?
+              'Data' : nodeParameterValue(c, 'type'));
+        }
       }
       // Prompt only for FROM/TO nodes that map to existing nodes
       if(Object.keys(ft_map).length) {
         mapping.from_to = ft_map;
+        mapping.from_to_type = ft_type;
         this.promptForMapping(mapping);
         return;
       }
     }
 
-    // Only check for selected entities and from-to's; extra's should be
+    // Only check for selected entities; from-to's and extra's should be
     // used if they exist, or should be created when copying to a different
     // model
     name_map.length = 0;
     nameConflicts(entities_node);
-    nameConflicts(from_tos_node);
     if(name_conflicts.length) {
-      UI.notify(pluralS(name_conflicts.length, 'name conflict'));
-console.log('HERE name conflicts', name_conflicts);
+      UI.warn(pluralS(name_conflicts.length, 'name conflict'));
+console.log('HERE name conflicts', name_conflicts, mapping);
       return;
     }
     
     // No conflicts => add all
-console.log('HERE name map', name_map);
     for(let i = 0; i < extras_node.childNodes.length; i++) {
       addEntityFromNode(extras_node.childNodes[i]);
     }
@@ -5627,6 +5674,7 @@ console.log('HERE name map', name_map);
     // products are displayed as arrows instead of block arrows
     fc.clearAllProcesses();
     UI.drawDiagram(MODEL);
+    this.paste_modal.hide();
   }
   
   //
@@ -5766,6 +5814,8 @@ console.log('HERE name map', name_map);
     const md = this.modals.note;
     if(n) {
       md.element('action').innerHTML = 'Edit';
+      const nr = n.number;
+      md.element('number').innerHTML = (nr ? '#' + nr : '');
       md.element('text').value = n.contents;
       md.element('C').value = n.color.text;
     } else {
@@ -5786,6 +5836,10 @@ console.log('HERE name map', name_map);
       md.element('actor').value = p.actor.name;
     } else {
       md.element('actor').value = '';
+    }
+    const sim = p.similarNumberedEntities;
+    if(sim.length) {
+      console.log('HERE!', sim);
     }
     md.element('LB').value = p.lower_bound.text;
     md.element('UB').value = p.upper_bound.text;
@@ -6017,7 +6071,7 @@ console.log('HERE name map', name_map);
     const
         from_process = l.from_node instanceof Process,
         to_process = l.to_node instanceof Process,
-        md = this.modals.link;
+        md = this.modals.link; 
     md.show();
     md.element('from-name').innerHTML = l.from_node.displayName;
     md.element('to-name').innerHTML = l.to_node.displayName;
@@ -6064,6 +6118,7 @@ console.log('HERE name map', name_map);
         md.element('output-soc').style.display = 'none';
       }
     }
+    this.edited_object = l;
     if(alt) md.element(attr + '-x').dispatchEvent(new Event('click'));
   }
 
@@ -6108,7 +6163,7 @@ console.log('HERE name map', name_map);
     // @@TO DO: prepare for undo
     const
         md = this.modals.link,
-        l = this.on_link;
+        l = this.edited_object;
     // Check whether all input fields are valid
     if(!this.updateExpressionInput('link-R', 'rate', l.relative_rate)) {
       return false;
@@ -6415,7 +6470,8 @@ class GUIMonitor {
     if(this.call_stack_shown) return;
     const
         csl = VM.call_stack.length,
-        err = VM.call_stack[csl - 1].vector[t],
+        top = VM.call_stack[csl - 1],
+        err = top.vector[t],
         // Make separate lists of variable names and their expressions
         vlist = [],
         xlist = [];
@@ -6480,6 +6536,9 @@ class GUIMonitor {
       tbl.push('<div style="color: gray; margin-top: 8px; font-size: 10px">',
           VM.out_of_bounds_msg.replace(VM.out_of_bounds_array, anc), '</div>');
     }
+    // Dump the code for the last expression to the console
+    console.log('Code for', top.text, top.code);
+    // Show the call stack dialog
     document.getElementById('call-stack-table').innerHTML = tbl.join('');
     document.getElementById('call-stack-modal').style.display = 'block';
     this.call_stack_shown = true;    
@@ -7244,10 +7303,12 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
       if(this.edited_input_id) {
         document.getElementById(this.edited_input_id).value = xp.expr;
         // NOTE: entity properties must be exogenous parameters
-        if(UI.edited_object && xp.is_level_based) {
-          UI.warn(['Expression for ', this.property.innerHTML,
-              'of <strong>', UI.edited_object.displayName,
-              '</strong> contains a solution-dependent variable'].join(''));
+        const eo = UI.edited_object; 
+        if(eo && xp.is_level_based &&
+            !(eo instanceof Dataset || eo instanceof Note)) {
+          UI.warn(['Expression for', this.property.innerHTML,
+              'of<strong>', eo.displayName,
+              '</strong>contains a solution-dependent variable'].join(' '));
         }
         this.edited_input_id = '';
       } else if(DATASET_MANAGER.edited_expression) {
@@ -8743,6 +8804,7 @@ class ConstraintEditor {
     // NOTE: this could be expanded to apply to the selected BL only
     UI.setBox('ce-no-slack', this.constraint.no_slack);
     // NOTE: share of cost can only be transferred between two processes
+    // @@TO DO: CHECK WHETHER THIS LIMITATION IS VALID -- for now, allow both
     if(true||this.from_node instanceof Process && this.from_node instanceof Process) {
       this.soc_direct.value = this.constraint.soc_direction;
       // NOTE: share of cost is input as a percentage
@@ -9894,6 +9956,7 @@ class GUIDatasetManager extends DatasetManager {
             ps = pid.split(UI.PREFIXER),
             pps = prev_id.split(UI.PREFIXER),
             pn = pref_names[pid],
+            pns = pn.join(UI.PREFIXER),
             lpl = [];
         let lindent = 0;
         // Ignore identical leading prefixes
@@ -9908,8 +9971,9 @@ class GUIDatasetManager extends DatasetManager {
           lpl.push(ps.shift());
           lindent++;
           const lpid = lpl.join(UI.PREFIXER);
-          dl.push(['<tr data-prefix="', lpid, '" class="dataset',
-              '" onclick="DATASET_MANAGER.selectPrefixRow(event);"><td>',
+          dl.push(['<tr data-prefix="', lpid,
+              '" data-prefix-name="', pns, '" class="dataset"',
+              'onclick="DATASET_MANAGER.selectPrefixRow(event);"><td>',
               // NOTE: data-prefix="x" signals that this is an extra row
               (lindent > 0 ?
                   '<div data-prefix="x" style="width: ' + lindent * indent_px +
@@ -10022,6 +10086,7 @@ class GUIDatasetManager extends DatasetManager {
     for(let i = 0; i < msl.length; i++) {
       const
           m = sd.modifiers[UI.nameToID(msl[i])],
+          wild = m.hasWildcards,
           defsel = (m.selector === sd.default_selector),
           clk = '" onclick="DATASET_MANAGER.selectModifier(event, \'' +
               m.selector + '\'';
@@ -10029,13 +10094,14 @@ class GUIDatasetManager extends DatasetManager {
       ml.push(['<tr id="dsmtr', i, '" class="dataset-modif',
           (m === sm ? ' sel-set' : ''),
           '"><td class="dataset-selector',
-          (m.hasWildcards ? ' wildcard' : ''),
+          (wild ? ' wildcard' : ''),
           '" title="Shift-click to ', (defsel ? 'clear' : 'set as'),
           ' default modifier',
           clk, ', false);">',
           (defsel ? '<img src="images/solve.png" style="height: 14px;' +
               ' width: 14px; margin: 0 1px -3px -1px;">' : ''),
-          m.selector, '</td><td class="dataset-expression',
+          (wild ? wildcardFormat(m.selector, true) : m.selector),
+          '</td><td class="dataset-expression',
           clk, ');">', m.expression.text, '</td></tr>'].join(''));
     }
     this.modifier_table.innerHTML = ml.join('');
@@ -10138,24 +10204,15 @@ class GUIDatasetManager extends DatasetManager {
       }
     } else {
       this.selected_modifier = null;
-    }
+    } 
     this.updateModifiers();
   }
   
   get selectedPrefix() {
     // Returns the selected prefix (with its trailing colon-space)
-    let prefix = '',
-        tr = this.selected_prefix_row;
-    while(tr) {
-      const td = tr.firstElementChild;
-      if(td && td.firstElementChild.dataset.prefix === 'x') {
-        prefix = td.lastChild.textContent + UI.PREFIXER + prefix;
-        tr = tr.previousSibling;
-      } else {
-        tr = null;
-      }
-    }
-    return prefix;
+    const tr = this.selected_prefix_row;
+    if(tr && tr.dataset.prefixName) return tr.dataset.prefixName + UI.PREFIXER;
+    return '';
   }
   
   promptForDataset(shift=false) {
@@ -10164,9 +10221,7 @@ class GUIDatasetManager extends DatasetManager {
     let prefix = '';
     if(shift) {
       if(this.selected_dataset) {
-        const p = UI.prefixesAndName(this.selected_dataset.name);
-        p[p.length - 1] = '';
-        prefix = p.join(UI.PREFIXER);
+        prefix = UI.completePrefix(this.selected_dataset.name);
       } else if(this.selected_prefix) {
         prefix = this.selectedPrefix;
       }
@@ -10181,6 +10236,7 @@ class GUIDatasetManager extends DatasetManager {
     if(d) {
       this.new_modal.hide();
       this.selected_dataset = d;
+      this.focal_table = this.dataset_table;
       this.updateDialog();
     }
   }
@@ -10220,12 +10276,14 @@ class GUIDatasetManager extends DatasetManager {
       let e = this.rename_modal.element('name'),
           prefix = e.value.trim();
       e.focus();
+      // Trim trailing colon if user entered it
       while(prefix.endsWith(':')) prefix = prefix.slice(0, -1);
       // NOTE: prefix may be empty string, but otherwise should be a valid name
       if(prefix && !UI.validName(prefix)) {
         UI.warn('Invalid prefix');
         return;
       }
+      // Now add the colon-plus-space prefix separator
       prefix += UI.PREFIXER;
       const
           oldpref = this.selectedPrefix,
@@ -10245,7 +10303,7 @@ class GUIDatasetManager extends DatasetManager {
             if(MODEL.datasets[nk]) nc++;
           }
           if(nc) {
-            UI.warn('Renaming ' + pluralS(dsl.length, 'dataset') +
+            UI.warn('Renaming ' + pluralS(dsl.length, 'dataset').toLowerCase() +
                 ' would cause ' + pluralS(nc, 'name conflict'));
             return;
           }
@@ -10258,7 +10316,7 @@ class GUIDatasetManager extends DatasetManager {
           const d = MODEL.datasets[dsl[i]];
           d.rename(d.displayName.replace(oldpref, prefix), false);
         }
-        let msg = 'Renamed ' + pluralS(dsl.length, 'dataset');
+        let msg = 'Renamed ' + pluralS(dsl.length, 'dataset').toLowerCase();
         if(MODEL.variable_count) msg += ', and updated ' +
             pluralS(MODEL.variable_count, 'variable') + ' in ' +
             pluralS(MODEL.expression_count, 'expression');
@@ -10379,14 +10437,14 @@ class GUIDatasetManager extends DatasetManager {
   renameModifier() {
     if(!this.selected_modifier) return;
     const
-        hw = this.selected_modifier.hasWildcards,
+        wild = this.selected_modifier.hasWildcards,
         sel = this.rename_selector_modal.element('name').value,
         // NOTE: normal dataset selector, so remove all invalid characters
-        clean_sel = sel.replace(/[^a-zA-z0-9\%\+\-]/g, ''),
+        clean_sel = sel.replace(/[^a-zA-z0-9\%\+\-\?\*]/g, ''),
         // Keep track of old name
         oldm = this.selected_modifier,
         // NOTE: addModifier returns existing one if selector not changed
-        m = this.selected_dataset.addModifier(sel);
+        m = this.selected_dataset.addModifier(clean_sel);
     // NULL can result when new name is invalid
     if(!m) return;
     // If selected modifier was the dataset default selector, update it
@@ -10398,11 +10456,12 @@ class GUIDatasetManager extends DatasetManager {
     if(m === oldm) {
       m.selector = clean_sel;
       this.updateDialog();
+      this.rename_selector_modal.hide();
       return;
     }
     // Rest is needed only when a new modifier has been added
     m.expression = oldm.expression;
-    if(hw) {
+    if(wild) {
       // Wildcard selector means: recompile the modifier expression
       m.expression.attribute = m.selector;
       m.expression.compile();
@@ -10410,11 +10469,10 @@ class GUIDatasetManager extends DatasetManager {
     this.deleteModifier();
     this.selected_modifier = m;
     // Update all chartvariables referencing this dataset + old selector
-    const vl = MODEL.datasetChartVariables;
+    const vl = MODEL.datasetVariables;
     let cv_cnt = 0;
     for(let i = 0; i < vl.length; i++) {
-      if(v.object === this.selected_dataset &&
-          v.attribute === oldm.selector) {
+      if(v.object === this.selected_dataset && v.attribute === oldm.selector) {
         v.attribute = m.selector;
         cv_cnt++;
       }
@@ -10818,6 +10876,7 @@ class EquationManager {
     for(let i = 0; i < msl.length; i++) {
       const
           m = ed.modifiers[UI.nameToID(msl[i])],
+          wild = (m.selector.indexOf('??') >= 0),
           clk = '" onclick="EQUATION_MANAGER.selectModifier(event, \'' +
               m.selector + '\'';
       if(m === sm) smid += i;
@@ -10825,8 +10884,9 @@ class EquationManager {
           (m === sm ? ' sel-set' : ''),
           '"><td class="equation-selector',
           (m.expression.isStatic ? '' : ' it'),
-          clk, ', false);">',
-          m.selector, '</td><td class="equation-expression',
+          (wild ? ' wildcard' : ''), clk, ', false);">',
+          (wild ? wildcardFormat(m.selector) : m.selector),
+          '</td><td class="equation-expression',
           clk, ');">', m.expression.text, '</td></tr>'].join(''));
     }
     this.table.innerHTML = ml.join('');
@@ -10956,8 +11016,7 @@ class EquationManager {
       const c = MODEL.charts[i];
       for(let j = 0; j < c.variables.length; j++) {
         const v = c.variables[j];
-        if(v.object === MODEL.equations_dataset &&
-            v.attribute === olds) {
+        if(v.object === MODEL.equations_dataset && v.attribute === olds) {
           v.attribute = m.selector;
           cv_cnt++;
         }

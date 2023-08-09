@@ -346,6 +346,20 @@ div.contbtn {
   cursor: pointer;
 }
 
+div.simbtn {
+  display: none;
+  margin-left: 5px;
+}
+
+img.sim {
+  height: 14px;
+  width: 14px;  
+}
+
+img.sim.enab:hover {
+  background-color: #9e96e5;
+}
+
 input {
   vertical-align: baseline;
 }
@@ -506,6 +520,12 @@ div.warning-msg.first-msg {
 div.notification-msg.first-msg {
   background: SkyBlue;
   color: black;
+}
+
+span.node-details {
+  font-style: italic;
+  color: Gray;
+  margin-left: 15px;
 }
 
 #issue-panel {
@@ -2024,6 +2044,7 @@ div.io-box {
   bottom: 2px;
   left: 2px;
   width: 40%;
+  height: 59px;
 }
 
 #dataset-outcome {
@@ -2241,8 +2262,13 @@ td.equation-selector {
 }
 
 td.wildcard {
+  color: #400080;
+}
+
+span.wildcard {
   font-weight: bold;
-  color: #900040;
+  font-style: normal;
+  color: #a00040;
 }
 
 td.dataset-expression,
@@ -4670,7 +4696,7 @@ div.docu-sym:hover {
 
 /* the CALL STACK modal displays the VM call stack */
 #call-stack-dlg {
-  width: 300px;
+  width: 320px;
   height: 250px;
 }
 

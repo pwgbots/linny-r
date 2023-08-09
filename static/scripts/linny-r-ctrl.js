@@ -36,6 +36,7 @@ SOFTWARE.
 class Controller {
   constructor() {
     this.console = true;
+    this.browser_name = '';
     // Initialize *graphical* controller elements as non-existent 
     this.paper = null;
     this.buttons = {};
@@ -68,7 +69,8 @@ class Controller {
     this.ERROR = {
         CREATE_FAILED: 'ERROR: failed to create a new SVG element',
         APPEND_FAILED: 'ERROR: failed to append SVG element to DOM',
-        NO_DATASET_DOT: '"." only makes sense in dataset modifier expressions'
+        NO_DATASET_DOT: '"." only makes sense in dataset modifier expressions',
+        NO_NUMBER_CONTEXT: 'Number # is undefined in this context'
       };
     this.WARNING = {
         NO_CONNECTION: 'No connection with server',
@@ -291,8 +293,8 @@ class Controller {
     // Returns TRUE if `name` is a valid Linny-R entity name. These names
     // must not be empty strings, may not contain brackets, backslashes or
     // vertical bars, may not end with a colon, and must start with an
-    // underscore, a letter or a digit. This is enforced mainly to
-    // preclude parsing issues with variable names
+    // underscore, a letter or a digit.
+    // These rules are enforced to avoid parsing issues with variable names.
     // NOTE: normalize to also accept letters with accents
     if(name === this.TOP_CLUSTER_NAME) return true;
     name = name.normalize('NFKD').trim();
@@ -316,6 +318,14 @@ class Controller {
     return pan;
   }
   
+  completePrefix(name) {
+    // Returns the prefix part (including the final colon plus space),
+    // or the empty string if none.
+    const p = UI.prefixesAndName(name);
+    p[p.length - 1] = '';
+    return p.join(UI.PREFIXER);
+  }
+  
   sharedPrefix(n1, n2) {
     const
         pan1 = this.prefixesAndName(n1),
@@ -331,15 +341,37 @@ class Controller {
     return shared.join(this.PREFIXER);
   }
   
+  colonPrefixedName(name, prefix) {
+    // Replaces a leading colon in `name` by `prefix`.
+    // If `name` identifies a link or a constraint, this is applied to
+    // both node names.
+    const
+        arrow = (name.indexOf(this.LINK_ARROW) >= 0 ?
+            this.LINK_ARROW : this.CONSTRAINT_ARROW),
+        nodes = name.split(arrow);
+    for(let i = 0; i < nodes.length; i++) {
+      nodes[i] = nodes[i].replace(/^:\s*/, prefix);
+    }
+    return nodes.join(arrow);
+  }
+  
   nameToID(name) {
     // Returns a name in lower case with link arrow replaced by three
     // underscores, constraint link arrow by four underscores, and spaces
     // converted to underscores; in this way, IDs will always be valid
-    // JavaScript object properties
-    // NOTE: replace single quotes by Unicode apostrophe so that they cannot
-    // interfere with JavaScript strings delimited by single quotes
-    return name.replace(this.LINK_ARROW, '___').replace(this.CONSTRAINT_ARROW,
-      '____').toLowerCase().replace(/\s/g, '_').replace("'", '\u2019');
+    // JavaScript object properties.
+    // NOTE: Links and constraints are a special case, because their IDs
+    // depend on the *codes* of their nodes.
+    if(name.indexOf(UI.LINK_ARROW) >= 0 ||
+        name.indexOf(UI.CONSTRAINT_ARROW) >= 0) {
+      const obj = MODEL.objectByName(name);
+      if(obj) return obj.identifier;
+      // Empty string signals failure.
+      return '';
+    }
+    // NOTE: replace single quotes by Unicode apostrophe so that they
+    // cannot interfere with JavaScript strings delimited by single quotes.
+    return name.toLowerCase().replace(/\s/g, '_').replace("'", '\u2019');
   }
   
   htmlEquationName(n) {
