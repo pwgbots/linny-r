@@ -96,6 +96,7 @@ class LinnyRModel {
     this.grid_pixels = 20;
     this.align_to_grid = true;
     this.infer_cost_prices = false;
+    this.report_results = false;
     this.show_block_arrows = true;
     this.last_zoom_factor = 1;
 
@@ -2486,6 +2487,7 @@ class LinnyRModel {
       this.decimal_comma = nodeParameterValue(node, 'decimal-comma') === '1';
       this.align_to_grid = nodeParameterValue(node, 'align-to-grid') === '1';
       this.infer_cost_prices = nodeParameterValue(node, 'cost-prices') === '1';
+      this.report_results = nodeParameterValue(node, 'report-results') === '1';
       this.show_block_arrows = nodeParameterValue(node, 'block-arrows') === '1';
       this.name = xmlDecoded(nodeContentByTag(node, 'name'));
       this.author = xmlDecoded(nodeContentByTag(node, 'author'));
@@ -2828,6 +2830,7 @@ class LinnyRModel {
     if(this.decimal_comma) p += ' decimal-comma="1"';
     if(this.align_to_grid) p += ' align-to-grid="1"';
     if(this.infer_cost_prices) p += ' cost-prices="1"';
+    if(this.report_results) p += ' report-results="1"';
     if(this.show_block_arrows) p += ' block-arrows="1"';
     let xml = this.xml_header + ['<model', p, '><name>',  xmlEncoded(this.name),
         '</name><author>', xmlEncoded(this.author),
@@ -4738,7 +4741,7 @@ class Note extends ObjectWithXYWH {
   get numberContext() {
     // Returns the string to be used to evaluate #. For notes this is
     // their note number if specified, otherwise the number context of a
-    // nearby enode, and otherwise the number context of their cluster.
+    // nearby node, and otherwise the number context of their cluster.
     let n = this.number;
     if(n) return n;
     n = this.nearbyNode;
@@ -5203,16 +5206,8 @@ class NodeBox extends ObjectWithXYWH {
   
   get numberContext() {
     // Returns the string to be used to evaluate #, so for clusters,
-    // processes and products this is the string of trailing digits
-    // (or empty if none) of the node name, or if that does not end on
-    // a number, the trailing digits of the first prefix (from right to
-    // left) that does end on a number
-    const sn = UI.prefixesAndName(this.name);
-    let nc = endsWithDigits(sn.pop());
-    while(!nc && sn.length > 0) {
-      nc = endsWithDigits(sn.pop());
-    }
-    return nc;
+    // processes and products this is their "tail number".
+    return UI.tailNumber(this.name);
   }
   
   get similarNumberedEntities() {
@@ -8271,17 +8266,10 @@ class DatasetModifier {
     // NOTE: If the selector contains wildcards, return "?" to indicate
     // that the value of # cannot be inferred at compile time. 
     if(this.hasWildcards) return '?'; 
-    // Otherwise, # is the string of digits at the end of the selector.
-    // NOTE: equation names are like entity names, so treat them as such,
-    // i.e., also check for prefixes that end on digits.
-    const sn = UI.prefixesAndName(this.name);
-    let nc = endsWithDigits(sn.pop());
-    while(!nc && sn.length > 0) {
-      nc = endsWithDigits(sn.pop());
-    }
-    // NOTE: if the selector has no tail number, return the number context
-    // of the dataset of this modifier.
-    return nc || this.dataset.numberContext;
+    // Otherwise, return the "tail number" of the selector, or if the
+    // selector has no tail number, return the number context of the
+    // dataset of this modifier.
+    return UI.tailnumber(this.name) || this.dataset.numberContext;
   }
 
   match(s) {
@@ -8366,14 +8354,8 @@ class Dataset {
   
   get numberContext() {
     // Returns the string to be used to evaluate #
-    // Like for nodes, this is the string of digits at the end of the
-    // dataset name (if any) or an empty string (to denote undefined)
-    const sn = UI.prefixesAndName(this.name);
-    let nc = endsWithDigits(sn.pop());
-    while(!nc && sn.length > 0) {
-      nc = endsWithDigits(sn.pop());
-    }
-    return nc;
+    // Like for nodes, this is the "tail number" of the dataset name.
+    return UI.tailNumber(this.name);
   }
   
   get selectorList() {

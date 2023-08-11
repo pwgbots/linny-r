@@ -355,6 +355,17 @@ class Controller {
     return nodes.join(arrow);
   }
   
+  tailNumber(name) {
+    // Returns the string of digits at the end of `name`. If not there,
+    // check prefixes (if any) from right to left for a tail number.
+    const pan = UI.prefixesAndName(name);
+    let n = endsWithDigits(pan.pop());
+    while(!n && pan.length > 0) {
+      n = endsWithDigits(pan.pop());
+    }
+    return n;
+  }
+  
   nameToID(name) {
     // Returns a name in lower case with link arrow replaced by three
     // underscores, constraint link arrow by four underscores, and spaces

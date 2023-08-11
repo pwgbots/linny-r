@@ -4901,7 +4901,7 @@ class GUIController extends Controller {
     // Logs MB's of used heap memory to console (to detect memory leaks)
     // NOTE: this feature is supported only by Chrome
     if(msg) msg += ' -- ';
-    if(typeof performance.memory !== 'undefined') {
+    if(performance.memory !== undefined) {
       console.log(msg + 'Allocated memory: ' + Math.round(
           performance.memory.usedJSHeapSize/1048576.0).toFixed(1) + ' MB');
     }
@@ -5701,6 +5701,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     this.setBox('settings-decimal-comma', model.decimal_comma);
     this.setBox('settings-align-to-grid', model.align_to_grid);
     this.setBox('settings-cost-prices', model.infer_cost_prices);
+    this.setBox('settings-report-results', model.report_results);
     this.setBox('settings-block-arrows', model.show_block_arrows);
     md.show('name');
   }
@@ -5753,6 +5754,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     if(!model.scale_units.hasOwnProperty(dsu)) model.addScaleUnit(dsu);
     model.default_unit = dsu;
     model.currency_unit = md.element('currency-unit').value.trim();
+    model.report_results = UI.boxChecked('settings-report-results');
     model.encrypt = UI.boxChecked('settings-encrypt');
     model.decimal_comma = UI.boxChecked('settings-decimal-comma');
     // Some changes may necessitate redrawing the diagram
@@ -15991,8 +15993,8 @@ class GUIReceiver {
   }
   
   log(msg) {
-    // Logs a message displayed on the status line while solving
-    if(this.active) {
+    // Logs a message displayed on the status line while solving.
+    if(this.active || MODEL.report_results) {
       if(!msg.startsWith('[')) {
         const
             d = new Date(),
@@ -16135,21 +16137,34 @@ class GUIReceiver {
   report() {
     // Posts the run results to the local server, or signals an error
     let form,
-        run = '';
+        run = '',
+        path = this.channel,
+        file = this.file_name;
     // NOTE: Always set `solving` to FALSE
     this.solving = false;
-    if(this.experiment){
+    // NOTE: When reporting receiver while is not active, report the
+    // results of the running experiment.
+    if(this.experiment || !this.active) {
       if(MODEL.running_experiment) {
         run = MODEL.running_experiment.active_combination_index;
         this.log(`Reporting: ${this.file_name} (run #${run})`);
       }
     }
+    // NOTE: If receiver is not active, path and file must be set.
+    if(!this.active) {
+      path = 'user/reports';
+      // NOTE: The @ will be replaced by the run number, so that that
+      // number precedes the clock time. The @ will be unique because
+      // `asFileName()` replaces special characters by underscores. 
+      file = REPOSITORY_BROWSER.asFileName(MODEL.name || 'model') +
+          '@-' + compactClockTime();
+    }
     if(MODEL.solved && !VM.halted) {
       // Normal execution termination => report results
       const od = MODEL.outputData;
       form = {
-          path: this.channel,
-          file: this.file_name,
+          path: path,
+          file: file,
           action: 'report',
           run: run,
           data: od[0],
@@ -16178,10 +16193,11 @@ class GUIReceiver {
       .then((data) => {
           // For experiments, only display server response if warning or error
           UI.postResponseOK(data, !RECEIVER.experiment);
-          // If execution completed, perform the call-back action
+          // If execution completed, perform the call-back action if the
+          // receiver is active (so not when auto-reporting a run).
           // NOTE: for experiments, call-back is performed upon completion by
-          // the Experiment Manager
-          if(!RECEIVER.experiment) RECEIVER.callBack();
+          // the Experiment Manager.
+          if(RECEIVER.active && !RECEIVER.experiment) RECEIVER.callBack();
         })
       .catch(() => UI.warn(UI.WARNING.NO_CONNECTION, err));
   }

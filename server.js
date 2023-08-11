@@ -910,12 +910,12 @@ function loadData(res, url) {
 //              the call-back Python script specified for the channel
 
 function receiver(res, sp) {
-  //This function processes all receiver actions
+  // This function processes all receiver actions.
   let
       rpath = anyOSpath(sp.get('path') || ''),
       rfile = anyOSpath(sp.get('file') || '');
-  // Assume that path is relative to channel directory unless it starts with
-  // a (back)slash or specifiess drive or volume
+  // Assume that path is relative to working directory unless it starts
+  // with a (back)slash or specifies drive or volume.
   if(!(rpath.startsWith(path.sep) || rpath.indexOf(':') >= 0 ||
       rpath.startsWith(WORKING_DIRECTORY))) {
     rpath = path.join(WORKING_DIRECTORY, rpath);
@@ -1038,8 +1038,49 @@ function rcvrAbort(res, rpath, rfile, log) {
 }
 
 function rcvrReport(res, rpath, rfile, run, data, stats, log) {
+  // Purge reports older than 24 hours.
   try {
-    let fp = path.join(rpath, rfile + run + '-data.txt');
+    const
+      now = new Date(),
+      flist = fs.readdirSync(WORKSPACE.reports);
+    let n = 0;
+    for(let i = 0; i < flist.length; i++) {
+      const
+          pp = path.parse(flist[i]),
+          fp = path.join(WORKSPACE.reports, flist[i]);
+      // NOTE: Only consider text files (extension .txt)
+      if(pp.ext === '.txt') {
+        // Delete only if file is older than 24 hours.
+        const fstat = fs.statSync(fp);
+        if(now - fstat.mtimeMs > 24 * 3600000) {
+          // Delete text file
+          try {
+            fs.unlinkSync(fp);
+            n++;
+          } catch(err) {
+            console.log('WARNING: Failed to delete', fp);
+            console.log(err);
+          }
+        }
+      }
+    }
+    if(n) console.log(n + 'report file' + (n > 1 ? 's' : '') + 'purged');
+  } catch(err) {
+    // Log error, but do not abort.
+    console.log(err);
+  }
+  // Now save the reports.
+  // NOTE: The optional @ indicates where the run number must be inserted.
+  // If not specified, append run number to the base report file name.
+  if(rfile.indexOf('@') < 0) {
+    rfile += run;
+  } else {
+    rfile = rfile.replace('@', run);  
+  }
+  const base = path.join(rpath, rfile);
+  let fp;
+  try {
+    fp = path.join(base + '-data.txt');
     fs.writeFileSync(fp, data);
   } catch(err) {
     console.log(err);
@@ -1048,7 +1089,7 @@ function rcvrReport(res, rpath, rfile, run, data, stats, log) {
     return;
   }
   try {
-    fp = path.join(rpath, rfile + run + '-stats.txt');
+    fp = path.join(base + '-stats.txt');
     fs.writeFileSync(fp, stats);
   } catch(err) {
     console.log(err);
@@ -1057,7 +1098,7 @@ function rcvrReport(res, rpath, rfile, run, data, stats, log) {
     return;
   }
   try {
-    fp = path.join(rpath, rfile + run + '-log.txt');
+    fp = path.join(base + '-log.txt');
     fs.writeFileSync(fp, log);
   } catch(err) {
     console.log(err);
@@ -1630,6 +1671,7 @@ function createWorkspace() {
       data: path.join(SETTINGS.user_dir, 'data'),
       diagrams: path.join(SETTINGS.user_dir, 'diagrams'),
       modules: path.join(SETTINGS.user_dir, 'modules'),
+      reports: path.join(SETTINGS.user_dir, 'reports'),
       solver_output: path.join(SETTINGS.user_dir, 'solver')
     };
   // Create these sub-directories if not aready there

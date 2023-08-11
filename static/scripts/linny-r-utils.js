@@ -135,6 +135,14 @@ function msecToTime(msec) {
   return hms + '.' + ms.slice(0, 1) + ' sec';
 }
 
+function compactClockTime() {
+  // Returns current time (no date) in 6 digits hhmmss. 
+  const d = new Date();
+  return d.getHours().toString().padStart(2, '0') +
+      d.getMinutes().toString().padStart(2, '0') +
+      d.getSeconds().toString().padStart(2, '0');
+}
+
 function uniformDecimals(data) {
   // Formats the numbers in the array `data` so that they have uniform decimals
   // NOTE: (1) this routine assumes that all number strings have sig4Dig format;
@@ -627,13 +635,11 @@ function customizeXML(str) {
   // for example to rename entities in one go -- USE WITH CARE!
   // First modify `str` -- by default, do nothing
   
-
-  if(str.indexOf('<author>Emma van Kleef</author>') >= 0) {
-    str = str.replace(/is-information="1"><name>Line (\d+): switch</g,
-                      'is-information="1" no-slack="1"><name>Line $1: switch<');
-    str = str.replace(/: zon/g, ': solar');
+/*
+  if(str.indexOf('<author>XXX</author>') >= 0) {
+    str = str.replace(/<url>NL\/(\w+)\.csv<\/url>/g, '<url></url>');
   }
-
+*/
 
   // Finally, return the modified string
   return str;
@@ -911,6 +917,7 @@ if(NODE) module.exports = {
   rangeToList: rangeToList,
   dateToString: dateToString,
   msecToTime: msecToTime,
+  compactClockTime: compactClockTime,
   uniformDecimals: uniformDecimals,
   ellipsedText: ellipsedText,
   earlierVersion: earlierVersion,
