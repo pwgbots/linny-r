@@ -302,14 +302,20 @@ class Controller {
         (name.startsWith(this.BLACK_BOX) || name[0].match(/[\w]/));
   }
   
-  prefixesAndName(name) {
+  prefixesAndName(name, key=false) {
     // Returns name split exclusively at '[non-space]: [non-space]'
+    let sep = this.PREFIXER,
+        space = ' ';
+    if(key) {
+      sep = ':_';
+      space = '_';
+    }
     const
-        s = name.split(this.PREFIXER),
+        s = name.split(sep),
         pan = [s[0]];
     for(let i = 1; i < s.length; i++) {
       const j = pan.length - 1;
-      if(s[i].startsWith(' ') || (i > 0 && pan[j].endsWith(' '))) {
+      if(s[i].startsWith(space) || (i > 0 && pan[j].endsWith(space))) {
         pan[j] += s[i];
       } else {
         pan.push(s[i]);
@@ -350,14 +356,20 @@ class Controller {
             this.LINK_ARROW : this.CONSTRAINT_ARROW),
         nodes = name.split(arrow);
     for(let i = 0; i < nodes.length; i++) {
-      nodes[i] = nodes[i].replace(/^:\s*/, prefix);
+      nodes[i] = nodes[i].replace(/^:\s*/, prefix)
+          // NOTE: An embedded double prefix, e.g., "xxx: : yyy" indicates
+          // that the second colon+space should be replaced by the prefix.
+          // This "double prefix" may occur only once in an entity name,
+          // hence no global regexp.
+          .replace(/(\w+):\s+:\s+(\w+)/, `$1: ${prefix}$2`);
     }
     return nodes.join(arrow);
   }
   
   tailNumber(name) {
     // Returns the string of digits at the end of `name`. If not there,
-    // check prefixes (if any) from right to left for a tail number.
+    // check prefixes (if any) *from right to left* for a tail number.
+    // Thus, the number that is "closest" to the name part is returned.
     const pan = UI.prefixesAndName(name);
     let n = endsWithDigits(pan.pop());
     while(!n && pan.length > 0) {
@@ -365,6 +377,48 @@ class Controller {
     }
     return n;
   }
+  
+  compareFullNames(n1, n2, key=false) {
+    // Compare full names, considering prefixes in *left-to-right* order
+    // while taking into account the tailnumber for each part so that
+    // "xx: yy2: nnn" comes before "xx: yy10: nnn".
+    if(n1 === n2) return 0;
+    if(key) {
+      // NOTE: Replacing link and constraint arrows by two prefixers
+      // ensures that sort wil be first on FROM node, and then on TO node.
+      const p2 = UI.PREFIXER + UI.PREFIXER;
+      // Keys for links and constraints are not based on their names,
+      // so look up their names before comparing.
+      if(n1.indexOf('____') > 0 && MODEL.constraints[n1]) {
+        n1 = MODEL.constraints[n1].displayName
+            .replace(UI.CONSTRAINT_ARROW, p2);
+      } else if(n1.indexOf('___') > 0 && MODEL.links[n1]) {
+        n1 = MODEL.links[n1].displayName
+            .replace(UI.LINK_ARROW, p2);
+      }
+      if(n2.indexOf('____') > 0 && MODEL.constraints[n2]) {
+        n2 = MODEL.constraints[n2].displayName.
+            replace(UI.CONSTRAINT_ARROW, p2);
+      } else if(n2.indexOf('___') > 0 && MODEL.links[n2]) {
+        n2 = MODEL.links[n2].displayName
+            .replace(UI.LINK_ARROW, p2);
+      }
+      n1 = n1.toLowerCase().replaceAll(' ', '_');
+      n2 = n2.toLowerCase().replaceAll(' ', '_');
+    }
+    const
+        pan1 = UI.prefixesAndName(n1, key),
+        pan2 = UI.prefixesAndName(n2, key),
+        sl = Math.min(pan1.length, pan2.length);
+    let i = 0;
+    while(i < sl) {
+      const c = compareWithTailNumbers(pan1[i], pan2[i]);
+      if(c !== 0) return c;
+      i++;
+    }
+    return pan1.length - pan2.length;
+  }
+
   
   nameToID(name) {
     // Returns a name in lower case with link arrow replaced by three

@@ -7356,7 +7356,8 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
     // is passed to differentiate between the DOM elements to be used
     const
         type = document.getElementById(prefix + 'variable-obj').value,
-        n_list = this.namesByType(VM.object_types[type]).sort(ciCompare),
+        n_list = this.namesByType(VM.object_types[type]).sort(
+            (a, b) => UI.compareFullNames(a, b)),
         vn = document.getElementById(prefix + 'variable-name'),
         options = [];
     // Add "empty" as first and initial option, but disable it.
@@ -7398,7 +7399,7 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
           slist.push(d.modifiers[m].selector);
         }
         // Sort to present equations in alphabetical order
-        slist.sort(ciCompare);
+        slist.sort((a, b) => UI.compareFullNames(a, b));
         for(let i = 0; i < slist.length; i++) {
           options.push(`<option value="${slist[i]}">${slist[i]}</option>`);
         }
@@ -9900,13 +9901,7 @@ class GUIDatasetManager extends DatasetManager {
         dl = [],
         dnl = [],
         sd = this.selected_dataset,
-        ioclass = ['', 'import', 'export'],
-        ciPrefixCompare = (a, b) => {
-            const
-                pa = a.split(':_').join('  '),
-                pb = b.split(':_').join('  ');
-            return ciCompare(pa, pb);
-          };
+        ioclass = ['', 'import', 'export'];
     for(let d in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(d) &&
          // NOTE: do not list "black-boxed" entities
         !d.startsWith(UI.BLACK_BOX) &&
@@ -9917,7 +9912,7 @@ class GUIDatasetManager extends DatasetManager {
         dnl.push(d);
       }
     }
-    dnl.sort(ciPrefixCompare);
+    dnl.sort((a, b) => UI.compareFullNames(a, b, true));
     // First determine indentation levels, prefixes and names 
     const
         indent = [],
@@ -10678,7 +10673,7 @@ class GUIDatasetManager extends DatasetManager {
     const
         ln =  document.getElementById('series-line-number'),
         lc =  document.getElementById('series-line-count');
-    ln.innerHTML = this.series_data.value.substr(0,
+    ln.innerHTML = this.series_data.value.substring(0,
         this.series_data.selectionStart).split('\n').length;
     lc.innerHTML = this.series_data.value.split('\n').length;
   }
@@ -12190,7 +12185,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
       const
           ds_dict = MODEL.listOfAllSelectors,
           html = [],
-          sl = Object.keys(ds_dict).sort(ciCompare);
+          sl = Object.keys(ds_dict).sort((a, b) => UI.compareFullNames(a, b, true));
       for(let i = 0; i < sl.length; i++) {
         const
             s = sl[i],
@@ -13175,7 +13170,7 @@ class GUIExperimentManager extends ExperimentManager {
       for(let i = 0; i < x.variables.length; i++) {
         addDistinct(x.variables[i].displayName, vl); 
       }
-      vl.sort(ciCompare);
+      vl.sort((a, b) => UI.compareFullNames(a, b));
       for(let i = 0; i < vl.length; i++) {
         ol.push(['<option value="', vl[i], '"',
             (vl[i] == x.selected_variable ? ' selected="selected"' : ''),
@@ -15524,7 +15519,7 @@ class Finder {
           }
         }
       }
-      enl.sort(ciCompare);
+      enl.sort((a, b) => UI.compareFullNames(a, b, true));
     }
     document.getElementById('finder-entity-imgs').innerHTML = imgs;
     let seid = 'etr';
@@ -15921,7 +15916,7 @@ class Finder {
           // No cost price calculation => trim associated attributes from header
           let p = ah.indexOf('\tCost price');
           if(p > 0) {
-            ah = ah.substr(0, p);
+            ah = ah.substring(0, p);
           } else {
             // SOC is exogenous, and hence comes before F in header => replace
             ah = ah.replace('\tShare of cost', '');
@@ -16191,7 +16186,7 @@ class GUIReceiver {
           return response.text();
         })
       .then((data) => {
-          // For experiments, only display server response if warning or error
+          // For experiments, only display server response if warning or error.
           UI.postResponseOK(data, !RECEIVER.experiment);
           // If execution completed, perform the call-back action if the
           // receiver is active (so not when auto-reporting a run).

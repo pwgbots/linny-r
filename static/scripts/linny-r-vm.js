@@ -713,14 +713,14 @@ class ExpressionParser {
         //  t (current time step, this is the default),
         if('#cfijklnprst'.includes(offs[0].charAt(0))) {
           anchor1 = offs[0].charAt(0);
-          offset1 = safeStrToInt(offs[0].substr(1)); 
+          offset1 = safeStrToInt(offs[0].substring(1)); 
         } else {
           offset1 = safeStrToInt(offs[0]); 
         }
         if(offs.length > 1) {
           if('#cfijklnprst'.includes(offs[1].charAt(0))) {
             anchor2 = offs[1].charAt(0);
-            offset2 = safeStrToInt(offs[1].substr(1));
+            offset2 = safeStrToInt(offs[1].substring(1));
           } else {
             offset2 = safeStrToInt(offs[1]); 
           }
@@ -757,7 +757,7 @@ class ExpressionParser {
           };
         // NOTE: name should then be in the experiment's variable list
         name = s[1].trim();
-        s = s[0].substr(1);
+        s = s[0].substring(1);
         // Check for scaling method
         // NOTE: simply ignore $ unless it indicates a valid method
         const msep = s.indexOf('$');
@@ -967,6 +967,10 @@ class ExpressionParser {
           return false;
         }
       }
+/*
+      // DEPRECATED -- Modeler can deal with this by smartly using AND
+      // clauses like "&x: &y:" to limit set to specific prefixes.
+      
       // Deal with "prefix inheritance" when pattern starts with a colon.
       if(pat.startsWith(':') && this.owner_prefix) {
         // Add a "must start with" AND condition to all OR clauses of the
@@ -979,6 +983,7 @@ class ExpressionParser {
         }
         pat = oc.join('|');
       }
+*/
       // NOTE: For patterns, assume that # *always* denotes the context-
       // sensitive number #, because if modelers wishes to include
       // ANY number, they can make their pattern less selective.
@@ -1449,7 +1454,7 @@ class ExpressionParser {
         this.los = 1;
         this.error = 'Missing closing bracket \']\'';
       } else {
-        v = this.expr.substr(this.pit + 1, i - 1 - this.pit);
+        v = this.expr.substring(this.pit + 1, i);
         this.pit = i + 1;
         // NOTE: Enclosing brackets are also part of this symbol
         this.los = v.length + 2;
@@ -1467,7 +1472,7 @@ class ExpressionParser {
         this.los = 1;
         this.error = 'Unmatched quote';
       } else {
-        v = this.expr.substr(this.pit + 1, i - 1 - this.pit);
+        v = this.expr.substring(this.pit + 1, i);
         this.pit = i + 1;
         // NOTE: Enclosing quotes are also part of this symbol
         this.los = v.length + 2;
@@ -1520,7 +1525,7 @@ class ExpressionParser {
         this.los++;
       }
       // ... but trim spaces from the symbol
-      v = this.expr.substr(this.pit, this.los).trim();
+      v = this.expr.substring(this.pit, this.pit + this.los).trim();
       // Ignore case
       l = v.toLowerCase();
       if(l === '#') {
@@ -5929,7 +5934,9 @@ function VMI_push_dataset_modifier(x, args) {
       // NOTE: Use the "local" time step for expression x, i.e., the top
       // value of the expression's time step stack `x.step`.
       tot = twoOffsetTimeStep(x.step[x.step.length - 1],
-          args[1], args[2], args[3], args[4], 1, x);
+          args[1], args[2], args[3], args[4], 1, x),
+      // Record whether either anchor uses the context-sensitive number.
+      hashtag_index = (args[1] === '#' || args[3] === '#');
   // NOTE: Sanity check to facilitate debugging; if no dataset is provided,
   // the script will still break at the LET statement below.
   if(!ds) console.log('ERROR: VMI_push_dataset_modifier without dataset',
@@ -5947,7 +5954,7 @@ function VMI_push_dataset_modifier(x, args) {
       t = t % obj.length;
       if(t < 0) t += obj.length;
     }
-    if(args[1] === '#' || args[3] === '#') {
+    if(hashtag_index) {
       // NOTE: Add 1 because (parent) anchors are 1-based.
       ds.parent_anchor = t + 1;
       if(DEBUGGING) {
@@ -5991,12 +5998,21 @@ function VMI_push_dataset_modifier(x, args) {
     if(t >= 0 && t < obj.length) {
       v = obj[t];
     } else if(ds.array && t >= obj.length) {
-      // Set error value if array index is out of bounds.
-      v = VM.ARRAY_INDEX;
-      VM.out_of_bounds_array = ds.displayName;
-      VM.out_of_bounds_msg = `Index ${VM.sig2Dig(t + 1)} not in array dataset ` +
-          `${ds.displayName}, which has length ${obj.length}`;
-      console.log(VM.out_of_bounds_msg);
+      // Ensure that value of t is human-readable.
+      // NOTE: Add 1 to compensate for earlier t-- to make `t` zero-based.
+      const index = VM.sig2Dig(t + 1);
+      // Special case: index is undefined because # was undefined.
+      if(hashtag_index && index === '\u2047') {
+        // In such cases, return the default value of the dataset.
+        v = ds.default_value;
+      } else {
+        // Set error value to indicate that array index is out of bounds.
+        v = VM.ARRAY_INDEX;
+        VM.out_of_bounds_array = ds.displayName;
+        VM.out_of_bounds_msg = `Index ${index} not in array dataset ` +
+            `${ds.displayName}, which has length ${obj.length}`;
+        console.log(VM.out_of_bounds_msg);
+      }
     }
     // Fall through: no change to `v` => dataset default value is pushed.
   } else {

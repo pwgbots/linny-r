@@ -2940,24 +2940,72 @@ class LinnyRModel {
   }
 
   get outputData() {
-    // Returns model results [data, statistics] in tab-separated format
-    // First create list of distinct variables used in charts
-    const vbls = [];
+    // Returns model results [data, statistics] in tab-separated format.
+    const
+        vbls = [],
+        names = [],
+        scale_re = /\s+\(x[0-9\.\,]+\)$/;
+    // First create list of distinct variables used in charts.
+    // NOTE: Also include those that are not "visible" in a chart.
     for(let i = 0; i < this.charts.length; i++) {
       const c = this.charts[i];
       for(let j = 0; j < c.variables.length; j++) {
-        addDistinct(c.variables[j], vbls);
+        let v = c.variables[j],
+            vn = v.displayName;
+        // If variable is scaled, do not include it as such, but include
+        // a new unscaled chart variable.
+        if(vn.match(scale_re)) {
+          vn = vn.replace(scale_re, '');
+          // Add only if (now unscaled) variable has not been added already.
+          if(names.indexOf(vn) < 0) {
+            // NOTE: Chart variable object is used ony as adummy, so NULL
+            // can be used as its "owner chart". 
+            const cv = new ChartVariable(null);
+            cv.setProperties(v.object, v.attribute, false, '#000000');
+            vbls.push(cv);
+            names.push(uvn);
+          }
+        } else if(names.indexOf(vn) < 0) {
+          // Keep track of the dataset and dataset modifier variables,
+          // so they will not be added in the next FOR loop.
+          vbls.push(v);
+          names.push(vn);
+        }
       }
     }
-    // Create a new chart (without adding it to this model)
+    // Add new variables for each outcome dataset and each equation that
+    // is not a chart variable.
+    for(let id in this.datasets) if(this.datasets.hasOwnProperty(id)) {
+      const
+          ds = this.datasets[id],
+          eq = (ds === this.equations_dataset);
+      if(ds.outcome || eq) {
+        for(let ms in ds.modifiers) if(ds.modifiers.hasOwnProperty(ms)) {
+          const
+              dm = ds.modifiers[ms],
+              n = dm.displayName;
+          // Do not add if already in the list.
+          if(names.indexOf(n) < 0) {
+            // Here, too, NULL can be used as "owner chart". 
+            const cv = new ChartVariable(null);
+            cv.setProperties(ds, dm.selector, false, '#000000');
+            vbls.push(cv);
+          }
+        }
+      }
+    }
+    // Sort variables by their name.
+    vbls.sort((a, b) => UI.compareFullNames(a.displayName, b.displayName));
+    // Create a new chart as dummy, so without adding it to this model.
     const c = new Chart();
     for(let i = 0; i < vbls.length; i++) {
       const v = vbls[i];
       c.addVariable(v.object.displayName, v.attribute);
     }
-    c.draw();
+    // NOTE: Call `draw` with FALSE to prevent display in the chart manager.
+    c.draw(false);
+    // After drawing, all variables and their statistics have been computed.
     return [c.dataAsString, c.statisticsAsString];
-    // @@@TO DO: also add statistics on "outcome" datasets 
   }
     
   get listOfAllSelectors() {
@@ -5278,14 +5326,14 @@ class NodeBox extends ObjectWithXYWH {
     MODEL.replaceEntityInExpressions(old_name, this.displayName);
     MODEL.inferIgnoredEntities();
     // NOTE: Renaming may affect the node's display size.
-    if(this.resize()) this.drawWithLinks();
+    if(this.resize()) UI.drawSelection(MODEL);
     // NOTE: Only TRUE indicates a successful (cosmetic) name change.
     return true;
   }
   
   resize() {
-    // Resizes this node; returns TRUE iff size has changed
-    // So keep track of original width and height
+    // Resizes this node; returns TRUE iff size has changed.
+    // Therefore, keep track of original width and height.
     const
         ow = this.width,
         oh = this.height,
@@ -5341,12 +5389,13 @@ class NodeBox extends ObjectWithXYWH {
   }
   
   drawWithLinks() {
-    // TO DO: also draw relevant arrows when this is a cluster
+    // TO DO: Also draw relevant arrows when this is a cluster.
     UI.drawObject(this);
     if(this instanceof Cluster) return;
-    // draw ALL arrows associated with this node
+    // Draw ALL arrows associated with this node.
     const fc = this.cluster;
-    // make list of arrows that represent a link related to this node
+    fc.categorizeEntities();
+    // Make list of arrows that represent a link related to this node.
     let a,
         alist = [];
     for(let j = 0; j < fc.arrows.length; j++) {
@@ -5362,7 +5411,7 @@ class NodeBox extends ObjectWithXYWH {
         }
       }
     }
-    // draw all arrows in this list
+    // Draw all arrows in this list.
     for(let i = 0; i < alist.length; i++) UI.drawObject(alist[i]);
   }
   
@@ -7323,7 +7372,7 @@ class Process extends Node {
       // without comments or their (X, Y) position
       n = MODEL.black_box_entities[id];
       // `n` is just the name, so remove the actor name if it was added
-      if(an) n = n.substr(0, n.lastIndexOf(an));
+      if(an) n = n.substring(0, n.lastIndexOf(an));
       col = true;
       cmnts = '';
       x = 0;
@@ -8829,10 +8878,11 @@ class ChartVariable {
     this.non_zero_tally = 0;
     this.exceptions = 0;
     this.bin_tallies = [];
+    this.wildcard_index = false;
   }
   
   setProperties(obj, attr, stck, clr, sf=1, lw=1, vis=true) {
-    // Sets the defining properties for this chart variable
+    // Sets the defining properties for this chart variable.
     this.object = obj;
     this.attribute = attr;
     this.stacked = stck;
@@ -8844,12 +8894,18 @@ class ChartVariable {
   
   get displayName() {
     // Returns the name of the Linny-R entity and its attribute, followed
-    // by its scale factor unless it equals 1 (no scaling)
+    // by its scale factor unless it equals 1 (no scaling).
     const sf = (this.scale_factor === 1 ? '' :
         ` (x${VM.sig4Dig(this.scale_factor)})`);
-    // NOTE: display name of equation is just the equations dataset modifier
-    if(this.object === MODEL.equations_dataset) return this.attribute + sf;
-    // NOTE: do not display vertical bar if no attribute is specified
+    // NOTE: Display name of equation is just the equations dataset modifier.
+    if(this.object === MODEL.equations_dataset) {
+      let eqn = this.attribute;
+      if(this.wildcard_index !== false) {
+        eqn = eqn.replace('??', this.wildcard_index);
+      }
+      return eqn + sf;
+    }
+    // NOTE: Do not display the vertical bar if no attribute is specified.
     if(!this.attribute) return this.object.displayName + sf;
     return this.object.displayName + UI.OA_SEPARATOR + this.attribute + sf;
   }
@@ -8919,7 +8975,7 @@ class ChartVariable {
   }
 
   computeVector() {
-    // Compute vector for this variable (using run results if specified)
+    // Compute vector for this variable (using run results if specified).
     let xrun = null,
         rr = null,
         ri = this.chart.run_index;
@@ -8934,10 +8990,10 @@ class ChartVariable {
         this.vector.length = 0;
       }
     }
-    // Compute vector and statistics only if vector is still empty
+    // Compute vector and statistics only if vector is still empty.
     if(this.vector.length > 0) return;
-    // NOTE: expression vectors start at t = 0 with initial values that should
-    // not be included in statistics
+    // NOTE: expression vectors start at t = 0 with initial values that
+    // should not be included in statistics.
     let v,
         av = null,
         t_end;
@@ -8948,22 +9004,23 @@ class ChartVariable {
     this.non_zero_tally = 0;
     this.exceptions = 0;
     if(rr) {
-      // Use run results (time scaled) as "actual vector" `av` for this variable
+      // Use run results (time scaled) as "actual vector" `av` for this
+      // variable.
       const tsteps = Math.ceil(this.chart.time_horizon / this.chart.time_scale);
       av = [];
-      // NOTE: scaleData expects "pure" data, so slice off v[0]
+      // NOTE: `scaleDataToVector` expects "pure" data, so slice off v[0].
       VM.scaleDataToVector(rr.vector.slice(1), av, xrun.time_step_duration,
           this.chart.time_scale, tsteps, 1);
       t_end = tsteps;
     } else {
       // Get the variable's own value (number, vector or expression)
-      // Special case: when an experiment is running, variables that depict a
-      // dataset with no explicit modifier must recompute the vector using the
-      // current experiment run combination
+      // Special case: when an experiment is running, variables that
+      // depict a dataset with no explicit modifier must recompute the
+      // vector using the current experiment run combination.
       if(MODEL.running_experiment &&
           this.object instanceof Dataset && !this.attribute) {
         // Check if dataset modifiers match the combination of selectors
-        // for the active run
+        // for the active run.
         const mm = this.object.matchingModifiers(
             MODEL.running_experiment.activeCombination);
         // If so, use the first (the list should contain at most 1 selector)
@@ -8982,21 +9039,24 @@ class ChartVariable {
       }
       t_end = MODEL.end_period - MODEL.start_period + 1;
     }
-    // NOTE: when a chart combines run results with dataset vectors, the latter
-    // may be longer than the # of time steps displayed in the chart
+    // NOTE: when a chart combines run results with dataset vectors, the
+    // latter may be longer than the # of time steps displayed in the chart.
     t_end = Math.min(t_end, this.chart.total_time_steps);
     this.N = t_end;
     for(let t = 0; t <= t_end; t++) {
-      // Get the result, store it, and incorporate it in statistics
+      // Get the result, store it, and incorporate it in statistics.
       if(!av) {
         // Undefined attribute => zero (no error)
         v = 0;
       } else if(Array.isArray(av)) {
-        // Attribute value is a vector -- may be shorter than t => then use 0
+        // Attribute value is a vector.
+        // NOTE: This vector may be shorter than t; then use 0.
         v = (t < av.length ? av[t] : 0);
       } else if(av instanceof Expression) {
-        // Attribute value is an expression
-        v = av.result(t);
+        // Attribute value is an expression. If this chart variable has
+        // its wildcard vector index set, evaluate the expression with
+        // this index as context number.
+        v = av.result(t, this.wildcard_index);
       } else {
         // Attribute value must be a number
         v = av;
@@ -9165,7 +9225,7 @@ class Chart {
   
   variableIndexByName(n) {
     for(let i = 0; i < this.variables.length; i++) {
-      if(this.variables[i].displayName == n) return i;
+      if(this.variables[i].displayName === n) return i;
     }
     return -1;
   }
@@ -9190,20 +9250,39 @@ class Chart {
     if(n === UI.EQUATIONS_DATASET_NAME) {
       // For equations only the attribute (modifier selector)
       dn = a;
+      n = a;
     } else if(!a) {
       // If no attribute specified (=> dataset) only the entity name
       dn = n;
     }
     let vi = this.variableIndexByName(dn);
     if(vi >= 0) return vi;
-    // check whether name refers to a Linny-R entity defined by the model
+    // Check whether name refers to a Linny-R entity defined by the model.
     let obj = MODEL.objectByName(n);
     if(obj === null) {
       UI.warn(`Unknown entity "${n}"`);
       return null;
-    } else {
-      // no attribute specified? then assume default
+    }
+    const eq = obj instanceof DatasetModifier;
+    if(!eq) {
+      // No equation and no attribute specified? Then assume default.
       if(a === '') a = obj.defaultAttribute;
+    } else if(n.indexOf('??') >= 0) {
+      // Special case: for wildcard equations, add dummy variables
+      // for each vector in the wildcard vector set of the equation
+      // expression.
+      const
+          vlist = [],
+          clr = this.nextAvailableDefaultColor,
+          indices = Object.keys(obj.expression.wildcard_vectors);
+      for(let i = 0; i < indices.length; i++) {
+        const v = new ChartVariable(this);
+        v.setProperties(MODEL.equations_dataset, dn, false, clr);
+        v.wildcard_index = parseInt(indices[i]);
+        this.variables.push(v);
+        vlist.push(v);
+      }
+      return vlist;
     }
     const v = new ChartVariable(this);
     v.setProperties(obj, a, false, this.nextAvailableDefaultColor, 1, 1);
@@ -9296,7 +9375,7 @@ class Chart {
     return VM.sig2Dig(s / 8760) + 'y';
   }
   
-  draw() {
+  draw(display=true) {
     // NOTE: The SVG drawing area is fixed to be 500 pixels high, so that
     // when saved as a file, it will (at 300 dpi) be about 2 inches high.
     // Its width will equal its hight times the W/H-ratio of the chart
@@ -9471,6 +9550,10 @@ class Chart {
       } 
     }
 
+    // Now all vectors have been computed. If `display` is FALSE, this
+    // indicates that data is used only to save model results.
+    if(!display) return;
+    
     // Define the bins when drawing as histogram
     if(this.histogram) {
       this.value_range = maxv - minv;

@@ -124,9 +124,9 @@ function msecToTime(msec) {
   const ts = new Date(msec).toISOString().slice(11, -1).split('.');
   let hms = ts[0], ms = ts[1];
   // Trim zero hours and minutes
-  while(hms.startsWith('00:')) hms = hms.substr(3);
+  while(hms.startsWith('00:')) hms = hms.substring(3);
   // Trim leading zero on first number
-  if(hms.startsWith('00')) hms = hms.substr(1);
+  if(hms.startsWith('00')) hms = hms.substring(1);
   // Trim msec when minutes > 0
   if(hms.indexOf(':') > 0) return hms;
   // If < 1 second, return as milliseconds
@@ -173,7 +173,7 @@ function uniformDecimals(data) {
       ss = v.split('e');
       x = ss[1];
       if(x.length < maxe) {
-        x = x[0] + '0' + x.substr(1);
+        x = x[0] + '0' + x.substring(1);
       }
       data[i] = ss[0] + 'e' + x;
     } else if(maxi > 3) {
@@ -478,6 +478,21 @@ function matchingNumber(m, s) {
   return (n == m ? n : false);
 }
 
+function compareWithTailNumbers(s1, s2) {
+  // Returns 0 on equal, an integer < 0 if `s1` comes before `s2`, and
+  // an integer > 0 if `s2` comes before `s1`.
+  if(s1 === s2) return 0;
+  let tn1 = endsWithDigits(s1),
+      tn2 = endsWithDigits(s2);
+  if(tn1) s1 = s1.slice(0, -tn1.length);
+  if(tn2) s2 = s2.slice(0, -tn2.length);
+  let c = ciCompare(s1, s2);
+  if(c !== 0 || !(tn1 || tn2)) return c;
+  if(tn1 && tn2) return parseInt(tn1) - parseInt(tn2);
+  if(tn2) return -1;
+  return 1;
+}
+
 function compareSelectors(s1, s2) {
   // Dataset selectors comparison is case-insensitive, and puts wildcards
   // last, where * comes later than ?
@@ -492,7 +507,7 @@ function compareSelectors(s1, s2) {
       star2 = s2.indexOf('*');
   if(star1 >= 0) {
     if(star2 < 0) return 1;
-    return s1.localeCompare(s2);
+    return ciCompare(s1, s2);
   }
   if(star2 >= 0) return -1;  
   // Replace ? by | because | has a higher ASCII value than all other chars
@@ -525,7 +540,7 @@ function compareSelectors(s1, s2) {
   while(i >= 0 && s_1[i] === '-') i--;
   // If trailing minuses, replace by as many spaces and add an exclamation point
   if(i < n - 1) {
-    s_1 = s_1.substr(0, i);
+    s_1 = s_1.substring(0, i);
     while(s_1.length < n) s_1 += ' ';
     s_1 += '!';
   }
@@ -534,7 +549,7 @@ function compareSelectors(s1, s2) {
   i = n - 1;
   while(i >= 0 && s_2[i] === '-') i--;
   if(i < n - 1) {
-    s_2 = s_2.substr(0, i);
+    s_2 = s_2.substring(0, i);
     while(s_2.length < n) s_2 += ' ';
     s_2 += '!';
   }
@@ -814,8 +829,9 @@ function stringToFloatArray(s) {
       a = [];
   while(i <= s.length) {
     const
-        h = s.substr(i - 8, 8),
-        r = h.substr(6, 2) + h.substr(4, 2) + h.substr(2, 2) + h.substr(0, 2);
+        h = s.substring(i - 8, i),
+        r = h.substring(6, 2) + h.substring(4, 2) +
+            h.substring(2, 2) + h.substring(0, 2);
     a.push(hexToFloat(r));
     i += 8;
   }
@@ -830,7 +846,7 @@ function hexToBytes(hex) {
   // Converts a hex string to a Uint8Array
   const bytes = [];
   for(let i = 0; i < hex.length; i += 2) {
-    bytes.push(parseInt(hex.substr(i, 2), 16));
+    bytes.push(parseInt(hex.substring(i, i + 2), 16));
   }
   return new Uint8Array(bytes);
 }

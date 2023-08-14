@@ -346,20 +346,6 @@ div.contbtn {
   cursor: pointer;
 }
 
-div.simbtn {
-  display: none;
-  margin-left: 5px;
-}
-
-img.sim {
-  height: 14px;
-  width: 14px;  
-}
-
-img.sim.enab:hover {
-  background-color: #9e96e5;
-}
-
 input {
   vertical-align: baseline;
 }

@@ -165,8 +165,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 // Inform user that newer version exists
                 UI.check_update_modal.element('msg').innerHTML = [
                     '<a href="', GITHUB_REPOSITORY,
-                    '/wiki/Linny-R-version-history#version-',
-                    info[1].replaceAll('.', ''), '" ',
+                    '/releases/tag/v', info[1], '" ',
                     'title="Click to view version release notes" ',
                     'target="_blank">Version <strong>',
                     info[1], '</strong></a> released on ',
@@ -1288,9 +1287,6 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
     <div id="process-dlg" class="inp-dlg">
       <div class="dlg-title">
         Process properties
-        <div class="simbtn">
-          <img id="process-sim-btn" class="btn sim enab" src="images/process.png">
-        </div>
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
