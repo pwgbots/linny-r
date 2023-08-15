@@ -3266,7 +3266,7 @@ class GUIController extends Controller {
     // The CHECK UPDATE dialog appears when a new version is detected
     this.check_update_modal = new ModalDialog('check-update');
     this.check_update_modal.ok.addEventListener('click',
-        () => UI.shutDownServer());
+        () => UI.shutDownUpdateAndRestart());
     this.check_update_modal.cancel.addEventListener('click',
         () => UI.check_update_modal.hide());
 
@@ -3409,6 +3409,11 @@ class GUIController extends Controller {
   shutDownServer() {
     // Shut down -- this terminates the local host server script 
     if(!SOLVER.user_id) window.open('./shutdown', '_self');
+  }
+
+  shutDownUpdateAndRestart() {
+    // Shut down -- this terminates the local host server script 
+    if(!SOLVER.user_id) window.open('./update', '_self');
   }
 
   loginPrompt() {

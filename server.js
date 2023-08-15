@@ -87,14 +87,23 @@ function getVersionInfo() {
     info.current_time = new Date(Date.parse(obj.time[info.current]));
     info.up_to_date = info.current === info.latest;
   } catch(err) {
-    // `latest` = 0 indicates that version check failed
+    // `latest` = 0 indicates that version check failed.
     info.latest = 0;
   }
+  clearNewerVersion();
   if(!info.latest) {
     console.log(connectionErrorText('Could not connect to https://registry.npmjs.org/'));
   } else if(!info.up_to_date) {
     console.log('UPDATE: Version ' + info.latest + ' was released on ' +
         info.latest_time.toString());
+    const nvf = path.join(WORKING_DIRECTORY, 'newer_version');
+    try {
+      fs.writeFileSync(nvf, info.latest);
+    } catch(err) {
+      console.log('WARNING: Failed to create file:', nvf);
+      console.log(err);
+    }
+    process.env.LINNY_R_NEWER_VERSION = info.latest;
   } else {
     console.log('Linny-R software is up-to-date');
   }
@@ -145,12 +154,13 @@ const SOLVER = new MILPSolver(SETTINGS, WORKSPACE);
 // Create launch script
 createLaunchScript();
 
-// Create the HTTP server
+// Create the HTTP server.
 const SERVER = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://127.0.0.1:' + SETTINGS.port);
-    // When POST, first get all the full body
+    // When POST, first get all the full body.
     if(req.method === 'POST') {
       let body = '';
+      // @@TO DO: For big data requests, string may become too long.
       req.on('data', (data) => body += data);
       req.on('end', () => processRequest(req, res, u.pathname, body));
     } else if(req.method === 'GET') {
@@ -198,7 +208,7 @@ function logAction(msg) {
 
 function autoCheck(res) {
   // Serves a string with the current version number plus info on a
-  // newer release if this is available
+  // newer release if this is available.
   let check = VERSION_INFO.current + '|';
   if(VERSION_INFO.up_to_date) {
     check += 'up-to-date';
@@ -208,22 +218,33 @@ function autoCheck(res) {
   servePlainText(res, check);
 }
 
-// HTML page to show then the server is shut down by the user
+function clearNewerVersion() {
+  // Forestalls auto-update by deleting the file "newer_version" that may
+  // have been created at start-up from the working directory.
+  try {
+    fs.unlink(path.join(WORKING_DIRECTORY, 'newer_version'));
+  } catch(err) {
+    // No action, as error is nogt fatal.
+  }
+}
+
+// HTML page to show when the server is shut down by the user.
 // NOTE: on a macOS machine, this is slightly more work
-const
-    OS_TEXT = (PLATFORM === 'darwin' ? [
+const OS_TEXT = {close: '', reopen};
+if(PLATFORM === 'darwin') {
+  OS_TEXT.close =
 `<p>You can close the <em>Terminal</em> window that shows
   <tt>[Process Terminated]</tt> at the bottom.
-</p>`,
+</p>`;
+  OS_TEXT.reopen =
 `open <em>Terminal</em> again, change to your Linny-R directory by typing:
 </p>
 <p><code>cd ${WORKING_DIRECTORY}</code></p>
-<p>`
-      ] : [
-'',
-'switch to your <em>Command Prompt</em> window '
-      ]),
-    SHUTDOWN_MESSAGE = `<!DOCTYPE html>
+<p>`;
+} else {
+  OS_TEXT.reopen = 'switch to your <em>Command Prompt</em> window ';
+}
+const SHUTDOWN_MESSAGE = `<!DOCTYPE html>
 <html lang="en-US">
 <head>
   <meta http-equiv="content-type" content="text/html; charset=UTF-8">
@@ -243,13 +264,8 @@ const
   </style>
 </head>
 <body>
-  <h3>Linny-R server (127.0.0.1) is shutting down</h3>` + OS_TEXT[0] + `
-  <p>To restart Linny-R, ` + OS_TEXT[1] + ` and then at the prompt` +
-(VERSION_INFO.up_to_date ? '' : `
-  first type:</p>
-  <p><code>npm update linny-r</code><p>
-  to upgrade to Linny-R version ${VERSION_INFO.latest}, and then`) +
-` type:</p>
+  <h3>Linny-R server (127.0.0.1) is shutting down</h3>${OS_TEXT.close}
+  <p>To restart Linny-R, ${OS_TEXT.reopen} and then at the prompt type:</p>
   <p><code>node node_modules${path.sep}linny-r${path.sep}server</code></p>
   <p>
     Then switch back to this window, and click this
@@ -1230,8 +1246,16 @@ function processRequest(req, res, cmd, data) {
       serveJSON(res, {error: msg});
     }
   } else if(cmd === '/shutdown') {
-    // Shut down this server
+    // Shut down this server WITHOUT updating, and show page with
+    // "shut down" message and restart button.
+    clearNewerVersion();
     serveHTML(res, SHUTDOWN_MESSAGE);
+    SERVER.close();
+  } else if(cmd === '/update') {
+    // Shut down this server silently, updating automatically when a
+    // newer version was detected, and restart after update.
+    // NOTE: Self-protect against overwriting development scripts.
+    if(WORKING_DIRECTORY.indexOf('LTR3') >= 0) clearNewerVersion();
     SERVER.close();
   } else if(cmd === '/auto-check') {
     autoCheck(res);
@@ -1698,20 +1722,33 @@ function createLaunchScript() {
   // Creates platform-specific script with Linny-R start-up command
   const lines = [
       '# The first line (without the comment symbol #) should be like this:',
-      '# cd ',
+      '',
       '',
       '# Then this command to launch the Linny-R server should work:',
-      'node ' + path.join('node_modules', 'linny-r', 'server') + ' launch'
+      '',
+      '# After shut-down, check whether new version should be installed:'
     ];
+  lines[2] = 'cd ' + WORKING_DIRECTORY;
   let sp;
   if(PLATFORM.startsWith('win')) {
     sp = path.join(WORKING_DIRECTORY, 'linny-r.bat');
-    lines[1] += 'C:\\path\\to\\main\\Linny-R\\directory';
+    lines.push(
+      'if exist newer_version (',
+      '    del newer_version',
+      '    npm update linny-r',
+      '    node node_modules\\linny-r\\server',
+      ')');
+    lines[1] = '# cd C:\\path\\to\\main\\Linny-R\\directory';
   } else {
     sp = path.join(WORKING_DIRECTORY, 'linny-r.command'); 
-    lines[1] += '/path/to/main/Linny-R/directory';
+    lines.push(
+      'if test -f newer_version; then',
+      '    unlink newer_version',
+      '    npm update linny-r',
+      '    node node_modules/linny-r/server',
+      'fi');
+    lines[1] = '# cd /path/to/main/Linny-R/directory';
   }
-  lines[2] = 'cd ' + WORKING_DIRECTORY;
   try {
     try {
       fs.accessSync(sp);

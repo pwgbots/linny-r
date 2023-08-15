@@ -137,7 +137,9 @@ CPLEX on your computer can be obtained via this URL:
    target="_blank">https://www.ibm.com/products/ilog-cplex-optimization-studio</a>
 
 When running a model, Linny-R will try to execute the command line application `cplex`.
-It will look for this application in the directory specified in the environment variable PATH on your computer.
+It will look for this application in the directory specified in the environment variable PATH
+or more specifically in the environment variable CPLEX_STUDIO_BINARIES<em>nnnn</em>
+(where _nnnn_ denotes the CPLEX version number) on your computer.
 
 When installing CPLEX, please accept the default file locations that are proposed by the installer.
 Then do **not** move CPLEX files to some other directory, as this is bound to cause problems.
@@ -146,6 +148,9 @@ Then do **not** move CPLEX files to some other directory, as this is bound to ca
 
 The SCIP software is open source. Instructions for installation can be found via this URL:
 <a href="https://scipopt.org/doc/html/INSTALL.php" target="_blank">https://scipopt.org/doc/html/INSTALL.php</a>
+
+When running a model, Linny-R will try to execute the command line application `scip`.
+It will look for this application in the directory specified in the environment variable PATH on your computer.
 
 When installing SCIP, please accept the default file locations that are proposed by the installer.
 Then do **not** move SCIP files to some other directory, as this is bound to cause problems.
