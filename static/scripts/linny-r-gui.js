@@ -15331,9 +15331,11 @@ class Finder {
     this.close_btn = document.getElementById('finder-close-btn');
     // Make toolbar buttons responsive
     this.close_btn.addEventListener('click', (e) => UI.toggleDialog(e));
-    this.entities = [];
     this.filter_input = document.getElementById('finder-filter-text');
     this.filter_input.addEventListener('input', () => FINDER.changeFilter());
+    this.edit_btn = document.getElementById('finder-edit-btn');
+    this.edit_btn.addEventListener(
+        'click', (event) => FINDER.editAttributes(event.shiftKey));
     this.copy_btn = document.getElementById('finder-copy-btn');
     this.copy_btn.addEventListener(
         'click', (event) => FINDER.copyAttributesToClipboard(event.shiftKey));
@@ -15341,7 +15343,7 @@ class Finder {
     this.item_table = document.getElementById('finder-item-table');
     this.expression_table = document.getElementById('finder-expression-table');
         
-  // Attribute headers are used by Finder to output entity attribute values
+    // Attribute headers are used by Finder to output entity attribute values.
     this.attribute_headers = {
         A: 'ACTORS:\tWeight\tCash IN\tCash OUT\tCash FLOW',
         B: 'CONSTRAINTS (no attributes)',
@@ -15354,12 +15356,15 @@ class Finder {
         Q: 'PRODUCTS:\tLower bound\tUpper bound\tInitial level\tPrice' +
               '\tLevel\tCost price\tHighest cost price'
       };
-    // Set own properties
+    // Set own properties.
+    this.entities = [];
+    this.filtered_types = [];
     this.reset();
   }
 
   reset() {
     this.entities.length = 0;
+    this.filtered_types.length = 0;
     this.selected_entity = null;
     this.filter_input.value = '';
     this.filter_pattern = null;
@@ -15368,7 +15373,7 @@ class Finder {
     this.last_time_clicked = 0;
     this.clicked_object = null;
     // Product cluster index "remembers" for which cluster a product was
-    // last revealed, so it can reveal the next cluster when clicked again
+    // last revealed, so it can reveal the next cluster when clicked again.
     this.product_cluster_index = 0;
   }
   
@@ -15378,7 +15383,7 @@ class Finder {
         dt = now - this.last_time_clicked;
     this.last_time_clicked = now;
     if(obj === this.clicked_object) {
-      // Consider click to be "double" if it occurred less than 300 ms ago
+      // Consider click to be "double" if it occurred less than 300 ms ago.
       if(dt < 300) {
         this.last_time_clicked = 0;
         return true;
@@ -15422,6 +15427,7 @@ class Finder {
         fp = this.filter_pattern && this.filter_pattern.length > 0;
     let imgs = '';
     this.entities.length = 0;
+    this.filtered_types.length = 0;
     // No list unless a pattern OR a specified SUB-set of entity types
     if(fp || et && et !== VM.entity_letters) {
       if(et.indexOf('A') >= 0) {
@@ -15430,6 +15436,7 @@ class Finder {
           if(!fp || patternMatch(MODEL.actors[k].name, this.filter_pattern)) {
             enl.push(k);
             this.entities.push(MODEL.actors[k]);
+            addDistinct('A', this.filtered_types);
           }
         }
       }
@@ -15441,6 +15448,7 @@ class Finder {
               MODEL.processes[k].displayName, this.filter_pattern))) {
             enl.push(k);
             this.entities.push(MODEL.processes[k]);
+            addDistinct('P', this.filtered_types);
           }
         }
       }
@@ -15451,6 +15459,7 @@ class Finder {
               MODEL.products[k].displayName, this.filter_pattern))) {
             enl.push(k);
             this.entities.push(MODEL.products[k]);
+            addDistinct('Q', this.filtered_types);
           }
         }
       }
@@ -15461,6 +15470,7 @@ class Finder {
               MODEL.clusters[k].displayName, this.filter_pattern))) {
             enl.push(k);
             this.entities.push(MODEL.clusters[k]);
+            addDistinct('C', this.filtered_types);
           }
         }
       }
@@ -15474,6 +15484,7 @@ class Finder {
             if(ds !== MODEL.equations_dataset) {
               enl.push(k);
               this.entities.push(MODEL.datasets[k]);
+              addDistinct('D', this.filtered_types);
             }
           }
         }
@@ -15487,6 +15498,7 @@ class Finder {
                     this.filter_pattern)) {
               enl.push(k);
               this.entities.push(MODEL.equations_dataset.modifiers[k]);
+              addDistinct('E', this.filtered_types);
             }
           }
         }
@@ -15503,6 +15515,7 @@ class Finder {
           if(!bb && (!fp || patternMatch(ldn, this.filter_pattern))) {
             enl.push(k);
             this.entities.push(l);
+            addDistinct('L', this.filtered_types);
           }
         }
       }
@@ -15515,6 +15528,7 @@ class Finder {
                 MODEL.constraints[k].displayName, this.filter_pattern))) {
               enl.push(k);
               this.entities.push(MODEL.constraints[k]);
+              addDistinct('B', this.filtered_types);
             }
           }
         }
@@ -15540,10 +15554,24 @@ class Finder {
     UI.scrollIntoView(document.getElementById(seid));
     document.getElementById('finder-count').innerHTML = pluralS(
         el.length, 'entity', 'entities');
-    if(el.length > 0) {
+    // Only show the edit button if all filtered entities are of the
+    // same type.
+    let n = el.length;
+    this.edit_btn.style.display = 'none';
+    this.copy_btn.style.display = 'none';
+    if(n > 0) {
       this.copy_btn.style.display = 'block';
-    } else {
-      this.copy_btn.style.display = 'none';
+      const ft = this.filtered_types[0];
+      if(this.filtered_types.length === 1 && 'DE'.indexOf(ft) < 0) {
+        // NOTE: Attributes of "no actor" and top cluster cannot be edited.
+        if((ft === 'A' && enl.indexOf('(no_actor)') >= 0) ||
+            (ft === 'C' && enl.indexOf('(top_cluster)') >= 0)) n--;
+        if(n > 0) {
+          this.edit_btn.title = 'Edit attributes of ' +
+              pluralS(n, VM.entity_names[ft]);
+          this.edit_btn.style.display = 'block';
+        }
+      }
     }
     this.updateRightPane();
   }
@@ -15769,6 +15797,10 @@ class Finder {
         UI.showProductPropertiesDialog(obj);
       } else if(obj instanceof Link) {
         UI.showLinkPropertiesDialog(obj);
+      } else if(obj instanceof Cluster && obj !== MODEL.top_cluster) {
+        UI.showClusterPropertiesDialog(obj);
+      } else if(obj instanceof Actor) {
+        ACTOR_MANAGER.showEditActorDialog(obj.name, obj.weight.text);
       } else if(obj instanceof Note) {
         obj.showNotePropertiesDialog();
       } else if(obj instanceof Dataset) {
@@ -15884,12 +15916,19 @@ class Finder {
     }
   }
   
+  editAttributes(shift) {
+    // Show the Edit properties dialog for the filtered-out entities.
+    // These must all be of the same type, or the edit button will not
+    // show. Just in case, check anyway.
+    
+  }
+  
   copyAttributesToClipboard(shift) {
-    // Copy relevant entity attributes as tab-separated text to clipboard
-    // NOTE: all entity types have "get" `attributes` that returns an object
-    // that for each defined attribute (and if model has been solved also each
-    // inferred attribute) has a property with its value. For dynamic
-    // expressions, the expression text is used
+    // Copy relevant entity attributes as tab-separated text to clipboard.
+    // NOTE: All entity types have "get" `attributes` that returns an
+    // object that for each defined attribute (and if model has been
+    // solved also each inferred attribute) has a property with its value.
+    // For dynamic expressions, the expression text is used
     const ea_dict = {A: [], B: [], C: [], D: [], E: [], L: [], P: [], Q: []};
     let e = this.selected_entity;
     if(shift && e) {
@@ -15909,18 +15948,15 @@ class Finder {
           etl = seq[i],
           ead = ea_dict[etl];
       if(ead && ead.length > 0) {
-        // No blank line before first entity type
+        // No blank line before first entity type.
         if(text.length > 0) text.push('');
-        let ah = this.attribute_letters[etl];
+        const en = capitalized(VM.entity_names[etl]);
+        let ah = en + '\t' + VM.entity_attribute_names[etl].join('\t');
+        if(etl === 'L' || etl === 'B') ah = ah.replace(en, `${en} FROM\tTO`);
         if(!MODEL.infer_cost_prices) {
-          // No cost price calculation => trim associated attributes from header
-          let p = ah.indexOf('\tCost price');
-          if(p > 0) {
-            ah = ah.substring(0, p);
-          } else {
-            // SOC is exogenous, and hence comes before F in header => replace
-            ah = ah.replace('\tShare of cost', '');
-          }
+          // If no cost price calculation, trim associated attributes
+          // from the header.
+          ah = ah.replace('\tCost price', '').replace('\tShare of cost', '');
         }
         text.push(ah);
         attr.length = 0;

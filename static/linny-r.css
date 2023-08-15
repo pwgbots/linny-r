@@ -4269,6 +4269,17 @@ img.finder {
   width: 50%;
 }
 
+/* NOTE: Finder buttons are initially invisible */
+
+#finder-edit-btn {
+  position: absolute;
+  height: 16px;
+  width: 16px;
+  bottom: 1px;
+  right: calc(50% + 24px);
+  display: none;
+}
+
 #finder-copy-btn {
   position: absolute;
   height: 16px;

@@ -186,9 +186,14 @@ function uniformDecimals(data) {
   }
 }
 
+function capitalized(s) {
+  // Returns string `s` with its first letter capitalized.
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function ellipsedText(text, n=50, m=10) {
-  // Returns `text` with ellipsis " ... " between its first `n` and last `m`
-  // characters 
+  // Returns `text` with ellipsis " ... " between its first `n` and
+  // last `m` characters. 
   if(text.length <= n + m + 3) return text;
   return text.slice(0, n) + ' \u2026 ' + text.slice(text.length - m);
 }

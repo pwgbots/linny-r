@@ -2070,6 +2070,16 @@ class VirtualMachine {
       P: this.process_attr,
       Q: this.product_attr
     };
+    this.entity_attribute_names = {};
+    for(let i = 0; i < this.entity_letters.length; i++) {
+      const
+          el = this.entity_letters.charAt(i),
+          ac = this.attribute_codes[el];
+      this.entity_attribute_names[el] = [];
+      for(let j = 0; j < ac.length; j++) {
+        this.entity_attribute_names[el].push(ac[j]);
+      }
+    }
     // Level-based attributes are computed only AFTER optimization
     this.level_based_attr = ['L', 'CP',  'HCP', 'CF', 'CI', 'CO', 'F', 'A'];
     this.object_types = ['Process', 'Product', 'Cluster', 'Link', 'Constraint',

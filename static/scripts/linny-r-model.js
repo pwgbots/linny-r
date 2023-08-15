@@ -7339,6 +7339,7 @@ class Process extends Node {
     a.LB = this.lower_bound.asAttribute;
     a.UB = (this.equal_bounds ? a.LB : this.upper_bound.asAttribute);
     a.IL = this.initial_level.asAttribute;
+    a.LCF = this.pace_expression.asAttribute;
     if(MODEL.solved) {
       const t = MODEL.t;
       a.L = this.level[t];
@@ -7600,6 +7601,8 @@ class Product extends Node {
       if(MODEL.infer_cost_prices) {
         a.CP = this.cost_price[t];
         a.HCP = this.highest_cost_price[t];
+        // Highest cost price may be undefined if product has no inflows. 
+        if(a.HCP === VM.MINUS_INFINITY) a.HCP = '';
       }
     }
     return a;
