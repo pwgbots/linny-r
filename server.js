@@ -1228,16 +1228,20 @@ function processRequest(req, res, cmd, data) {
   // NOTE: `data` is a string of form field1=value1&field2=value2& ... etc.
   // regardless of the request method (GET or POST)
   if(permittedFile(cmd)) {
-    // Path contains valid MIME file type extension => serve if allowed
+    // Path contains valid MIME file type extension => serve if allowed.
     serveStaticFile(res, cmd);
-  } else if(cmd === '/solver/') {
+    return;
+  }
+  // Be permissive w.r.t. leading and trailing slashes.
+  cmd = cmd.replace(/^\/+/, '').replace(/\/+$/, '');
+  if(cmd === 'solver') {
     const
         sp = new URLSearchParams(data),
         action = sp.get('action');
-    // NOTE: on remote servers, solver actions require authentication
+    // NOTE: On remote servers, solver actions require authentication.
     if(action === 'logon') {
-      // No authentication -- simply return the passed token, "local host" as
-      // server name, and the identifier of the solver
+      // No authentication -- simply return the passed token, "local host"
+      // as server name, and the identifier of the solver.
       serveJSON(res,
           {token: 'local host', server: 'local host', solver: SOLVER.id});
     } else if(action === 'png') {
@@ -1250,15 +1254,16 @@ function processRequest(req, res, cmd, data) {
       console.log(msg);
       serveJSON(res, {error: msg});
     }
-  } else if(cmd === '/shutdown') {
+  } else if(cmd === 'shutdown') {
     // Shut down this server WITHOUT updating, and show page with
     // "shut down" message and restart button.
     clearNewerVersion();
     serveHTML(res, SHUTDOWN_MESSAGE);
     SERVER.close();
-  } else if(cmd === '/version/') {
+  } else if(cmd === 'version') {
+    logAction('HERE version = ' + VERSION_INFO.current);
     servePlainText(res, 'Current version is ' + VERSION_INFO.current);
-  } else if(cmd === '/update/') {
+  } else if(cmd === 'update') {
     // Shut down this server silently. When the server was started from
     // a batch script, this will update via npm, and then restart.
     // NOTE: Self-protect against overwriting development scripts.
@@ -1269,20 +1274,20 @@ function processRequest(req, res, cmd, data) {
       servePlainText(res, 'Installing Linny-R version ' + VERSION_INFO.latest);
       SERVER.close();
     }
-  } else if(cmd === '/no-update/') {
+  } else if(cmd === 'no-update') {
     // Remove file "newer_version" so no update will take place when
     // server is shut down.
     clearNewerVersion();
     servePlainText(res, 'No update to version ' + VERSION_INFO.latest);
-  } else if(cmd === '/auto-check') {
+  } else if(cmd === 'auto-check') {
     autoCheck(res);
-  } else if(cmd === '/autosave/') {
+  } else if(cmd === 'autosave') {
     autoSave(res, new URLSearchParams(data));
-  } else if(cmd === '/repo/') {
+  } else if(cmd === 'repo') {
     repo(res, new URLSearchParams(data));
-  } else if(cmd === '/load-data/') {
+  } else if(cmd === 'load-data') {
     loadData(res, (new URLSearchParams(data)).get('url'));
-  } else if(cmd === '/receiver/') {
+  } else if(cmd === 'receiver') {
     receiver(res, new URLSearchParams(data));
   } else {
     serveJSON(res, {error: `Unknown Linny-R request: "${cmd}"`});
@@ -1290,7 +1295,7 @@ function processRequest(req, res, cmd, data) {
 }
 
 function servePlainText(res, msg) {
-  // Serve string `msg` as plain text
+  // Serve string `msg` as plain text.
   res.setHeader('Content-Type', 'text/plain');
   res.writeHead(200);
   res.end(msg);

@@ -2795,8 +2795,9 @@ class ModalDialog {
     this.id = id;
     this.modal = document.getElementById(id + '-modal');
     this.dialog = document.getElementById(id + '-dlg');
-    // NOTE: Dialog button properties will be `undefined` if not in the
-    // header DIV child of the dialog DIV element.
+    // NOTE: Dialog title and button properties will be `undefined` if
+    // not in the header DIV child of the dialog DIV element.
+    this.title = this.dialog.getElementsByClassName('dlg-title')[0];
     this.ok = this.dialog.getElementsByClassName('ok-btn')[0];
     this.cancel = this.dialog.getElementsByClassName('cancel-btn')[0];
     this.info = this.dialog.getElementsByClassName('info-btn')[0];
@@ -3444,26 +3445,21 @@ class GUIController extends Controller {
   
   waitToRestart() {
     // Shows the "update in progress" dialog and then fetches the current
-    // version page from the server. Always wait for 2 seconds to permit
-    // reading the text. Then try to restart.
+    // version page from the server. Always wait for 5 seconds to permit
+    // reading the text, and ensure that the server has been stopped.
+    // Only then try to restart.
     if(SOLVER.user_id) return;
     UI.updating_modal.show();
-    setTimeout(() => UI.tryToRestart(), 3000);
+    setTimeout(() => UI.tryToRestart(0), 5000);
   }
 
-  tryToRestart() {
+  tryToRestart(trials) {
     // Fetch the current version number from the server. This may take
     // a wile, as the server was shut down and restarts only after npm
     // has updated the Linny-R software. Typically, this takes only a few
     // seconds, but the connection with the npm server may be slow.
     // Default timeout on Firefox (90 seconds) and Chrome (300 seconds)
     // should amply suffice, though, hence no provision for a second attempt.
-    // NOTE: The message text is changed in the event that the user does
-    // not confirm when prompted by the browser to leave the page.
-    UI.updating_modal.element('msg').innerHTML = [
-        'Updating has now been completed.<br>',
-        'To continue, you must reload this page, and<br>',
-        'confirm when prompted by your browser.'];
     fetch('version/')
       .then((response) => {
           if(!response.ok) {
@@ -3472,11 +3468,37 @@ class GUIController extends Controller {
           return response.text();
         })
       .then((data) => {
-          // Reload `index.html`. This will start Linny-R anew.
-          if(UI.postResponseOK(data, true)) window.open('./', '_self');
+          if(UI.postResponseOK(data)) {
+            // Change the dialog text in case the user does not confirm
+            // when prompted by the browser to leave the page.
+            const
+                m = data.match(/(\d+\.\d+\.\d+)/),
+                md = UI.updating_modal;
+            md.title.innerText = 'Update terminated';
+            let msg = [];
+            if(m) {
+              msg.push(
+                `Linny-R version ${m[1]} has been installed.`,
+                'To continue, you must reload this page, and',
+                'confirm when prompted by your browser.');
+            } else {
+              // Inform user that install appears to have failed.
+              msg.push(
+                'Installation of new version may <strong>not</strong> have',
+                'been successful. Please check the CLI for',
+                'error messages or warnings.');
+            }
+            md.element('msg').innerHTML = msg.join('<br>');
+            // Reload `index.html`. This will start Linny-R anew.
+            window.open('./', '_self');
+          }
         })
       .catch((err) => {
-          UI.warn(UI.WARNING.NO_CONNECTION, err);
+          if(trials < 10) {
+            setTimeout(() => UI.tryToRestart(trials + 1), 5000);
+          } else {
+            UI.warn(UI.WARNING.NO_CONNECTION, err);
+          }
         });    
   }
 
