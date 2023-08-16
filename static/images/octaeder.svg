@@ -1,0 +1,993 @@
+<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"
+    viewBox="24 32 232 231" preserveAspectRatio="xMidYMid">
+ <style>
+   path.roic {
+     stroke: #8264a0;
+     stroke-width: 1px;
+     stroke-linejoin: round;
+     stroke-opacity: 1;
+     opacity: 0.45;
+   }
+   g.show {
+     visibility: visible;
+   }
+   g.hide {
+     visibility: hidden;
+   }
+#fr00 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.05s;
+}
+
+#fr01 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.1s;
+}
+
+#fr02 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.15s;
+}
+
+#fr03 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.2s;
+}
+
+#fr04 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.25s;
+}
+
+#fr05 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.3s;
+}
+
+#fr06 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.35s;
+}
+
+#fr07 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.4s;
+}
+
+#fr08 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.45s;
+}
+
+#fr09 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.5s;
+}
+
+#fr10 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.55s;
+}
+
+#fr11 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.6s;
+}
+
+#fr12 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.65s;
+}
+
+#fr13 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.7s;
+}
+
+#fr14 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.75s;
+}
+
+#fr15 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.8s;
+}
+
+#fr16 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.85s;
+}
+
+#fr17 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.9s;
+}
+
+#fr18 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 0.95s;
+}
+
+#fr19 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1s;
+}
+
+#fr20 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.05s;
+}
+
+#fr21 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.1s;
+}
+
+#fr22 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.15s;
+}
+
+#fr23 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.2s;
+}
+
+#fr24 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.25s;
+}
+
+#fr25 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.3s;
+}
+
+#fr26 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.35s;
+}
+
+#fr27 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.4s;
+}
+
+#fr28 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.45s;
+}
+
+#fr29 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.5s;
+}
+
+#fr30 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.55s;
+}
+
+#fr31 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.6s;
+}
+
+#fr32 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.65s;
+}
+
+#fr33 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.7s;
+}
+
+#fr34 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.75s;
+}
+
+#fr35 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.8s;
+}
+
+#fr36 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.85s;
+}
+
+#fr37 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.9s;
+}
+
+#fr38 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 1.95s;
+}
+
+#fr39 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2s;
+}
+
+#fr40 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.05s;
+}
+
+#fr41 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.1s;
+}
+
+#fr42 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.15s;
+}
+
+#fr43 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.2s;
+}
+
+#fr44 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.25s;
+}
+
+#fr45 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.3s;
+}
+
+#fr46 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.35s;
+}
+
+#fr47 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.4s;
+}
+
+#fr48 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.45s;
+}
+
+#fr49 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.5s;
+}
+
+#fr50 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.55s;
+}
+
+#fr51 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.6s;
+}
+
+#fr52 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.65s;
+}
+
+#fr53 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.7s;
+}
+
+#fr54 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.75s;
+}
+
+#fr55 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.8s;
+}
+
+#fr56 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.85s;
+}
+
+#fr57 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.9s;
+}
+
+#fr58 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 2.95s;
+}
+
+#fr59 {
+  visibility: hidden;
+  animation: 3s show infinite;
+  animation-delay: 3s;
+}
+
+@keyframes show {
+  0% { visibility: visible;}
+  1.666% { visibility: visible; }
+  1.667% { visibility: hidden; }
+  100% { visibility: hidden; }
+}
+
+ </style>
+<g id="fr00">
+<path id="ABC0" class="roic" style="fill:#960041" d="M40 96L167 78L122 32z"></path>
+<path id="ADE0" class="roic" style="fill:#ebebe1" d="M40 96L61 189L120 208z"></path>
+<path id="AEB0" class="roic" style="fill:#fab8ea" d="M40 96L120 208L167 78z"></path>
+<path id="FEB0" class="roic" style="fill:#3236c8" d="M215 160L120 208L167 78z"></path>
+<path id="FBC0" class="roic" style="fill:#ebebe1" d="M215 160L167 78L122 32z"></path>
+<path id="FDE0" class="roic" style="fill:#960041" d="M215 160L61 189L120 208z"></path>
+<path id="FCD0" class="roic" style="fill:#fab8ea" d="M215 160L122 32L61 189z"></path>
+<path id="ACD0" class="roic" style="fill:#3236c8" d="M40 96L122 32L61 189z"></path>
+</g>
+<g id="fr01">
+<path id="ABC1" class="roic" style="fill:#960041" d="M45 96L172 77L115 32z"></path>
+<path id="ADE1" class="roic" style="fill:#ebebe1" d="M45 96L54 188L125 208z"></path>
+<path id="AEB1" class="roic" style="fill:#fab8ea" d="M45 96L125 208L172 77z"></path>
+<path id="FEB1" class="roic" style="fill:#3236c8" d="M212 161L125 208L172 77z"></path>
+<path id="FBC1" class="roic" style="fill:#ebebe1" d="M212 161L172 77L115 32z"></path>
+<path id="FCD1" class="roic" style="fill:#fab8ea" d="M212 161L115 32L54 188z"></path>
+<path id="FDE1" class="roic" style="fill:#960041" d="M212 161L54 188L125 208z"></path>
+<path id="ACD1" class="roic" style="fill:#3236c8" d="M45 96L115 32L54 188z"></path>
+</g>
+<g id="fr02">
+<path id="ABC2" class="roic" style="fill:#960041" d="M51 96L178 76L107 32z"></path>
+<path id="ADE2" class="roic" style="fill:#ebebe1" d="M51 96L48 187L131 208z"></path>
+<path id="AEB2" class="roic" style="fill:#fab8ea" d="M51 96L131 208L178 76z"></path>
+<path id="FEB2" class="roic" style="fill:#3236c8" d="M207 162L131 208L178 76z"></path>
+<path id="FBC2" class="roic" style="fill:#ebebe1" d="M207 162L178 76L107 32z"></path>
+<path id="FCD2" class="roic" style="fill:#fab8ea" d="M207 162L107 32L48 187z"></path>
+<path id="FDE2" class="roic" style="fill:#960041" d="M207 162L48 187L131 208z"></path>
+<path id="ACD2" class="roic" style="fill:#3236c8" d="M51 96L107 32L48 187z"></path>
+</g>
+<g id="fr03">
+<path id="ABC3" class="roic" style="fill:#960041" d="M57 96L184 75L100 32z"></path>
+<path id="ADE3" class="roic" style="fill:#ebebe1" d="M57 96L43 186L136 209z"></path>
+<path id="AEB3" class="roic" style="fill:#fab8ea" d="M57 96L136 209L184 75z"></path>
+<path id="FEB3" class="roic" style="fill:#3236c8" d="M201 163L136 209L184 75z"></path>
+<path id="FBC3" class="roic" style="fill:#ebebe1" d="M201 163L184 75L100 32z"></path>
+<path id="FCD3" class="roic" style="fill:#fab8ea" d="M201 163L100 32L43 186z"></path>
+<path id="FDE3" class="roic" style="fill:#960041" d="M201 163L43 186L136 209z"></path>
+<path id="ACD3" class="roic" style="fill:#3236c8" d="M57 96L100 32L43 186z"></path>
+</g>
+<g id="fr04">
+<path id="ABC4" class="roic" style="fill:#960041" d="M65 97L189 75L93 33z"></path>
+<path id="ADE4" class="roic" style="fill:#ebebe1" d="M65 97L39 185L142 208z"></path>
+<path id="AEB4" class="roic" style="fill:#fab8ea" d="M65 97L142 208L189 75z"></path>
+<path id="FEB4" class="roic" style="fill:#3236c8" d="M195 164L142 208L189 75z"></path>
+<path id="FBC4" class="roic" style="fill:#ebebe1" d="M195 164L189 75L93 33z"></path>
+<path id="FCD4" class="roic" style="fill:#fab8ea" d="M195 164L93 33L39 185z"></path>
+<path id="FDE4" class="roic" style="fill:#960041" d="M195 164L39 185L142 208z"></path>
+<path id="ACD4" class="roic" style="fill:#3236c8" d="M65 97L93 33L39 185z"></path>
+</g>
+<g id="fr05">
+<path id="ABC5" class="roic" style="fill:#960041" d="M73 98L193 74L87 34z"></path>
+<path id="ACD5" class="roic" style="fill:#3236c8" d="M73 98L87 34L36 184z"></path>
+<path id="ADE5" class="roic" style="fill:#ebebe1" d="M73 98L36 184L149 209z"></path>
+<path id="AEB5" class="roic" style="fill:#fab8ea" d="M73 98L149 209L193 74z"></path>
+<path id="FEB5" class="roic" style="fill:#3236c8" d="M186 164L149 209L193 74z"></path>
+<path id="FBC5" class="roic" style="fill:#ebebe1" d="M186 164L193 74L87 34z"></path>
+<path id="FCD5" class="roic" style="fill:#fab8ea" d="M186 164L87 34L36 184z"></path>
+<path id="FDE5" class="roic" style="fill:#960041" d="M186 164L36 184L149 209z"></path>
+</g>
+<g id="fr06">
+<path id="ABC6" class="roic" style="fill:#960041" d="M80 98L198 73L80 35z"></path>
+<path id="ACD6" class="roic" style="fill:#3236c8" d="M80 98L80 35L35 183z"></path>
+<path id="ADE6" class="roic" style="fill:#ebebe1" d="M80 98L35 183L153 209z"></path>
+<path id="AEB6" class="roic" style="fill:#fab8ea" d="M80 98L153 209L198 73z"></path>
+<path id="FEB6" class="roic" style="fill:#3236c8" d="M178 165L153 209L198 73z"></path>
+<path id="FBC6" class="roic" style="fill:#ebebe1" d="M178 165L198 73L80 35z"></path>
+<path id="FCD6" class="roic" style="fill:#fab8ea" d="M178 165L80 35L35 183z"></path>
+<path id="FDE6" class="roic" style="fill:#960041" d="M178 165L35 183L153 209z"></path>
+</g>
+<g id="fr07">
+<path id="ABC7" class="roic" style="fill:#960041" d="M88 99L201 73L74 35z"></path>
+<path id="ACD7" class="roic" style="fill:#3236c8" d="M88 99L74 35L34 181z"></path>
+<path id="ADE7" class="roic" style="fill:#ebebe1" d="M88 99L34 181L158 210z"></path>
+<path id="AEB7" class="roic" style="fill:#fab8ea" d="M88 99L158 210L201 73z"></path>
+<path id="FBC7" class="roic" style="fill:#ebebe1" d="M168 165L201 73L74 35z"></path>
+<path id="FCD7" class="roic" style="fill:#fab8ea" d="M168 165L74 35L34 181z"></path>
+<path id="FDE7" class="roic" style="fill:#960041" d="M168 165L34 181L158 210z"></path>
+<path id="FEB7" class="roic" style="fill:#3236c8" d="M168 165L158 210L201 73z"></path>
+</g>
+<g id="fr08">
+<path id="ABC8" class="roic" style="fill:#960041" d="M96 99L204 72L70 36z"></path>
+<path id="ACD8" class="roic" style="fill:#3236c8" d="M96 99L70 36L34 181z"></path>
+<path id="ADE8" class="roic" style="fill:#ebebe1" d="M96 99L34 181L163 210z"></path>
+<path id="AEB8" class="roic" style="fill:#fab8ea" d="M96 99L163 210L204 72z"></path>
+<path id="FBC8" class="roic" style="fill:#ebebe1" d="M156 165L204 72L70 36z"></path>
+<path id="FCD8" class="roic" style="fill:#fab8ea" d="M156 165L70 36L34 181z"></path>
+<path id="FDE8" class="roic" style="fill:#960041" d="M156 165L34 181L163 210z"></path>
+<path id="FEB8" class="roic" style="fill:#3236c8" d="M156 165L163 210L204 72z"></path>
+</g>
+<g id="fr09">
+<path id="ABC9" class="roic" style="fill:#960041" d="M104 99L206 71L66 37z"></path>
+<path id="ACD9" class="roic" style="fill:#3236c8" d="M104 99L66 37L35 180z"></path>
+<path id="ADE9" class="roic" style="fill:#ebebe1" d="M104 99L35 180L168 212z"></path>
+<path id="AEB9" class="roic" style="fill:#fab8ea" d="M104 99L168 212L206 71z"></path>
+<path id="FBC9" class="roic" style="fill:#ebebe1" d="M144 165L206 71L66 37z"></path>
+<path id="FCD9" class="roic" style="fill:#fab8ea" d="M144 165L66 37L35 180z"></path>
+<path id="FDE9" class="roic" style="fill:#960041" d="M144 165L35 180L168 212z"></path>
+<path id="FEB9" class="roic" style="fill:#3236c8" d="M144 165L168 212L206 71z"></path>
+</g>
+<g id="fr10">
+<path id="ABC10" class="roic" style="fill:#960041" d="M112 99L207 69L62 38z"></path>
+<path id="ACD10" class="roic" style="fill:#3236c8" d="M112 99L62 38L38 179z"></path>
+<path id="ADE10" class="roic" style="fill:#ebebe1" d="M112 99L38 179L171 212z"></path>
+<path id="AEB10" class="roic" style="fill:#fab8ea" d="M112 99L171 212L207 69z"></path>
+<path id="FBC10" class="roic" style="fill:#ebebe1" d="M132 166L207 69L62 38z"></path>
+<path id="FCD10" class="roic" style="fill:#fab8ea" d="M132 166L62 38L38 179z"></path>
+<path id="FDE10" class="roic" style="fill:#960041" d="M132 166L38 179L171 212z"></path>
+<path id="FEB10" class="roic" style="fill:#3236c8" d="M132 166L171 212L207 69z"></path>
+</g>
+<g id="fr11">
+<path id="ABC11" class="roic" style="fill:#960041" d="M120 99L207 68L59 39z"></path>
+<path id="ACD11" class="roic" style="fill:#3236c8" d="M120 99L59 39L40 178z"></path>
+<path id="ADE11" class="roic" style="fill:#ebebe1" d="M120 99L40 178L175 214z"></path>
+<path id="AEB11" class="roic" style="fill:#fab8ea" d="M120 99L175 214L207 68z"></path>
+<path id="FBC11" class="roic" style="fill:#ebebe1" d="M120 166L207 68L59 39z"></path>
+<path id="FCD11" class="roic" style="fill:#fab8ea" d="M120 166L59 39L40 178z"></path>
+<path id="FDE11" class="roic" style="fill:#960041" d="M120 166L40 178L175 214z"></path>
+<path id="FEB11" class="roic" style="fill:#3236c8" d="M120 166L175 214L207 68z"></path>
+</g>
+<g id="fr12">
+<path id="ABC12" class="roic" style="fill:#960041" d="M129 99L206 67L57 40z"></path>
+<path id="ACD12" class="roic" style="fill:#3236c8" d="M129 99L57 40L44 177z"></path>
+<path id="ADE12" class="roic" style="fill:#ebebe1" d="M129 99L44 177L178 214z"></path>
+<path id="AEB12" class="roic" style="fill:#fab8ea" d="M129 99L178 214L206 67z"></path>
+<path id="FBC12" class="roic" style="fill:#ebebe1" d="M108 166L206 67L57 40z"></path>
+<path id="FCD12" class="roic" style="fill:#fab8ea" d="M108 166L57 40L44 177z"></path>
+<path id="FDE12" class="roic" style="fill:#960041" d="M108 166L44 177L178 214z"></path>
+<path id="FEB12" class="roic" style="fill:#3236c8" d="M108 166L178 214L206 67z"></path>
+</g>
+<g id="fr13">
+<path id="ABC13" class="roic" style="fill:#960041" d="M137 98L204 66L57 42z"></path>
+<path id="ACD13" class="roic" style="fill:#3236c8" d="M137 98L57 42L49 176z"></path>
+<path id="ADE13" class="roic" style="fill:#ebebe1" d="M137 98L49 176L181 215z"></path>
+<path id="AEB13" class="roic" style="fill:#fab8ea" d="M137 98L181 215L204 66z"></path>
+<path id="FBC13" class="roic" style="fill:#ebebe1" d="M96 166L204 66L57 42z"></path>
+<path id="FCD13" class="roic" style="fill:#fab8ea" d="M96 166L57 42L49 176z"></path>
+<path id="FDE13" class="roic" style="fill:#960041" d="M96 166L49 176L181 215z"></path>
+<path id="FEB13" class="roic" style="fill:#3236c8" d="M96 166L181 215L204 66z"></path>
+</g>
+<g id="fr14">
+<path id="ABC14" class="roic" style="fill:#960041" d="M145 99L200 65L56 43z"></path>
+<path id="ACD14" class="roic" style="fill:#3236c8" d="M145 99L56 43L54 175z"></path>
+<path id="ADE14" class="roic" style="fill:#ebebe1" d="M145 99L54 175L183 216z"></path>
+<path id="AEB14" class="roic" style="fill:#fab8ea" d="M145 99L183 216L200 65z"></path>
+<path id="FBC14" class="roic" style="fill:#ebebe1" d="M85 165L200 65L56 43z"></path>
+<path id="FCD14" class="roic" style="fill:#fab8ea" d="M85 165L56 43L54 175z"></path>
+<path id="FDE14" class="roic" style="fill:#960041" d="M85 165L54 175L183 216z"></path>
+<path id="FEB14" class="roic" style="fill:#3236c8" d="M85 165L183 216L200 65z"></path>
+</g>
+<g id="fr15">
+<path id="ABC15" class="roic" style="fill:#960041" d="M153 99L197 64L56 44z"></path>
+<path id="ACD15" class="roic" style="fill:#3236c8" d="M153 99L56 44L58 174z"></path>
+<path id="ADE15" class="roic" style="fill:#ebebe1" d="M153 99L58 174L184 218z"></path>
+<path id="AEB15" class="roic" style="fill:#fab8ea" d="M153 99L184 218L197 64z"></path>
+<path id="FBC15" class="roic" style="fill:#ebebe1" d="M74 164L197 64L56 44z"></path>
+<path id="FCD15" class="roic" style="fill:#fab8ea" d="M74 164L56 44L58 174z"></path>
+<path id="FDE15" class="roic" style="fill:#960041" d="M74 164L58 174L184 218z"></path>
+<path id="FEB15" class="roic" style="fill:#3236c8" d="M74 164L184 218L197 64z"></path>
+</g>
+<g id="fr16">
+<path id="FCD16" class="roic" style="fill:#fab8ea" d="M63 164L57 45L65 174z"></path>
+<path id="ABC16" class="roic" style="fill:#960041" d="M161 99L192 62L57 45z"></path>
+<path id="ACD16" class="roic" style="fill:#3236c8" d="M161 99L57 45L65 174z"></path>
+<path id="ADE16" class="roic" style="fill:#ebebe1" d="M161 99L65 174L184 219z"></path>
+<path id="AEB16" class="roic" style="fill:#fab8ea" d="M161 99L184 219L192 62z"></path>
+<path id="FBC16" class="roic" style="fill:#ebebe1" d="M63 164L192 62L57 45z"></path>
+<path id="FDE16" class="roic" style="fill:#960041" d="M63 164L65 174L184 219z"></path>
+<path id="FEB16" class="roic" style="fill:#3236c8" d="M63 164L184 219L192 62z"></path>
+</g>
+<g id="fr17">
+<path id="FCD17" class="roic" style="fill:#fab8ea" d="M54 164L59 46L72 173z"></path>
+<path id="ABC17" class="roic" style="fill:#960041" d="M168 98L185 62L59 46z"></path>
+<path id="ACD17" class="roic" style="fill:#3236c8" d="M168 98L59 46L72 173z"></path>
+<path id="ADE17" class="roic" style="fill:#ebebe1" d="M168 98L72 173L184 219z"></path>
+<path id="AEB17" class="roic" style="fill:#fab8ea" d="M168 98L184 219L185 62z"></path>
+<path id="FBC17" class="roic" style="fill:#ebebe1" d="M54 164L185 62L59 46z"></path>
+<path id="FDE17" class="roic" style="fill:#960041" d="M54 164L72 173L184 219z"></path>
+<path id="FEB17" class="roic" style="fill:#3236c8" d="M54 164L184 219L185 62z"></path>
+</g>
+<g id="fr18">
+<path id="FDE18" class="roic" style="fill:#960041" d="M45 164L78 171L184 221z"></path>
+<path id="FCD18" class="roic" style="fill:#fab8ea" d="M45 164L62 47L78 171z"></path>
+<path id="ABC18" class="roic" style="fill:#960041" d="M176 98L178 61L62 47z"></path>
+<path id="ACD18" class="roic" style="fill:#3236c8" d="M176 98L62 47L78 171z"></path>
+<path id="ADE18" class="roic" style="fill:#ebebe1" d="M176 98L78 171L184 221z"></path>
+<path id="AEB18" class="roic" style="fill:#fab8ea" d="M176 98L184 221L178 61z"></path>
+<path id="FBC18" class="roic" style="fill:#ebebe1" d="M45 164L178 61L62 47z"></path>
+<path id="FEB18" class="roic" style="fill:#3236c8" d="M45 164L184 221L178 61z"></path>
+</g>
+<g id="fr19">
+<path id="FDE19" class="roic" style="fill:#960041" d="M39 163L85 171L183 223z"></path>
+<path id="FCD19" class="roic" style="fill:#fab8ea" d="M39 163L65 48L85 171z"></path>
+<path id="ABC19" class="roic" style="fill:#960041" d="M184 97L170 60L65 48z"></path>
+<path id="ACD19" class="roic" style="fill:#3236c8" d="M184 97L65 48L85 171z"></path>
+<path id="ADE19" class="roic" style="fill:#ebebe1" d="M184 97L85 171L183 223z"></path>
+<path id="AEB19" class="roic" style="fill:#fab8ea" d="M184 97L183 223L170 60z"></path>
+<path id="FBC19" class="roic" style="fill:#ebebe1" d="M39 163L170 60L65 48z"></path>
+<path id="FEB19" class="roic" style="fill:#3236c8" d="M39 163L183 223L170 60z"></path>
+</g>
+<g id="fr20">
+<path id="FDE20" class="roic" style="fill:#960041" d="M33 162L92 171L180 224z"></path>
+<path id="FCD20" class="roic" style="fill:#fab8ea" d="M33 162L68 49L92 171z"></path>
+<path id="ABC20" class="roic" style="fill:#960041" d="M190 97L160 60L68 49z"></path>
+<path id="ACD20" class="roic" style="fill:#3236c8" d="M190 97L68 49L92 171z"></path>
+<path id="ADE20" class="roic" style="fill:#ebebe1" d="M190 97L92 171L180 224z"></path>
+<path id="AEB20" class="roic" style="fill:#fab8ea" d="M190 97L180 224L160 60z"></path>
+<path id="FBC20" class="roic" style="fill:#ebebe1" d="M33 162L160 60L68 49z"></path>
+<path id="FEB20" class="roic" style="fill:#3236c8" d="M33 162L180 224L160 60z"></path>
+</g>
+<g id="fr21">
+<path id="FDE21" class="roic" style="fill:#960041" d="M28 161L99 171L177 225z"></path>
+<path id="FCD21" class="roic" style="fill:#fab8ea" d="M28 161L72 50L99 171z"></path>
+<path id="ABC21" class="roic" style="fill:#960041" d="M197 96L151 59L72 50z"></path>
+<path id="ACD21" class="roic" style="fill:#3236c8" d="M197 96L72 50L99 171z"></path>
+<path id="ADE21" class="roic" style="fill:#ebebe1" d="M197 96L99 171L177 225z"></path>
+<path id="AEB21" class="roic" style="fill:#fab8ea" d="M197 96L177 225L151 59z"></path>
+<path id="FBC21" class="roic" style="fill:#ebebe1" d="M28 161L151 59L72 50z"></path>
+<path id="FEB21" class="roic" style="fill:#3236c8" d="M28 161L177 225L151 59z"></path>
+</g>
+<g id="fr22">
+<path id="FDE22" class="roic" style="fill:#960041" d="M25 161L106 171L173 226z"></path>
+<path id="FCD22" class="roic" style="fill:#fab8ea" d="M25 161L76 51L106 171z"></path>
+<path id="ABC22" class="roic" style="fill:#960041" d="M201 95L140 59L76 51z"></path>
+<path id="ACD22" class="roic" style="fill:#3236c8" d="M201 95L76 51L106 171z"></path>
+<path id="ADE22" class="roic" style="fill:#ebebe1" d="M201 95L106 171L173 226z"></path>
+<path id="AEB22" class="roic" style="fill:#fab8ea" d="M201 95L173 226L140 59z"></path>
+<path id="FBC22" class="roic" style="fill:#ebebe1" d="M25 161L140 59L76 51z"></path>
+<path id="FEB22" class="roic" style="fill:#3236c8" d="M25 161L173 226L140 59z"></path>
+</g>
+<g id="fr23">
+<path id="FDE23" class="roic" style="fill:#960041" d="M24 160L114 171L168 227z"></path>
+<path id="FCD23" class="roic" style="fill:#fab8ea" d="M24 160L81 51L114 171z"></path>
+<path id="ABC23" class="roic" style="fill:#960041" d="M206 95L130 58L81 51z"></path>
+<path id="ACD23" class="roic" style="fill:#3236c8" d="M206 95L81 51L114 171z"></path>
+<path id="ADE23" class="roic" style="fill:#ebebe1" d="M206 95L114 171L168 227z"></path>
+<path id="AEB23" class="roic" style="fill:#fab8ea" d="M206 95L168 227L130 58z"></path>
+<path id="FBC23" class="roic" style="fill:#ebebe1" d="M24 160L130 58L81 51z"></path>
+<path id="FEB23" class="roic" style="fill:#3236c8" d="M24 160L168 227L130 58z"></path>
+</g>
+<g id="fr24">
+<path id="FDE24" class="roic" style="fill:#960041" d="M24 159L121 170L164 228z"></path>
+<path id="FCD24" class="roic" style="fill:#fab8ea" d="M24 159L86 52L121 170z"></path>
+<path id="ABC24" class="roic" style="fill:#960041" d="M210 94L119 58L86 52z"></path>
+<path id="ACD24" class="roic" style="fill:#3236c8" d="M210 94L86 52L121 170z"></path>
+<path id="ADE24" class="roic" style="fill:#ebebe1" d="M210 94L121 170L164 228z"></path>
+<path id="AEB24" class="roic" style="fill:#fab8ea" d="M210 94L164 228L119 58z"></path>
+<path id="FBC24" class="roic" style="fill:#ebebe1" d="M24 159L119 58L86 52z"></path>
+<path id="FEB24" class="roic" style="fill:#3236c8" d="M24 159L164 228L119 58z"></path>
+</g>
+<g id="fr25">
+<path id="FDE25" class="roic" style="fill:#960041" d="M24 158L129 170L157 230z"></path>
+<path id="FCD25" class="roic" style="fill:#fab8ea" d="M24 158L91 52L129 170z"></path>
+<path id="ACD25" class="roic" style="fill:#3236c8" d="M214 93L91 52L129 170z"></path>
+<path id="ADE25" class="roic" style="fill:#ebebe1" d="M214 93L129 170L157 230z"></path>
+<path id="AEB25" class="roic" style="fill:#fab8ea" d="M214 93L157 230L108 59z"></path>
+<path id="FBC25" class="roic" style="fill:#ebebe1" d="M24 158L108 59L91 52z"></path>
+<path id="FEB25" class="roic" style="fill:#3236c8" d="M24 158L157 230L108 59z"></path>
+<path id="ABC25" class="roic" style="fill:#960041" d="M214 93L108 59L91 52z"></path>
+</g>
+<g id="fr26">
+<path id="FDE26" class="roic" style="fill:#960041" d="M24 158L136 170L152 230z"></path>
+<path id="FCD26" class="roic" style="fill:#fab8ea" d="M24 158L96 53L136 170z"></path>
+<path id="ACD26" class="roic" style="fill:#3236c8" d="M216 93L96 53L136 170z"></path>
+<path id="ADE26" class="roic" style="fill:#ebebe1" d="M216 93L136 170L152 230z"></path>
+<path id="AEB26" class="roic" style="fill:#fab8ea" d="M216 93L152 230L98 60z"></path>
+<path id="FBC26" class="roic" style="fill:#ebebe1" d="M24 158L98 60L96 53z"></path>
+<path id="FEB26" class="roic" style="fill:#3236c8" d="M24 158L152 230L98 60z"></path>
+<path id="ABC26" class="roic" style="fill:#960041" d="M216 93L98 60L96 53z"></path>
+</g>
+<g id="fr27">
+<path id="FBC27" class="roic" style="fill:#ebebe1" d="M27 157L87 59L103 54z"></path>
+<path id="FDE27" class="roic" style="fill:#960041" d="M27 157L144 171L144 230z"></path>
+<path id="FCD27" class="roic" style="fill:#fab8ea" d="M27 157L103 54L144 171z"></path>
+<path id="ACD27" class="roic" style="fill:#3236c8" d="M216 92L103 54L144 171z"></path>
+<path id="ADE27" class="roic" style="fill:#ebebe1" d="M216 92L144 171L144 230z"></path>
+<path id="AEB27" class="roic" style="fill:#fab8ea" d="M216 92L144 230L87 59z"></path>
+<path id="FEB27" class="roic" style="fill:#3236c8" d="M27 157L144 230L87 59z"></path>
+<path id="ABC27" class="roic" style="fill:#960041" d="M216 92L87 59L103 54z"></path>
+</g>
+<g id="fr28">
+<path id="FBC28" class="roic" style="fill:#ebebe1" d="M30 156L77 60L108 53z"></path>
+<path id="FDE28" class="roic" style="fill:#960041" d="M30 156L152 171L137 230z"></path>
+<path id="FCD28" class="roic" style="fill:#fab8ea" d="M30 156L108 53L152 171z"></path>
+<path id="ACD28" class="roic" style="fill:#3236c8" d="M217 92L108 53L152 171z"></path>
+<path id="ADE28" class="roic" style="fill:#ebebe1" d="M217 92L152 171L137 230z"></path>
+<path id="AEB28" class="roic" style="fill:#fab8ea" d="M217 92L137 230L77 60z"></path>
+<path id="FEB28" class="roic" style="fill:#3236c8" d="M30 156L137 230L77 60z"></path>
+<path id="ABC28" class="roic" style="fill:#960041" d="M217 92L77 60L108 53z"></path>
+</g>
+<g id="fr29">
+<path id="FBC29" class="roic" style="fill:#ebebe1" d="M35 155L69 59L114 54z"></path>
+<path id="FDE29" class="roic" style="fill:#960041" d="M35 155L159 172L130 231z"></path>
+<path id="FCD29" class="roic" style="fill:#fab8ea" d="M35 155L114 54L159 172z"></path>
+<path id="ACD29" class="roic" style="fill:#3236c8" d="M216 91L114 54L159 172z"></path>
+<path id="ADE29" class="roic" style="fill:#ebebe1" d="M216 91L159 172L130 231z"></path>
+<path id="AEB29" class="roic" style="fill:#fab8ea" d="M216 91L130 231L69 59z"></path>
+<path id="FEB29" class="roic" style="fill:#3236c8" d="M35 155L130 231L69 59z"></path>
+<path id="ABC29" class="roic" style="fill:#960041" d="M216 91L69 59L114 54z"></path>
+</g>
+<g id="fr30">
+<path id="FBC30" class="roic" style="fill:#ebebe1" d="M40 155L60 60L120 53z"></path>
+<path id="FDE30" class="roic" style="fill:#960041" d="M40 155L166 172L122 231z"></path>
+<path id="FCD30" class="roic" style="fill:#fab8ea" d="M40 155L120 53L166 172z"></path>
+<path id="ACD30" class="roic" style="fill:#3236c8" d="M216 90L120 53L166 172z"></path>
+<path id="ADE30" class="roic" style="fill:#ebebe1" d="M216 90L166 172L122 231z"></path>
+<path id="AEB30" class="roic" style="fill:#fab8ea" d="M216 90L122 231L60 60z"></path>
+<path id="FEB30" class="roic" style="fill:#3236c8" d="M40 155L122 231L60 60z"></path>
+<path id="ABC30" class="roic" style="fill:#960041" d="M216 90L60 60L120 53z"></path>
+</g>
+<g id="fr31">
+<path id="FBC31" class="roic" style="fill:#ebebe1" d="M45 155L53 62L125 54z"></path>
+<path id="FDE31" class="roic" style="fill:#960041" d="M45 155L172 173L115 230z"></path>
+<path id="FCD31" class="roic" style="fill:#fab8ea" d="M45 155L125 54L172 173z"></path>
+<path id="ACD31" class="roic" style="fill:#3236c8" d="M212 89L125 54L172 173z"></path>
+<path id="ADE31" class="roic" style="fill:#ebebe1" d="M212 89L172 173L115 230z"></path>
+<path id="AEB31" class="roic" style="fill:#fab8ea" d="M212 89L115 230L53 62z"></path>
+<path id="FEB31" class="roic" style="fill:#3236c8" d="M45 155L115 230L53 62z"></path>
+<path id="ABC31" class="roic" style="fill:#960041" d="M212 89L53 62L125 54z"></path>
+</g>
+<g id="fr32">
+<path id="FBC32" class="roic" style="fill:#ebebe1" d="M51 154L47 63L132 53z"></path>
+<path id="FDE32" class="roic" style="fill:#960041" d="M51 154L178 174L107 230z"></path>
+<path id="FCD32" class="roic" style="fill:#fab8ea" d="M51 154L132 53L178 174z"></path>
+<path id="ACD32" class="roic" style="fill:#3236c8" d="M207 88L132 53L178 174z"></path>
+<path id="ADE32" class="roic" style="fill:#ebebe1" d="M207 88L178 174L107 230z"></path>
+<path id="AEB32" class="roic" style="fill:#fab8ea" d="M207 88L107 230L47 63z"></path>
+<path id="FEB32" class="roic" style="fill:#3236c8" d="M51 154L107 230L47 63z"></path>
+<path id="ABC32" class="roic" style="fill:#960041" d="M207 88L47 63L132 53z"></path>
+</g>
+<g id="fr33">
+<path id="FBC33" class="roic" style="fill:#ebebe1" d="M58 153L42 64L136 54z"></path>
+<path id="FDE33" class="roic" style="fill:#960041" d="M58 153L184 174L100 230z"></path>
+<path id="FCD33" class="roic" style="fill:#fab8ea" d="M58 153L136 54L184 174z"></path>
+<path id="ACD33" class="roic" style="fill:#3236c8" d="M202 87L136 54L184 174z"></path>
+<path id="ADE33" class="roic" style="fill:#ebebe1" d="M202 87L184 174L100 230z"></path>
+<path id="AEB33" class="roic" style="fill:#fab8ea" d="M202 87L100 230L42 64z"></path>
+<path id="FEB33" class="roic" style="fill:#3236c8" d="M58 153L100 230L42 64z"></path>
+<path id="ABC33" class="roic" style="fill:#960041" d="M202 87L42 64L136 54z"></path>
+</g>
+<g id="fr34">
+<path id="FBC34" class="roic" style="fill:#ebebe1" d="M65 152L39 65L142 53z"></path>
+<path id="FDE34" class="roic" style="fill:#960041" d="M65 152L189 175L92 230z"></path>
+<path id="FCD34" class="roic" style="fill:#fab8ea" d="M65 152L142 53L189 175z"></path>
+<path id="ACD34" class="roic" style="fill:#3236c8" d="M195 87L142 53L189 175z"></path>
+<path id="ADE34" class="roic" style="fill:#ebebe1" d="M195 87L189 175L92 230z"></path>
+<path id="AEB34" class="roic" style="fill:#fab8ea" d="M195 87L92 230L39 65z"></path>
+<path id="ABC34" class="roic" style="fill:#960041" d="M195 87L39 65L142 53z"></path>
+</g>
+<g id="fr35">
+<path id="FEB35" class="roic" style="fill:#3236c8" d="M72 152L86 228L36 67z"></path>
+<path id="FEB34" class="roic" style="fill:#3236c8" d="M65 152L92 230L39 65z"></path>
+<path id="FBC35" class="roic" style="fill:#ebebe1" d="M72 152L36 67L149 53z"></path>
+<path id="FDE35" class="roic" style="fill:#960041" d="M72 152L194 176L86 228z"></path>
+<path id="FCD35" class="roic" style="fill:#fab8ea" d="M72 152L149 53L194 176z"></path>
+<path id="ACD35" class="roic" style="fill:#3236c8" d="M187 86L149 53L194 176z"></path>
+<path id="ADE35" class="roic" style="fill:#ebebe1" d="M187 86L194 176L86 228z"></path>
+<path id="AEB35" class="roic" style="fill:#fab8ea" d="M187 86L86 228L36 67z"></path>
+<path id="ABC35" class="roic" style="fill:#960041" d="M187 86L36 67L149 53z"></path>
+</g>
+<g id="fr36">
+<path id="FEB36" class="roic" style="fill:#3236c8" d="M80 152L79 228L34 67z"></path>
+<path id="FBC36" class="roic" style="fill:#ebebe1" d="M80 152L34 67L153 52z"></path>
+<path id="FDE36" class="roic" style="fill:#960041" d="M80 152L198 177L79 228z"></path>
+<path id="FCD36" class="roic" style="fill:#fab8ea" d="M80 152L153 52L198 177z"></path>
+<path id="ACD36" class="roic" style="fill:#3236c8" d="M178 86L153 52L198 177z"></path>
+<path id="ADE36" class="roic" style="fill:#ebebe1" d="M178 86L198 177L79 228z"></path>
+<path id="AEB36" class="roic" style="fill:#fab8ea" d="M178 86L79 228L34 67z"></path>
+<path id="ABC36" class="roic" style="fill:#960041" d="M178 86L34 67L153 52z"></path>
+</g>
+<g id="fr37">
+<path id="FEB37" class="roic" style="fill:#3236c8" d="M88 151L75 227L33 68z"></path>
+<path id="FBC37" class="roic" style="fill:#ebebe1" d="M88 151L33 68L158 52z"></path>
+<path id="FDE37" class="roic" style="fill:#960041" d="M88 151L201 177L75 227z"></path>
+<path id="FCD37" class="roic" style="fill:#fab8ea" d="M88 151L158 52L201 177z"></path>
+<path id="ADE37" class="roic" style="fill:#ebebe1" d="M168 86L201 177L75 227z"></path>
+<path id="AEB37" class="roic" style="fill:#fab8ea" d="M168 86L75 227L33 68z"></path>
+<path id="ACD37" class="roic" style="fill:#3236c8" d="M168 86L158 52L201 177z"></path>
+<path id="ABC37" class="roic" style="fill:#960041" d="M168 86L33 68L158 52z"></path>
+</g>
+<g id="fr38">
+<path id="FEB38" class="roic" style="fill:#3236c8" d="M96 151L70 226L34 69z"></path>
+<path id="FBC38" class="roic" style="fill:#ebebe1" d="M96 151L34 69L163 51z"></path>
+<path id="FDE38" class="roic" style="fill:#960041" d="M96 151L204 179L70 226z"></path>
+<path id="FCD38" class="roic" style="fill:#fab8ea" d="M96 151L163 51L204 179z"></path>
+<path id="ADE38" class="roic" style="fill:#ebebe1" d="M156 85L204 179L70 226z"></path>
+<path id="AEB38" class="roic" style="fill:#fab8ea" d="M156 85L70 226L34 69z"></path>
+<path id="ACD38" class="roic" style="fill:#3236c8" d="M156 85L163 51L204 179z"></path>
+<path id="ABC38" class="roic" style="fill:#960041" d="M156 85L34 69L163 51z"></path>
+</g>
+<g id="fr39">
+<path id="FEB39" class="roic" style="fill:#3236c8" d="M103 151L66 225L35 71z"></path>
+<path id="FBC39" class="roic" style="fill:#ebebe1" d="M103 151L35 71L167 50z"></path>
+<path id="FDE39" class="roic" style="fill:#960041" d="M103 151L206 179L66 225z"></path>
+<path id="FCD39" class="roic" style="fill:#fab8ea" d="M103 151L167 50L206 179z"></path>
+<path id="ADE39" class="roic" style="fill:#ebebe1" d="M145 85L206 179L66 225z"></path>
+<path id="AEB39" class="roic" style="fill:#fab8ea" d="M145 85L66 225L35 71z"></path>
+<path id="ACD39" class="roic" style="fill:#3236c8" d="M145 85L167 50L206 179z"></path>
+<path id="ABC39" class="roic" style="fill:#960041" d="M145 85L35 71L167 50z"></path>
+</g>
+<g id="fr40">
+<path id="FEB40" class="roic" style="fill:#3236c8" d="M113 151L62 224L37 72z"></path>
+<path id="FBC40" class="roic" style="fill:#ebebe1" d="M113 151L37 72L171 49z"></path>
+<path id="FDE40" class="roic" style="fill:#960041" d="M113 151L208 181L62 224z"></path>
+<path id="FCD40" class="roic" style="fill:#fab8ea" d="M113 151L171 49L208 181z"></path>
+<path id="ADE40" class="roic" style="fill:#ebebe1" d="M132 85L208 181L62 224z"></path>
+<path id="AEB40" class="roic" style="fill:#fab8ea" d="M132 85L62 224L37 72z"></path>
+<path id="ACD40" class="roic" style="fill:#3236c8" d="M132 85L171 49L208 181z"></path>
+<path id="ABC40" class="roic" style="fill:#960041" d="M132 85L37 72L171 49z"></path>
+</g>
+<g id="fr41">
+<path id="FEB41" class="roic" style="fill:#3236c8" d="M120 151L59 223L40 73z"></path>
+<path id="FBC41" class="roic" style="fill:#ebebe1" d="M120 151L40 73L174 48z"></path>
+<path id="FDE41" class="roic" style="fill:#960041" d="M120 151L207 182L59 223z"></path>
+<path id="FCD41" class="roic" style="fill:#fab8ea" d="M120 151L174 48L207 182z"></path>
+<path id="ADE41" class="roic" style="fill:#ebebe1" d="M119 85L207 182L59 223z"></path>
+<path id="AEB41" class="roic" style="fill:#fab8ea" d="M119 85L59 223L40 73z"></path>
+<path id="ACD41" class="roic" style="fill:#3236c8" d="M119 85L174 48L207 182z"></path>
+<path id="ABC41" class="roic" style="fill:#960041" d="M119 85L40 73L174 48z"></path>
+</g>
+<g id="fr42">
+<path id="FEB42" class="roic" style="fill:#3236c8" d="M129 151L57 222L43 74z"></path>
+<path id="FBC42" class="roic" style="fill:#ebebe1" d="M129 151L43 74L178 48z"></path>
+<path id="FDE42" class="roic" style="fill:#960041" d="M129 151L206 184L57 222z"></path>
+<path id="FCD42" class="roic" style="fill:#fab8ea" d="M129 151L178 48L206 184z"></path>
+<path id="ADE42" class="roic" style="fill:#ebebe1" d="M107 85L206 184L57 222z"></path>
+<path id="AEB42" class="roic" style="fill:#fab8ea" d="M107 85L57 222L43 74z"></path>
+<path id="ACD42" class="roic" style="fill:#3236c8" d="M107 85L178 48L206 184z"></path>
+<path id="ABC42" class="roic" style="fill:#960041" d="M107 85L43 74L178 48z"></path>
+</g>
+<g id="fr43">
+<path id="FEB43" class="roic" style="fill:#3236c8" d="M137 152L56 221L48 75z"></path>
+<path id="FBC43" class="roic" style="fill:#ebebe1" d="M137 152L48 75L181 46z"></path>
+<path id="FDE43" class="roic" style="fill:#960041" d="M137 152L204 185L56 221z"></path>
+<path id="FCD43" class="roic" style="fill:#fab8ea" d="M137 152L181 46L204 185z"></path>
+<path id="ADE43" class="roic" style="fill:#ebebe1" d="M96 85L204 185L56 221z"></path>
+<path id="AEB43" class="roic" style="fill:#fab8ea" d="M96 85L56 221L48 75z"></path>
+<path id="ACD43" class="roic" style="fill:#3236c8" d="M96 85L181 46L204 185z"></path>
+<path id="ABC43" class="roic" style="fill:#960041" d="M96 85L48 75L181 46z"></path>
+</g>
+<g id="fr44">
+<path id="FEB44" class="roic" style="fill:#3236c8" d="M145 151L56 219L54 75z"></path>
+<path id="FBC44" class="roic" style="fill:#ebebe1" d="M145 151L54 75L184 45z"></path>
+<path id="FDE44" class="roic" style="fill:#960041" d="M145 151L201 186L56 219z"></path>
+<path id="FCD44" class="roic" style="fill:#fab8ea" d="M145 151L184 45L201 186z"></path>
+<path id="ADE44" class="roic" style="fill:#ebebe1" d="M84 85L201 186L56 219z"></path>
+<path id="AEB44" class="roic" style="fill:#fab8ea" d="M84 85L56 219L54 75z"></path>
+<path id="ACD44" class="roic" style="fill:#3236c8" d="M84 85L184 45L201 186z"></path>
+<path id="ABC44" class="roic" style="fill:#960041" d="M84 85L54 75L184 45z"></path>
+</g>
+<g id="fr45">
+<path id="FEB45" class="roic" style="fill:#3236c8" d="M153 152L56 218L58 76z"></path>
+<path id="FBC45" class="roic" style="fill:#ebebe1" d="M153 152L58 76L184 44z"></path>
+<path id="FDE45" class="roic" style="fill:#960041" d="M153 152L198 188L56 218z"></path>
+<path id="FCD45" class="roic" style="fill:#fab8ea" d="M153 152L184 44L198 188z"></path>
+<path id="ADE45" class="roic" style="fill:#ebebe1" d="M73 86L198 188L56 218z"></path>
+<path id="AEB45" class="roic" style="fill:#fab8ea" d="M73 86L56 218L58 76z"></path>
+<path id="ACD45" class="roic" style="fill:#3236c8" d="M73 86L184 44L198 188z"></path>
+<path id="ABC45" class="roic" style="fill:#960041" d="M73 86L58 76L184 44z"></path>
+</g>
+<g id="fr46">
+<path id="FEB46" class="roic" style="fill:#3236c8" d="M161 152L57 216L65 75z"></path>
+<path id="FBC46" class="roic" style="fill:#ebebe1" d="M161 152L65 75L184 43z"></path>
+<path id="FDE46" class="roic" style="fill:#960041" d="M161 152L192 189L57 216z"></path>
+<path id="FCD46" class="roic" style="fill:#fab8ea" d="M161 152L184 43L192 189z"></path>
+<path id="ADE46" class="roic" style="fill:#ebebe1" d="M62 86L192 189L57 216z"></path>
+<path id="AEB46" class="roic" style="fill:#fab8ea" d="M62 86L57 216L65 75z"></path>
+<path id="ACD46" class="roic" style="fill:#3236c8" d="M62 86L184 43L192 189z"></path>
+<path id="ABC46" class="roic" style="fill:#960041" d="M62 86L65 75L184 43z"></path>
+</g>
+<g id="fr47">
+<path id="FEB47" class="roic" style="fill:#3236c8" d="M168 152L59 216L72 78z"></path>
+<path id="FBC47" class="roic" style="fill:#ebebe1" d="M168 152L72 78L184 43z"></path>
+<path id="FDE47" class="roic" style="fill:#960041" d="M168 152L185 190L59 216z"></path>
+<path id="FCD47" class="roic" style="fill:#fab8ea" d="M168 152L184 43L185 190z"></path>
+<path id="ADE47" class="roic" style="fill:#ebebe1" d="M53 86L185 190L59 216z"></path>
+<path id="AEB47" class="roic" style="fill:#fab8ea" d="M53 86L59 216L72 78z"></path>
+<path id="ACD47" class="roic" style="fill:#3236c8" d="M53 86L184 43L185 190z"></path>
+<path id="ABC47" class="roic" style="fill:#960041" d="M53 86L72 78L184 43z"></path>
+</g>
+<g id="fr48">
+<path id="FEB48" class="roic" style="fill:#3236c8" d="M176 153L62 215L78 79z"></path>
+<path id="FBC48" class="roic" style="fill:#ebebe1" d="M176 153L78 79L184 41z"></path>
+<path id="ABC48" class="roic" style="fill:#960041" d="M45 86L78 79L184 41z"></path>
+<path id="FDE48" class="roic" style="fill:#960041" d="M176 153L179 191L62 215z"></path>
+<path id="FCD48" class="roic" style="fill:#fab8ea" d="M176 153L184 41L179 191z"></path>
+<path id="ADE48" class="roic" style="fill:#ebebe1" d="M45 86L179 191L62 215z"></path>
+<path id="AEB48" class="roic" style="fill:#fab8ea" d="M45 86L62 215L78 79z"></path>
+<path id="ACD48" class="roic" style="fill:#3236c8" d="M45 86L184 41L179 191z"></path>
+</g>
+<g id="fr49">
+<path id="FEB49" class="roic" style="fill:#3236c8" d="M184 154L64 214L85 79z"></path>
+<path id="FBC49" class="roic" style="fill:#ebebe1" d="M184 154L85 79L183 39z"></path>
+<path id="ABC49" class="roic" style="fill:#960041" d="M38 87L85 79L183 39z"></path>
+<path id="FDE49" class="roic" style="fill:#960041" d="M184 154L169 191L64 214z"></path>
+<path id="ADE49" class="roic" style="fill:#ebebe1" d="M38 87L169 191L64 214z"></path>
+<path id="AEB49" class="roic" style="fill:#fab8ea" d="M38 87L64 214L85 79z"></path>
+<path id="FCD49" class="roic" style="fill:#fab8ea" d="M184 154L183 39L169 191z"></path>
+<path id="ACD49" class="roic" style="fill:#3236c8" d="M38 87L183 39L169 191z"></path>
+</g>
+<g id="fr50">
+<path id="FEB50" class="roic" style="fill:#3236c8" d="M190 154L68 213L92 79z"></path>
+<path id="FBC50" class="roic" style="fill:#ebebe1" d="M190 154L92 79L180 38z"></path>
+<path id="ABC50" class="roic" style="fill:#960041" d="M33 88L92 79L180 38z"></path>
+<path id="FDE50" class="roic" style="fill:#960041" d="M190 154L160 191L68 213z"></path>
+<path id="ADE50" class="roic" style="fill:#ebebe1" d="M33 88L160 191L68 213z"></path>
+<path id="AEB50" class="roic" style="fill:#fab8ea" d="M33 88L68 213L92 79z"></path>
+<path id="FCD50" class="roic" style="fill:#fab8ea" d="M190 154L180 38L160 191z"></path>
+<path id="ACD50" class="roic" style="fill:#3236c8" d="M33 88L180 38L160 191z"></path>
+</g>
+<g id="fr51">
+<path id="FEB51" class="roic" style="fill:#3236c8" d="M196 154L72 212L100 79z"></path>
+<path id="FBC51" class="roic" style="fill:#ebebe1" d="M196 154L100 79L177 37z"></path>
+<path id="ABC51" class="roic" style="fill:#960041" d="M28 89L100 79L177 37z"></path>
+<path id="FDE51" class="roic" style="fill:#960041" d="M196 154L151 191L72 212z"></path>
+<path id="ADE51" class="roic" style="fill:#ebebe1" d="M28 89L151 191L72 212z"></path>
+<path id="AEB51" class="roic" style="fill:#fab8ea" d="M28 89L72 212L100 79z"></path>
+<path id="FCD51" class="roic" style="fill:#fab8ea" d="M196 154L177 37L151 191z"></path>
+<path id="ACD51" class="roic" style="fill:#3236c8" d="M28 89L177 37L151 191z"></path>
+</g>
+<g id="fr52">
+<path id="FEB52" class="roic" style="fill:#3236c8" d="M201 155L76 211L106 79z"></path>
+<path id="FBC52" class="roic" style="fill:#ebebe1" d="M201 155L106 79L173 36z"></path>
+<path id="ABC52" class="roic" style="fill:#960041" d="M25 90L106 79L173 36z"></path>
+<path id="FDE52" class="roic" style="fill:#960041" d="M201 155L140 191L76 211z"></path>
+<path id="ADE52" class="roic" style="fill:#ebebe1" d="M25 90L140 191L76 211z"></path>
+<path id="AEB52" class="roic" style="fill:#fab8ea" d="M25 90L76 211L106 79z"></path>
+<path id="FCD52" class="roic" style="fill:#fab8ea" d="M201 155L173 36L140 191z"></path>
+<path id="ACD52" class="roic" style="fill:#3236c8" d="M25 90L173 36L140 191z"></path>
+</g>
+<g id="fr53">
+<path id="FEB53" class="roic" style="fill:#3236c8" d="M206 156L80 210L114 79z"></path>
+<path id="FBC53" class="roic" style="fill:#ebebe1" d="M206 156L114 79L169 35z"></path>
+<path id="ABC53" class="roic" style="fill:#960041" d="M24 91L114 79L169 35z"></path>
+<path id="FDE53" class="roic" style="fill:#960041" d="M206 156L130 191L80 210z"></path>
+<path id="ADE53" class="roic" style="fill:#ebebe1" d="M24 91L130 191L80 210z"></path>
+<path id="AEB53" class="roic" style="fill:#fab8ea" d="M24 91L80 210L114 79z"></path>
+<path id="FCD53" class="roic" style="fill:#fab8ea" d="M206 156L169 35L130 191z"></path>
+<path id="ACD53" class="roic" style="fill:#3236c8" d="M24 91L169 35L130 191z"></path>
+</g>
+<g id="fr54">
+<path id="FEB54" class="roic" style="fill:#3236c8" d="M211 156L86 210L121 79z"></path>
+<path id="FBC54" class="roic" style="fill:#ebebe1" d="M211 156L121 79L164 34z"></path>
+<path id="ABC54" class="roic" style="fill:#960041" d="M23 91L121 79L164 34z"></path>
+<path id="ADE54" class="roic" style="fill:#ebebe1" d="M23 91L120 191L86 210z"></path>
+<path id="AEB54" class="roic" style="fill:#fab8ea" d="M23 91L86 210L121 79z"></path>
+<path id="FCD54" class="roic" style="fill:#fab8ea" d="M211 156L164 34L120 191z"></path>
+<path id="ACD54" class="roic" style="fill:#3236c8" d="M23 91L164 34L120 191z"></path>
+<path id="FDE54" class="roic" style="fill:#960041" d="M211 156L120 191L86 210z"></path>
+</g>
+<g id="fr55">
+<path id="FEB55" class="roic" style="fill:#3236c8" d="M214 157L91 209L130 79z"></path>
+<path id="FBC55" class="roic" style="fill:#ebebe1" d="M214 157L130 79L158 33z"></path>
+<path id="ABC55" class="roic" style="fill:#960041" d="M23 92L130 79L158 33z"></path>
+<path id="ADE55" class="roic" style="fill:#ebebe1" d="M23 92L108 191L91 209z"></path>
+<path id="AEB55" class="roic" style="fill:#fab8ea" d="M23 92L91 209L130 79z"></path>
+<path id="FCD55" class="roic" style="fill:#fab8ea" d="M214 157L158 33L108 191z"></path>
+<path id="ACD55" class="roic" style="fill:#3236c8" d="M23 92L158 33L108 191z"></path>
+<path id="FDE55" class="roic" style="fill:#960041" d="M214 157L108 191L91 209z"></path>
+</g>
+<g id="fr56">
+<path id="FEB56" class="roic" style="fill:#3236c8" d="M216 158L96 210L137 79z"></path>
+<path id="FBC56" class="roic" style="fill:#ebebe1" d="M216 158L137 79L152 32z"></path>
+<path id="ABC56" class="roic" style="fill:#960041" d="M24 93L137 79L152 32z"></path>
+<path id="ADE56" class="roic" style="fill:#ebebe1" d="M24 93L98 191L96 210z"></path>
+<path id="AEB56" class="roic" style="fill:#fab8ea" d="M24 93L96 210L137 79z"></path>
+<path id="FCD56" class="roic" style="fill:#fab8ea" d="M216 158L152 32L98 191z"></path>
+<path id="ACD56" class="roic" style="fill:#3236c8" d="M24 93L152 32L98 191z"></path>
+<path id="FDE56" class="roic" style="fill:#960041" d="M216 158L98 191L96 210z"></path>
+</g>
+<g id="fr57">
+<path id="FEB57" class="roic" style="fill:#3236c8" d="M217 158L103 209L144 79z"></path>
+<path id="FBC57" class="roic" style="fill:#ebebe1" d="M217 158L144 79L144 32z"></path>
+<path id="ABC57" class="roic" style="fill:#960041" d="M27 94L144 79L144 32z"></path>
+<path id="ADE57" class="roic" style="fill:#ebebe1" d="M27 94L88 191L103 209z"></path>
+<path id="AEB57" class="roic" style="fill:#fab8ea" d="M27 94L103 209L144 79z"></path>
+<path id="FCD57" class="roic" style="fill:#fab8ea" d="M217 158L144 32L88 191z"></path>
+<path id="ACD57" class="roic" style="fill:#3236c8" d="M27 94L144 32L88 191z"></path>
+<path id="FDE57" class="roic" style="fill:#960041" d="M217 158L88 191L103 209z"></path>
+</g>
+<g id="fr58">
+<path id="FEB58" class="roic" style="fill:#3236c8" d="M218 159L107 209L151 79z"></path>
+<path id="ABC58" class="roic" style="fill:#960041" d="M30 95L151 79L137 32z"></path>
+<path id="ADE58" class="roic" style="fill:#ebebe1" d="M30 95L77 191L107 209z"></path>
+<path id="AEB58" class="roic" style="fill:#fab8ea" d="M30 95L107 209L151 79z"></path>
+<path id="FBC58" class="roic" style="fill:#ebebe1" d="M218 159L151 79L137 32z"></path>
+<path id="FCD58" class="roic" style="fill:#fab8ea" d="M218 159L137 32L77 191z"></path>
+<path id="ACD58" class="roic" style="fill:#3236c8" d="M30 95L137 32L77 191z"></path>
+<path id="FDE58" class="roic" style="fill:#960041" d="M218 159L77 191L107 209z"></path>
+</g>
+<g id="fr59">
+<path id="FEB59" class="roic" style="fill:#3236c8" d="M217 160L114 208L158 79z"></path>
+<path id="ABC59" class="roic" style="fill:#960041" d="M35 96L158 79L130 32z"></path>
+<path id="ADE59" class="roic" style="fill:#ebebe1" d="M35 96L70 190L114 208z"></path>
+<path id="AEB59" class="roic" style="fill:#fab8ea" d="M35 96L114 208L158 79z"></path>
+<path id="FBC59" class="roic" style="fill:#ebebe1" d="M217 160L158 79L130 32z"></path>
+<path id="FCD59" class="roic" style="fill:#fab8ea" d="M217 160L130 32L70 190z"></path>
+<path id="ACD59" class="roic" style="fill:#3236c8" d="M35 96L130 32L70 190z"></path>
+<path id="FDE59" class="roic" style="fill:#960041" d="M217 160L70 190L114 208z"></path>
+</g>
+
+<set href="fr00" attributeName="class" to="show" begin="0s" dur="0.05s" repeatCount="indefinite" />
+<set href="fr01" attributeName="class" to="show" begin="0.05s" dur="0.05s" repeatCount="indefinite" />
+<set href="fr02" attributeName="class" to="show" begin="0.10s" dur="0.05s" repeatCount="indefinite" />
+<set href="fr03" attributeName="class" to="show" begin="0.15s" dur="0.05s" repeatCount="indefinite" />
+<set href="fr04" attributeName="class" to="show" begin="0.20s" dur="0.05s" repeatCount="indefinite" />
+<set href="fr04" attributeName="class" to="show" begin="0.20s" dur="0.05s" repeatCount="indefinite" />
+
+</svg>

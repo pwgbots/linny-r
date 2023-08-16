@@ -96,14 +96,6 @@ function getVersionInfo() {
   } else if(!info.up_to_date) {
     console.log('UPDATE: Version ' + info.latest + ' was released on ' +
         info.latest_time.toString());
-    const nvf = path.join(WORKING_DIRECTORY, 'newer_version');
-    try {
-      fs.writeFileSync(nvf, info.latest);
-    } catch(err) {
-      console.log('WARNING: Failed to create file:', nvf);
-      console.log(err);
-    }
-    process.env.LINNY_R_NEWER_VERSION = info.latest;
   } else {
     console.log('Linny-R software is up-to-date');
   }
@@ -218,6 +210,19 @@ function autoCheck(res) {
   servePlainText(res, check);
 }
 
+function setNewerVersion() {
+  // Creates the file "newer_version" in the working directory, so that
+  // when the server is run from the standard batch script it will detect
+  // that an update is required.
+  const nvf = path.join(WORKING_DIRECTORY, 'newer_version');
+  try {
+    fs.writeFileSync(nvf, VERSION_INFO.latest);
+  } catch(err) {
+    console.log('WARNING: Failed to create file:', nvf);
+    console.log(err);
+  }
+}
+
 function clearNewerVersion() {
   // Forestalls auto-update by deleting the file "newer_version" that may
   // have been created at start-up from the working directory.
@@ -230,7 +235,7 @@ function clearNewerVersion() {
 
 // HTML page to show when the server is shut down by the user.
 // NOTE: on a macOS machine, this is slightly more work
-const OS_TEXT = {close: '', reopen};
+const OS_TEXT = {close: '', reopen: ''};
 if(PLATFORM === 'darwin') {
   OS_TEXT.close =
 `<p>You can close the <em>Terminal</em> window that shows
@@ -1080,7 +1085,7 @@ function rcvrReport(res, rpath, rfile, run, data, stats, log) {
         }
       }
     }
-    if(n) console.log(n + 'report file' + (n > 1 ? 's' : '') + 'purged');
+    if(n) console.log(n + ' report file' + (n > 1 ? 's' : '') + ' purged');
   } catch(err) {
     // Log error, but do not abort.
     console.log(err);
@@ -1251,12 +1256,24 @@ function processRequest(req, res, cmd, data) {
     clearNewerVersion();
     serveHTML(res, SHUTDOWN_MESSAGE);
     SERVER.close();
-  } else if(cmd === '/update') {
-    // Shut down this server silently, updating automatically when a
-    // newer version was detected, and restart after update.
+  } else if(cmd === '/version/') {
+    servePlainText(res, 'Current version is ' + VERSION_INFO.current);
+  } else if(cmd === '/update/') {
+    // Shut down this server silently. When the server was started from
+    // a batch script, this will update via npm, and then restart.
     // NOTE: Self-protect against overwriting development scripts.
-    if(WORKING_DIRECTORY.indexOf('LTR3') >= 0) clearNewerVersion();
-    SERVER.close();
+    if(WORKING_DIRECTORY.indexOf('LTR3') >= 0) {
+      servePlainText(res, 'No version update in development environment');
+    } else {
+      setNewerVersion();
+      servePlainText(res, 'Installing Linny-R version ' + VERSION_INFO.latest);
+      SERVER.close();
+    }
+  } else if(cmd === '/no-update/') {
+    // Remove file "newer_version" so no update will take place when
+    // server is shut down.
+    clearNewerVersion();
+    servePlainText(res, 'No update to version ' + VERSION_INFO.latest);
   } else if(cmd === '/auto-check') {
     autoCheck(res);
   } else if(cmd === '/autosave/') {
@@ -1733,30 +1750,42 @@ function createLaunchScript() {
   if(PLATFORM.startsWith('win')) {
     sp = path.join(WORKING_DIRECTORY, 'linny-r.bat');
     lines.push(
+      ':loop',
       'if exist newer_version (',
       '    del newer_version',
       '    npm update linny-r',
       '    node node_modules\\linny-r\\server',
+      '    goto loop',
       ')');
     lines[1] = '# cd C:\\path\\to\\main\\Linny-R\\directory';
+    lines[4] = 'node node_modules\\linny-r\\server launch';
   } else {
     sp = path.join(WORKING_DIRECTORY, 'linny-r.command'); 
     lines.push(
-      'if test -f newer_version; then',
+      'while test -f newer_version; do',
       '    unlink newer_version',
       '    npm update linny-r',
       '    node node_modules/linny-r/server',
-      'fi');
+      'done');
     lines[1] = '# cd /path/to/main/Linny-R/directory';
+    lines[4] = 'node node_modules/linny-r/server launch';
   }
   try {
+    let make_script = false,
+        code = lines.join(os.EOL);
+    if(PLATFORM.startsWith('win')) code = code.replaceAll('#', '::');
     try {
       fs.accessSync(sp);
+      // Only write the script content if the file has not been customized
+      // by the user...
+      const data = fs.readFileSync(sp, 'utf-8');
+      make_script = code.indexOf(data) >= 0;
     } catch(err) {
-      // Only write the script content if the file it does not yet exist
+      // ... or if it does not exist yet.
+      make_script = true;
+    }
+    if(make_script) {
       console.log('Creating launch script:', sp);
-      let code = lines.join(os.EOL);
-      if(PLATFORM.startsWith('win')) code = code.replaceAll('#', '::');
       fs.writeFileSync(sp, code, 'utf8');
     }
   } catch(err) {

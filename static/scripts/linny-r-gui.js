@@ -2789,13 +2789,14 @@ class Paper {
 } // END of class Paper
 
 
-// CLASS ModalDialog provides basic modal dialog functionality
+// CLASS ModalDialog provides basic modal dialog functionality.
 class ModalDialog {
   constructor(id) {
     this.id = id;
     this.modal = document.getElementById(id + '-modal');
     this.dialog = document.getElementById(id + '-dlg');
-    // NOTE: dialog button properties will be `undefined` if not in the header
+    // NOTE: Dialog button properties will be `undefined` if not in the
+    // header DIV child of the dialog DIV element.
     this.ok = this.dialog.getElementsByClassName('ok-btn')[0];
     this.cancel = this.dialog.getElementsByClassName('cancel-btn')[0];
     this.info = this.dialog.getElementsByClassName('info-btn')[0];
@@ -3266,9 +3267,13 @@ class GUIController extends Controller {
     // The CHECK UPDATE dialog appears when a new version is detected
     this.check_update_modal = new ModalDialog('check-update');
     this.check_update_modal.ok.addEventListener('click',
-        () => UI.shutDownUpdateAndRestart());
+        () => UI.shutDownToUpdate());
     this.check_update_modal.cancel.addEventListener('click',
-        () => UI.check_update_modal.hide());
+        () => UI.preventUpdate());
+
+    // The UPDATING modal appears when updating has started.
+    // NOTE: This modal has no OK or CANCEL buttons.
+    this.updating_modal = new ModalDialog('updating');
 
     // Add all draggable stay-on-top dialogs as controller properties
     
@@ -3399,7 +3404,7 @@ class GUIController extends Controller {
   }
 
   drawLinkArrows(cluster, link) {
-    // Draw all arrows in `cluster` that represent `link`
+    // Draw all arrows in `cluster` that represent `link`.
     for(let i = 0; i < cluster.arrows.length; i++) {
       const a = cluster.arrows[i];
       if(a.links.indexOf(link) >= 0) this.paper.drawArrow(a);
@@ -3407,24 +3412,103 @@ class GUIController extends Controller {
   }
 
   shutDownServer() {
-    // Shut down -- this terminates the local host server script 
+    // This terminates the local host server script and display a plain
+    // HTML message in the browser with a restart button.
     if(!SOLVER.user_id) window.open('./shutdown', '_self');
   }
 
-  shutDownUpdateAndRestart() {
-    // Shut down -- this terminates the local host server script 
-    if(!SOLVER.user_id) window.open('./update', '_self');
+  shutDownToUpdate() {
+    // Sisgnal server that an update is required. This will close the
+    // local host Linny-R server. If this server was started by the
+    // standard OS batch script, this script will proceed to update
+    // Linny-R via npm and then restart the server again. If not, the
+    // fetch request will time out, anf the user will be warned.
+    if(SOLVER.user_id) return;
+    fetch('update/')
+      .then((response) => {
+          if(!response.ok) {
+            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
+          }
+          return response.text();
+        })
+      .then((data) => {
+          if(UI.postResponseOK(data, true)) {
+            UI.check_update_modal.hide();
+            if(data.startsWith('Installing')) UI.waitToRestart();
+          }
+        })
+      .catch((err) => {
+          UI.warn(UI.WARNING.NO_CONNECTION, err);
+        });
+  }
+  
+  waitToRestart() {
+    // Shows the "update in progress" dialog and then fetches the current
+    // version page from the server. Always wait for 2 seconds to permit
+    // reading the text. Then try to restart.
+    if(SOLVER.user_id) return;
+    UI.updating_modal.show();
+    setTimeout(() => UI.tryToRestart(), 3000);
+  }
+
+  tryToRestart() {
+    // Fetch the current version number from the server. This may take
+    // a wile, as the server was shut down and restarts only after npm
+    // has updated the Linny-R software. Typically, this takes only a few
+    // seconds, but the connection with the npm server may be slow.
+    // Default timeout on Firefox (90 seconds) and Chrome (300 seconds)
+    // should amply suffice, though, hence no provision for a second attempt.
+    // NOTE: The message text is changed in the event that the user does
+    // not confirm when prompted by the browser to leave the page.
+    UI.updating_modal.element('msg').innerHTML = [
+        'Updating has now been completed.<br>',
+        'To continue, you must reload this page, and<br>',
+        'confirm when prompted by your browser.'];
+    fetch('version/')
+      .then((response) => {
+          if(!response.ok) {
+            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
+          }
+          return response.text();
+        })
+      .then((data) => {
+          // Reload `index.html`. This will start Linny-R anew.
+          if(UI.postResponseOK(data, true)) window.open('./', '_self');
+        })
+      .catch((err) => {
+          UI.warn(UI.WARNING.NO_CONNECTION, err);
+        });    
+  }
+
+  preventUpdate() {
+    // Signal server that no update is required. 
+    if(SOLVER.user_id) return;
+    fetch('no-update/')
+      .then((response) => {
+          if(!response.ok) {
+            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
+          }
+          return response.text();
+        })
+      .then((data) => {
+          if(UI.postResponseOK(data, true)) UI.check_update_modal.hide();
+        })
+      .catch((err) => {
+          UI.warn(UI.WARNING.NO_CONNECTION, err);
+          UI.check_update_modal.hide();
+        });
   }
 
   loginPrompt() {
-    // Show the server logon modal
+    // Show the server logon modal.
     this.modals.logon.element('name').value = SOLVER.user_id;
     this.modals.logon.element('password').value = '';
     this.modals.logon.show('password');
   }
   
   rotatingIcon(rotate=false) {
-    // Controls the appearance of the Linny-R icon (top-left in browser window)
+    // Controls the appearance of the Linny-R icon in the top-left
+    // corner of the browser window.
     const
         si = document.getElementById('static-icon'),
         ri = document.getElementById('rotating-icon');
@@ -3438,47 +3522,47 @@ class GUIController extends Controller {
   }
 
   updateTimeStep(t=MODEL.simulationTimeStep) {
-    // Displays `t` as the current time step
-    // NOTE: the Virtual Machine passes its relative time VM.t
+    // Display `t` as the current time step.
+    // NOTE: The Virtual Machine passes its relative time `VM.t`.
     document.getElementById('step').innerHTML = t;
   }
   
   stopSolving() {
-    // Reset solver-related GUI elements and notify modeler
+    // Reset solver-related GUI elements and notify modeler.
     super.stopSolving();
     this.buttons.solve.classList.remove('off');
     this.buttons.stop.classList.remove('blink');
     this.buttons.stop.classList.add('off');
     this.rotatingIcon(false);
-    // Update the time step on the status bar
+    // Update the time step on the status bar.
     this.updateTimeStep();
   }
   
   readyToSolve() {
-    // Set Stop and Reset buttons to their initial state
+    // Set Stop and Reset buttons to their initial state.
     UI.buttons.stop.classList.remove('blink');
     // Hide the reset button
     UI.buttons.reset.classList.add('off');   
   }
   
   startSolving() {
-    // Hide Start button and show Stop button
+    // Hide Start button and show Stop button.
     UI.buttons.solve.classList.add('off');
     UI.buttons.stop.classList.remove('off');
   }
   
   waitToStop() {
-    // Make Stop button blink to indicate "halting -- please wait"
+    // Make Stop button blink to indicate "halting -- please wait".
     UI.buttons.stop.classList.add('blink');
   }
   
   readyToReset() {
-    // Show the Reset button
+    // Show the Reset button.
     UI.buttons.reset.classList.remove('off');
   }
 
   reset() {
-    // Reset properties related to cursor position on diagram 
+    // Reset properties related to cursor position on diagram.
     this.on_node = null;
     this.on_arrow = null;
     this.on_cluster = null;
@@ -3532,7 +3616,7 @@ class GUIController extends Controller {
   jumpToIssue() {
     // Set time step to the one of the warning message for the issue
     // index, redraw the diagram if needed, and display the message
-    // on the infoline
+    // on the infoline.
     if(VM.issue_index >= 0) {
       const
           issue = VM.issue_list[VM.issue_index],
