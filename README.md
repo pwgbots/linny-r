@@ -271,9 +271,9 @@ On a macOS machine, open Terminal and change to your Linny-R directory, and then
 ``chmod +x linny-r.command``
 
 to make the script file executable.
-To set the icon, open the folder that contains the file `linny-r.command`,
+To set the icon, use Finder to open the folder that contains the file `linny-r.command`,
 click on its icon (which still is plain) and open the _Info dialog_ by pressing ``Cmd+I``.
-Then open your Linny-R folder in _Finder_, change to the sub-folder `node_modules/linny-r/static/images`, 
+Then open your Linny-R folder in Finder, change to the sub-folder `node_modules/linny-r/static/images`, 
 and from there drag/drop the file `linny-r.icns` on the icon shown in the top left corner of the _Info dialog_.
 
 ## User workspace
