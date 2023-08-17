@@ -57,7 +57,8 @@ and then type at the command line prompt:
 
 ``npm install --prefix . linny-r``
 
-**NOTE:** The spacing around the dot is important. Type the command in lower case.
+> **Note**
+> The spacing around the dot is important. Type the command in lower case.
 
 After installation has completed, `Linny-R` should have this directory tree structure:
 
