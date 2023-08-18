@@ -1380,8 +1380,9 @@ function convertSVGtoPNG(req, res, sp) {
     // Enclose paths in double quotes if they contain spaces
     if(cmd.indexOf(' ') >= 0) cmd = `"${cmd}"`;
     if(svg.indexOf(' ') >= 0) svg = `"${svg}"`;
-    child_process.exec(cmd + ' --export-type=png --export-dpi=' +
-        SETTINGS.dpi + ' ' + svg,
+    cmd += ` --export-type=png --export-dpi=${SETTINGS.dpi} ${svg}`;
+    console.log(cmd);
+    child_process.exec(cmd,
         (error, stdout, stderr) => {
             let ext = '.svg';
             console.log(stdout);
@@ -1389,8 +1390,24 @@ function convertSVGtoPNG(req, res, sp) {
               console.log('WARNING: Failed to run Inkscape --', error);
               console.log(stderr);
             } else {
-              ext = '.png';
-              // Delete the SVG
+              // Look for the PNG file.
+              const mode = fs.constants.R_OK | fs.constants.W_O;
+              try {
+                fs.accessSync(fp + '.png', mode);
+                ext = '.png';
+              } catch(err) {
+                // NOTE: Inkscape 1.3 adds ".png" to the original file name,
+                // so this may end on ".svg.png"
+                try {
+                  fs.accessSync(fp + '.svg.png', mode);
+                  // If found, rename the PNG file.
+                  fs.renameSync(fp + '.svg.png', fp + '.png');
+                  ext = '.png';
+                } catch(err) {
+                  console.log('WARNING: Inkscape did not output a PNG file');
+                }
+              }
+              // Delete the SVG file.
               try {
                 fs.unlinkSync(fp + '.svg');
               } catch(error) {
@@ -1669,9 +1686,17 @@ function commandLineSettings() {
   }
   // Verify that Inkscape is installed
   if(settings.inkscape) {
-    // NOTE: on Windows, the command line version is a .com file
-    const ip = path.join(settings.inkscape,
+    // NOTE: On Windows, the command line version is a .com file
+    let ip = path.join(settings.inkscape,
         'inkscape' + (PLATFORM.startsWith('win') ? '.com' : ''));
+    try {
+      fs.accessSync(ip, fs.constants.X_OK);
+    } catch(err) {
+      // NOTE: As of Inkscape version 1.3, the command line executable
+      // is called inkscapecom(.com)
+      ip = path.join(settings.inkscape,
+          'inkscapecom' + (PLATFORM.startsWith('win') ? '.com' : ''));
+    }
     try {
       fs.accessSync(ip, fs.constants.X_OK);
       console.log('Path to Inkscape:', settings.inkscape);

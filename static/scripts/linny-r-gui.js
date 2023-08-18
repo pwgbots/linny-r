@@ -2802,6 +2802,8 @@ class ModalDialog {
     this.cancel = this.dialog.getElementsByClassName('cancel-btn')[0];
     this.info = this.dialog.getElementsByClassName('info-btn')[0];
     this.close = this.dialog.getElementsByClassName('close-btn')[0];
+    // NOTE: Reset function is called on hide() and can be redefined.
+    this.reset = () => {}; 
   }
   
   element(name) {
@@ -2822,8 +2824,13 @@ class ModalDialog {
   }
   
   hide() {
-    // Makes dialog invisible
+    // Makes dialog invisible.
     this.modal.style.display = 'none';
+    // The reset() function can optionally be defined for a modal, and is
+    // called when the dialog is hidden. The default reset() does nothing;
+    // a custom reset() typically resets dialog-specific properties to
+    // their default values.
+    this.reset();
   }
 
 } // END of class ModalDialog
@@ -2953,7 +2960,7 @@ class GUIController extends Controller {
     this.message_display_time = 3000;
 
     // Initialize "main" modals, i.e., those that relate to the controller,
-    // not to other dialog objects
+    // not to other dialog objects.
     this.main_modals = ['logon', 'model', 'load', 'password', 'settings',
         'actors', 'add-process', 'add-product', 'cluster', 'move',
         'note', 'link', 'constraint', 'process', 'product', 'clone', 
@@ -2962,9 +2969,18 @@ class GUIController extends Controller {
       const mid = this.main_modals[i];
       this.modals[mid] = new ModalDialog(mid);
     }
-    // Initialize draggable dialogs
-    this.dr_dialog = null; // the dialog being dragged or resized
-    this.dr_dialog_order = []; // sorted by z-index
+    // Define reset() methods for entity property dialogs.
+    const reset = () => { this.group = []; };
+    this.modals.actors.reset = reset;
+    this.modals.cluster.reset = reset;
+    this.modals.constraint.reset = reset;
+    this.modals.link.reset = reset;
+    this.modals.process.reset = reset;
+    this.modals.product.reset = reset;
+    // Initially, no dialog being dragged or resized.
+    this.dr_dialog = null;
+    // Visible draggable dialogs are sorted by their z-index.
+    this.dr_dialog_order = [];
   }
   
   get color() {
@@ -3209,7 +3225,7 @@ class GUIController extends Controller {
     this.modals.process.element('LB-x').addEventListener('click', eoxedit);
     this.modals.process.element('UB-x').addEventListener('click', eoxedit);
     this.modals.process.element('IL-x').addEventListener('click', eoxedit);
-    this.modals.process.element('pace-x').addEventListener('click', eoxedit);
+    this.modals.process.element('LCF-x').addEventListener('click', eoxedit);
 
     this.modals.product.ok.addEventListener('click',
         () => UI.updateProductProperties());
@@ -5939,20 +5955,48 @@ console.log('HERE name conflicts', name_conflicts, mapping);
   
   // Process modal
 
-  showProcessPropertiesDialog(p, attr='name', alt=false) {
-    // Opens the process modal and sets its fields to properties of `p`
-    const md = this.modals.process;
+  showProcessPropertiesDialog(p, attr='name', alt=false, group=[]) {
+    // Opens the process modal and sets its fields to properties of `p`.
+    const
+        md = this.modals.process,
+        atlist = ['LB', 'UB', 'LCF', 'IL'];
+    // In the Finder, multiple processes may be edited as a group.
+    // If so, disable the name and actor field, and highlight other
+    // input fields to indicate whether the processes in the group
+    // presently all have the same value (blue) or not (red).
+    md.group = group;
+    if(group.length > 0) {
+      md.element('group').innerText = `(N=${md.group.length})`;
+      md.element('name').disabled = true;
+      md.element('actor').disabled = true;
+      for(let i = 0; i < atlist.length; i++) {
+        let dif = 0;
+        const xt = p.attributeExpression(atlist[i]).text;
+        for(let j = 0; j < group.length; j++) {
+          if(group[j].attributeExpression(atlist[i]).text !== xt) dif++; 
+        }
+        // NOTE: First remove both styles, as either one may be set
+        // if previous edit also involved a group.
+        const cl = md.element(atlist[i]).classList;
+        cl.remove('same', 'not-same');      
+        cl.add(dif > 0 ? 'not-same' : 'same');      
+      }
+    } else {
+      // No group, then no input field disabling or highlighting.
+      md.element('group').innerText = '';
+      md.element('name').disabled = false;
+      md.element('actor').disabled = false;
+      for(let i = 0; i < atlist.length; i++) {
+        md.element(atlist[i]).classList.remove('same', 'not-same');      
+      }
+    }
     md.element('name').value = p.name;
-    // Focus on the name input unless `attr` is specified
+    // Focus on the name input unless `attr` is specified.
     md.show(attr);
     if(p.hasActor) {
       md.element('actor').value = p.actor.name;
     } else {
       md.element('actor').value = '';
-    }
-    const sim = p.similarNumberedEntities;
-    if(sim.length) {
-      console.log('HERE!', sim);
     }
     md.element('LB').value = p.lower_bound.text;
     md.element('UB').value = p.upper_bound.text;
@@ -5960,19 +6004,21 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     this.setBox('process-integer', p.integer_level);
     this.setBox('process-shut-down', p.level_to_zero);
     this.setBox('process-collapsed', p.collapsed);
-    md.element('pace').value = p.pace_expression.text;
+    md.element('LCF').value = p.pace_expression.text;
     md.element('IL').value = p.initial_level.text;
     this.edited_object = p;
-    // NOTE: special shortcut Alt-click on an expression property in the Finder
-    // dialog means that this experssion should be opened in the Expression
-    // Editor; this is effectuated via a "click" event on the edit button next
-    // to the attribute input field
-    if(alt) md.element(attr + '-x').dispatchEvent(new Event('click'));
+    // NOTE: Special shortcut Alt-click on an expression property in the
+    // Finder dialog means that this experssion should be opened in the
+    // Expression Editor; this is effectuated via a "click" event on the
+    // edit button next to the attribute input field.
+    if(alt && !md.group) {
+      md.element(attr + '-x').dispatchEvent(new Event('click'));
+    }
   }
 
   updateProcessProperties() {
     // Validates process properties, and only updates the edited process
-    // if all input is OK
+    // if all input is OK.
     // @@TO DO: prepare for undo
     const
         md = this.modals.process,
@@ -6007,18 +6053,19 @@ console.log('HERE name conflicts', name_conflicts, mapping);
         px = p.pace_expression,
         pxt = p.pace_expression.text;
     // Validate expression
-    if(!this.updateExpressionInput('process-pace', 'level change frequency',
+    if(!this.updateExpressionInput('process-LCF', 'level change frequency',
         px)) return false;
     // NOTE: pace expression must be *static* and >= 1
     n = px.result(1);
     if(!px.isStatic || n < 1) {
-      md.element('pace').focus();
+      md.element('LCF').focus();
       this.warn('Level change frequency must be static and &ge; 1');
       // Restore original expression string
       px.text = pxt;
       px.code = null;
       return false;
     }
+    // Input has been validated, so entity properties can be modified.
     // Ignore fraction if a real number was entered.
     p.pace = Math.floor(n);
     if(n - p.pace > VM.SIG_DIF_LIMIT) this.notify(
@@ -6028,16 +6075,73 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     p.integer_level = this.boxChecked('process-integer');
     p.level_to_zero = this.boxChecked('process-shut-down');
     p.collapsed = this.boxChecked('process-collapsed');
-    // Redraw the shape, as its appearance and/or link types may have changed
+    // Redraw the shape, as its appearance and/or associated link types
+    // may have changed.
     p.drawWithLinks();
+    if(md.group.length > 0) {
+      for(let i = 0; i < md.group.length; i++) {
+        const gp = md.group[i];
+        if(gp !== p) {
+          gp.lower_bound.text = p.lower_bound.text;
+          gp.upper_bound.text = p.upper_bound.text;
+          gp.initial_level.text = p.initial_level.text;
+          gp.pace_expression.text = p.pace_expression.text;
+          gp.equal_bounds = p.equal_bounds;
+          gp.integer_level = p.integer_level;
+          gp.level_to_zero = p.level_to_zero;
+          gp.collapsed = p.collapsed;
+        }
+      }
+    }
     md.hide();  
     return true;
   }
 
   // Product modal
 
-  showProductPropertiesDialog(p, attr='name', alt=false) {
-    const md = this.modals.product;
+  showProductPropertiesDialog(p, attr='name', alt=false, group=[]) {
+    const
+        md = this.modals.product,
+        atlist = ['LB', 'UB', 'P', 'IL'];
+    // In the Finder, multiple products may be edited as a group.
+    // If so, disable the name field, and highlight other input fields
+    // to indicate whether the products in the group presently all have
+    // the same value (blue) or not (red).
+    md.group = group;
+    if(group.length > 0) {
+      md.element('group').innerText = `(N=${md.group.length})`;
+      md.element('name').disabled = true;
+      let dif;
+      for(let i = 0; i < atlist.length; i++) {
+        dif = 0;
+        const xt = p.attributeExpression(atlist[i]).text;
+        for(let j = 0; j < group.length; j++) {
+          if(group[j].attributeExpression(atlist[i]).text !== xt) dif++; 
+        }
+        // NOTE: First remove both styles, as either one may be set
+        // if previous edit also involved a group.
+        const cl = md.element(atlist[i]).classList;
+        cl.remove('same', 'not-same');      
+        cl.add(dif > 0 ? 'not-same' : 'same');      
+      }
+      // Also check whether all products have the same unit.
+      dif = 0;
+      const su = p.scale_unit;
+      for(let j = 0; j < group.length; j++) {
+        if(group[j].scale_unit !== su) dif++; 
+      }
+      const cl = md.element('unit').classList;
+      cl.remove('same', 'not-same');      
+      cl.add(dif > 0 ? 'not-same' : 'same');      
+    } else {
+      // No group, then no input field disabling or highlighting.
+      md.element('group').innerText = '';
+      md.element('name').disabled = false;
+      for(let i = 0; i < atlist.length; i++) {
+        md.element(atlist[i]).classList.remove('same', 'not-same');      
+      }
+      md.element('unit').classList.remove('same', 'not-same');
+    }
     md.element('name').value = p.name;
     md.element('unit').value = p.scale_unit;
     md.element('LB').value = p.lower_bound.text;
@@ -6144,26 +6248,49 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     p.no_slack = this.boxChecked('product-no-slack');
     const pnl = p.no_links;
     p.no_links = this.boxChecked('product-no-links');
-    if(pnl !== p.no_links) {
+    let must_redraw = (pnl !== p.no_links);
+    MODEL.ioUpdate(p, this.getImportExportBox('product'));
+    UI.paper.drawProduct(p);
+    if(md.group.length > 0) {
+      for(let i = 0; i < md.group.length; i++) {
+        const gp = md.group[i];
+        if(gp !== p) {
+          gp.scale_unit = p.scale_unit;
+          gp.lower_bound.text = p.lower_bound.text;
+          gp.upper_bound.text = p.upper_bound.text;
+          gp.price.text = p.price.text;
+          gp.initial_level.text = p.initial_level.text;
+          gp.equal_bounds = p.equal_bounds;
+          gp.is_source = p.is_source;
+          gp.is_sink = p.is_sink;
+          gp.is_data = p.is_data;
+          gp.is_buffer = p.is_buffer;
+          gp.integer_level = p.integer_level;
+          gp.no_slack = p.no_slack;
+        }
+      }
+    }
+    if(must_redraw) {
       // Hide or show links => redraw (with new arrows)
       MODEL.focal_cluster.clearAllProcesses();
       UI.drawDiagram(MODEL);
     }
-    MODEL.ioUpdate(p, this.getImportExportBox('product'));
-    UI.paper.drawProduct(p);
     md.hide();
     return true;
   }
 
   // Cluster modal
 
-  showClusterPropertiesDialog(c) {
+  showClusterPropertiesDialog(c, group=[]) {
     if(c.is_black_boxed) {
       this.notify('Black-boxed clusters cannot be edited');
       return;
     }
     this.dbl_clicked_node = c;
     const md = this.modals.cluster;
+    md.group = group;
+    md.element('group').innerText = (group.length > 0 ?
+        `(N=${md.group.length})`: '');
     md.element('action').innerText = 'Edit';
     md.element('name').value = c.name;
     if(c.actor.name == UI.NO_ACTOR) {
@@ -6180,11 +6307,14 @@ console.log('HERE name conflicts', name_conflicts, mapping);
   
   // Link modal
 
-  showLinkPropertiesDialog(l, attr='name', alt=false) {
+  showLinkPropertiesDialog(l, attr='name', alt=false, group=[]) {
     const
         from_process = l.from_node instanceof Process,
         to_process = l.to_node instanceof Process,
         md = this.modals.link; 
+    md.group = group;
+    md.element('group').innerText = (group.length > 0 ?
+        `(N=${md.group.length})`: '');
     md.show();
     md.element('from-name').innerHTML = l.from_node.displayName;
     md.element('to-name').innerHTML = l.to_node.displayName;
@@ -8318,6 +8448,7 @@ class ActorManager {
 class ConstraintEditor {
   constructor() {
     this.dialog = document.getElementById('constraint-dlg');
+    this.group_size = document.getElementById('constraint-group');
     this.from_name = document.getElementById('ce-from-name');
     this.to_name = document.getElementById('ce-to-name');
     this.bl_type = document.getElementById('bl-type');
@@ -8387,13 +8518,16 @@ class ConstraintEditor {
     this.dragged_point = -1;
     this.selected_point = -1;
     this.cursor = 'default';
-    // Properties for tracking which constraint is being edited
+    // Properties for tracking which constraint is being edited.
     this.edited_constraint = null;
     this.from_node = null;
     this.to_node = null;
-    // The constraint object being edited (new instance, or copy of edited_constraint)
+    // The constraint object being edited (either a new instance, or a
+    // copy of edited_constraint).
     this.constraint = null;
-    // NOTE: all edits will be ignored unless the modeler clicks OK
+    // List of constraints when multiple constraints are edited.
+    this.group = [];
+    // NOTE: All edits will be ignored unless the modeler clicks OK.
   }
   
   mouseMove(e) {
@@ -8893,7 +9027,7 @@ class ConstraintEditor {
     }
   }
   
-  showDialog() {
+  showDialog(group=[]) {
     this.from_node = MODEL.objectByName(this.from_name.innerHTML);
     this.to_node = MODEL.objectByName(this.to_name.innerHTML);
     // Double-check that these nodes exist
@@ -8907,6 +9041,9 @@ class ConstraintEditor {
       // dialog OK is clicked. NOTE: use the GET property "copy", NOT the
       // Javascript function copy() !! 
       this.constraint = this.edited_constraint.copy;
+      this.group = group;
+      this.group_size.innerText = (group.length > 0 ?
+        `(N=${md.group.length})`: '');
     } else {
       // Create a new constraint
       this.constraint = new Constraint(this.from_node, this.to_node);
@@ -15446,7 +15583,7 @@ class Finder {
     this.filter_input.addEventListener('input', () => FINDER.changeFilter());
     this.edit_btn = document.getElementById('finder-edit-btn');
     this.edit_btn.addEventListener(
-        'click', (event) => FINDER.editAttributes(event.shiftKey));
+        'click', (event) => FINDER.editAttributes());
     this.copy_btn = document.getElementById('finder-copy-btn');
     this.copy_btn.addEventListener(
         'click', (event) => FINDER.copyAttributesToClipboard(event.shiftKey));
@@ -15672,19 +15809,35 @@ class Finder {
     this.copy_btn.style.display = 'none';
     if(n > 0) {
       this.copy_btn.style.display = 'block';
-      const ft = this.filtered_types[0];
-      if(this.filtered_types.length === 1 && 'DE'.indexOf(ft) < 0) {
-        // NOTE: Attributes of "no actor" and top cluster cannot be edited.
-        if((ft === 'A' && enl.indexOf('(no_actor)') >= 0) ||
-            (ft === 'C' && enl.indexOf('(top_cluster)') >= 0)) n--;
-        if(n > 0) {
-          this.edit_btn.title = 'Edit attributes of ' +
-              pluralS(n, VM.entity_names[ft]);
-          this.edit_btn.style.display = 'block';
-        }
+      n = this.entityGroup.length;
+      if(n > 0) {
+        this.edit_btn.title = 'Edit attributes of ' +
+            pluralS(n, this.entities[0].type.toLowerCase());
+        this.edit_btn.style.display = 'block';
       }
     }
     this.updateRightPane();
+  }
+  
+  get entityGroup() {
+    // Returns the list of filtered entities if all are of the same type,
+    // while excluding (no actor), (top cluster), datasets and equations.
+    const
+        eg = [],
+        n = this.entities.length;
+    if(n > 0) {
+      const ft = this.filtered_types[0];
+      if(this.filtered_types.length === 1 && 'DE'.indexOf(ft) < 0) {
+        for(let i = 0; i < n; i++) {
+          const e = this.entities[i];
+          // Exclude "no actor" and top cluster.
+          if(e.name !== '(no_actor)' && e.name !== '(top_cluster)') {
+            eg.push(e);
+          }
+        }
+      }
+    }
+    return eg;
   }
   
   updateRightPane() {
@@ -16027,11 +16180,31 @@ class Finder {
     }
   }
   
-  editAttributes(shift) {
+  editAttributes() {
     // Show the Edit properties dialog for the filtered-out entities.
     // These must all be of the same type, or the edit button will not
     // show. Just in case, check anyway.
-    
+    const
+        group = this.entityGroup,
+        n = group.length;
+    if(n === 0) return;
+    let e = group[0];
+    if(n === 1) {
+      // Single entity, then edit its properties as usual.
+      this.selectEntity(e.identifier, true);
+      return;
+    }
+    // If an entity is selected in the list, use it as base.
+    if(this.selected_entity) e = this.selected_entity;
+    if(e instanceof Process) {
+      UI.showProcessPropertiesDialog(e, 'LB', false, group);
+    } else if(e instanceof Product) {
+      UI.showProductPropertiesDialog(e, 'LB', false, group);
+    } else if(e instanceof Link) {
+      UI.showLinkPropertiesDialog(e, 'R', false, group);
+    } else if(e instanceof Cluster) {
+      UI.showClusterPropertiesDialog(e, group);
+    }
   }
   
   copyAttributesToClipboard(shift) {

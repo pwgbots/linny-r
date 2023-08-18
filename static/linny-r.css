@@ -366,7 +366,17 @@ input[type="password"] {
 }
 
 input[type="text"]:disabled {
-    background-color: #f4f0f2;
+  background-color: #f4f0f2;
+}
+
+input[type="text"].same {
+  color: #0000e0;
+  background-color: #c0e0ff; 
+}
+
+input[type="text"].not-same {
+  color: #e00000;
+  background-color: #ffd0c0; 
 }
 
 textarea {
@@ -617,6 +627,21 @@ img.inline-cancel-btn {
 img.cancel-btn:hover,
 img.inline-cancel-btn:hover {
   filter: brightness(120%);
+}
+
+#actor-group,
+#constraint-group,
+#cluster-group,
+#link-group,
+#process-group,
+#product-group {
+  position: absolute;
+  right: 45px;
+  top: 5px;
+  font-size: 10px;
+  color: #8000a0;
+  background-color: inherit;
+  animation: blink 1s step-start 0s infinite;
 }
 
 /* CHECK BOX styles
@@ -1592,12 +1617,24 @@ td.export {
   height: min-content;
 }
 
+#link-x-y {
+  display: inline-block;
+  white-space: nowrap;
+  margin-right: 3px;  
+}
+
+#link-arrow-1 {
+  padding: 0 1px;
+}
+
+#link-arrow-2 {
+  padding: 0 2px;
+}
+
 #link-from-name,
 #link-to-name {
   display: inline-block;
-  max-width: 143px;
-  margin-left: 2px;
-  margin-right: 2px;
+  max-width: 135px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

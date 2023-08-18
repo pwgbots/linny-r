@@ -1,9 +1,13 @@
 <img src="https://sysmod.tbm.tudelft.nl/linny-r/images/logo.png" height="55px" alt="Linny-R">
 
-<p>Linny-R is an executable graphical specification language for mixed integer 
-<a href="https://en.wikipedia.org/wiki/Linear_programming" target="_blank">linear programming</a> (MILP) problems, especially
-<a href="https://en.wikipedia.org/wiki/Unit_commitment_problem_in_electrical_power_production" target="_blank">unit commitment problems</a> (UCP) and
-<a href="https://en.wikipedia.org/wiki/Generation_expansion_planning" target="_blank">generation expansion planning</a> (GEP).</p>
+Linny-R is an executable graphical specification language for mixed integer 
+<a href="https://en.wikipedia.org/wiki/Linear_programming" target="_blank">linear programming</a>
+(MILP) problems, especially
+<a href="https://en.wikipedia.org/wiki/Unit_commitment_problem_in_electrical_power_production"
+   target="_blank">unit commitment problems</a>
+(UCP) and
+<a href="https://en.wikipedia.org/wiki/Generation_expansion_planning"
+   target="_blank">generation expansion planning</a> (GEP).
 
 The graphical language and WYSIWYG model editor are developed by **Pieter Bots** at
 <a href="https://tudelft.nl" target="_blank">Delft University of Technology</a>.
@@ -16,8 +20,9 @@ and a graphical user interface (GUI) that runs in any modern browser.
 These <a href="https://sysmod.tbm.tudelft.nl/linny-r/docs/?68" target="_blank">instruction videos</a>
 published on YouTube give an idea of what Linny-R can do.
 
-User documentation for Linny-R is still scant, but it is growing. You can contribute yourself (in "wiki fashion")
-via the official user documentation site <a href="https://linny-r.info" target="_blank">https://linny-r.info</a>.
+User documentation for Linny-R is still scant, but it is growing. You can contribute yourself
+(in "wiki fashion") via the official user documentation site
+<a href="https://linny-r.info" target="_blank">https://linny-r.info</a>.
 Technical documentation will be developed on GitHub: https://github.com/pwgbots/linny-r/wiki
 
 ## Installing Node.js
@@ -45,7 +50,11 @@ so in all commands you should replace this with the actual directory path.
 On a Windows machine the suggested path is `C:\Users\(your user name)\Documents\Linny-R`,
 and on a macOS machine `/Users/(your user name)/Linny-R`.
 
-To install Linny-R in this directory, first create it:
+To install Linny-R in this directory, first change to the parent directory like so:
+
+``cd /Users/(your user name)``
+
+Then create the `Linny-R` directory:
 
 ``mkdir Linny-R``
 
@@ -57,7 +66,8 @@ and then type at the command line prompt:
 
 ``npm install --prefix . linny-r``
 
-**NOTE:** The spacing around the dot is important. Type the command in lower case.
+> **Important**
+> The spacing around the dot is important. Type the command in lower case.
 
 After installation has completed, `Linny-R` should have this directory tree structure:
 
@@ -88,11 +98,12 @@ on a Windows machine the batch script `linny-r.bat`. By default, this script fil
 two commands: first change to the Linny-R directory and then tell Node.js to launch the
 start the Linny-R server.
 
-**NOTE:** When configuring Linny-R for a network environment where individual users
-each have their personal work space (e.g., a virtual drive U:), you must edit this script file,
-adding the argument `workspace=path/to/workspace` to the `node` command.
-This will instruct Linny-R to create the `user` directory in this workspace directory
-instead of the Linny-R directory.
+> **Note**
+> When configuring Linny-R for a network environment where individual users
+> each have their personal work space (e.g., a virtual drive U:), you must edit this script file,
+> adding the argument `workspace=path/to/workspace` to the `node` command.
+> This will instruct Linny-R to create the `user` directory in this workspace directory
+> instead of the Linny-R directory.
 
 The `linny-r` directory should contain this file `README.md`,
 the files `server.js` and `console.js` that will be run by Node.js,
@@ -107,12 +118,45 @@ It should also contain the style sheet `linny-r.css` required by the GUI.
 The sub-directories of `static` contain files that are served to the browser by the script
 `server.js` when it is running in Node.js. 
 
+#### Installing and using an earlier version of Linny-R
+
+By default, **npm** will install the latest release of the Linny-R software.
+As this software is developed as part of academic research, new features are added 
+without rigorous testing. Although much effort is dedicated to maintaining upward
+and downward compatibility, you may find that the latest version does not work as
+well for you as some earlier version. To re-install an earlier release, for example
+version 1.4.0, open the CLI, change to your `Linny-R` directory, and then type:
+
+``npm install linny-r@1.4.0``
+
+> **Note**
+> This will overwrite the contents of the `node_modules` directory, but
+> it will not affect the files in your user space.
+
+If you prefer to have different versions of Linny-R on your computer, you can
+create a separate directory for a specific version, then change to this
+directory and type:
+
+``npm install --prefix . linny-r@1.4.0``
+
+> **Note**
+> To run a specific version in your browser, you must start the server from
+> the directory where you installed this version.
+> Should you wish to run two different versions concurrently, you must use
+> the `port=[number]` option when you start the server for the second version.
+
 ## Configuring the MILP solver
 
 Linny-R presently supports four MILP solvers: Gurobi, CPLEX, SCIP and LP_solve. 
 Gurobi and CPLEX are _considerably_ more powerful than the open source solvers SCIP and LP_solve,
 but they require a license.
 Academic licenses can be obtained by students and staff of eligible institutions. 
+
+> **Important**
+> When installing a solver, it is advisable to accept the default file
+> locations that are proposed by the installer.
+> After installation, do **not** move files to some other directory,
+> as this is bound to cause problems.
 
 #### Installing Gurobi
 
@@ -124,9 +168,6 @@ Gurobi on your computer can be obtained via this URL:
 
 When running a model, Linny-R will try to execute the command line application `gurobi_cl`.
 It will look for this application in the directory specified in the environment variable PATH on your computer.
-
-When installing Gurobi, please accept the default file locations that are proposed by the installer.
-Then do **not** move Gurobi files to some other directory, as this is bound to cause problems.
 
 #### Installing CPLEX
 
@@ -141,9 +182,6 @@ It will look for this application in the directory specified in the environment 
 or more specifically in the environment variable CPLEX_STUDIO_BINARIES<em>nnnn</em>
 (where _nnnn_ denotes the CPLEX version number) on your computer.
 
-When installing CPLEX, please accept the default file locations that are proposed by the installer.
-Then do **not** move CPLEX files to some other directory, as this is bound to cause problems.
-
 #### Installing SCIP
 
 The SCIP software is open source. Instructions for installation can be found via this URL:
@@ -151,9 +189,6 @@ The SCIP software is open source. Instructions for installation can be found via
 
 When running a model, Linny-R will try to execute the command line application `scip`.
 It will look for this application in the directory specified in the environment variable PATH on your computer.
-
-When installing SCIP, please accept the default file locations that are proposed by the installer.
-Then do **not** move SCIP files to some other directory, as this is bound to cause problems.
 
 #### Installing LP_solve
 
@@ -216,15 +251,23 @@ while in the CLI you should see a long series of server log messages like:
 ... etc.
 </pre>
 
+> **Important**
+> Do **not** close the CLI. If you do, the Linny-R GUI may still be
+> visible in your browser, but you will be warned that it cannot connect
+> to the server (at 127.0.0.1:5050). This means that you have to restart
+> Linny-R from a new CLI.
+
 After loading into the browser, Linny-R will try to connect to the solver.
-If successful, a notification (blue background) will appear on the status bar at the bottom of the window,
-stating the name of the solver.
+If successful, a notification (blue background) will appear on the status bar
+at the bottom of the window, stating the name of the solver.
 
 You can then test the GUI by creating a simple model.
 Make one that has at least one process that outputs a product, 
-and this product must have a price or a set lower bound, otherwise the model will have no objective function.
+and this product must have a price or a set lower bound, otherwise the model
+will have no objective function.
 Then click on the _Solve_ button at the bottom of the left-hand tool bar.
-The Linny-R icon in the upper left corner should start rotating, while the status bar at the bottom should display:
+The Linny-R icon in the upper left corner should start rotating, while the
+status bar at the bottom should display:
 
 <pre>
 Solving block 1 of 1
@@ -238,10 +281,11 @@ Meanwhile, in the CLI, you should see a server log message like:
 Solve block 1 a
 </pre>
 
-To end a modeling session, you can shut down the server by clickicng on the local host icon
-in the upper right corner of the Linny-R GUI in your browser, confirm that you want to leave,
-and then close your browser (tab). If you do not shut down the server from the browser,
-you can also stop the server by repeatedly pressing ``Ctrl+C`` in the CLI box.
+To end a modeling session, you can shut down the server by clicking on the
+local host icon in the upper right corner of the Linny-R GUI in your browser,
+confirming that you want to leave, and then closing your browser (tab).
+If you do not shut down the server from the browser, you can also stop the
+server by repeatedly pressing ``Ctrl+C`` in the CLI.
 
 ## Command line options
 
@@ -262,8 +306,8 @@ To facilitate start-up, you can create a shortcut icon for Linny-R on your deskt
 On a Windows machine, open the _File Explorer_, select your Linny-R folder,
 right-click on the batch file `linny-r.bat`, and select the _Create shortcut_ option. 
 Then right-click on the shortcut file to edit its properties, and click the _Change Icon_ button.
-The dialog that then appears will allow you to go to the sub-folder `node_modules\linny-r\static\images`,
-where you should select the file `linny-r.ico`.
+The dialog that then appears will allow you to go to the sub-folder
+`node_modules\linny-r\static\images`, where you should select the file `linny-r.ico`.
 Finally, rename the shortcut to `Linny-R` and move or copy it to your desktop.
 
 On a macOS machine, open Terminal and change to your Linny-R directory, and then type:
@@ -293,35 +337,43 @@ The sub-directories of this directory `user` are used by Linny-R to store files.
 * `solver` will contain the files that are exchanged with the Mixed Integer Linear Programming (MILP) solver
   (the names of the files that will appear in this directory may vary, depending on the MILP-solver you use)
 
-By default, the `user` directory is created in your `Linny-R` directory.
-You can overrule this by specifying the path to another directory when you start the server.
-Note that doing this will create a new, empty workspace (the directories listed above)
-in the specified path. It will **not** affect or duplicate information from existing workspaces.
+> **Note**
+> By default, the `user` directory is created in your `Linny-R` directory.
+> You can overrule this by starting the server with the `workspace=[path]` option.
+> This will create a new, empty workspace (the directories listed above) in the specified path.
+> It will **not** affect or duplicate information from existing workspaces.
 
 ## Installing Inkscape
 
 Linny-R creates its diagrams and charts as SVG images. 
 When you download a diagram, it will be saved as a .svg file.
-These files can be viewed and edited using Inkscape, an open source vector graphics editor. 
+These files can be viewed and edited using Inkscape, an open source
+vector graphics editor. 
 
-As it may be tedious to first save a diagram as SVG and then render it manually as a bitmap image, 
-Linny-R features a *Render diagram as bitmap* button on the top toolbar, and on the bottom toolbar of the _Chart manager_.
+As it may be tedious to first save a diagram as SVG and then render it
+manually as a bitmap image, Linny-R features a *Render diagram as bitmap* button
+on the top toolbar, and on the bottom toolbar of the _Chart manager_.
 When you click it, Linny-R will send the image as SVG to the server. 
 The server script will save the SVG in the `user/diagrams` sub-directory, 
-and then try to execute an Inkscape command that will convert this SVG to a PNG image file in the same directory.
+and then try to execute an Inkscape command that will convert this SVG to
+a PNG image file in the same directory.
 The file name will be `diagram-(date and time).png`. 
-Meanwhile, the browser will have opened a new tab that will be "waiting" for this PNG image to become available. 
+Meanwhile, the browser will have opened a new tab that will be "waiting"
+for this PNG image to become available. 
 If rendering was successful, the image will appear in this browser tab; 
 if rendering failed, the original SVG image will be shown.
 
 To install Inkscape, please look here:
 <a href="https://inkscape.org/release" target="_blank">https://inkscape.org/release</a>
 
-Linny-R will automatically detect whether Inkscape is installed by searching for it in the environment variable PATH on your computer.
-On a macOS computer, Linny-R will look for Inkscape in /Applications/Inkscape.app/Contents/MacOS.
+Linny-R will automatically detect whether Inkscape is installed by searching
+for it in the environment variable PATH on your computer. On a macOS computer,
+Linny-R will look for Inkscape in `/Applications/Inkscape.app/Contents/MacOS`.
 
-**NOTE:** The current installation wizard for Inkscape (version 1.2.2) may **not** add the application to the PATH variable.
-Please check whether you need to do this yourself.
+> **Note**
+> The installation wizard for Inkscape (version 1.3) may **not**
+> add the application to the PATH variable. Please check whether you need to
+> do this yourself.
 
 ## Using Linny-R console
 
@@ -333,7 +385,8 @@ If you open a CLI box, change to your `Linny-R` directory, and then type:
 
 you will see the command line options that allow you to run models in various ways.
 
-**NOTE: The console-only version is still in development, and does not provide all functions yet.**
+> **Note**
+> The console-only version is still in development, and does not provide all functions yet.
 
 ## Troubleshooting problems
 
@@ -341,8 +394,9 @@ If during any of the steps above you encounter problems, please try to diagnose 
 You can find a lot of useful information on the Linny-R user documentation website:
 <a href="https://linny-r.info" target="_blank">https://linny-r.info</a>.
 
-To diagnose a problem, always look in the CLI box where Node.js is running, 
-as informative server-side error messages will appear there.
+> **Important**
+> To diagnose a problem, always look in the CLI box where Node.js is running, 
+> as informative server-side error messages will appear there.
 
 Then also look at the console window of your browser. 
 Most browsers offer a _Web Developer Tools_ option via their application menu.

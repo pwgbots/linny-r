@@ -5389,11 +5389,17 @@ class NodeBox extends ObjectWithXYWH {
   }
   
   drawWithLinks() {
-    // TO DO: Also draw relevant arrows when this is a cluster.
-    UI.drawObject(this);
-    if(this instanceof Cluster) return;
-    // Draw ALL arrows associated with this node.
     const fc = this.cluster;
+    // Do not redraw if this node is not visible in the focal cluster.
+    if(this instanceof Product) {
+      if(!this.positionInFocalCluster) return;
+    } else {
+      if(fc !== MODEL.focal_cluster) return;
+    }
+    UI.drawObject(this);
+    // @@TO DO: Also draw relevant arrows when this is a cluster.
+    if(this instanceof Cluster) return;
+    // Draw all *visible* arrows associated with this node.
     fc.categorizeEntities();
     // Make list of arrows that represent a link related to this node.
     let a,
@@ -7485,11 +7491,12 @@ class Process extends Node {
   }
 
   attributeExpression(a) {
-    // Processes have three expression attributes
+    // Processes have four expression attributes
     if(a === 'LB') return this.lower_bound;
     if(a === 'UB') {
       return (this.equal_bounds ? this.lower_bound : this.upper_bound);
     }
+    if(a === 'LCF') return this.pace_expression;
     if(a === 'IL') return this.initial_level;
     return null;
   }
