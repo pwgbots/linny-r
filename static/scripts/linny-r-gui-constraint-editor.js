@@ -1,0 +1,681 @@
+/*
+Linny-R is an executable graphical specification language for (mixed integer)
+linear programming (MILP) problems, especially unit commitment problems (UCP).
+The Linny-R language and tool have been developed by Pieter Bots at Delft
+University of Technology, starting in 2009. The project to develop a browser-
+based version started in 2017. See https://linny-r.org for more information.
+
+This JavaScript file (linny-r-gui-constraint-editor.js) provides the GUI
+dialog for the Linny-R constraint editor.
+
+*/
+
+/*
+Copyright (c) 2017-2023 Delft University of Technology
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+// CLASS ConstraintEditor
+class ConstraintEditor {
+  constructor() {
+    this.dialog = document.getElementById('constraint-dlg');
+    this.group_size = document.getElementById('constraint-group');
+    this.from_name = document.getElementById('constraint-from-name');
+    this.to_name = document.getElementById('constraint-to-name');
+    this.bl_type = document.getElementById('bl-type');
+    this.bl_selectors = document.getElementById('bl-selectors');
+    this.soc_direct = document.getElementById('constraint-soc-direct');
+    this.soc = document.getElementById('constraint-share-of-cost');
+    this.soc_div = document.getElementById('constraint-soc');
+    // Make GUI elements responsive
+    UI.modals.constraint.dialog.addEventListener('mousemove',
+        () => DOCUMENTATION_MANAGER.update(
+            CONSTRAINT_EDITOR.edited_constraint, true));
+    UI.modals.constraint.cancel.addEventListener('click',
+        () => UI.modals.constraint.hide());
+    UI.modals.constraint.ok.addEventListener('click',
+        () => CONSTRAINT_EDITOR.updateConstraint());
+    this.container = document.getElementById('constraint-container');
+    this.container.addEventListener('mousemove',
+        (event) => CONSTRAINT_EDITOR.mouseMove(event));
+    this.container.addEventListener('mousedown',
+        () => CONSTRAINT_EDITOR.mouseDown());
+    this.container.addEventListener('mouseup',
+        () => CONSTRAINT_EDITOR.mouseUp());
+    // NOTE: interpret leaving the area as a mouse-up so that dragging ceases
+    this.container.addEventListener('mouseleave',
+        () => CONSTRAINT_EDITOR.mouseUp());
+    this.pos_x_div = document.getElementById('constraint-pos-x');
+    this.pos_y_div = document.getElementById('constraint-pos-y');
+    this.point_div = document.getElementById('constraint-point');
+    this.equation_div = document.getElementById('constraint-equation');
+    this.add_point_btn = document.getElementById('add-point-btn');
+    this.add_point_btn.addEventListener('click',
+        () => CONSTRAINT_EDITOR.addPointToLine());
+    this.del_point_btn = document.getElementById('del-point-btn');
+    this.del_point_btn.addEventListener('click',
+        () => CONSTRAINT_EDITOR.deletePointFromLine());
+    this.add_bl_btn = document.getElementById('add-bl-btn');
+    this.add_bl_btn.addEventListener('click',
+        () => CONSTRAINT_EDITOR.addBoundLine());
+    this.bl_type.addEventListener('change',
+        () => CONSTRAINT_EDITOR.changeLineType());
+    this.bl_selectors.addEventListener('blur',
+        () => CONSTRAINT_EDITOR.changeLineSelectors());
+    this.soc.addEventListener('blur',
+        () => CONSTRAINT_EDITOR.changeShareOfCost());
+    this.delete_bl_btn = document.getElementById('del-bl-btn');
+    this.delete_bl_btn.addEventListener('click',
+        () => CONSTRAINT_EDITOR.deleteBoundLine());
+    // The chart is stored as an SVG string
+    this.svg = '';
+    // Scale, origin X and Y assume a 300x300 px square chart area
+    this.scale = 3;
+    this.oX = 25;
+    this.oY = 315;
+    // 0 => silver, LE => orange/red, GE => cyan/blue, EQ => purple
+    this.line_color = ['#a0a0a0', '#c04000', '#0040c0', '#9000a0'];
+    // Use brighter shades if selected (darker for gray) 
+    this.selected_color = ['#808080', '#ff8040', '#00ffff', '#a800ff'];
+    // The selected bound line object (NULL => no line selected)
+    this.selected = null;
+    // Cursor position in chart coordinates (100 x 100 grid)
+    this.pos_x = 0;
+    this.pos_y = 0;
+    // `on_line`: the first bound line object detected under the cursor
+    this.on_line = null;
+    // `on_point`: index of point under the cursor
+    this.on_point = -1;
+    this.dragged_point = -1;
+    this.selected_point = -1;
+    this.cursor = 'default';
+    // Properties for tracking which constraint is being edited.
+    this.edited_constraint = null;
+    this.from_node = null;
+    this.to_node = null;
+    // The constraint object being edited (either a new instance, or a
+    // copy of edited_constraint).
+    this.constraint = null;
+    // List of constraints when multiple constraints are edited.
+    this.group = [];
+    // NOTE: All edits will be ignored unless the modeler clicks OK.
+  }
+  
+  mouseMove(e) {
+    // The onMouseMove response of the constraint editor's graph area
+    // Calculate cursor point without restricting it to 100x100 grid
+    const
+        rect = this.container.getBoundingClientRect(),
+        top = rect.top + window.scrollY + document.body.scrollTop, 
+        left = rect.left + window.scrollX + document.body.scrollLeft,
+        x = Math.floor(e.clientX - left - this.oX) / this.scale,
+        y = 100 - Math.floor(e.clientY - top - (this.oY - 100*this.scale)) / this.scale;
+    // Limit X and Y so that they will always display between 0 and 100
+    this.pos_x = Math.min(100, Math.max(0, x));
+    this.pos_y = Math.min(100, Math.max(0, y));
+    this.updateStatus();
+    if(this.dragged_point >= 0) {
+      this.movePoint();
+    } else {
+      this.checkLines();
+    }
+  }
+  
+  mouseDown() {
+    // The onMouseDown response of the constraint editor's graph area
+    if(this.adding_point) {
+      this.doAddPointToLine();
+    } else if(this.on_line) {
+      this.selectBoundLine(this.on_line);
+      this.dragged_point = this.on_point;
+      this.selected_point = this.on_point;
+    } else {
+      this.selected = null;
+      this.dragged_point = -1;
+      this.selected_point = -1;
+    }
+    this.draw();
+  }
+  
+  mouseUp() {
+    // The onMouseUp response of the constraint editor's graph area
+    this.dragged_point = -1;
+    this.container.style.cursor = this.cursor;
+    this.updateStatus();
+  }
+  
+  updateCursor() {
+    // Updates cursor shape in accordance with current state
+    if(this.dragged_point >= 0 || this.on_point >= 0) {
+      this.cursor = 'move';
+    } else if(this.adding_point) {
+      if(this.pos_x === 0 || this.pos_x === 100) {
+        this.cursor = 'not-allowed';
+      } else {
+        this.cursor = 'crosshair';
+      }
+    } else if(this.on_line) {
+      this.cursor = 'pointer';
+    } else {
+      this.cursor = 'default';
+    }
+    this.container.style.cursor = this.cursor;
+  }
+  
+  arrowKey(k) {
+    if(this.selected && this.selected_point >= 0) {
+      const
+          i = this.selected_point,
+          pts = this.selected.points,
+          li = pts.length - 1,
+          p = pts[this.selected_point],
+          minx = (i === 0 ? 0 : (i === li ? 100 : pts[i - 1][0])),
+          maxx = (i === 0 ? 0 : (i === li ? 100 : pts[i + 1][0]));
+      if(k === 37) {
+        p[0] = Math.max(minx, p[0] - 1/3);
+      } else if (k === 38 && p[1] <= 299/3) {
+        p[1] += 1/3;
+      } else if (k === 39) {
+        p[0] = Math.min(maxx, p[0] + 1/3);
+      } else if (k === 40 && p[1] >= 1/3) {
+        p[1] -= 1/3;
+      }
+      // NOTE: compensate for small numerical errors
+      p[0] = Math.round(3 * p[0]) / 3; 
+      p[1] = Math.round(3 * p[1]) / 3; 
+      this.draw();
+      this.updateEquation();
+    }
+  }
+  
+  point(x, y) {
+    // Returns a string denoting the point (x, y) in SVG notation, assuming
+    // that x and y are mathematical coordinates (y-axis pointing UP) and
+    // scaled to the constraint editor chart area, cf. global constants
+    // defined for the constraint editor.
+    return (this.oX + x * this.scale) + ',' + (this.oY - y * this.scale);
+  }
+  
+  circleCenter(x, y) {
+    // Similar to cePoint above, but prefixing the coordinates to conform
+    // to SVG notation for a circle center
+    return `cx="${this.oX + x * this.scale}" cy="${this.oY - y * this.scale}"`;
+  }
+  
+  selectBoundLine(l) {
+    // Selects bound line `l` and move it to end of list so it will be drawn
+    // last and hence on top of all other bound lines (if any) 
+    this.selected = l;
+    const li = this.constraint.bound_lines.indexOf(l);
+    if(li < this.constraint.bound_lines.length - 1) {
+      this.constraint.bound_lines.splice(li, 1);
+      this.constraint.bound_lines.push(l);
+    }
+  }
+  
+  addBoundLine() {
+    // Adds a new lower bound line to the set
+    this.selected = this.constraint.addBoundLine();
+    this.selected_point = -1;
+    this.adding_point = false;
+    this.updateStatus();
+    this.draw();
+  }
+
+  deleteBoundLine() {
+    // Removes selected boundline from the set
+    if(this.selected) {
+      this.constraint.deleteBoundLine(this.selected);
+      this.selected = null;
+      this.adding_point = false;
+      this.updateStatus();
+      this.draw();
+    }
+  }
+  
+  addPointToLine() {
+    // Prepares to add point on next "mouse down" event
+    if(this.selected) {
+      this.add_point_btn.classList.add('activ');
+      this.adding_point = true;
+      this.selected_point = -1;
+      this.draw();
+    }
+  }
+  
+  doAddPointToLine() {
+    // Actually add point to selected line
+    if(!this.selected) return;
+    const
+        p = [this.pos_x, this.pos_y],
+        lp = this.selected.points;
+    let i = 0;
+    while(i < lp.length && lp[i][0] < p[0]) i++;
+    lp.splice(i, 0, p);
+    this.selected_point = i;
+    this.dragged_point = i;
+    this.draw();
+    // this.dragging_point = new point index! 
+    this.add_point_btn.classList.remove('activ');
+    this.adding_point = false;
+  }
+  
+  deletePointFromLine() {
+    // Deletes selected point from selected line (unless first or last point)
+    if(this.selected && this.selected_point > 0 &&
+        this.selected_point < this.selected.points.length - 1) {
+      this.selected.points.splice(this.selected_point, 1);
+      this.selected_point = -1;
+      this.draw();
+    }
+  }
+    
+  changeLineType() {
+    // Changes type of selected boundline
+    if(this.selected) {
+      this.selected.type = parseInt(this.bl_type.value);
+      this.draw();
+    }
+  }
+  
+  changeLineSelectors() {
+    // Changes experiment run selectors of selected boundline
+    if(this.selected) {
+      const sel = this.bl_selectors.value.replace(
+          /[\;\,]/g, ' ').trim().replace(
+          /[^a-zA-Z0-9\+\-\%\_\s]/g, '').split(/\s+/).join(' ');
+      this.selected.selectors = sel;
+      this.bl_selectors.value = sel;
+      this.draw();
+    }
+  }
+  
+  changeShareOfCost() {
+    // Validates input of share-of-cost field
+    const soc = UI.validNumericInput('constraint-share-of-cost', 'share of cost');
+    if(soc === false) return;
+    if(soc < 0 || soc > 100) {
+      this.soc.focus();
+      UI.warn('Share of cost can range from 0% to 100%');
+      return;
+    }
+    // NOTE: share of cost is input as a percentage, but stored as a floating
+    // point value between 0 and 1
+    this.constraint.share_of_cost = soc / 100;
+  }
+  
+  checkLines() {
+    // Checks whether cursor is on a bound line and updates the constraint
+    // editor status accordingly
+    this.on_line = null;
+    this.on_point = -1;
+    this.seg_points = null;
+    // Iterate over all lower bound lines (start with last one added)
+    for(let i = this.constraint.bound_lines.length - 1;
+        i >= 0 && !this.on_line; i--) {
+      const l = this.constraint.bound_lines[i];
+      for(let j = 0; j < l.points.length; j++) {
+        const
+            p = l.points[j],
+            dsq = Math.pow(p[0] - this.pos_x, 2) + Math.pow(p[1] - this.pos_y, 2);
+        if(dsq < 3) {
+          this.on_point = j;
+          this.on_line = l;
+          this.seg_points = (j > 0 ? [j - 1, j] : [j, j + 1]);
+          break;
+        } else if(j > 0) {
+          this.seg_points = [j - 1, j];
+          const pp = l.points[j - 1];
+          if(this.pos_x > pp[0] - 1 && this.pos_x < p[0] + 1 &&
+              ((this.pos_y > pp[1] - 1 && this.pos_y < p[1] + 1) ||
+               (this.pos_y < pp[1] + 1 && this.pos_y > p[1] + 1))) {
+            // Cursor lies within rectangle around line segment
+            const
+                dx = p[0] - pp[0],
+                dy = p[1] - pp[1];
+            if(Math.abs(dx) < 1 || Math.abs(dy) < 1) {
+              // Special case: (near) vertical or (near) horizontal line
+              this.on_line = l;
+              break;
+            } else {
+              const
+                  dpx = this.pos_x - pp[0],
+                  dpy = this.pos_y - pp[1],
+                  dxol = Math.abs(pp[0] + dpy * dx / dy - this.pos_x),
+                  dyol = Math.abs(pp[1] + dpx * dy / dx - this.pos_y);
+              if (Math.min(dxol, dyol) < 1) {
+                this.on_line = l;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+    this.updateEquation();
+    this.updateCursor();
+  }
+  
+  updateEquation() {
+    var segeq = '';
+    if(this.on_line && this.seg_points) {
+      const
+          p1 = this.on_line.points[this.seg_points[0]],
+          p2 = this.on_line.points[this.seg_points[1]],
+          dx = p2[0] - p1[0],
+          dy = p2[1] - p1[1];
+      if(dx === 0) {
+        segeq = 'X = ' + p1[0].toPrecision(3);
+      } else if(dy === 0) {
+        segeq = 'Y = ' + p1[1].toPrecision(3);
+      } else {
+        const
+            slope = (dy === dx ? '' :
+                (dy === -dx ? '-' : (dy / dx).toPrecision(3) + ' ')),
+            y0 = p2[1] - p2[0] * dy / dx;
+        segeq = `Y = ${slope}X` + (y0 === 0 ? '' :
+            (y0 < 0 ? ' - ' : ' + ') + Math.abs(y0).toPrecision(3));
+      }
+    }
+    this.equation_div.innerHTML = segeq;
+  }
+
+  movePoint() {
+    // Moves the dragged point of the selected bound line
+    // Use l as shorthand for the selected line
+    const
+        l = this.selected,
+        pi = this.dragged_point,
+        lpi = l.points.length - 1;
+    // Check -- just in case
+    if(!l || pi < 0 || pi > lpi) return;
+    let p = l.points[pi],
+        px = p[0],
+        py = p[1],
+        minx = (pi === 0 ? 0 : (pi === lpi ? 100 : l.points[pi - 1][0])),
+        maxx = (pi === 0 ? 0 : (pi === lpi ? 100 : l.points[pi + 1][0])),
+        newx = Math.min(maxx, Math.max(minx, this.pos_x)),
+        newy = Math.min(100, Math.max(0, this.pos_y));
+    // No action needed unless point has been moved 
+    if(newx !== px || newy !== py) {
+      p[0] = newx;
+      p[1] = newy;
+      this.draw();
+      this.updateEquation();
+    }
+  }
+
+  updateStatus() {    
+    // Displays cursor position as X and Y (in chart coordinates), and updates
+    // controls
+    this.pos_x_div.innerHTML = 'X = ' + this.pos_x.toPrecision(3);
+    this.pos_y_div.innerHTML = 'Y = ' + this.pos_y.toPrecision(3);
+    const blbtns = 'add-point del-bl';
+    if(this.selected) {
+      if(this.selected_point >= 0) {
+        const p = this.selected.points[this.selected_point];
+        this.point_div.innerHTML =
+            `(${p[0].toPrecision(3)}, ${p[1].toPrecision(3)})`;
+      } else {
+        this.point_div.innerHTML = '';
+      }
+      // Check whether selected point is an end point
+      const ep = this.selected_point === 0 ||
+          this.selected_point === this.selected.points.length - 1;
+      // If so, do not allow deletion
+      UI.enableButtons(blbtns + (ep ? '' : ' del-point'));
+      if(this.adding_point) this.add_point_btn.classList.add('activ');
+      this.bl_type.value = this.selected.type;
+      this.bl_type.style.color = 'black';
+      this.bl_type.disabled = false;
+      this.bl_selectors.value = this.selected.selectors;
+      this.bl_selectors.style.backgroundColor = 'white';
+      this.bl_selectors.disabled = false;
+    } else {
+      UI.disableButtons(blbtns + ' del-point');
+      this.bl_type.value = VM.EQ;
+      this.bl_type.style.color = 'silver';
+      this.bl_type.disabled = true;
+      this.bl_selectors.value = '';
+      this.bl_selectors.style.backgroundColor = 'inherit';
+      this.bl_selectors.disabled = true;
+    }
+  }
+
+  addSVG(lines) {
+    // Appends a string or an array of strings to the SVG
+    this.svg += (lines instanceof Array ? lines.join('') : lines);
+  }
+  
+  draw() {
+    // Draws the chart with bound lines and infeasible regions
+    // NOTE: since this graph is relatively small, SVG is added as an XML string
+    this.svg = ['<svg height="330" version="1.1" width="340"',
+      ' xmlns="http://www.w3.org/2000/svg"',
+      ' xmlns:xlink="http://www.w3.org/1999/xlink"',
+      ' style="overflow: hidden; position: relative;">',
+      '<defs>',
+      // Fill patterns for infeasible areas differ per bound line type;
+      // diagonal for LE and GE, horizontal for EQ, and when selected
+      // in the constraint editor, different colors as well (orange,
+      // blue or purple)
+      '<pattern id="stroke1" x="2" y="2" width="4" height="4"',
+      ' patternUnits="userSpaceOnUse"><path d="M0,0L4,4"',
+      ' style="stroke: #400000; stroke-width: 0.5"></pattern>',
+      '<pattern id="stroke1s" x="2" y="2" width="4" height="4"',
+      ' patternUnits="userSpaceOnUse"><path d="M0,0L4,4"',
+      ' style="stroke: #f04000; stroke-width: 0.5"></pattern>',
+      '<pattern id="stroke2" x="2" y="2" width="4" height="4"',
+      ' patternUnits="userSpaceOnUse"><path d="M4,0L0,4"',
+      ' style="stroke: #000040; stroke-width: 0.5"></pattern>',
+      '<pattern id="stroke2s" x="2" y="2" width="4" height="4"',
+      ' patternUnits="userSpaceOnUse"><path d="M4,0L0,4"',
+      ' style="stroke: #00a0ff; stroke-width: 0.5"></pattern>',
+      '<pattern id="stroke3" x="2" y="2" width="4" height="4"',
+      ' patternUnits="userSpaceOnUse"><path d="M0,2L4,2"',
+      ' style="stroke: #180030; stroke-width: 0.5"></pattern>',
+      '<pattern id="stroke3s" x="2" y="2" width="4" height="4"',
+      ' patternUnits="userSpaceOnUse"><path d="M0,2L4,2"',
+      ' style="stroke: #c060ff; stroke-width: 0.5"></pattern>',
+      '</defs>'].join('');
+    // Draw the grid
+    this.drawGrid();
+    // Use c as shorthand for this.constraint
+    const c = this.constraint;
+    // Add the SVG for lower and upper bounds
+    for(let i = 0; i < c.bound_lines.length; i++) {
+      const bl = c.bound_lines[i];
+      this.drawContour(bl);
+      this.drawLine(bl);
+    }
+    this.highlightSelectedPoint();
+    // Add the SVG disclaimer
+    this.addSVG('Sorry, your browser does not support inline SVG.</svg>');
+    // Insert the SVG into the designated DIV
+    this.container.innerHTML = this.svg;
+    this.updateStatus();
+  }
+
+  drawGrid() {
+    // Draw the grid area
+    const hw = 100 * this.scale;
+    this.addSVG(['<rect x="', this.oX, '" y="', this.oY - hw,
+      '" width="', hw, '" height="', hw,
+      '" fill="white" stroke="gray" stroke-width="1.5"></rect>']);
+    // NOTES:
+    // (1) font name fixed to Arial on purpose to preserve the look of
+    //     this dialog
+    // (2) d = distance between grid lines, l = left, r = right, t = top,
+    //     b = bottom, tx = end of right-aligned numbers along vertical axis,
+    //     ty = middle for numbers along the horizontal axis
+    const d = 10 * this.scale, l = this.oX + 1, r = this.oX + hw - 1,
+          t = this.oY - hw + 1, b = this.oY - 1,
+          tx = this.oX - 3, ty = this.oY + 12;
+    // Draw the dashed grid lines and their numbers 10 - 90 along both axes
+    for(let i = 1; i < 10; i++) {
+      const x = i*d + this.oX, y = this.oY - i*d, n = 10*i;
+      this.addSVG(['<path fill="none" stroke="silver" d="M',
+        x, ',', t, 'L', x, ',', b,
+        '" stroke-width="0.5" stroke-dasharray="5,2.5"></path>',
+        '<path fill="none" stroke="silver" d="M', l, ',', y, 'L', r, ',', y,
+        '" stroke-width="0.5" stroke-dasharray="5,2.5"></path>',
+        '<text x="', x, '" y="', ty,
+        '" text-anchor="middle" font-family="Arial"',
+        ' font-size="10px" stroke="none" fill="black">', n, '</text>',
+        '<text x="', tx, '" y="', y + 4,
+        '" text-anchor="end" font-family="Arial"',
+        ' font-size="10px" stroke="none" fill="black">', n, '</text>']);
+    }
+    // also draw scale extremes (0 and 2x 100)
+    this.addSVG(['<text x="', tx, '" y="', ty, '" text-anchor="end"',
+      ' font-family="Arial" font-size="10px" stroke="none" fill="black">',
+      '0</text><text x="', r,'" y="', ty, '" text-anchor="middle"',
+      ' font-family="Arial" font-size="10px" stroke="none" fill="black">',
+      '100</text><text x="', tx, '" y="', t, '" text-anchor="end"',
+      ' font-family="Arial" font-size="10px" stroke="none" fill="black">',
+      '100</text>']);
+  }
+  
+  drawContour(l) {
+    // Draws infeasible area for bound line `l`
+    let cp;
+    if(l.type === VM.EQ) {
+      // Whole area is infeasible except for the bound line itself
+      cp = ['M', this.point(0, 0), 'L', this.point(100 ,0), 'L',
+          this.point(100, 100), 'L', this.point(0, 100), 'z'].join('');
+    } else {
+      const base_y = (l.type === VM.GE ? 0 : 100);
+      cp = 'M' + this.point(0, base_y);
+      for(let i = 0; i < l.points.length; i++) {
+        const p = l.points[i];
+        cp += `L${this.point(p[0], p[1])}`;
+      }
+      cp += 'L' + this.point(100, base_y) + 'z';
+    }
+    // Save the contour for rapid display of thumbnails
+    l.contour_path = cp;
+    // NOTE: the selected bound lines have their infeasible area filled
+    // with a *colored* line pattern
+    const sel = l === this.selected;
+    this.addSVG(['<path fill="url(#stroke', l.type,
+        (sel ? 's' : ''), ')" d="', cp, '" stroke="none" opacity="',
+        (sel ? 1 : 0.4), '"></path>']);
+  }
+  
+  drawLine(l) {
+    let color,
+        width,
+        pp = [],
+        dots = '';
+    if(l == this.selected) {
+      width = 3;
+      color = this.selected_color[l.type];
+    } else {
+      width = 1.5;
+      color = this.line_color[l.type];
+    }
+    const cfs = `fill="${color}" stroke="${color}" stroke-width="${width}"`;
+    for(let i = 0; i < l.points.length; i++) {
+      const
+          px = l.points[i][0],
+          py = l.points[i][1];
+      pp.push(this.point(px, py));
+      dots += `<circle ${this.circleCenter(px, py)} r="3" ${cfs}></circle>`;
+    }
+    const cp = 'M' + pp.join('L');
+    // For EQ bound lines, the line path is the contour; this will be
+    // drawn in miniature black against a silver background
+    if(l.type === VM.EQ) l.contour_path = cp;
+    this.addSVG(['<path fill="none" stroke="', color, '" d="', cp,
+      '" stroke-width="', width, '"></path>', dots]);
+  }
+
+  highlightSelectedPoint() {
+    if(this.selected && this.selected_point >= 0) {
+      const p = this.selected.points[this.selected_point];
+      this.addSVG(['<circle ', this.circleCenter(p[0], p[1]),
+          ' r="4.5" fill="none" stroke="black" stroke-width="2px"></circle>']);
+    }
+  }
+  
+  showDialog(group=[]) {
+    this.from_node = MODEL.objectByName(this.from_name.innerHTML);
+    this.to_node = MODEL.objectByName(this.to_name.innerHTML);
+    // Double-check that these nodes exist
+    if(!(this.from_node && this.to_node)) {
+      throw 'ERROR: Unknown constraint node(s)';
+    }
+    // See if existing constraint is edited
+    this.edited_constraint = this.from_node.doesConstrain(this.to_node);
+    if(this.edited_constraint) {
+      // Make a working copy, as the constraint must be changed only when
+      // dialog OK is clicked. NOTE: use the GET property "copy", NOT the
+      // Javascript function copy() !! 
+      this.constraint = this.edited_constraint.copy;
+      this.group = group;
+      this.group_size.innerText = (group.length > 0 ?
+        `(N=${md.group.length})`: '');
+    } else {
+      // Create a new constraint
+      this.constraint = new Constraint(this.from_node, this.to_node);
+    }
+    this.selected = null;
+    // Draw the graph
+    this.draw();
+    // Allow modeler to omit slack variables for this constraint
+    // NOTE: this could be expanded to apply to the selected BL only
+    UI.setBox('constraint-no-slack', this.constraint.no_slack);
+    // NOTE: share of cost can only be transferred between two processes
+    // @@TO DO: CHECK WHETHER THIS LIMITATION IS VALID -- for now, allow both
+    if(true||this.from_node instanceof Process && this.from_node instanceof Process) {
+      this.soc_direct.value = this.constraint.soc_direction;
+      // NOTE: share of cost is input as a percentage
+      this.soc.value = VM.sig4Dig(100 * this.constraint.share_of_cost);
+      this.soc_div.style.display = 'block';
+    } else {
+      this.soc_direct.value = VM.SOC_X_Y;
+      this.soc.value = '0';
+      this.soc_div.style.display = 'none';
+    }
+    UI.modals.constraint.show('soc-direct');
+  }
+
+  updateConstraint() {
+    // Updates the edited constraint, or adds a new constraint to the model
+    // TO DO: prepare for undo
+    if(this.edited_constraint === null) {
+      this.edited_constraint = MODEL.addConstraint(this.from_node, this.to_node);
+    }
+    // Copy properties of the "working copy" to the edited/new constraint
+    // except for the comments (as these cannot be added/modified while the
+    // constraint editor is visible)
+    const cmnts = this.edited_constraint.comments;
+    this.edited_constraint.copyPropertiesFrom(this.constraint);
+    this.edited_constraint.comments = cmnts;
+    // Set the "no slack" property based on the checkbox state
+    this.edited_constraint.no_slack = UI.boxChecked('constraint-no-slack');
+    // Set the SoC direction property based on the selected option
+    this.edited_constraint.soc_direction = parseInt(this.soc_direct.value);
+    UI.paper.drawConstraint(this.edited_constraint);
+    UI.modals.constraint.hide();
+  }
+
+} // END of class ConstraintEditor
+

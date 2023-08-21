@@ -121,7 +121,16 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         document.getElementById('doc-head').appendChild(link);
         // Reload the scripts in their proper sequence, i.e., such that all
         // classes are initialized before their instances are created
-        loadScripts(['-config', '-model', '-ctrl', '-gui', '-vm', '-utils'], t);
+        loadScripts(['-config', '-model', '-ctrl',
+            '-gui-paper', '-gui-controller', '-gui-monitor',
+            '-gui-file-manager', '-gui-expression-editor',
+            '-gui-model-autosaver', '-gui-scale-unit-manager',
+            '-gui-actor-manager', '-gui-constraint-editor',
+            '-gui-repository-browser', '-gui-dataset-manager',
+            '-gui-equation-manager', '-gui-chart-manager',
+            '-gui-sensitivity-analysis', '-gui-experiment-manager',
+            '-gui-documentation-manager', '-gui-finder', '-gui-receiver',
+            '-gui-undo-redo', '-vm', '-utils'], t);
       }
     }
 
@@ -877,9 +886,9 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
         will discard changes you made to the current model. Continue?
       </div>
       <div id="confirm-load-from-repo-buttons">
-        <img class="ok-btn big-btn" src="images/ok.png">
+        <img class="ok-btn" src="images/ok.png">
         Yes
-        <img class="cancel-btn big-btn" src="images/cancel.png">
+        <img class="cancel-btn" src="images/cancel.png">
         No
       </div>
     </div>
@@ -898,9 +907,9 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
         <span id="confirm-delete-from-repo-name"></span>?
       </div>
       <div id="confirm-delete-from-repo-buttons">
-        <img class="ok-btn big-btn" src="images/ok.png">
+        <img class="ok-btn" src="images/ok.png">
         Yes
-        <img class="cancel-btn big-btn" src="images/cancel.png">
+        <img class="cancel-btn" src="images/cancel.png">
         No
       </div>
     </div>
@@ -1016,7 +1025,7 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
         <tr>
           <td>Actor:</td>
           <td>
-            <input id="add-process-actor-name" style="width:223px" type="text"
+            <input id="add-process-actor" style="width:223px" type="text"
                    autocomplete="off">
           </td>
         </tr>
@@ -1077,7 +1086,7 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
         </tr>
         <tr>
           <td>Actor:</td>
-          <td><input id="cluster-actor-name" style="width:270px"
+          <td><input id="cluster-actor" style="width:270px"
                      type="text" autocomplete="off"></td>
         </tr>
       </table>
@@ -1242,7 +1251,7 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
                style="margin-left: 4px; margin-bottom: 3px">
         </div>
       </div>
-      <div id="ce-button-bar">
+      <div id="constraint-button-bar">
         <img id="add-point-btn" class="mbtn enab" src="images/add.png"
              title="Add new point to selected bound line">
         <img id="del-point-btn" class="mbtn disab"
@@ -1261,27 +1270,27 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
         <input id="bl-selectors" type="text" placeholder="(any)"
                title="When specified, bound line will constrain only in matching experiment runs">
       </div>
-      <div id="ce-y-label">% range of <span id="ce-to-name"></span></div>
+      <div id="constraint-y-label">% range of <span id="constraint-to-name"></span></div>
       <!-- NOTE: this is the div that will contain the chart's SVG image -->
-      <div id="ce-container"></div>
-      <div id="ce-x-label">% range of <span id="ce-from-name"></span></div>
-      <div id="ce-pos-x">X = 0</div>
-      <div id="ce-pos-y">Y = 0</div>
-      <div id="ce-point" title="Selected point"></div>
-      <div id="ce-equation" title="Equation for line segment"></div>
-      <div id="ce-bottom-div">
-        <div id="ce-no-slack-div"
+      <div id="constraint-container"></div>
+      <div id="constraint-x-label">% range of <span id="constraint-from-name"></span></div>
+      <div id="constraint-pos-x">X = 0</div>
+      <div id="constraint-pos-y">Y = 0</div>
+      <div id="constraint-point" title="Selected point"></div>
+      <div id="constraint-equation" title="Equation for line segment"></div>
+      <div id="constraint-bottom-div">
+        <div id="constraint-no-slack-div"
              title="Check to enforce bounds (Caution: this may make model infeasible)">
-          <div id="ce-no-slack" class="box clear"></div>
-          <div id="ce-no-slack-lbl">No slack</div>
+          <div id="constraint-no-slack" class="box clear"></div>
+          <div id="constraint-no-slack-lbl">No slack</div>
         </div>
-        <div id="ce-soc">
+        <div id="constraint-soc">
           <label>Attributed share of cost:</label>
-          <select id="ce-soc-direct">
+          <select id="constraint-soc-direct">
             <option value="1">X&rarr;Y</option>
             <option value="-1">Y&rarr;X</option>
           </selector>
-          <input id="ce-share-of-cost" type="text" autocomplete="off"><label>%</label>
+          <input id="constraint-share-of-cost" type="text" autocomplete="off"><label>%</label>
         </div>
       </div>
     </div>
@@ -1309,7 +1318,7 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
       <img id="process-UB-x" class="sbtn enab" src="images/edit.png"
            title="Edit expression for upper process bound">
       <!-- "equal bounds" button is displayed middle-left of the two input fields -->
-      <div id="process-UB-equal" class="nebtn" title="Set equal bounds"></div>
+      <div id="process-UB-equal" class="bbtn ne" title="Set equal bounds"></div>
       <div id="process-IL-lbl">Initial level:</div>
       <input id="process-IL" type="text" autocomplete="off">
       <img id="process-IL-x" class="sbtn enab" src="images/edit.png"
@@ -1378,7 +1387,7 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
       <img id="product-UB-x" class="sbtn enab" src="images/edit.png"
            title="Edit expression for upper product bound">
       <!-- "equal bounds" button is displayed middle-left of the two input fields -->
-      <div id="product-UB-equal" class="nebtn" title="Set equal bounds"></div>
+      <div id="product-UB-equal" class="bbtn ne" title="Set equal bounds"></div>
       <div id="product-IL-lbl">Initial level:</div>
       <input id="product-IL" type="text" autocomplete="off">
       <img id="product-IL-x" class="sbtn enab" src="images/edit.png"
@@ -1463,9 +1472,9 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
         to this cluster?
       </div>
       <div id="move-buttons">
-        <img class="ok-btn big-btn" src="images/ok.png">
+        <img class="ok-btn" src="images/ok.png">
         Yes
-        <img class="cancel-btn big-btn" src="images/cancel.png">
+        <img class="cancel-btn" src="images/cancel.png">
         No
       </div>
     </div>
@@ -2814,9 +2823,9 @@ where X can be one or several of these letters: ABCDELPQ">
       </div>
       <div id="check-update-msg"></div>
       <div id="check-update-buttons">
-        <img class="ok-btn big-btn" src="images/ok.png">
+        <img class="ok-btn" src="images/ok.png">
         Shut down server to install new version
-        <img class="cancel-btn big-btn" src="images/cancel.png">
+        <img class="cancel-btn" src="images/cancel.png">
         Continue using current version
       </div>
     </div>

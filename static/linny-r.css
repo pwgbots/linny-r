@@ -313,42 +313,59 @@ img.sbtn.senab:hover {
   filter: brightness(150%);
 }
 
-div.eqbtn {
-  background-image: url('images/eq.png');
+/* Bounds button indicates whether LB = UB */
+div.bbtn {
   background-size: contain;
   background-repeat: no-repeat;
   cursor: pointer;
 }
 
-div.eqbtn:hover,
-div.intbtn:hover {
+div.bbtn.eq {
+  background-image: url('images/eq.png');
+}
+
+div.bbtn.eq:hover {
   filter: brightness(120%);
 }
 
-div.nebtn {
-  background-image: url('images/ne.png');
-  background-size: contain;
-  background-repeat: no-repeat;
-  cursor: pointer;
+div.bbtn.eq.same-changed {
+  background-image: url('images/eq-same-changed.png');
 }
 
-div.nebtn:hover,
-div.contbtn:hover {
+div.bbtn.eq.same-not-changed {
+  background-image: url('images/eq-same-not-changed.png');
+}
+
+div.bbtn.eq.not-same-changed {
+  background-image: url('images/eq-not-same-changed.png');
+}
+
+div.bbtn.eq.not-same-not-changed {
+  background-image: url('images/eq-not-same-not-changed.png');
+}
+
+div.bbtn.ne {
+  background-image: url('images/ne.png');
+}
+
+div.bbtn.ne:hover {
   filter: brightness(110%);
 }
 
-div.intbtn {
-  background-image: url('images/integer-on.png');
-  background-size: contain;
-  background-repeat: no-repeat;
-  cursor: pointer;
+div.bbtn.ne.same-changed {
+  background-image: url('images/ne-same-changed.png');
 }
 
-div.contbtn {
-  background-image: url('images/integer-off.png');
-  background-size: contain;
-  background-repeat: no-repeat;
-  cursor: pointer;
+div.bbtn.ne.same-not-changed {
+  background-image: url('images/ne-same-not-changed.png');
+}
+
+div.bbtn.ne.not-same-changed {
+  background-image: url('images/ne-not-same-changed.png');
+}
+
+div.bbtn.ne.not-same-not-changed {
+  background-image: url('images/ne-not-same-not-changed.png');
 }
 
 input {
@@ -366,17 +383,44 @@ input[type="password"] {
 }
 
 input[type="text"]:disabled {
+  color: gray;
   background-color: #f4f0f2;
 }
 
-input[type="text"].same {
+input[type="text"].same-not-changed {
+  color: #5060b0;
+  background-color: #f4f8ff; 
+}
+
+input[type="text"].not-same-not-changed {
+  color: #b06050;
+  background-color: #fff6f4; 
+}
+
+input[type="text"].same-changed {
   color: #0000e0;
   background-color: #c0e0ff; 
 }
 
-input[type="text"].not-same {
+input[type="text"].not-same-changed {
   color: #e00000;
   background-color: #ffd0c0; 
+}
+
+select.same-not-changed {
+  color: #5060b0;
+}
+
+select.not-same-not-changed {
+  color: #b06050;
+}
+
+select.same-changed {
+  color: #0000e0;  
+}
+
+select.not-same-changed {
+  color: #e00000;  
 }
 
 textarea {
@@ -665,16 +709,6 @@ div.vbox:hover {
   filter: brightness(105%);  
 }
 
-div.clear {
-  background-size: contain;
-  background-image: url('images/check-off.png');
-}
-
-div.checked {
-  background-size: contain;
-  background-image: url('images/check-on.png');
-}
-
 div.crossed {
   background-size: contain;
   background-image: url('images/check-x.png');
@@ -684,6 +718,49 @@ div.disab {
   background-size: contain;
   background-image: url('images/check-disab.png');
 }
+
+div.clear {
+  background-size: contain;
+  background-image: url('images/check-off.png');
+}
+
+div.clear.same-changed {
+  background-image: url('images/check-off-same-changed.png');
+}
+
+div.clear.same-not-changed {
+  background-image: url('images/check-off-same-not-changed.png');
+}
+
+div.clear.not-same-changed {
+  background-image: url('images/check-off-not-same-changed.png');
+}
+
+div.clear.not-same-not-changed {
+  background-image: url('images/check-off-not-same-not-changed.png');
+}
+
+div.checked {
+  background-size: contain;
+  background-image: url('images/check-on.png');
+}
+
+div.checked.same-changed {
+  background-image: url('images/check-on-same-changed.png');
+}
+
+div.checked.same-not-changed {
+  background-image: url('images/check-on-same-not-changed.png');
+}
+
+div.checked.not-same-changed {
+  background-image: url('images/check-on-not-same-changed.png');
+}
+
+div.checked.not-same-not-changed {
+  background-image: url('images/check-on-not-same-not-changed.png');
+}
+
 
 /* NOTE: the name of the focal cluster is displayed to the right of
          the top bar buttons */
@@ -1318,11 +1395,11 @@ td.export {
   white-space: nowrap;
 }
 
-#process-pace {
+#process-LCF {
   width: 77px;
 }
 
-#process-pace-x {
+#process-LCF-x {
   margin-bottom: 5px;
 }
 
@@ -1796,18 +1873,18 @@ div.menu-item:hover {
   height: 436px;
 }
 
-#ce-button-bar {
+#constraint-button-bar {
   margin-top: 1px;
   margin-left: 2px;
 }
 
-#ce-container {
+#constraint-container {
   position: absolute;
   top: 45px;
   left: 20px;
 }
 
-#ce-y-label {
+#constraint-y-label {
   position: absolute;
   bottom: 75px;
   left: 8px;
@@ -1820,7 +1897,7 @@ div.menu-item:hover {
   white-space: nowrap;
 }
 
-#ce-x-label {
+#constraint-x-label {
   position: absolute;
   top: 374px;
   left: 45px;
@@ -1828,21 +1905,21 @@ div.menu-item:hover {
   text-align: center;
 }
 
-#ce-pos-x {
+#constraint-pos-x {
   position: absolute;
   top: 393px;
   left: 4px;
   width: 54px;
 }
 
-#ce-pos-y {
+#constraint-pos-y {
   position: absolute;
   top: 393px;
   left: 55px;
   width: 54px;  
 }
 
-#ce-point {
+#constraint-point {
   position: absolute;
   top: 393px;
   left: 160px;
@@ -1850,7 +1927,7 @@ div.menu-item:hover {
   text-align: center;
 }
 
-#ce-equation {
+#constraint-equation {
   position: absolute;
   top: 393px;
   right: 4px;
@@ -1858,14 +1935,14 @@ div.menu-item:hover {
   text-align: right;
 }
 
-#ce {
+#constraint {
   width: 330px;
   height: 320px;
   transform-origin: top left;
 }
 
-#ce-from-name,
-#ce-to-name {
+#constraint-from-name,
+#constraint-to-name {
   display: inline-block;
   max-width: 190px;
   white-space: nowrap;
@@ -1874,7 +1951,7 @@ div.menu-item:hover {
   font-weight: 700;
 }
 
-#ce-from-name {
+#constraint-from-name {
   vertical-align: bottom;
 }
 
@@ -1894,7 +1971,7 @@ div.menu-item:hover {
   width: 126px;
 }
 
-#ce-bottom-div {
+#constraint-bottom-div {
   position: absolute;
   bottom: 4px;
   left: 4px;
@@ -1903,31 +1980,31 @@ div.menu-item:hover {
   border-top: 1px solid silver;
 }
 
-#ce-no-slack-div {
+#constraint-no-slack-div {
   position: absolute;
   left: -2px;
   bottom: -1px;
   width: 100px;
 }
 
-#ce-no-slack-lbl {
+#constraint-no-slack-lbl {
   display: inline-block;
   vertical-align: top;
   padding-top: 4px;
 }
 
-#ce-soc-direct {
+#constraint-soc-direct {
   height: 19px;
   font-size: 12px;
 }
 
-#ce-share-of-cost {
+#constraint-share-of-cost {
   width: 45px;
   max-height: 18px;
   margin: 3px 1px 0 3px;
 }
 
-#ce-soc {
+#constraint-soc {
   position: absolute;
   right: 0px;
 }
@@ -4787,7 +4864,7 @@ div.call-stack-expr {
   overflow: auto;
 }
 
-#confirm-move-buttons,
+#move-buttons,
 #confirm-load-from-repo-buttons,
 #confirm-delete-from-repo-buttons,
 #check-update-buttons {
@@ -4798,7 +4875,7 @@ div.call-stack-expr {
   white-space: nowrap;
 }
 
-#confirm-move-buttons > img,
+#move-buttons > img,
 #confirm-load-from-repo-buttons > img,
 #confirm-delete-from-repo-buttons > img,
 #check-update-buttons > img {

@@ -5419,6 +5419,11 @@ class NodeBox extends ObjectWithXYWH {
     }
     // Draw all arrows in this list.
     for(let i = 0; i < alist.length; i++) UI.drawObject(alist[i]);
+    // Also draw related constraint arrows.
+    for(let k in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(k)) {
+      const c = MODEL.constraints[k];
+      if(c.from_node === this || c.to_node === this) UI.drawObject(c);
+    }
   }
   
   clearHiddenIO() {
@@ -6942,7 +6947,7 @@ class Node extends NodeBox {
   
   setConstraintOffsets() {
     // Sets the offset properties of the constraints that relate to this
-    // node; these properties are used when drawing these constraints
+    // node; these properties are used when drawing these constraints.
     const tbc = {top: [], bottom: [], thumb: []};
     for(let k in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(k)) {
       const
@@ -6958,21 +6963,21 @@ class Node extends NodeBox {
           continue;
         }
         if(vn[0] && vn[1]) {
-          // Both nodes visible => arrow
+          // Both nodes visible => arrow.
           if(this.y < q.y - (q.height/2 + 3) - this.height) {
-            // arrow from bottom of THIS to top of q
+            // Arrow from bottom of THIS to top of q.
             c.bottom_x = q.x;
             c.bottom_y = q.y;
             tbc.bottom.push(c);
           } else {
-            // arrow from bottom of THIS to top of q
+            // Arrow from bottom of THIS to top of q.
             c.top_x = q.x;
             c.top_y = q.y;
             tbc.top.push(c);
           }
         } else {
-          // One node visible => thumbnail at top of this process;
-          // NOTE: X coordinate not needed for sorting
+          // One node visible => thumbnail at top of this process.
+          // NOTE: X coordinate not needed for sorting.
           tbc.thumb.push(c);
         }
       }
@@ -7018,7 +7023,8 @@ class Node extends NodeBox {
         // Keep 10px between connection points, and for processes
         // also keep this distance from the rectangle corners
         margin = 10,
-        aw = (this instanceof Process ? this.width / 2 :
+        aw = (this instanceof Process ?
+            (this.collapsed ? 8.5 : this.width / 2) :
             (this.width - this.height) / 2 + margin) - 9 * thl;
     if(tl > 0) {
       tbc.top.sort(tcmp);
