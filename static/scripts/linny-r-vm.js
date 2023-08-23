@@ -454,18 +454,24 @@ class Expression {
     this.stack.pop();
     // Check whether either number is an error code
     let check = Math.min(dyad[0], dyad[1]);
-    if(check < VM.MINUS_INFINITY) {
-      // If so, leave the severest error on top of the stack
+    if(check < VM.MINUS_INFINITY &&
+        // Exception: "array index out of bounds" error may also be
+        // ignored by using the | operator.
+        !(no_check && check === VM.ARRAY_INDEX)) {
+      // If error, leave the severest error on top of the stack
       this.retop(check);
       this.trace(VM.errorMessage(check) + ' in dyad: ' + dyad.toString());
       return false;
     }
-    // Likewise check for "undefined", "not computed", and "still computing"
+    // Now check for "undefined", "not computed", and "still computing".
     check = dyad[0];
     if(no_check) {
-      // for VMI_replace_undefined, ignore that A is "undefined" unless
-      // B is also "undefined"
-      if(check === VM.UNDEFINED) check = dyad[1];
+      // For VMI_replace_undefined, ignore that A is "undefined" or even
+      // "array index out of bounds" unless B is also "undefined".
+      if(check === VM.UNDEFINED || check === VM.ARRAY_INDEX) {
+        dyad[0] = VM.UNDEFINED; // Treat "out of bounds" as "undefined".
+        check = dyad[1];
+      }
     } else {
       check = Math.max(check, dyad[1]);
     }
@@ -474,7 +480,7 @@ class Expression {
       this.trace(VM.errorMessage(check) + ' in dyad: ' + dyad.toString());
       return false;
     }
-    // No problem(s)? Then return the dyad
+    // No problem(s)? Then return the dyad.
     return dyad;
   }
 
@@ -5993,6 +5999,12 @@ function VMI_push_dataset_modifier(x, args) {
     // defines the expression to use. If not, `obj` will be the dataset
     // vector (so same as when "use data" is set).
     obj = ds.activeModifierExpression;
+    if(wcnr === false && obj instanceof Expression && MODEL.running_experiment) {
+      // If experiment run defines the modifier selector, the active
+      // combination may provide a context for #.
+      wcnr = matchingNumberInList(MODEL.running_experiment.activeCombination,
+          obj.attribute);
+    }
   }
   if(!obj) {
     console.log('ANOMALY: no object. obj, wcnr, args, x', obj, wcnr, args, x);
@@ -6021,7 +6033,6 @@ function VMI_push_dataset_modifier(x, args) {
         VM.out_of_bounds_array = ds.displayName;
         VM.out_of_bounds_msg = `Index ${index} not in array dataset ` +
             `${ds.displayName}, which has length ${obj.length}`;
-        console.log(VM.out_of_bounds_msg);
       }
     }
     // Fall through: no change to `v` => dataset default value is pushed.
@@ -6030,8 +6041,6 @@ function VMI_push_dataset_modifier(x, args) {
     // NOTE: Readjust `t` when `obj` is an expression for an *array-type*
     // dataset modifier.
     if(obj.object instanceof Dataset && obj.object.array) t++;
-    // Pass modifier selector (if specified; may be FALSE) so that result
-    // will be recomputed with this selector as context for #.
     v = obj.result(t, wcnr);
   }
   // Trace only now that time step t has been computed.
@@ -6306,7 +6315,7 @@ function VMI_push_statistic(x, args) {
 function VMI_replace_undefined(x, empty) {
   // Replaces one of the two top numbers on the stack by the other if the one
   // is undefined
-  const d = x.pop(true); // true denotes that "undefined" should be ignored as issue
+  const d = x.pop(true); // TRUE denotes that "undefined" should be ignored as issue
   if(d !== false) {
     if(DEBUGGING) console.log('REPLACE UNDEFINED (' + d.join(', ') + ')');
     x.retop(d[0] === VM.UNDEFINED ? d[1] : d[0]);
@@ -7706,7 +7715,7 @@ const
   
   OPERATORS = DYADIC_OPERATORS.concat(MONADIC_OPERATORS), 
   OPERATOR_CODES = DYADIC_CODES.concat(MONADIC_CODES),
-  PRIORITIES = [1, 2, 2, 3, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 7, 7, 7, 8, 8, 9,
+  PRIORITIES = [1, 2, 2, 3, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 7, 7, 7, 8, 8, 10,
       9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9],
   ACTUAL_SYMBOLS = CONSTANT_SYMBOLS.concat(OPERATORS),
   SYMBOL_CODES = CONSTANT_CODES.concat(OPERATOR_CODES);

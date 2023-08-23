@@ -2761,7 +2761,7 @@ td.equation-expression {
   position: absolute;
   top: 113px;
   width: 200px;
-  height: calc(100% - 115px);
+  height: calc(100% - 117px);
   overflow-y: auto;
 }
 

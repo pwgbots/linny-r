@@ -483,6 +483,16 @@ function matchingNumber(m, s) {
   return (n == m ? n : false);
 }
 
+function matchingNumberInList(ml, s) {
+  // Traverses list `ml` and returns the first matching number, or FALSE
+  // if no match is found.
+  for(let i = 0; i < ml.length; i++) {
+    const n = matchingNumber(ml[i], s);
+    if(n !== false) return n;
+  }
+  return false;
+}
+
 function compareWithTailNumbers(s1, s2) {
   // Returns 0 on equal, an integer < 0 if `s1` comes before `s2`, and
   // an integer > 0 if `s2` comes before `s1`.
