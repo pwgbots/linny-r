@@ -666,7 +666,7 @@ function customizeXML(str) {
   // First modify `str` -- by default, do nothing
   
 /*
-  if(str.indexOf('<author>XXX</author>') >= 0) {
+  if(str.indexOf('<version>1.4.') >= 0) {
     str = str.replace(/<url>NL\/(\w+)\.csv<\/url>/g, '<url></url>');
   }
 */

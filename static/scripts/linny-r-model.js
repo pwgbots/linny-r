@@ -2988,7 +2988,8 @@ class LinnyRModel {
           if(names.indexOf(n) < 0) {
             // Here, too, NULL can be used as "owner chart". 
             const cv = new ChartVariable(null);
-            cv.setProperties(ds, dm.selector, false, '#000000');
+            // NOTE: For equations, the object is the dataset modifier.
+            cv.setProperties(eq ? dm : ds, dm.selector, false, '#000000');
             vbls.push(cv);
           }
         }
@@ -8913,9 +8914,12 @@ class ChartVariable {
     // by its scale factor unless it equals 1 (no scaling).
     const sf = (this.scale_factor === 1 ? '' :
         ` (x${VM.sig4Dig(this.scale_factor)})`);
-    // NOTE: Display name of equation is just the equations dataset modifier.
-    if(this.object === MODEL.equations_dataset) {
-      let eqn = this.attribute;
+    //Display name of equation is just the equations dataset selector. 
+    if(this.object instanceof DatasetModifier ||
+        // NOTE: Same holds for "dummy variables" added for wildcard
+        // dataset selectors.
+        this.object === MODEL.equations_dataset) {
+      let eqn = this.object.selector;
       if(this.wildcard_index !== false) {
         eqn = eqn.replace('??', this.wildcard_index);
       }
@@ -9299,6 +9303,8 @@ class Chart {
         vlist.push(v);
       }
       return vlist;
+      // FALL-THROUGH: Equation name has no wildcard => use the equation
+      // object (= dataset modifier) as `obj`.
     }
     const v = new ChartVariable(this);
     v.setProperties(obj, a, false, this.nextAvailableDefaultColor, 1, 1);
