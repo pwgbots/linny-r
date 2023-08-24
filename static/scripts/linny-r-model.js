@@ -2963,7 +2963,7 @@ class LinnyRModel {
             const cv = new ChartVariable(null);
             cv.setProperties(v.object, v.attribute, false, '#000000');
             vbls.push(cv);
-            names.push(uvn);
+            names.push(vn);
           }
         } else if(names.indexOf(vn) < 0) {
           // Keep track of the dataset and dataset modifier variables,
@@ -8434,13 +8434,24 @@ class Dataset {
   }
 
   get plainSelectors() {
-    // Returns sorted list of selectors that do not contain wildcards
-    const sl = this.selectorList;
-    // NOTE: wildcard selectors will always be at the end of the list
+    // Return sorted list of selectors that do not contain wildcards.
+    const sl = this.selectorList.slice();
+    // NOTE: Wildcard selectors will always be at the end of the list
     for(let i = sl.length - 1; i >= 0; i--) {
       if(sl[i].indexOf('*') >= 0 || sl[i].indexOf('?') >= 0) sl.pop();
     }
     return sl;
+  }
+  
+  get wildcardSelectors() {
+    // Return sorted list of selectors that DO contain wildcards.
+    const sl = this.selectorList;
+    // NOTE: Wildcard selectors will always be at the end of the list.
+    let i = sl.length - 1;
+    while(i >= 0 && (sl[i].indexOf('*') >= 0 || sl[i].indexOf('?') >= 0)) {
+      i--;
+    }
+    return sl.slice(i+1);
   }
   
   isWildcardSelector(s) {
@@ -8915,11 +8926,17 @@ class ChartVariable {
     const sf = (this.scale_factor === 1 ? '' :
         ` (x${VM.sig4Dig(this.scale_factor)})`);
     //Display name of equation is just the equations dataset selector. 
-    if(this.object instanceof DatasetModifier ||
-        // NOTE: Same holds for "dummy variables" added for wildcard
-        // dataset selectors.
-        this.object === MODEL.equations_dataset) {
+    if(this.object instanceof DatasetModifier) {
       let eqn = this.object.selector;
+      if(this.wildcard_index !== false) {
+        eqn = eqn.replace('??', this.wildcard_index);
+      }
+      return eqn + sf;
+    }
+    // NOTE: Same holds for "dummy variables" added for wildcard
+    // dataset selectors.
+    if(this.object === MODEL.equations_dataset) {
+      let eqn = this.attribute;
       if(this.wildcard_index !== false) {
         eqn = eqn.replace('??', this.wildcard_index);
       }
@@ -10115,8 +10132,8 @@ class ActorSelector {
 class ExperimentRunResult {
   constructor(r, v, a='') {
     // NOTE: constructor can be called with `v` a chart variable, a dataset,
-    // or an XML node; if `v` is the equations dataset, then `a` indicates the
-    // attribute to be used
+    // or an XML node; if `v` is the equations dataset, then `a` is the
+    // identifier of the dataset modifier to be used. 
     this.run = r;
     if(v instanceof ChartVariable) {
       this.x_variable = true;
@@ -10188,7 +10205,7 @@ class ExperimentRunResult {
       this.exceptions = 0;
       const
           // NOTE: run result dataset selector will be plain (no wildcards)
-          x = v.attributeExpression(this.attribute),
+          x = v.modifiers[this.attribute].expression,
           t_end = MODEL.end_period - MODEL.start_period + 1;
       // N = # time steps
       this.N = t_end;
@@ -10564,7 +10581,7 @@ class ExperimentRun {
           new ExperimentRunResult(this, this.experiment.variables[vi]));
       this.step++;
       UI.setProgressNeedle(this.step / this.steps);
-      setTimeout(function(x) { x.addChartResults(vi + 1); }, 0, this);
+      setTimeout((x) => x.addChartResults(vi + 1), 0, this);
     } else {
       this.addOutcomeResults(0);
     }
@@ -10577,7 +10594,7 @@ class ExperimentRun {
       this.results.push(new ExperimentRunResult(this, MODEL.outcomes[oi]));
       this.step++;
       UI.setProgressNeedle(this.step / this.steps);
-      setTimeout(function(x) { x.addOutcomeResults(oi + 1); }, 0, this);
+      setTimeout((x) => x.addOutcomeResults(oi + 1), 0, this);
     } else {
       this.addEquationResults(0);
     }
@@ -10592,7 +10609,7 @@ class ExperimentRun {
           new ExperimentRunResult(this, MODEL.equations_dataset, k));      
       this.step++;
       UI.setProgressNeedle(this.step / this.steps);
-      setTimeout(function(x) { x.addEquationResults(ei + 1); }, 0, this);
+      setTimeout((x) => x.addEquationResults(ei + 1), 0, this);
     } else {
       // Register when this result was stored
       this.time_recorded = new Date().getTime();
@@ -10602,8 +10619,10 @@ class ExperimentRun {
       // Log the time it took to compute all results
       VM.logMessage(VM.block_count - 1,
           `Processing run results took ${VM.elapsedTime} seconds.`);
-      // NOTE: addResults is called by either the experiment manager or the
-      // sensitivity analysis  => proceed there
+      // Report results if applicable.
+      if(RECEIVER.solving || MODEL.report_results) RECEIVER.report();
+      // NOTE: addResults is called by either the experiment manager or
+      // the sensitivity analysis; hence proceed from there.
       if(SENSITIVITY_ANALYSIS.experiment) {
         SENSITIVITY_ANALYSIS.processRestOfRun();
       } else {

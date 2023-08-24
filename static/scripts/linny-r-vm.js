@@ -348,6 +348,8 @@ class Expression {
       v[t] = this.stack.pop();
     }
     this.trace('RESULT = ' + VM.sig4Dig(v[t]));
+    // Store wildcard result also in "normal" vector
+    this.vector[t] = v[t];
     // Pop the time step.
     this.step.pop();
     this.trace('--STOP: ' + this.variableName);
@@ -5268,10 +5270,13 @@ Solver status = ${json.status}`);
       UI.drawDiagram(MODEL);
       // Show the reset button (GUI only)
       UI.readyToReset();
-      // If receiver is active, report results
-      if(RECEIVER.solving || MODEL.report_results) RECEIVER.report();
-      // If experiment is active, signal the manager
-      if(MODEL.running_experiment) EXPERIMENT_MANAGER.processRun();
+      if(MODEL.running_experiment) {
+       // If experiment is active, signal the manager.
+        EXPERIMENT_MANAGER.processRun();
+      } else if(RECEIVER.solving || MODEL.report_results) {
+        // Otherwise report results now, if applicable.
+        RECEIVER.report();
+      }
       // Warn modeler if any issues occurred
       if(this.block_issues) {
         let msg = 'Issues occurred in ' +
@@ -5677,8 +5682,8 @@ function valueOfNumberSign(x) {
   // ending on digits, or tne number context of an entity. The latter typically
   // is the number its name or any of its prefixes ends on, but notes are
   // more "creative" and can return the number context of nearby entities.
-  let s = 'NO SELECTOR',
-      m = 'NO MATCH',
+  let s = '!NO SELECTOR',
+      m = '!NO MATCH',
       n = VM.UNDEFINED;
   // NOTE: Give wildcard selectors precedence over experiment selectors
   // because a wildcard selector is an immediate property of the dataset
@@ -5692,17 +5697,15 @@ function valueOfNumberSign(x) {
     // Check whether `x` is a dataset modifier expression.
     // NOTE: This includes equations.
     if(x.object instanceof Dataset) {
-      if(x.attribute) {
-        s = x.attribute;
-      } else {
-        // Selector may also be defined by a running experiment.
-        if(MODEL.running_experiment) {
-          // Let `m` be the primary selector for the current experiment run.
-          const sl = MODEL.running_experiment.activeCombination;
-          if(sl) {
-            m = sl[0];
-            s = 'experiment';
-          }
+      if(x.attribute) s = x.attribute;
+      // Selector may also be defined by a running experiment.
+      if(MODEL.running_experiment) {
+        const
+            ac = MODEL.running_experiment.activeCombination,
+            mn = matchingNumberInList(ac, s);
+        if(mn !== false) {
+          m = 'x-run';
+          n = mn;
         }
       }
     }
@@ -5715,10 +5718,6 @@ function valueOfNumberSign(x) {
         m = d;
         n = parseInt(d);
       }
-    } else if(m !== 'NO MATCH') {
-      // If matching `m` against `s` do not yield an integer string,
-      // use UNDEFINED
-      n = matchingNumber(m, s) || VM.UNDEFINED;
     }
   }
   // For datasets, set the parent anchor to be the context-sensitive number
@@ -5941,7 +5940,7 @@ function VMI_push_dataset_modifier(x, args) {
   // If `s` is not specified, the modifier to be used must be inferred from
   // the running experiment UNLESS the field `ud` ("use data") is defined
   // for the first argument, and evaluates as TRUE.
-  // NOTE: Ensure that number 0 is not interpreted as FALSE. 
+  // NOTE: Ensure that number 0 is not interpreted as FALSE.
   let wcnr = (args[0].s === undefined ? false : args[0].s);
   const
       ds = args[0].d,
@@ -5960,7 +5959,6 @@ function VMI_push_dataset_modifier(x, args) {
   let t = tot[0],
       // By default, use the vector of the dataset to compute the value.
       obj = ds.vector;
-      
   if(ds.array) {
     // For array-type datasets, do NOT adjust "index" t to model run period.
     // NOTE: Indices start at 1, but arrays are zero-based, so subtract 1.
@@ -5994,16 +5992,17 @@ function VMI_push_dataset_modifier(x, args) {
     if(wcnr === '?') {
       wcnr = x.wildcard_vector_index;
     }
-  } else if(!ud ) {
+  } else if(!ud) {
     // In no selector and not "use data", check whether a running experiment
     // defines the expression to use. If not, `obj` will be the dataset
     // vector (so same as when "use data" is set).
     obj = ds.activeModifierExpression;
-    if(wcnr === false && obj instanceof Expression && MODEL.running_experiment) {
+    if(wcnr === false && MODEL.running_experiment) {
       // If experiment run defines the modifier selector, the active
       // combination may provide a context for #.
-      wcnr = matchingNumberInList(MODEL.running_experiment.activeCombination,
-          obj.attribute);
+      const sel = (obj instanceof Expression ? obj.attribute : x.attribute);
+      wcnr = matchingNumberInList(
+          MODEL.running_experiment.activeCombination, sel);
     }
   }
   if(!obj) {
@@ -6040,7 +6039,9 @@ function VMI_push_dataset_modifier(x, args) {
     // `obj` is an expression.
     // NOTE: Readjust `t` when `obj` is an expression for an *array-type*
     // dataset modifier.
-    if(obj.object instanceof Dataset && obj.object.array) t++;
+    if(obj.object instanceof Dataset && obj.object.array) {
+      t++;
+    }
     v = obj.result(t, wcnr);
   }
   // Trace only now that time step t has been computed.

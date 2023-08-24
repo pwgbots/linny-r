@@ -1261,7 +1261,7 @@ class ExperimentManager {
   }
 
   processRestOfRun() {   
-    // Performs post-processing after run results have been added
+    // Performs post-processing after run results have been added.
     const x = MODEL.running_experiment;
     if(!x) return;
     const aci = x.active_combination_index;

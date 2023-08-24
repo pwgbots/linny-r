@@ -1754,6 +1754,8 @@ NOTE: * and ? will be interpreted as wildcards"
            title="New equation">
       <img id="eq-rename-btn" class="btn disab" src="images/rename.png"
            title="Rename selected equation">
+      <img id="eq-clone-btn" class="btn disab" src="images/clone.png"
+           title="Clone selected equation">
       <img id="eq-edit-btn" class="btn disab" src="images/edit.png"
            title="Edit selected equation">
       <img id="eq-delete-btn" class="btn disab" src="images/delete.png"
@@ -1787,6 +1789,18 @@ NOTE: * and ? will be interpreted as wildcards"
         <img class="ok-btn" src="images/ok.png">
       </div>
       <input id="rename-equation-name" type="text" autocomplete="off">
+    </div>
+  </div>
+
+  <!-- the CLONE EQUATION dialog prompts for the new name of an equation -->
+  <div id="clone-equation-modal" class="modal">
+    <div id="clone-equation-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Clone equation
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="clone-equation-name" type="text" autocomplete="off">
     </div>
   </div>
 

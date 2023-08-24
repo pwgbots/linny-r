@@ -48,6 +48,8 @@ class EquationManager {
         'click', () => EQUATION_MANAGER.promptForEquation());
     document.getElementById('eq-rename-btn').addEventListener(
         'click', () => EQUATION_MANAGER.promptForName());
+    document.getElementById('eq-clone-btn').addEventListener(
+        'click', () => EQUATION_MANAGER.promptToClone());
     document.getElementById('eq-edit-btn').addEventListener(
         'click', () => EQUATION_MANAGER.editEquation());
     document.getElementById('eq-delete-btn').addEventListener(
@@ -65,6 +67,12 @@ class EquationManager {
         'click', () => EQUATION_MANAGER.renameEquation());
     this.rename_modal.cancel.addEventListener(
         'click', () => EQUATION_MANAGER.rename_modal.hide());
+
+    this.clone_modal = new ModalDialog('clone-equation');
+    this.clone_modal.ok.addEventListener(
+        'click', () => EQUATION_MANAGER.cloneEquation());
+    this.clone_modal.cancel.addEventListener(
+        'click', () => EQUATION_MANAGER.clone_modal.hide());
 
     // Initialize the dialog properties
     this.reset();
@@ -146,7 +154,7 @@ class EquationManager {
     this.table.innerHTML = ml.join('');
     this.scroll_area.style.display = 'block';
     if(sm) UI.scrollIntoView(document.getElementById(smid));
-    const btns = 'eq-rename eq-edit eq-delete';
+    const btns = 'eq-rename eq-clone eq-edit eq-delete';
     if(sm) {
       UI.enableButtons(btns);
     } else {
@@ -291,6 +299,43 @@ class EquationManager {
     }
     // Always close the name prompt dialog, and update the equation manager
     this.rename_modal.hide();
+    this.updateDialog();
+  }
+  
+  promptToClone() {
+    // Prompts the modeler for the name of the clone to make of the
+    // selected equation (if any).
+    if(this.selected_modifier) {
+      this.clone_modal.element('name').value = this.selected_modifier.selector;
+      this.clone_modal.show('name');
+    }
+  }
+  
+  cloneEquation() {
+    if(!this.selected_modifier) return;
+    const
+        s = this.clone_modal.element('name').value,
+        // New equation identifier must not equal some entity ID
+        obj = MODEL.objectByName(s);
+    if(obj) {
+      // NOTE: also pass selector, or warning will display dataset name.
+      UI.warningEntityExists(obj);
+      return null;
+    }
+    // Name is new and unique, so try to use it
+    const m = MODEL.equations_dataset.addModifier(s);
+    // NULL indicates invalid name, and modeler will have been warned.
+    if(!m) return;
+    // Give the new modifier the same expression as te selected one.
+    m.expression.text = this.selected_modifier.expression.text;
+    // Compile the expression. This may generate a warning when the new
+    // name does not provide adequate context.
+    m.expression.compile();
+    // 
+    this.selected_modifier = m;
+    // Even if warning was given, close the name prompt dialog, and update
+    // the equation manager.
+    this.clone_modal.hide();
     this.updateDialog();
   }
   

@@ -2439,7 +2439,8 @@ td.equation-expression {
 #new-dataset-dlg,
 #rename-dataset-dlg,
 #new-equation-dlg,
-#rename-equation-dlg {
+#rename-equation-dlg,
+#clone-equation-dlg {
   width: 240px;
   height: 45px;
 }
@@ -2447,7 +2448,8 @@ td.equation-expression {
 #new-dataset-name,
 #rename-dataset-name,
 #new-equation-name,
-#rename-equation-name {
+#rename-equation-name,
+#clone-equation-name {
   position: absolute;
   bottom: 2px;
   left: 2px;
