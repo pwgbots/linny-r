@@ -79,8 +79,25 @@ class GUIChartManager extends ChartManager {
         'click', () => CHART_MANAGER.moveVariable(1));
     document.getElementById('chart-edit-variable-btn').addEventListener(
         'click', () => CHART_MANAGER.editVariable());
+    document.getElementById('chart-sort-variable-btn').addEventListener(
+        'mouseenter', () => CHART_MANAGER.showSortingMenu());
     document.getElementById('chart-delete-variable-btn').addEventListener(
         'click', () => CHART_MANAGER.deleteVariable());
+    // Make the sorting menu responsive.
+    this.sorting_menu = document.getElementById('chart-sorting-menu');
+    this.sorting_menu.addEventListener(
+        'mouseleave', () => CHART_MANAGER.hideSortingMenu());
+    document.getElementById('chart-sort-not-btn').addEventListener(
+        'click', (e) => CHART_MANAGER.setSortType(e.target));
+    document.getElementById('chart-sort-asc-btn').addEventListener(
+        'click', (e) => CHART_MANAGER.setSortType(e.target));
+    document.getElementById('chart-sort-asc-lead-btn').addEventListener(
+        'click', (e) => CHART_MANAGER.setSortType(e.target));
+    document.getElementById('chart-sort-desc-btn').addEventListener(
+        'click', (e) => CHART_MANAGER.setSortType(e.target));
+    document.getElementById('chart-sort-desc-lead-btn').addEventListener(
+        'click', (e) => CHART_MANAGER.setSortType(e.target));
+    // Add properties for access to other chart manager dialog elements.
     this.variables_table = document.getElementById('chart-variables-table');
     this.display_panel = document.getElementById('chart-display-panel');
     this.toggle_chevron = document.getElementById('chart-toggle-chevron');
@@ -188,6 +205,7 @@ class GUIChartManager extends ChartManager {
     this.setRunsChart(false);
     this.last_time_selected = 0;
     this.paste_color = '';
+    this.hideSortingMenu();
   }
   
   enterKey() {
@@ -336,17 +354,27 @@ class GUIChartManager extends ChartManager {
           '<td class="v-box"><div id="v-box-', i, '" class="vbox',
           (cv.visible ? ' checked' : ' clear'),
           '" onclick="CHART_MANAGER.toggleVariable(', i,
-          ');"></div></td><td class="v-name">', cv.displayName,
+          ');"></div></td><td class="v-name vbl-', cv.sorted,
+          '">', cv.displayName,
           '</td></tr>'].join(''));
       }
       this.variables_table.innerHTML = ol.join('');
     } else {
       this.variable_index = -1;
     }
+    // Set the image of the sort type button.
+    if(this.variable_index >= 0) {
+      const
+          cv = c.variables[this.variable_index],
+          sb = document.getElementById('chart-sort-variable-btn'),
+          mb = document.getElementById(`chart-sort-${cv.sorted}-btn`); 
+      sb.src = `images/sort-${cv.sorted}.png`;
+      sb.title = mb.title;
+    }
     const
         u_btn = 'chart-variable-up ',
         d_btn = 'chart-variable-down ',
-        ed_btns = 'chart-edit-variable chart-delete-variable ';
+        ed_btns = 'chart-edit-variable chart-sort-variable chart-delete-variable ';
     // Just in case variable index has not been adjusted after some
     // variables have been deleted
     if(this.variable_index >= c.variables.length) {
@@ -378,8 +406,35 @@ class GUIChartManager extends ChartManager {
     this.stretchChart(0);
   }
   
+  showSortingMenu() {
+    // Show the pane with sort type buttons only if variable is selected.
+    this.sorting_menu.style.display =
+        (this.variable_index >= 0 ? 'block' : 'none');
+  }
+  
+  hideSortingMenu() {
+    // Hide the pane with sort type buttons.
+    this.sorting_menu.style.display = 'none';
+  }
+  
+  setSortType(btn) {
+    // Set the sort type for the selected chart variable.
+    if(this.chart_index < 0 || this.variable_index < 0) return;
+    const
+        c = MODEL.charts[this.chart_index],
+        cv = c.variables[this.variable_index],
+        parts = btn.id.split('-');
+    parts.shift();
+    parts.shift();
+    parts.pop();
+    cv.sorted = parts.join('-');
+    this.hideSortingMenu();
+    this.updateDialog();
+  }
+  
   updateExperimentInfo() {
-    // Display selected experiment title in dialog header if run data are used
+    // Display selected experiment title in dialog header if run data
+    // are used.
     const
         selx = EXPERIMENT_MANAGER.selected_experiment,
         el = document.getElementById('chart-experiment-info');
@@ -498,7 +553,7 @@ class GUIChartManager extends ChartManager {
             cv = c.variables[i],
             nv = new ChartVariable(nc);
         nv.setProperties(cv.object, cv.attribute, cv.stacked,
-            cv.color, cv.scale_factor, cv.line_width);
+            cv.color, cv.scale_factor, cv.line_width, cv.sorted);
         nc.variables.push(nv);
       }
       this.chart_index = MODEL.indexOfChart(nc.title);
@@ -649,7 +704,7 @@ class GUIChartManager extends ChartManager {
       this.variable_modal.element('color').style.backgroundColor = cv.color;
       this.setColorPicker(cv.color);
       // Show change equation buttons only for equation variables
-      if(cv.object === MODEL.equations_dataset) {
+      if(cv.object === MODEL.equations_dataset || cv.object instanceof DatasetModifier) {
         this.change_equation_btns.style.display = 'block';
       } else {
         this.change_equation_btns.style.display = 'none';
@@ -741,7 +796,7 @@ class GUIChartManager extends ChartManager {
     // Renames the selected variable (if it is an equation)
     if(this.chart_index >= 0 && this.variable_index >= 0) {
       const v = MODEL.charts[this.chart_index].variables[this.variable_index];
-      if(v.object === MODEL.equations_dataset) {
+      if(v.object === MODEL.equations_dataset || v.object instanceof DatasetModifier) {
         const m = MODEL.equations_dataset.modifiers[UI.nameToID(v.attribute)];
         if(m instanceof DatasetModifier) {
           EQUATION_MANAGER.selected_modifier = m;
@@ -755,7 +810,7 @@ class GUIChartManager extends ChartManager {
     // Opens the expression editor for the selected variable (if equation)
     if(this.chart_index >= 0 && this.variable_index >= 0) {
       const v = MODEL.charts[this.chart_index].variables[this.variable_index];
-      if(v.object === MODEL.equations_dataset) {
+      if(v.object === MODEL.equations_dataset || v.object instanceof DatasetModifier) {
         const m = MODEL.equations_dataset.modifiers[UI.nameToID(v.attribute)];
         if(m instanceof DatasetModifier) {
           EQUATION_MANAGER.selected_modifier = m;

@@ -2750,14 +2750,58 @@ td.equation-expression {
   width: 146px;
   display: inline-block;
   position: absolute;
-  left: 60px;
+  left: 55px;
   top: -2px;
 }
 
 #chart-variable-buttons > img.btn {
   height: 18px;
   width: 18px;
+  margin-left: 2px;
 }
+
+#chart-sorting-menu {
+  position: absolute;
+  top: 89.5px;
+  left: 153px;
+  width: 19px;
+  display: none;
+  background-color: #f4f0f2;
+  border: solid silver 1px;
+  border-radius: 3px;
+  padding: 1px;
+}
+
+#chart-sorting-menu > img.btn {
+  height: 18px;
+  width: 18px;
+  margin: 0px;
+}
+
+td.vbl-asc,
+td.vbl-desc,
+td.vbl-asc-lead,
+td.vbl-desc-lead {
+  color: #8000b0;
+}
+
+td.vbl-asc-lead,
+td.vbl-desc-lead {
+  font-weight: bold;
+}
+
+td.vbl-asc::after,
+td.vbl-asc-lead::after {
+  content: ' \2B67';
+  color: #b00080;
+}
+
+td.vbl-desc::after,
+td.vbl-desc-lead::after {
+  content: ' \2B68';
+  color: #b00080;
+}
+
 
 #chart-variables {
   position: absolute;

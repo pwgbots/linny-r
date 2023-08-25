@@ -8909,7 +8909,7 @@ class ChartVariable {
     this.wildcard_index = false;
   }
   
-  setProperties(obj, attr, stck, clr, sf=1, lw=1, vis=true) {
+  setProperties(obj, attr, stck, clr, sf=1, lw=1, vis=true, sort='not') {
     // Sets the defining properties for this chart variable.
     this.object = obj;
     this.attribute = attr;
@@ -8918,6 +8918,7 @@ class ChartVariable {
     this.scale_factor = sf;
     this.line_width = lw;
     this.visible = vis;
+    this.sorted = sort;
   }
   
   get displayName() {
@@ -8956,6 +8957,7 @@ class ChartVariable {
     }
     const xml = ['<chart-variable', (this.stacked ? ' stacked="1"' : ''),
         (this.visible ? ' visible="1"' : ''),
+        ` sorted="${this.sorted}"`,
         '><object-id>', xmlEncoded(id),
         '</object-id><attribute>', this.attribute,
         '</attribute><color>', this.color,
@@ -9007,7 +9009,8 @@ class ChartVariable {
         nodeContentByTag(node, 'color'),
         safeStrToFloat(nodeContentByTag(node, 'scale-factor')),
         safeStrToFloat(nodeContentByTag(node, 'line-width')),
-        nodeParameterValue(node, 'visible') === '1');
+        nodeParameterValue(node, 'visible') === '1',
+        nodeParameterValue(node, 'sorted') || 'not');
     return true;
   }
 
