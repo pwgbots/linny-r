@@ -226,6 +226,9 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
     // Clear the "shortcut flag" that may be set by Shift-clicking the
     // "add chart variable" button in the chart dialog 
     EQUATION_MANAGER.add_to_chart = false;
+    // CLear other properties that relate to the edited expression.
+    this.edited_input_id = '';
+    this.edited_expression = null;
   }
   
   parseExpression() {

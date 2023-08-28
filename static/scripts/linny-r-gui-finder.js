@@ -294,7 +294,10 @@ class Finder {
         for(let i = 0; i < n; i++) {
           const e = this.entities[i];
           // Exclude "no actor" and top cluster.
-          if(e.name !== '(no_actor)' && e.name !== '(top_cluster)') {
+          if(e.name !== '(no_actor)' && e.name !== '(top_cluster)' &&
+              // Also exclude actor cash flow data products because
+              // many of their properties should not be changed.
+              !e.name.startsWith('$')) {
             eg.push(e);
           }
         }

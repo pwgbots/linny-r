@@ -2262,8 +2262,11 @@ class Paper {
         rim_color,
         stroke_color,
         stroke_width,
-        // Draw border as dashed line if product is data product 
-        sda = (prod.is_data ? UI.sda.dash : 'none'),
+        // Draw border as dashed line if product is data product, and
+        // for actor cash flow data as dotted line.
+        sda = (prod.is_data ?
+            (prod.name.startsWith('$') ? UI.sda.dot : UI.sda.dash) :
+            'none'),
         first_commit_option = prod.needsFirstCommitData,
         x = prod.x + dx,
         y = prod.y + dy,
@@ -2736,15 +2739,22 @@ class Paper {
       clstr.shape.addBlockArrow(x, y - hh, UI.BLOCK_IO,
           clstr.hidden_io.length);
     }
-    // Highlight shape if it has comments
-    clstr.shape.element.firstChild.setAttribute('style',
-        (DOCUMENTATION_MANAGER.visible && clstr.comments ?
-            this.documented_filter : ''));
-    // Highlight cluster if it is the drop target for the selection
-    if(clstr === this.target_cluster) {
-      clstr.shape.element.setAttribute('style', this.target_filter);
+    if(clstr === UI.target_cluster) {
+      // Highlight cluster if it is the drop target for the selection.
+      clstr.shape.element.childNodes[0].setAttribute('style',
+          this.target_filter);
+      clstr.shape.element.childNodes[1].setAttribute('style',
+          this.target_filter);
+    } else if(DOCUMENTATION_MANAGER.visible && clstr.comments) {
+      // Highlight shape if it has comments.
+      clstr.shape.element.childNodes[0].setAttribute('style',
+          this.documented_filter);
+      clstr.shape.element.childNodes[1].setAttribute('style',
+          this.documented_filter);
     } else {
-      clstr.shape.element.setAttribute('style', '');
+      // No highlighting.
+      clstr.shape.element.childNodes[0].setAttribute('style', '');
+      clstr.shape.element.childNodes[1].setAttribute('style', '');
     }
     clstr.shape.element.setAttribute('opacity', 0.9);
     clstr.shape.appendToDOM();    

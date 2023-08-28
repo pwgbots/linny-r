@@ -168,6 +168,8 @@ class GroupPropertiesDialog extends ModalDialog {
         this.initial[name] = prop;
         if(token === 'bbtn') {
           el.className = (prop ? 'bbtn eq' : 'bbtn ne');
+          // NOTE: Update required to enable or disable UB field.
+          UI.updateEqualBounds(obj.type.toLowerCase());
         } else if(token === 'box') {
           el.className = (prop ? 'box checked' : 'box clear');
         } else if(propname === 'share_of_cost') {
@@ -1811,7 +1813,7 @@ class GUIController extends Controller {
         setTimeout(() => {
               const md = UI.modals['add-process'];
               md.element('name').value = '';
-              md.element('actor-name').value = '';
+              md.element('actor').value = '';
               md.show('name');
             });
       } else if(obj === 'product') {
@@ -2761,7 +2763,44 @@ class GUIController extends Controller {
         } else {
           md = this.modals['add-product'];
           nn = md.element('name').value;
-          if(!this.validNames(nn)) {
+          // NOTE: As of version 1.5, actor cash IN, chash OUT and cash FLOW
+          // can be added as special data products. These products are indicated
+          // by a leading dollar sign or euro sign, followed by an acceptable
+          // flow indicator (I, O, F, CI, CO, CF, IN, OUT, FLOW), or none to
+          // indicate the default "cash flow", followed by the name of an
+          // actor already defined in the model.
+          if(nn.startsWith('$') || nn.startsWith('\u20AC')) {
+            const
+                valid = {
+                  'i': 'IN',
+                  'ci': 'IN',
+                  'in': 'IN',
+                  'o': 'OUT',
+                  'co': 'OUT',
+                  'out': 'OUT',
+                  'f': 'FLOW',
+                  'cf': 'FLOW',
+                  'flow': 'FLOW'
+                },
+                parts = nn.substring(1).trim().split(' ');
+            let flow = valid[parts[0].toLowerCase()];
+            if(flow === undefined) flow = '';
+            // If first part indicates flow type, trim it from the name parts.
+            if(flow) parts.shift();
+            // Now the parts should identify an actor; this may be (no actor).
+            const
+                aid = this.nameToID(parts.join(' ').trim() || this.NO_ACTOR),
+                a = MODEL.actorByID(aid);
+            if(a) {
+              // If so, and no flow type, assume the default (cash FLOW).
+              if(!flow) flow = 'FLOW';
+              // Change name to canonical.form, i.e., like "$FLOW actor name"
+              nn = `$${flow} ${a.name}`;
+            }
+          }
+          // Test if name is valid. 
+          const vn = this.validName(nn);
+          if(!vn) {
             UNDO_STACK.pop();
             return false;
           }
@@ -2770,8 +2809,13 @@ class GUIController extends Controller {
           n = MODEL.addProduct(nn);
           if(n) {
             if(pp) {
-              // Do not change unit or data type of existing product
+              // Do not change unit or data type of existing product.
               this.notify(`Added existing product <em>${pp.displayName}</em>`);
+            } else if(nn.startsWith('$')) {
+              // Actor cash flow products must be data products, and
+              // must have the model's currency unit as scale unit.
+              n.scale_unit = MODEL.currency_unit;
+              n.is_data = true;
             } else {
               n.scale_unit = MODEL.addScaleUnit(md.element('unit').value);
               n.is_data = this.boxChecked('add-product-data');
@@ -3658,6 +3702,12 @@ console.log('HERE name conflicts', name_conflicts, mapping);
         p.lower_bound)) return false;
     if(!this.updateExpressionInput('product-UB', 'upper bound',
         p.upper_bound)) return false;
+    if(p.name.startsWith('$')) {
+      // NOTE: For actor cash flow data products, price and initial
+      // level must remain blank.
+      md.element('P').value = '';
+      md.element('IL').value = '';
+    }
     if(!this.updateExpressionInput('product-IL', 'initial level',
         p.initial_level)) return false;
     if(!this.updateExpressionInput('product-P', 'market price',
@@ -3673,15 +3723,23 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     }
     // At this point, all input has been validated, so entity properties
     // can be modified.
-    p.changeScaleUnit(md.element('unit').value);
-    p.equal_bounds = this.getEqualBounds('product-UB-equal');
-    p.is_source = this.boxChecked('product-source');
-    p.is_sink = this.boxChecked('product-sink');
-    // NOTE: Do not unset is_data if product has ingoing data arrows.
-    p.is_data = p.hasDataInputs || this.boxChecked('product-data');
-    p.is_buffer = this.boxChecked('product-stock');
-    p.integer_level = this.boxChecked('product-integer');
+    if(!p.name.startsWith('$')) {
+      // NOTE: For actor cash flow data products, these properties must
+      // also retain their initial value.
+      p.changeScaleUnit(md.element('unit').value);
+      p.is_source = this.boxChecked('product-source');
+      p.is_sink = this.boxChecked('product-sink');
+      // NOTE: Do not unset `is_data` if product has ingoing data arrows.
+      p.is_data = p.hasDataInputs || this.boxChecked('product-data');
+      p.is_buffer = this.boxChecked('product-stock');
+      // NOTE: Integer constraint will typically not work because cash
+      // flows are scaled when setting up the Simplex tableau, and hence
+      // the values of their decision variable will differ from their
+      // level in the model.
+      p.integer_level = this.boxChecked('product-integer');
+    }
     p.no_slack = this.boxChecked('product-no-slack');
+    p.equal_bounds = this.getEqualBounds('product-UB-equal');
     const pnl = p.no_links;
     p.no_links = this.boxChecked('product-no-links');
     let must_redraw = (pnl !== p.no_links);

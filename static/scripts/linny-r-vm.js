@@ -3351,8 +3351,42 @@ class VirtualMachine {
       k = product_keys[pi];
       if(!MODEL.ignored_entities[k]) {
         p = MODEL.products[k];
+        // NOTE: Actor cash flow data products are a special case.
+        if(p.name.startsWith('$')) {
+          // Get the associated actor entity.
+          const parts = p.name.substring(1).split(' ');
+          parts.shift();
+          const
+              aid = UI.nameToID(parts.join(' ')),
+              a = MODEL.actorByID(aid);
+          if(a) {
+            this.code.push([VMI_clear_coefficients, null]);
+            // Use actor's cash variable indices w/o weight.
+            if(p.name.startsWith('$IN ')) {
+              // Add coefficient +1 for cash IN index.
+              this.code.push([VMI_add_const_to_coefficient,
+                  [a.cash_in_var_index, 1, 0]]);
+            } else if(p.name.startsWith('$OUT ')) {
+              // Add coefficient +1 for cash OUT index.
+              this.code.push([VMI_add_const_to_coefficient,
+                  [a.cash_out_var_index, 1, 0]]);
+            } else if(p.name.startsWith('$FLOW ')) {
+              // Add coefficient +1 for cash IN index.
+              this.code.push([VMI_add_const_to_coefficient,
+                  [a.cash_in_var_index, 1, 0]]);
+              // Add coefficient -1 for cash OUT index.
+              this.code.push([VMI_add_const_to_coefficient,
+                  [a.cash_out_var_index, -1, 0]]);
+            }
+            // Add coefficient -1 for level index variable of `p`.
+            this.code.push([VMI_add_const_to_coefficient,
+                [p.level_var_index, -1, 0]]);
+            this.code.push([VMI_add_constraint, VM.EQ]);
+          } else {
+            console.log('ANOMALY: no actor for cash flow product', p.displayName);
+          }
         // NOTE: constants are not affected by their outgoing data (!) links
-        if(!p.isConstant) {
+        } else if(!p.isConstant) {
   
           // FIRST: add a constraint that "computes" the product stock level
           // set coefficients vector to 0 (NOTE: this also sets RHS to 0)

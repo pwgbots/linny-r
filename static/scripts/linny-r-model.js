@@ -728,17 +728,21 @@ class LinnyRModel {
 
   canLink(from, to) {
     // Return TRUE iff FROM-node can feature a "straight" link (i.e., a
-    // product flow) to TO-node
+    // product flow) to TO-node.
     if(from.type === to.type) {
       // No "straight" link between nodes of same type (see canConstrain
-      // for "curved" links) UNLESS TO-node is a data product
+      // for "curved" links) UNLESS TO-node is a data product.
       if(!to.is_data) return false;
     }
+    // No links to actor cash flow data products.
+    if(to.name.startsWith('$')) return false;
+    // No links from actor cash flow data to processes.
+    if(from.name.startsWith('$') && to instanceof Process) return false;
     // At most ONE link A --> B.
     for(let i = 0; i < from.outputs.length; i++) {
       if(from.outputs[i].to_node === to) return false;
     }
-    // No link A --> B if there already exists a link B --> A
+    // No link A --> B if there already exists a link B --> A.
     for(let i = 0; i < to.outputs.length; i++) {
       if(to.outputs[i].to_node === from) return false;
     }
@@ -1188,6 +1192,7 @@ class LinnyRModel {
     // Product nodes have no actor
     let actor = this.addActor('');
     name = UI.cleanName(name);
+    // Leading dollar sign indicates an actor cash flow data product.
     if(!UI.validName(name)) {
       UI.warningInvalidName(name);
       return null;
@@ -1211,6 +1216,12 @@ class LinnyRModel {
     if(node) p.initFromXML(node);
     p.setCode();
     this.products[p.identifier] = p;
+    // NOTE: Cash flow products must be data, and must have the model's
+    // currency unit as unit.
+    if(p.name.startsWith('$')) {
+      p.is_data = true;
+      p.unit = MODEL.currency_unit;
+    }
     p.resize();
     // New product => prepare for redraw
     p.cluster.clearAllProcesses();
@@ -2051,11 +2062,23 @@ class LinnyRModel {
     // that actually delete model elements append their XML to the XML attribute
     // of this UndoEdit  
     let obj,
-        dc = false,
         fc = this.focal_cluster;
     // Update the documentation manager (GUI only) if selection contains the
     // current entity
     if(DOCUMENTATION_MANAGER) DOCUMENTATION_MANAGER.clearEntity(this.selection);
+    // First delete links and constraints.
+    for(let i = this.selection.length - 1; i >= 0; i--) {
+      if(this.selection[i] instanceof Link ||
+          this.selection[i] instanceof Constraint) {
+        obj = this.selection.splice(i, 1)[0];
+        if(obj instanceof Link) {
+          this.deleteLink(obj);
+        } else {
+          this.deleteConstraint(obj);
+        }
+      }
+    }
+    // Then delete selected nodes.
     for(let i = this.selection.length - 1; i >= 0; i--) {
       obj = this.selection.splice(i, 1)[0];
       // NOTE: when deleting a selection, this selection has been made in the
@@ -2064,13 +2087,8 @@ class LinnyRModel {
         fc.deleteNote(obj);
       } else if(obj instanceof Product) {
         fc.deleteProduct(obj);
-      } else if(obj instanceof Link) {
-        this.deleteLink(obj);
-      } else if(obj instanceof Constraint) {
-        this.deleteConstraint(obj);
       } else if(obj instanceof Cluster) {
         this.deleteCluster(obj);
-        dc = true;
       } else {
         this.deleteNode(obj);
       }
@@ -7695,9 +7713,10 @@ class Product extends Node {
   }
   
   get isConstant() {
-    // Returns TRUE if this product is data, has no links to processes,
-    // and has set LB = UB
-    if(!this.is_data || !this.allOutputsAreData) return false;
+    // Return TRUE if this product is data, has no links to processes,
+    // is not an actor cash flow, and has set LB = UB
+    if(!this.is_data || this.name.startsWith('$') ||
+        !this.allOutputsAreData) return false;
     for(let i = 0; i < this.inputs.length; i++) {
       if(this.inputs[i].from_node instanceof Process) return false;
     }
@@ -9153,15 +9172,31 @@ class ChartVariable {
   }
 
   setLinePath(x0, y0, dx, dy) {
-    // Set SVG path unless already set or line not visible 
+    // Set SVG path unless already set or line not visible.
     if(this.line_path.length === 0 && this.visible) {
+      // Vector may have to be sorted in some way.
+      const vect = this.vector.slice();
+      if(this.sorted === 'asc') {
+        // Sort values in ascending order.
+        vect.sort();
+      } else if(this.sorted === 'desc') {
+        // Sort values in descending order.
+        vect.sort((a, b) => { return b - a; });
+      } else if(this.chart.time_step_numbers) {
+        // Fill vector with its values sorted by time step.
+        const tsn = this.chart.time_step_numbers;
+        for(let i = 0; i < this.vector.length; i++) {
+          vect[i] = this.vector[tsn[i]];
+        }
+      }
+      //
       let y = y0 - this.vector[0] * dy;
       const
           path = ['M', x0, ',', y],
-          l = this.vector.length;
+          l = vect.length;
       // NOTE: Now we can use relative line coordinates
       for(let t = 1; t < l; t++) {
-        const new_y = y0 - this.vector[t] * dy;
+        const new_y = y0 - vect[t] * dy;
         path.push(`v${new_y - y}h${dx}`);
         y = new_y;
       }
@@ -9372,6 +9407,37 @@ class Chart {
     }
   }
   
+  sortLeadTimeVector() {
+    // Set the time vector to NULL if no "lead-sort" varianles are
+    // visible, or to a list of N+1 time steps (with N the run length)
+    // sorted on the values of the lead-sorted variables in their order
+    // of appearance in the chart.
+    this.time_step_numbers = null;
+    const
+        lsv = [],
+        lss = [];
+    for(let i = 0; i < this.variables.length; i++) {
+      const cv = this.variables[i];
+      if(cv.visible && cv.sorted.endsWith('-lead')) {
+        lsv.push(cv.vector);
+        lss.push(cv.sorted.startsWith('asc') ? 1 : -1);
+      }
+    }
+    // If no "lead sort" variables, then no need to set the time steps.
+    if(lsv.length === 0) return;
+    this.time_step_numbers = Array.apply(null,
+        {length: this.total_time_steps + 1}).map(Number.call, Number);
+    this.time_step_numbers.sort((a, b) => {
+        let c = 0;
+        for(let i = 0; c === 0 && i < lsv.length; i++) {
+          // Multiply by `lss` (lead sort sign), which will be + 1 for
+          // ascending order and -1 for descending order.
+          c = (lsv[i][a] - lsv[i][b]) * lss[i];
+        }
+        return c;
+      });
+  }
+  
   resetVectors() {
     // Empties the vector arrays of all variables
     for(let i = 0; i < this.variables.length; i++) {
@@ -9509,14 +9575,15 @@ class Chart {
           }
         }
         if(this.legend_position != 'none') {
-          // Draw the legend items
+          // Draw the legend items.
           let x = leg_left,
-              // NOTE: vertical text align is middle, so add half a font height
+              // Vertical text align is middle, so add half a font height.
               y = leg_top + font_height;
           for(let i = 0; i < this.variables.length; i++) {
             let v = this.variables[i];
             if(v.visible) {
-              const vn = v.displayName;
+              // Add arrow indicating sort direction to name if applicable.
+              const vn = v.displayName + CHART_MANAGER.sort_arrows[v.sorted];
               if(v.stacked || this.histogram) {
                 this.addSVG(['<rect x="', x, '" y="', y - sym_size + 2,
                     '" width="', sym_size, '" height="', sym_size,
@@ -9665,6 +9732,9 @@ class Chart {
       }
     }
 
+    // The time step vector is not used when making a histogram. 
+    if(!this.histogram) this.sortLeadTimeVector();
+
     // Draw the grid rectangle
     this.addSVG(['<rect id="c_h_a_r_t__a_r_e_a__ID*" x="', rl, '" y="', rt,
         '" width="', rw, '" height="', rh,
@@ -9693,9 +9763,9 @@ class Chart {
         this.addText(x + 5, y, VM.sig2Dig(b), 'black', font_height,
             'text-anchor="end"');
       } else {
-        // Draw the time labels along the horizontal axis
+        // Draw the time labels along the horizontal axis.
         // TO DO: convert to time units if modeler checks this additional option
-        // Draw the time step duration in bottom-left corner
+        // Draw the time step duration in bottom-left corner.
         this.addText(1, y, 'dt = ' + this.timeScaleAsString(this.time_scale),
             'black', font_height, 'text-anchor="start"');
         // Calculate width corresponding to one half time step
@@ -9876,14 +9946,28 @@ class Chart {
                   this.run_index = runs[0];
                   v.computeVector();
                 }
+                // Vector may have to be sorted in some way.
+                const vect = v.vector.slice();
+                if(v.sorted === 'asc') {
+                  // Sort values in ascending order.
+                  vect.sort();
+                } else if(v.sorted === 'desc') {
+                  // Sort values in descending order.
+                  vect.sort((a, b) => { return b - a; });
+                } else if(this.time_step_numbers) {
+                  // Fill vector with its values sorted by time step.
+                  for(let i = 0; i < v.vector.length; i++) {
+                    vect[i] = v.vector[this.time_step_numbers[i]];
+                  }
+                }
                 // NOTE: add x-value to x0, but SUBTRACT y-value from y0!
                 x = x0;
-                y = y0 - v.vector[0]*dy - offset[0];
+                y = y0 - vect[0]*dy - offset[0];
                 // Begin with the top contour
                 const path = ['M', x, ',', y];
-                for(let t = 1; t < v.vector.length; t++) {
+                for(let t = 1; t < vect.length; t++) {
                   // First draw line to the Y for time step t
-                  y = y0 - (v.vector[t] + offset[t])*dy;
+                  y = y0 - (vect[t] + offset[t])*dy;
                   path.push(`L${x},${y}`);
                   // Then move right for the duration of time step t
                   x += dx;
@@ -9893,13 +9977,13 @@ class Chart {
                 // chart variable
                 v.line_path = path.join('');
                 // Now add the path for the bottom contour (= offset) ...
-                for(let t = v.vector.length - 1; t > 0; t--) {
+                for(let t = vect.length - 1; t > 0; t--) {
                   y = y0 - offset[t]*dy;
                   path.push(`L${x},${y}`);
                   x -= dx;
                   path.push(`L${x},${y}`);
                   // ... while computing the new offset
-                  offset[t] += v.vector[t];
+                  offset[t] += vect[t];
                 }
                 // Draw the filled area with semi-transparent color
                 this.addSVG(['<path d="', path.join(''),

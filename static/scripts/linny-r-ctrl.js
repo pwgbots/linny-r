@@ -298,6 +298,14 @@ class Controller {
     // NOTE: normalize to also accept letters with accents
     if(name === this.TOP_CLUSTER_NAME) return true;
     name = name.normalize('NFKD').trim();
+    if(name.startsWith('$')) {
+      const
+          parts = name.substring(1).split(' '),
+          flow = parts.shift(),
+          aid = this.nameToID(parts.join(' ')),
+          a = MODEL.actorByID(aid);
+      return a && ['IN', 'OUT', 'FLOW'].indexOf(flow) >= 0;
+    }
     return name && !name.match(/\[\\\|\]/) && !name.endsWith(':') &&
         (name.startsWith(this.BLACK_BOX) || name[0].match(/[\w]/));
   }
@@ -714,34 +722,44 @@ class DatasetManager {
 } // END of class DatasetManager
 
 
-// CLASS ChartManager controls the collection of charts of a model
+// CLASS ChartManager controls the collection of charts of a model.
 class ChartManager {
   constructor() {
     this.new_chart_title = '(new chart)';
-    // NOTE: The SVG height is fixed at 500 units, as this gives good results
-    // for the SVG units for line width = 1; fill patterns definitions are
-    // defined to work for images of this height (see further down)
+    // NOTE: The SVG height is fixed at 500 units, as this gives good
+    // results for the SVG units for line width = 1.
+    // Fill patterns definitions are defined to work for images of this
+    // height (see further down).
     this.svg_height = 500;
     this.container_height = this.svg_height;
-    // Default aspect ratio W:H is 1.75 -- stretch factor will make it more oblong
+    // Default aspect ratio W:H is 1.75. The stretch factor of the chart
+    // manager will make the chart more oblong.
     this.container_width = this.svg_height * 1.75;
     this.legend_options = ['None', 'Top', 'Right', 'Bottom'];
-    // Basic properties -- also needed for console application
+    // Basic properties -- also needed for console application.
     this.visible = false;
     this.chart_index = -1;
     this.variable_index = -1;
     this.stretch_factor = 1;
     this.drawing_graph = false;
     this.runs_chart = false;
-    // Fill styles used to differentiate between experiments in histograms
+    // Arrows indicating sort direction.
+    this.sort_arrows = {
+      'not' : '',
+      'asc': ' \u2B67',
+      'desc': ' \u2B68',
+      'asc-lead': ' \u21D7',
+      'desc-lead': ' \u21D8'
+    };
+    // Fill styles used to differentiate between experiments in histograms.
     this.fill_styles = [
         'diagonal-cross-hatch', 'dots',
         'diagonal-hatch', 'checkers', 'horizontal-hatch',
         'cross-hatch', 'circles', 'vertical-hatch'
       ];
     
-    // SVG for chart fill patterns
-    // NOTE: mask width and height are based on SVG height = 500
+    // SVG for chart fill patterns.
+    // NOTE: Mask width and height are based on SVG height = 500.
     this.fill_patterns = `
 <pattern id="vertical-hatch" width="4" height="4"
   patternUnits="userSpaceOnUse">

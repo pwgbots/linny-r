@@ -780,13 +780,15 @@ function escapedSingleQuotes(s) {
 }
 
 function nameToLines(name, actor_name = '') {
-  // Returns the name of a Linny-R entity as a string-with-line-breaks that
-  // fits nicely in an oblong box. For efficiency reasons, a fixed width/height
-  // ratio is assumed, as this produces quite acceptable results
+  // Return the name of a Linny-R entity as a string-with-line-breaks
+  // that fits nicely in an oblong box. For efficiency reasons, a fixed
+  // width/height ratio is assumed, as this produces quite acceptable
+  // results. Actor names are not split, so their length may stretch
+  // the node box.
   let m = actor_name.length;
   const
       d = Math.floor(Math.sqrt(0.3 * name.length)),
-      // Do not wrap strings shorter than 13 characters (about 50 pixels)
+      // Do not wrap strings shorter than 13 characters (about 50 pixels).
       limit = Math.max(Math.ceil(name.length / d), m, 13),
       a = name.split(' ');
   // Split words at '-' when wider than limit
@@ -810,7 +812,12 @@ function nameToLines(name, actor_name = '') {
   let n = 0,
       l = ww[n],
       space;
-  for(let i = 1; i < a.length; i++) {
+  // Actor cash flow indicators like $FLOW have their own line.
+  if(a[0].startsWith('$')) {
+    n++;
+    lines[n] = a[1];
+  }
+  for(let i = 1 + n; i < a.length; i++) {
     if(l + ww[i] < limit) {
       space = (lines[n].endsWith('-') ? '' : ' ');
       lines[n] += space + a[i];
