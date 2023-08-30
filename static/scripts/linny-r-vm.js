@@ -1960,8 +1960,11 @@ class VirtualMachine {
     // cash flows in the objective function (typically +/- 1)
     this.BASE_PENALTY = 10;
     // Peak variable penalty is added to make solver choose the *smallest*
-    // value that is greater than or equal to X[t] for all t as "peak value"
-    this.PEAK_VAR_PENALTY = 0.01;
+    // value that is greater than or equal to X[t] for all t as "peak value".
+    // NOTE: The penalty is expressed in the currency unit, so it will be
+    // divided by the cash scalar so as not to interfere with the optimal
+    // solution (highest total cash flow).
+    this.PEAK_VAR_PENALTY = 0.1;
   
     // NOTE: the VM uses numbers >> +INF to denote special computation results
     this.EXCEPTION = 1e+36; // to test for any exceptional value
@@ -7445,14 +7448,19 @@ function VMI_set_objective(empty) {
     VM.objective[i] = VM.coefficients[i];
   }
   // NOTE: For peak increase to function properly, the peak variables
-  // must have a small penalty in the objective function
+  // must have a small penalty (about 0.1 currency unit) in the objective
+  // function.
   if(VM.chunk_variables.length > 0) {
     for(let i = 0; i < VM.chunk_variables.length; i++) {
       const vn = VM.chunk_variables[i][0]; 
       if(vn.indexOf('peak') > 0) {
-        // NOTE: chunk offset takes into account that indices are 0-based
-        VM.objective[VM.chunk_offset + i] = -VM.PEAK_VAR_PENALTY;
-        if(vn.startsWith('b')) VM.objective[VM.chunk_offset + i] -= VM.PEAK_VAR_PENALTY;
+        const pvp = VM.PEAK_VAR_PENALTY / VM.cash_scalar;
+        // NOTE: Chunk offset takes into account that indices are 0-based.
+        VM.objective[VM.chunk_offset + i] = -pvp;
+        // Put higher penalty on "block peak" than on "look-ahead peak"
+        // to ensure that block peak will always be the smaller value
+        // of the two peaks.
+        if(vn.startsWith('b')) VM.objective[VM.chunk_offset + i] -= pvp;
       }
     }
   }
