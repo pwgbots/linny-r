@@ -172,16 +172,17 @@ SERVER.on('error', (err) => {
   });
 
 // Start listening at the specified port number.
-console.log('Listening at: http://127.0.0.1:' + SETTINGS.port);
 const options = {
     port: SETTINGS.port,
-    host: 'localhost',
     exclusive: true
   };
 SERVER.listen(options, launchGUI);
 
 
 function launchGUI(err) {
+  if(SERVER.listening) {
+    console.log('Listening at: http://127.0.0.1:' + SETTINGS.port);
+  }
   // Launch the GUI if this command line argument is set.
   if(SETTINGS.launch) {
     console.log('Launching Linny-R in the default browser'); 

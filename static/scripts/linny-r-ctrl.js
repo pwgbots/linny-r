@@ -1155,7 +1155,8 @@ class ExperimentManager {
   selectedRuns(chart) {
     // Return list of run numbers selected in the Experiment Manager.
     const selx = this.selected_experiment;
-    if(CHART_MANAGER.runs_chart && selx && selx.charts.indexOf(chart) >= 0) {
+    if(CHART_MANAGER.runs_chart && selx &&
+       (selx.charts.indexOf(chart) >= 0 || CHART_MANAGER.runs_stat)) {
       return selx.chart_combinations;
     }
     return [];

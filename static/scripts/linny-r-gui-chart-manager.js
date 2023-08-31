@@ -865,7 +865,7 @@ class GUIChartManager extends ChartManager {
   }
 
   drawTable() {
-    // Shows the statistics on the chart variables
+    // Shows the statistics on the chart variables.
     const html = [];
     let vbl = [];
     if(this.chart_index >= 0) vbl = MODEL.charts[this.chart_index].variables;
@@ -1002,8 +1002,8 @@ class GUIChartManager extends ChartManager {
   }
 
   drawChart() {
-    // Displays the selected chart unless an experiment is running, or already
-    // busy with an earlier drawChart call
+    // Displays the selected chart unless an experiment is running, or
+    // already busy with an earlier drawChart call.
     if(MODEL.running_experiment) {
       UI.notify(UI.NOTICE.NO_CHARTS);
     } else if(this.chart_index >= 0 && !this.drawing_chart) {
