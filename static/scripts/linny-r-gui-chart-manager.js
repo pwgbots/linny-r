@@ -54,6 +54,9 @@ class GUIChartManager extends ChartManager {
     this.results_btn = document.getElementById('chart-results-btn');
     this.results_btn.addEventListener(
         'click', () => CHART_MANAGER.toggleRunResults());
+    this.runstat_btn = document.getElementById('chart-runstat-btn');
+    this.runstat_btn.addEventListener(
+        'click', () => CHART_MANAGER.toggleRunStat());
     document.getElementById('chart-delete-btn').addEventListener(
         'click', () => CHART_MANAGER.deleteChart());
     this.control_panel = document.getElementById('chart-control-panel');
@@ -197,12 +200,12 @@ class GUIChartManager extends ChartManager {
     this.variable_index = -1;
     this.stretch_factor = 1;
     this.drawing_graph = false;
-    this.runs_chart = false;
     // Clear the model-related DOM elements
     this.chart_selector.innerHTML = '';
     this.variables_table.innerHTML = '';
     this.options_shown = true;
     this.setRunsChart(false);
+    this.setRunsStat(false);
     this.last_time_selected = 0;
     this.paste_color = '';
     this.hideSortingMenu();
@@ -234,12 +237,26 @@ class GUIChartManager extends ChartManager {
   }
   
   setRunsChart(show) {
-    // Indicates whether the chart manager should display a run result chart
+    // Indicates whether the chart manager should display a run result chart.
     this.runs_chart = show;
     if(show) {
       this.results_btn.classList.add('stay-activ');
+      this.runstat_btn.style.display = 'inline-block';
     } else {
       this.results_btn.classList.remove('stay-activ');
+      this.runstat_btn.style.display = 'none';
+    }
+  }
+
+  setRunsStat(show) {
+    // Indicates whether the chart manager should display run results
+    // as bar chart (for runs and statistic selected in the Experiment
+    // Manager).
+    this.runs_stat = show;
+    if(show) {
+      this.runstat_btn.classList.add('stay-activ');
+    } else {
+      this.runstat_btn.classList.remove('stay-activ');
     }
   }
 
@@ -562,9 +579,18 @@ class GUIChartManager extends ChartManager {
   }
 
   toggleRunResults() {
-    // Toggles the Boolean property that signals charts that they must plot
-    // run results if they are part of the selected experiment chart set
+    // Toggle the Boolean property that signals charts that they must plot
+    // run results if they are part of the selected experiment chart set.
     this.setRunsChart(!this.runs_chart);
+    this.resetChartVectors();
+    this.updateDialog();
+  }
+  
+  toggleRunStat() {
+    // Toggles the Boolean property that signals charts that they must
+    // plot the selected statistic for the selected runs if they are
+    // part of the selected experiment chart set.
+    this.setRunsStat(!this.runs_stat);
     this.resetChartVectors();
     this.updateDialog();
   }

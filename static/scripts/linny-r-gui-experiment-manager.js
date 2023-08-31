@@ -944,11 +944,14 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
   
   setStatistic() {
-    // Update view for selected variable
+    // Update view for selected variable.
     const x = this.selected_experiment;
     if(x) {
       x.selected_statistic = document.getElementById('viewer-statistic').value;
       this.updateData();
+      // NOTE: Update of Chart Manager is needed only when it is showing
+      // run statistics.
+      if(CHART_MANAGER.runs_stat) CHART_MANAGER.updateDialog();
     }
   }
 
@@ -1012,6 +1015,9 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     if(x) {
       x.selected_scale = document.getElementById('viewer-scale').value;
       this.updateData();
+      // NOTE: Update of Chart Manager is needed when it is showing
+      // run statistics because solver times may be plotted.
+      if(CHART_MANAGER.runs_stat) CHART_MANAGER.updateDialog();
     }
   }
   

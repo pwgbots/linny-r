@@ -9614,10 +9614,13 @@ class Chart {
     let runnrs = '';
     const
         selx = EXPERIMENT_MANAGER.selected_experiment,
-        runs = EXPERIMENT_MANAGER.selectedRuns(this);
+        runs = EXPERIMENT_MANAGER.selectedRuns(this),
+        stat_bars = CHART_MANAGER.runs_stat;
     if(runs.length > 0) {
-      runnrs = [' (', selx.title, ': run', (runs.length > 1 ? 's' : ''), ' #',
-          runs.join(', '), ')'].join('');
+      const stat = (stat_bars ?
+          EXPERIMENT_MANAGER.selectedStatisticName + ' for ': ''); 
+      runnrs = [' (', selx.title, ': ', stat, 'run',
+          (runs.length > 1 ? 's' : ''), ' #', runs.join(', '), ')'].join('');
     }
     // Let Chart Manager display experiment title if selected runs are shown
     CHART_MANAGER.updateExperimentInfo();
@@ -9638,17 +9641,53 @@ class Chart {
     // NOTE: let scale start at 0 unless minimum < 0 EXCEPT for a histogram
     let minv = (this.histogram ? VM.PLUS_INFINITY : 0),
         maxv = VM.MINUS_INFINITY;
+    const bar_values = {};
     for(let i = 0; i < this.variables.length; i++) {
       const v = this.variables[i];
       if(v.visible) {
+        bar_values[i] = {};
         if(runs.length > 0) {
           for(let j = 0; j < runs.length; j++) {
             // NOTE: run index >= 0 makes variables use run results vector,
             // scaled to the just established chart time scale
             this.run_index = runs[j];
-            v.computeVector();
-            minv = Math.min(minv, v.lowestValueInVector);
-            maxv = Math.max(maxv, v.highestValueInVector);
+            if(stat_bars) {
+              const rri = selx.resultIndex(v.displayName);
+              let bv;
+              if(rri >= 0) {
+                const
+                    r = selx.runs[this.run_index],
+                    rr = r.results[rri];
+                if(selx.selected_scale === 'sec') {
+                  bv = r.solver_seconds;
+                } else if(selx.selected_statistic === 'N') {
+                  bv = rr.N;
+                } else if(selx.selected_statistic === 'sum') {
+                  bv = rr.sum;
+                } else if(selx.selected_statistic === 'mean') {
+                  bv = rr.mean;
+                } else if(selx.selected_statistic === 'sd') {
+                  bv = Math.sqrt(rr.variance);
+                } else if(selx.selected_statistic === 'min') {
+                  bv = rr.minimum;
+                } else if(selx.selected_statistic === 'max') {
+                  bv = rr.maximum;
+                } else if(selx.selected_statistic === 'nz') {
+                  bv = rr.non_zero_tally;
+                } else if(selx.selected_statistic === 'except') {
+                  bv = rr.exceptions;
+                } else if(selx.selected_statistic === 'last') {
+                  bv = rr.last;
+                }
+                bar_values[i][this.run_index] = bv;
+                minv = Math.min(minv, bv);
+                maxv = Math.max(maxv, bv);
+              }
+            } else {
+              v.computeVector();
+              minv = Math.min(minv, v.lowestValueInVector);
+              maxv = Math.max(maxv, v.highestValueInVector);
+            }
           }
         } else {
           this.run_index = -1;
@@ -9732,8 +9771,9 @@ class Chart {
       }
     }
 
-    // The time step vector is not used when making a histogram. 
-    if(!this.histogram) this.sortLeadTimeVector();
+    // The time step vector is not used when making a histogram or when
+    // plotting run statistics as bar chart. 
+    if(!(this.histogram || stat_bars)) this.sortLeadTimeVector();
 
     // Draw the grid rectangle
     this.addSVG(['<rect id="c_h_a_r_t__a_r_e_a__ID*" x="', rl, '" y="', rt,
@@ -9762,6 +9802,26 @@ class Chart {
         }
         this.addText(x + 5, y, VM.sig2Dig(b), 'black', font_height,
             'text-anchor="end"');
+      } else if(stat_bars && runs.length > 0) {
+        const dx = rw / runs.length;
+        // If multiple bars (`vv` is number of visible variables), draw
+        // ticks to mark horizontal area per run number.
+        if(vv > 1) {
+          this.addSVG(['<line x1="', rl, '" y1="', rt + rh - 3,
+              '" x2="', rl, '" y2="', rt + rh + 3,
+              '" stroke="black" stroke-width="1.5"/>']);
+        }
+        x = rl + dx;
+        for(let i = 0; i < runs.length; i++) {
+          if(vv > 1) {
+            this.addSVG(['<line x1="', x, '" y1="', rt + rh - 3,
+                '" x2="', x, '" y2="', rt + rh + 3,
+                '" stroke="black" stroke-width="1.5"/>']);
+          }
+          // Draw experiment number in middle of its horizontal area.
+          this.addText(x - dx / 2, y, '#' + runs[i]);
+          x += dx;
+        }
       } else {
         // Draw the time labels along the horizontal axis.
         // TO DO: convert to time units if modeler checks this additional option
@@ -9872,6 +9932,7 @@ class Chart {
             '" y2="', y0, '" stroke="black" stroke-width="2"/>']);
         this.addSVG(['<line x1="', x0, '" y1="', rt, '" x2="', x0,
             '" y2="', rt + rh, '" stroke="black" stroke-width="2"/>']);
+
         // Now draw the chart's data elements
         // NOTE: `vv` still is the number of visible chart variables
         if(vv > 0 && this.histogram) {
@@ -9924,6 +9985,32 @@ class Chart {
                     '" fill-opacity="0.4" pointer-events="none" />']);
               }
               vnr++;
+            }
+          }
+        } else if(vv > 0 && stat_bars) {
+          dx = rw / runs.length;
+          const
+              varsp = dx / vv,
+              barw = 0.85 * varsp,
+              barsp = 0.075 * varsp;
+          let vcnt = 0;
+          for(let vi = 0; vi < this.variables.length; vi++) {
+            const v = this.variables[vi];
+            if(v.visible) {
+              for(let ri = 0; ri < runs.length; ri++) {
+                const
+                    rnr = runs[ri],
+                    bv = bar_values[vi][rnr],
+                    bart = rt + (maxy - bv) * dy,
+                    barh = (bv - miny) * dy;
+                x = rl + ri * dx + barsp + vcnt * varsp;
+                this.addSVG(['<rect x="', x, '" y="', bart,
+                    '" width="', barw, '" height="', barh,
+                    '" stroke="', v.color, '" stroke-width="',
+                    v.line_width, '" fill="', v.color,
+                    '" fill-opacity="0.4" pointer-events="none"></rect>']);
+              }
+              vcnt += 1;
             }
           }
         } else if(vv > 0) {

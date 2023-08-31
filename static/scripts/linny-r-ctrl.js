@@ -743,6 +743,7 @@ class ChartManager {
     this.stretch_factor = 1;
     this.drawing_graph = false;
     this.runs_chart = false;
+    this.runs_stat = false;
     // Arrows indicating sort direction.
     this.sort_arrows = {
       'not' : '',
@@ -829,6 +830,7 @@ class ChartManager {
     this.stretch_factor = 1;
     this.drawing_graph = false;
     this.runs_chart = false;
+    this.runs_stat = false;
   }
   
   resetChartVectors() {
@@ -839,8 +841,14 @@ class ChartManager {
   }
 
   setRunsChart(show) {
-    // Indicates whether the chart manager should display a run result chart
+    // Indicate whether the chart manager should display a run result chart.
     this.runs_chart = show;
+  }
+
+  setRunsStat(show) {
+    // Indicate whether the chart manager should display selected statistic
+    // for selected runs as a bar chart.
+    this.runs_stat = show;
   }
 
   // Dummy methods: actions that are meaningful only for the graphical UI
@@ -1145,12 +1153,31 @@ class ExperimentManager {
   }  
   
   selectedRuns(chart) {
-    // Returns list of run numbers selected in the Experiment Manager
+    // Return list of run numbers selected in the Experiment Manager.
     const selx = this.selected_experiment;
     if(CHART_MANAGER.runs_chart && selx && selx.charts.indexOf(chart) >= 0) {
       return selx.chart_combinations;
     }
     return [];
+  }
+  
+  get selectedStatisticName() {
+    // Return full name of selected statistic.
+    const x = this.selected_experiment;
+    if(!x) return '';
+    if(x.selected_scale === 'sec') return 'Solver time';
+    const sn = {
+        'N': 'Count',
+        'mean': 'Mean',
+        'sd': 'Standard deviation',
+        'sum': 'Sum',
+        'min': 'Lowest value',
+        'max': 'Highest value',
+        'nz': 'Non-zero count',
+        'except': 'Exception count',
+        'last': 'Value at final time step'
+      };
+    return sn[x.selected_statistic] || '';
   }
   
   selectExperiment(title) {
