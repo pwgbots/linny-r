@@ -2683,12 +2683,17 @@ td.equation-expression {
   position: absolute;
   top: 1px;
   left: 1px;
+  width: 202px;
 }
 
 #chart-buttons > img.btn,
 #change-equation-btns > img.btn {
   height: 20px;
   width: 20px;
+}
+
+#chart-delete-btn {
+  float: right;
 }
 
 #chart-histogram {
