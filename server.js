@@ -160,24 +160,44 @@ const SERVER = http.createServer((req, res) => {
     }
   });
 
-// Start listening at the specified port number
-console.log('Listening at: http://127.0.0.1:' + SETTINGS.port);
-SERVER.listen(SETTINGS.port);
+// Prepare for error on start-up.
+SERVER.on('error', (err) => {
+    if(err.code === 'EADDRINUSE') {
+      success = false;
+      console.log('ERROR: Port', SETTINGS.port, 'is already in use.');    
+      console.log('Some Linny-R server may be in another CLI box -- Please check.');
+    } else {
+      throw err;
+    }
+  });
 
-// Finally, launch the GUI if this command line argument is set
-if(SETTINGS.launch) {
-  console.log('Launching Linny-R in the default browser'); 
-  const cmd = (PLATFORM.startsWith('win') ? 'start' : 'open');
-  child_process.exec(cmd + ' http://127.0.0.1:' + SETTINGS.port,
-      (error, stdout, stderr) => {
-          if(error) {
-            console.log('NOTICE: Failed to launch GUI in browser');
-            console.log(error);
-            console.log(stdout);
-            console.log(stderr);
-          }
-        });
+// Start listening at the specified port number.
+console.log('Listening at: http://127.0.0.1:' + SETTINGS.port);
+const options = {
+    port: SETTINGS.port,
+    host: 'localhost',
+    exclusive: true
+  };
+SERVER.listen(options, launchGUI);
+
+
+function launchGUI(err) {
+  // Launch the GUI if this command line argument is set.
+  if(SETTINGS.launch) {
+    console.log('Launching Linny-R in the default browser'); 
+    const cmd = (PLATFORM.startsWith('win') ? 'start' : 'open');
+    child_process.exec(cmd + ' http://127.0.0.1:' + SETTINGS.port,
+        (error, stdout, stderr) => {
+            if(error) {
+              console.log('NOTICE: Failed to launch GUI in browser');
+              console.log(error);
+              console.log(stdout);
+              console.log(stderr);
+            }
+          });
+  }
 }
+
 
 // Server action logging functionality
 // ===================================
