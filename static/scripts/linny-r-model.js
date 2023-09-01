@@ -9522,12 +9522,25 @@ class Chart {
         rh = height - rt - margin - font_height,
         // Keep track of the number of visible chart variables
         vv = 0;
-    // Reserve vertical space for title (if shown)
+    // Reserve vertical space for title (if shown).
     if(this.show_title) {
       // NOTE: use title font size 120% of default
       const th = 1.2 * font_height + margin;
       rt += th;
       rh -= th;
+    }
+    // If run result statistics are plotted, reserve vertical space for
+    // bar chart run dimension selectors.
+    const
+        selx = EXPERIMENT_MANAGER.selected_experiment,
+        stat_bars = CHART_MANAGER.runs_stat;
+    if(stat_bars) {
+      if(selx) {
+        // First plot dimension will replace run numbers, so only reserve
+        // space for additional plot dimensions.
+        const dh = 1.2 * font_height * (selx.plot_dimensions.length - 1);
+        if(dh > 0) rh -= dh;
+      }
     }
     if(this.variables.length > 0) {
       // Count visible variables and estimate total width of their names
@@ -9584,7 +9597,7 @@ class Chart {
             if(v.visible) {
               // Add arrow indicating sort direction to name if applicable.
               const vn = v.displayName + CHART_MANAGER.sort_arrows[v.sorted];
-              if(v.stacked || this.histogram) {
+              if(v.stacked || this.histogram || stat_bars) {
                 this.addSVG(['<rect x="', x, '" y="', y - sym_size + 2,
                     '" width="', sym_size, '" height="', sym_size,
                     '" fill="', v.color,'" fill-opacity="0.35" stroke="',
@@ -9612,10 +9625,7 @@ class Chart {
 
     // NOTE: chart may display experiment run results, rather than MODEL results
     let runnrs = '';
-    const
-        selx = EXPERIMENT_MANAGER.selected_experiment,
-        runs = EXPERIMENT_MANAGER.selectedRuns(this),
-        stat_bars = CHART_MANAGER.runs_stat;
+    const runs = EXPERIMENT_MANAGER.selectedRuns(this);
     if(runs.length > 0) {
       const stat = (stat_bars ?
           EXPERIMENT_MANAGER.selectedStatisticName + ' for ': ''); 
@@ -9786,7 +9796,10 @@ class Chart {
     }
     
     if(time_steps > 0) {
-      let dx = 0, dy = 0, x = 0, y = rt + rh + font_height;
+      let dx = 0,
+          dy = 0,
+          x = 0,
+          y = rt + rh + font_height;
       if(this.histogram) {
         // Draw bin boundaries along the horizontal axis
         dx = rw / this.bins;
@@ -9818,8 +9831,18 @@ class Chart {
                 '" x2="', x, '" y2="', rt + rh + 3,
                 '" stroke="black" stroke-width="1.5"/>']);
           }
-          // Draw experiment number in middle of its horizontal area.
-          this.addText(x - dx / 2, y, '#' + runs[i]);
+          if(selx.plot_dimensions.length > 0) {
+            // Draw run selectors for each plot dimension above each other.
+            const ac = selx.combinations[runs[i]];
+            let pdy = y;
+            for(let j = 0; j < selx.plot_dimensions.length; j++) {
+              this.addText(x - dx / 2, pdy, ac[selx.plot_dimensions[j]]);
+              pdy += font_height;
+            }
+          } else {
+            // Draw experiment number in middle of its horizontal area.
+            this.addText(x - dx / 2, y, '#' + runs[i]);
+          }
           x += dx;
         }
       } else {
@@ -10850,6 +10873,7 @@ class Experiment {
     this.dimensions = [];
     this.charts = [];
     this.actual_dimensions = [];
+    this.plot_dimensions = [];
     this.combinations = [];
     this.variables = [];
     this.configuration_dims = 0;
@@ -11058,7 +11082,8 @@ class Experiment {
       '"><title>', xmlEncoded(this.title),
       '</title><notes>', xmlEncoded(this.comments),
       '</notes><dimensions>', d,
-      '</dimensions><chart-titles>', ct,
+      '</dimensions><plot-dimensions>', this.plot_dimensions.join(','),
+      '</plot-dimensions><chart-titles>', ct,
       '</chart-titles><settings-selectors>', ss,
       '</settings-selectors><settings-dimensions>', sd,
       '</settings-dimensions><combination-selectors>', cs,
@@ -11101,6 +11126,13 @@ class Experiment {
         if(c.nodeName === 'dim') {
           this.dimensions.push(xmlDecoded(nodeContent(c)).split(','));
         }
+      }
+    }
+    n = nodeContentByTag(node, 'plot-dimensions');
+    if(n) {
+      this.plot_dimensions = n.split(',');
+      for(let i = 0; i < this.plot_dimensions.length; i++) {
+        this.plot_dimensions[i] = parseInt(this.plot_dimensions[i]);
       }
     }
     n = childNodeByTag(node, 'chart-titles');

@@ -1140,6 +1140,7 @@ class ExperimentManager {
     this.callback = null;
     this.selected_experiment = null;
     this.suitable_charts = [];
+    this.plot_dimensions = [];
   }
   
   updateChartList() {

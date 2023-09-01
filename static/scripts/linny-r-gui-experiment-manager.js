@@ -360,11 +360,15 @@ class GUIExperimentManager extends ExperimentManager {
     this.params_div.style.display = 'block';
     const tr = [];
     for(let i = 0; i < x.dimensions.length; i++) {
+      const pi = 'd' + i;
       tr.push(['<tr class="dataset',
-          (this.selected_parameter == 'd'+i ? ' sel-set' : ''),
-          '" onclick="EXPERIMENT_MANAGER.selectParameter(\'d',
-          i, '\');"><td>',
-          setString(x.dimensions[i]),
+          // Highlight selected dimension with background color.
+          (this.selected_parameter == pi ? ' sel-set' : ''),
+          // Show dimension in bold purple if it is a plot dimension.
+          (x.plot_dimensions.indexOf(i) >= 0 ? ' def-sel' : ''),
+          '" onclick="EXPERIMENT_MANAGER.selectParameter(\'', pi,
+          // Click selects, shift-click will also toggle plot/no plot.
+          '\', event.shiftKey);"><td>', setString(x.dimensions[i]),
           '</td></tr>'].join(''));
     }
     this.dimension_table.innerHTML = tr.join('');
@@ -635,11 +639,13 @@ class GUIExperimentManager extends ExperimentManager {
             } else {
               rsp = '';            
             }
-            // Calculate the dimension selector index
+            // Calculate the dimension selector index.
             const dsi = Math.floor(
                 i / rowsperdim[j]) % this.clean_rows[j].length;
             lth += ['<th', rsp, ' class="scen-hdr" style="background-color: ',
-                'rgba(100, 170, 255, ', 1 - j * bstep, ')">',
+                'rgba(100, 170, 255, ', 1 - j * bstep,
+                ')" onclick="EXPERIMENT_MANAGER.toggleChartRow(', i,
+                ', ', rowsperdim[j], ', event.shiftKey);">',
                 this.clean_rows[j][dsi], '</th>'].join('');
           }
         }
@@ -661,22 +667,29 @@ class GUIExperimentManager extends ExperimentManager {
     }
   }
   
-  toggleChartRow(r, n, shift) {
+  toggleChartRow(r, n=1, shift=false) {
     // Toggle `n` consecutive rows, starting at row `r` (0 = top), to be
-    // (no longer) part of the chart combination set
+    // (no longer) part of the chart combination set.
+    // @@TO DO: shift-key indicates "add row(s) to selection"
     const
         x = this.selected_experiment,
-        // Let `n` be the number of the first run on row `r`
-        nconf = r * this.nr_of_configurations;
-    if(x && r < x.combinations.length / this.nr_of_configurations) {
-      // NOTE: first cell of row determines ADD or REMOVE
-      const add = x.chart_combinations.indexOf(n) < 0;
-      for(let i = 0; i < this.nr_of_configurations; i++) {
-        const ic = x.chart_combinations.indexOf(i);
-        if(add) {
-          if(ic < 0) x.chart_combinations.push(nconf + i);
-        } else {
-          if(!add) x.chart_combinations.splice(nconf + i, 1);        
+        // Let `first` be the number of the first run on row `r`.
+        ncols = this.nr_of_configurations,
+        nrows = x.combinations.length / ncols;
+    if(x && r < nrows) {
+      // NOTE: First cell in rows determines ADD or REMOVE.
+      const add = shift || x.chart_combinations.indexOf(r) < 0;
+      if(!shift) x.chart_combinations.length = 0;
+      for(let i = 0; i < ncols; i++) {
+        for(let j = 0; j < n; j++) {
+          const
+              c = r + j + i * nrows,
+              ic = x.chart_combinations.indexOf(c);
+          if(add) {
+            if(ic < 0) x.chart_combinations.push(c);
+          } else {
+            if(ic >= 0) x.chart_combinations.splice(ic, 1);        
+          }
         }
       }
       this.updateData();
@@ -1048,10 +1061,22 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     }
   }
   
-  selectParameter(p) {
+  selectParameter(p, shift=false) {
+    const dim = p.startsWith('d');
     this.selected_parameter = p;
-    this.focal_table = (p.startsWith('d') ? this.dimension_table :
-        this.chart_table);
+    this.focal_table = (dim ? this.dimension_table : this.chart_table);
+    if(dim && shift) {
+      const
+          x = this.selected_experiment,
+          di = parseInt(p.substring(1)),
+          pi = x.plot_dimensions.indexOf(di);
+      if(pi < 0) {
+        x.plot_dimensions.push(di);
+      } else {
+        x.plot_dimensions.splice(pi, 1);
+      }
+      if(CHART_MANAGER.runs_stat) CHART_MANAGER.updateDialog();
+    }
     this.updateDialog();
   }
   

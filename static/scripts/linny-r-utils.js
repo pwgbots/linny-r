@@ -590,9 +590,64 @@ function mergeDistinct(list, into) {
   }
 }
 
+function iteratorSet(list) {
+  // Returns TRUE iff list is something like ['i=1', 'i=2', 'i=3'].
+  if(list.length === 0) return false;
+  // Analyze the first element: must start with i=, j= or k=.
+  const
+      parts = list[0].split('='),
+      iterator = parts[0];
+  if(parts.length !== 2 || 'ijk'.indexOf(iterator) < 0) return false;
+  // Left-hand part must be an integer number: the first iterator value.
+  const first = parts[1] - 0;
+  if(first != parts[1]) return false;
+  // If OK, generate the list one would expect.
+  const
+      series = [],
+      last = first + list.length - 1;
+  for(let i = first; i <= last; i++) {
+    series.push(iterator + '=' + i);
+  }
+  // Then compare with the list to be tested.
+  if(list.join(',') === series.join(',')) {
+    // If match, return a shorthand string like 'i=1, ..., i=5'.
+    // NOTE: No ellipsis if fewer than 4 steps.
+    if(list.length < 4) return `{${list.join(', ')}}`;
+    return `{${list[0]}, ..., ${list[list.length - 1]}}`;
+  }
+  return false;
+}
+
+function integerSet(list) {
+  // Returns TRUE iff all elements in list evaluate as integer numbers.
+  if(list.length === 0) return false;
+  for(let i = 0; i < list.length; i++) {
+    if(list[i] - 0 != list[i]) return false;
+  }
+  return true;
+}
+
 function setString(sl) {
   // Returns elements of stringlist `sl` in set notation
-  return '{' + sl.join(', ') + '}';
+  if(integerSet(sl)) {
+    // If all set elements are integers, return a range shorthand.
+    const sorted = sl.slice().sort();
+    let i = 0,
+        j = 1;
+    while(i < sorted.length) {
+      while(j < sorted.length && sorted[j] - sorted[j - 1] === 1) j++;
+      if(j - i > 2) {
+        sorted[i] += ', ... , ' + sorted[j - 1];
+        sorted.splice(i + 1, j - i - 1);
+        j = i + 1;
+      }
+      i = j;
+      j++;
+    }
+    return '{' + sorted.join(', ') + '}';
+  }
+  // Otherwise, return an iterator set shorthand, or the complete set.
+  return iteratorSet(sl) || '{' + sl.join(', ') + '}';
 }
 
 function tupelString(sl) {
