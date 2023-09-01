@@ -9820,15 +9820,15 @@ class Chart {
         // If multiple bars (`vv` is number of visible variables), draw
         // ticks to mark horizontal area per run number.
         if(vv > 1) {
-          this.addSVG(['<line x1="', rl, '" y1="', rt + rh - 3,
-              '" x2="', rl, '" y2="', rt + rh + 3,
+          this.addSVG(['<line x1="', rl, '" y1="', rt + rh,
+              '" x2="', rl, '" y2="', rt + rh + 6,
               '" stroke="black" stroke-width="1.5"/>']);
         }
         x = rl + dx;
         for(let i = 0; i < runs.length; i++) {
           if(vv > 1) {
-            this.addSVG(['<line x1="', x, '" y1="', rt + rh - 3,
-                '" x2="', x, '" y2="', rt + rh + 3,
+            this.addSVG(['<line x1="', x, '" y1="', rt + rh,
+                '" x2="', x, '" y2="', rt + rh + 6,
                 '" stroke="black" stroke-width="1.5"/>']);
           }
           if(selx.plot_dimensions.length > 0) {

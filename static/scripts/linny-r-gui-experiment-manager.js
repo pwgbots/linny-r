@@ -693,6 +693,7 @@ class GUIExperimentManager extends ExperimentManager {
         }
       }
       this.updateData();
+      CHART_MANAGER.updateDialog();
     }
   }
 
@@ -1771,7 +1772,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
         x.inferAvailableDimensions();
         for(let i = 0; i < x.available_dimensions.length; i++) {
           const ds = setString(x.available_dimensions[i]);
-          ol.push(`<option value="${ds}">${ds}</option>`);
+          ol.push(`<option value="${i}">${ds}</option>`);
         }
       } else { 
         for(let i = 0; i < this.suitable_charts.length; i++) {
@@ -1799,10 +1800,10 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
           x.charts.push(MODEL.charts[ci]);
         }
       } else {
-        // Convert set notation to selector list
-        const d = name.replace(/[\{\}]/g, '').split(', ');
-        // Append it to the list
-        x.dimensions.push(d);
+        // List of available dimensions should still be unchanged,
+        // so look up the dimension by the indexed passed as `name`.
+        let d = x.available_dimensions[parseInt(name)];
+        if(d) x.dimensions.push(d.slice());
       }
       this.updateParameters();
       this.parameter_modal.hide();
