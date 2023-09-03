@@ -2460,7 +2460,7 @@ class GUIController extends Controller {
     }
     x.update(xp);
     // NOTE: overrule `is_static` to make that IL is always evaluated for t=1
-    if(name === 'initial level') x.is_static = true; 
+    if(name === 'initial level') x.is_static = true;
     return true;
   }
   
@@ -3927,6 +3927,8 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     if(!this.updateExpressionInput('link-D', 'delay', l.flow_delay)) {
       return false;
     }
+    // Explicitly set delay to 0 if input is empty string.
+    if(!l.flow_delay.text.trim()) l.flow_delay.text = '0';
     const
         m = parseInt(md.element('multiplier').value),
         redraw = m !== l.multiplier &&

@@ -2108,91 +2108,99 @@ class VirtualMachine {
     }
 
   reset() {
-    // Resets the virtual machine so that it can execute the model again
-    // First: reset the expression attributes of all model entities
+    // Reset the virtual machine so that it can execute the model again.
+    // First reset the expression attributes of all model entities.
     MODEL.resetExpressions();
-    // Clear slack use information for all constraints
+    // Clear slack use information for all constraints.
     for(let k in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(k)) {
       MODEL.constraints[k].slack_info = {};
     }
-    // Likewise, clear slack use information for all clusters
+    // Likewise, clear slack use information for all clusters.
     for(let k in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(k)) {
       MODEL.clusters[k].slack_info = {};
     }
-    // Clear the expression call stack -- used only for diagnostics
+    // Clear the expression call stack -- used only for diagnostics.
     this.call_stack.length = 0;
-    // The out-of-bounds properties are set when the ARRAY_INDEX error occurs
+    // The out-of-bounds properties are set when the ARRAY_INDEX error
+    // occurs to better inform the modeler.
     this.out_of_bounds_array = '';
     this.out_of_bounds_msg = '';
     MODEL.set_up = false;
-    // Let the model know that it should no longer display results in the graph 
+    // Let the model know that it should no longer display results in
+    // the model diagram. 
     MODEL.solved = false;
     // "block start" is the first time step (relative to start) of the
-    // optimization block 
+    // optimization block. 
     this.block_start = 0; 
     // "chunk length" is the number of time steps to solve
-    // (block length + look-ahead)
+    // (block length + look-ahead).
     this.chunk_length = MODEL.block_length + MODEL.look_ahead;
-    // Number of blocks is at least 1, and is based on the simulation period
-    // (not MODEL.runLength!) divided by the block length (without look-ahead)
+    // Number of blocks is at least 1, and is based on the simulation
+    // period  divided by the block length (without look-ahead).
+    // NOTES:
+    // (1) MODEL.runLength = simulation period + look-ahead, so that
+    //     should not be used to compute the number of blocks.
+    // (2) For each block, a chunk (block + lookahead) is optimized.
     this.nr_of_blocks = Math.ceil(
         (MODEL.end_period - MODEL.start_period + 1) / MODEL.block_length);
 
-    // EXAMPLE: simulation period of 55 time steps, and optimization period of
-    // 10 time steps => 6 blocks of 10, and chunk length = block length = 10
-    // if no look-ahead.
-    // But if look-ahead = 8, then STILL 6 blocks, but now the *chunks* have
-    // 18 time steps, with the 5th *chunk* covering t=41 - t=58. This is already
-    // beyond the end of the simulation period (t=55), but with insufficient
-    // look-ahead (3), hence the 6th block covering t=51 - t=68, of which only
-    // the first five time step results will be used.
+    // EXAMPLE: Simulation period of 55 time steps, block length of 10
+    // time steps and no look-ahead => 6 chunks, and chunk length = block
+    // length = 10. If look-ahead = 8, then STILL 6 blocks, but now the
+    // *chunks* have 18 time steps, with the 5th *chunk* covering
+    // t=41 - t=58. This is already beyond the end of the simulation period
+    // (t=55), but with insufficient look-ahead (3), hence the 6th block
+    // covering t=51 through t=68, of which only the first five time step
+    // results will be used.
 
-    // Initialize error counters (error count will be reset to 0 for each block)
+    // Initialize error counters (error count will be reset to 0 for each
+    // block).
     this.error_count = 0;
     this.block_issues = 0;
-    // Clear issue list with warnings and hide issue panel
+    // Clear issue list with warnings and hide issue panel.
     this.issue_list.length = 0;
     this.issue_index = -1;
     UI.updateIssuePanel();
-    // NOTE: special tracking of potential solver license errors
+    // NOTE: Special tracking of potential solver license errors.
     this.license_expired = 0;
-    // Reset solver result arrays
+    // Reset solver result arrays.
     this.round_times.length = 0;
     this.solver_times.length = 0;
     this.round_secs.length = 0;
     this.solver_secs.length = 0;
     this.messages.length = 0;
     this.equations.length = 0;
-    // Initialize arrays to the expected number of blocks so that values can
-    // be stored asynchronously
+    // Initialize arrays to the expected number of blocks so that values
+    // can be stored asynchronously.
     for(let i = 0; i < this.nr_of_blocks; i++) {
       this.solver_times.push(0);
       this.messages.push(this.no_messages);
       this.equations.push(this.no_equations);
     }
-    // Reset the (graphical) controller
+    // Reset the (graphical) controller.
     MONITOR.reset();
-    // Solver license expiry date will be set to ['YYYYMMDD'], or [] if none
+    // Solver license expiry date will be set to ['YYYYMMDD'], or to []
+    // if none.
     this.license_expires = [];
     this.block_count = 1;
-    // Use default block sequence unless it has been set
+    // Use default round sequence unless it has been set.
     if(MODEL.round_sequence === '') {
       this.round_sequence = this.round_letters.slice(1, MODEL.rounds + 1); 
     } else {
       this.round_sequence = MODEL.round_sequence;
     }
     this.current_round = 0;
-    // Set the current time step, relative to start
-    // (i.e., t = 0 corresponds with start)
+    // Set the current time step, *relative* to the start of the simulation
+    // period (i.e., t = 0 corresponds with the "from" time step t_0).
     this.t = 0;
-    // Prepare for halt
+    // Prepare for halt.
     this.halted = false;
     UI.readyToSolve();
   }
 
   errorMessage(n) {
     // VM errors are very big NEGATIVE numbers, so start comparing `n`
-    // with the most negative one to return the correct message
+    // with the most negative one to return the correct message.
     if(n <= this.UNKNOWN_ERROR) return 'Unknown error';
     if(n <= this.PARAMS) return 'Invalid (number of) parameters';
     if(n <= this.INVALID) return 'Invalid expression';
@@ -2204,19 +2212,20 @@ class VirtualMachine {
     if(n <= this.DIV_ZERO) return 'Division by zero';
     if(n <= this.CYCLIC) return 'Cyclic reference';
     if(n <= this.ERROR) return 'Unspecified error';
-    // Large positive values denote exceptions
+    // Large positive values denote exceptions.
     if(n >= this.COMPUTING) return 'Cyclic reference while computing';
     if(n >= this.NOT_COMPUTED) return 'Variable or expression not computed';
     if(n >= this.UNDEFINED) return 'Undefined variable or expression';
+    if(n === undefined) return 'Undefined Javascript value';
     return n;
   }
   
   specialValue(n) {
-    // Returns [FALSE, n] if number n is a NOT a special value,
+    // Return [FALSE, n] if number n is a NOT a special value,
     // otherwise [TRUE, string] with string a readable representation
-    // of Virtual Machine error values and other special values
+    // of Virtual Machine error values and other special values.
     // VM errors are very big NEGATIVE numbers, so start comparing `n`
-    // with the most negative error code
+    // with the most negative error code.
     if(n <= this.UNKNOWN_ERROR) return [true, '#ERROR?'];
     if(n <= this.PARAMS) return [true, '#PARAMS'];
     if(n <= this.INVALID) return [true, '#INVALID'];
@@ -2228,12 +2237,12 @@ class VirtualMachine {
     if(n <= this.DIV_ZERO) return [true, '#DIV0!'];
     if(n <= this.CYCLIC) return [true, '#CYCLE!'];
     // Any other number less than or equal to 10^30 is considered as
-    // minus infinity
+    // minus infinity.
     if(n <= this.MINUS_INFINITY) return [true, '-\u221E'];
     // Other special values are very big POSITIVE numbers, so start
-    // comparing `n` with the highest value
+    // comparing `n` with the highest value.
     if(n >= this.COMPUTING) return [true, '\u25A6']; // Checkered square
-    // NOTE: prettier circled bold X 2BBF does not display on macOS !!
+    // NOTE: The prettier circled bold X 2BBF does not display on macOS !!
     if(n >= this.NOT_COMPUTED) return [true, '\u2297']; // Circled X
     if(n >= this.UNDEFINED) return [true, '\u2047']; // Double question mark ??
     if(n >= this.PLUS_INFINITY) return [true, '\u221E'];
@@ -2242,15 +2251,15 @@ class VirtualMachine {
   }
   
   sig2Dig(n) {
-    // Returns number `n` formatted so as to show 2-3 significant digits
+    // Return number `n` formatted so as to show 2-3 significant digits
     // NOTE: as `n` should be a number, a warning sign will typically
-    // indicate a bug in the software
+    // indicate a bug in the software.
     if(n === undefined) return '\u26A0'; // Warning sign
     const sv = this.specialValue(n);
-    // If `n` has a special value, return its representation
+    // If `n` has a special value, return its representation.
     if(sv[0]) return sv[1];
     const a = Math.abs(n);
-    // Signal small differences from true 0
+    // Signal small differences from true 0 by leading + or - sign.
     if(n !== 0 && a < 0.0005) return n > 0 ? '+0' : '-0';
     if(a >= 999999.5) return n.toPrecision(2);
     if(Math.abs(a-Math.round(a)) < 0.05) return Math.round(n);
@@ -2261,15 +2270,15 @@ class VirtualMachine {
   }
   
   sig4Dig(n) {
-    // Returns number `n` formatted so as to show 4-5 significant digits
-    // NOTE: as `n` should be a number, a warning sign will typically
-    // indicate a bug in the software
+    // Return number `n` formatted so as to show 4-5 significant digits.
+    // NOTE: As `n` should be a number, a warning sign will typically
+    // indicate a bug in the software.
     if(n === undefined || isNaN(n)) return '\u26A0';
     const sv = this.specialValue(n); 
-    // If `n` has a special value, return its representation
+    // If `n` has a special value, return its representation.
     if(sv[0]) return sv[1];
     const a = Math.abs(n);
-    // Signal small differences from true 0
+    // Signal small differences from true 0 by a leading + or - sign.
     if(n !== 0 && a < 0.0005) return n > 0 ? '+0' : '-0';
     if(a >= 9999995) return n.toPrecision(4);
     if(Math.abs(a-Math.round(a)) < 0.0005) return Math.round(n);
@@ -2281,65 +2290,66 @@ class VirtualMachine {
   }
   
   //
-  // Vector scaling methods for datasets and experiment run results
+  // Vector scaling methods for datasets and experiment run results.
   //
   
   keepException(test, result) {
-    // Returns result only when test is *not* an exceptional value
+    // Return result only when test is *not* an exceptional value.
     if(test >= VM.MINUS_INFINITY && test <= VM.PLUS_INFINITY) return result;
-    // Otherwise, return the exceptional value
+    // Otherwise, return the exceptional value.
     return test;
   }
   
   scaleDataToVector(data, vector, ddt, vdt, vl=0, start=1, fill=VM.UNDEFINED,
       periodic=false, method='nearest') {
-    // Converts array `data` with time step duration `ddt` to a vector with
+    // Convert array `data` with time step duration `ddt` to a vector with
     // time step duration `vdt` with length `vl`, assuming that data[0]
     // corresponds to vector[start] using the specified method, and filling out
-    // with `fill` unless `periodic` is TRUE
-    // Initialize the vector
-    // NOTE: do nothing if vector or data are not arrays 
+    // with `fill` unless `periodic` is TRUE.
+    // NOTE: do nothing if vector or data are not arrays.
     if(!(Array.isArray(vector) && Array.isArray(data))) return;
+    // Initialize the vector.
     vector.length = vl + 1;
     vector.fill(fill);
     const dl = data.length;
-    // No data? then return the vector with its `fill` values
+    // No data? Then return the vector with its `fill` values.
     if(!dl) return;
-    // Also compute the array lengths for data and model
-    // NOTE: times are on "real" time scale, counting from t=1 onwards
+    // Also compute the array lengths for data and model.
+    // NOTE: Times are on "real" time scale, counting from t=1 onwards.
     let period_length = dl * ddt, // no data beyond this time unless periodic
         t_end = (start + vl) * vdt, // last time needing data for simulation
         n = vl; // number of elements to calculate (by default: vector length)
     if(!periodic) {
       // If dataset is not periodic and ends before the vector's end time,
-      // compute the vector only to the dataset end time
+      // compute the vector only to the dataset end time.
       if(t_end > period_length) {
         t_end = period_length;
-        // This then means fewer vector time steps to compute the vector for
+        // This then means fewer vector time steps to compute the vector for.
         n = Math.floor((t_end - start) / vdt) + 1;
       }
     }
-    // NOTE: `vts` (vector time step), and `dts` (data time step) are indices
-    // in the respective arrays
+    // NOTE: `vts` (vector time step), and `dts` (data time step) are
+    // indices in the respective arrays.
     let dts = 1,
         vts = 1;
-    // The "use nearest corresponding data point" does not aggregate
+    // The "use nearest corresponding data point" does not aggregate.
     if(method === 'nearest') {
-      // NOTE: data[0] by definition corresponds to vector time t=1, whereas
-      // vector[0] must contain the initial value (start - 1)
-      // NOTE: t is time (*unrounded* step) at VECTOR time scale
-      // For "nearest", start with data that corresponds to just below half a
-      // vector time step before the first time step on the VECTOR time scale
+      // NOTE: data[0] by definition corresponds to vector time t=1,
+      // whereas vector[0] must contain the initial value (start - 1).
+      // NOTE: t is time (*unrounded* step) at VECTOR time scale.
+      // For "nearest", start with data that corresponds to just below
+      // half a vector time step before the first time step on the VECTOR
+      // time scale.
       let t = (start - 0.501) * vdt;
       // t_end += 0.499 * vdt;
-      // NOTE: always modulo data length to anticipate periodic; for the
-      // algorithm used for NEAREST, this works also if *not* periodic
+      // NOTE: Always modulo data length to anticipate periodic. For the
+      // algorithm used for NEAREST, this works also if *not* periodic.
       dts = (Math.floor(t / ddt)) % dl;  
   /*
   console.log(method, start, t, t_end, 'ddt vdt', ddt, vdt, 'dts vts vl',
               dts, vts, vl, 'DATA', data.toString(), 'V', vector.toString());
   */
-      // NOTE: for vector[0], use one data time step earlier
+      // NOTE: For vector[0], use one data time step earlier.
       if(dts > 0) {
         vector[0] = data[dts - 1];
       } else if(periodic) {
@@ -2476,15 +2486,16 @@ class VirtualMachine {
   }
   
   get lastRound() {
-    // Returns the last round number in the round sequence
+    // Return the last round number in the round sequence.
     const index = this.round_sequence.length - 1;
     if(index < 0) return '';
     return this.round_sequence[index];
   }
   
   get supRound() {
-    // NOTE: do not show round number as superscript of the step number if the
-    // only round in the sequence is round a
+    // Return HTML for the current round letter as a superscript.
+    // NOTE: Do not show round number as superscript of the step number
+    // if the only round in the sequence is round a.
     if(MODEL.rounds < 1 || this.round_sequence === 'a') {
       return '';
     } else {
@@ -2494,6 +2505,8 @@ class VirtualMachine {
   }
   
   get blockWithRound() {
+    // Return block number plus round letter as plain text string.
+    // NOTE: No round letter if no rounds, or only one round a.
     if(MODEL.rounds < 1 || this.round_sequence === 'a') {
       return this.block_count;
     } else {
@@ -2502,44 +2515,45 @@ class VirtualMachine {
   }
   
   logCallStack(t) {
-    // Similar to showCallStack, but simpler, and output only to console
+    // Similar to showCallStack, but simpler, and output only to console.
     console.log('Call stack:', this.call_stack.slice());
     const csl = this.call_stack.length;
     console.log(`ERROR at t=${t}: ` +
         this.errorMessage(this.call_stack[csl - 1].vector[t]));
-    // Make separate lists of variable names and their expressions
+    // Make separate lists of variable names and their expressions.
     const
         vlist = [],
         xlist = [];
     for(let i = 0; i < csl; i++) {
       const x = this.call_stack[i];
       vlist.push(x.object.displayName + '|' + x.attribute);
-      // Trim spaces around all object-attribute separators in the expression
+      // Trim spaces around all object-attribute separators in the
+      // expression as entered by the modeler.
       xlist.push(x.text.replace(/\s*\|\s*/g, '|'));
     }
-    // Start without indentation
+    // Start without indentation.
     let pad = '';
-    // First log the variable being computed
+    // First log the variable being computed.
     console.log('Computing:', vlist[0]);
-    // Then iterate upwards over the call stack
+    // Then iterate upwards over the call stack.
     for(let i = 0; i < vlist.length - 1; i++) {
-      // Log the expression, followed by the next computed variable
+      // Log the expression, followed by the next computed variable.
       console.log(pad + xlist[i] + '\u279C' + vlist[i+1]);
       // Increase indentation
       pad += '   ';
     }
-    // Log the last expression
+    // Log the last expression.
     console.log(pad + xlist[xlist.length - 1]);
   }
 
   logTrace(trc) {
-    // Logs the trace string to the browser console
+    // Log the trace string to the browser console when debugging.
     if(DEBUGGING) console.log(trc);
   }
 
   logMessage(block, msg) {
-    // Adds a solver message to the list
-    // NOTE: block number minus 1, as array is zero-based
+    // Add a solver message to the list.
+    // NOTE: block number minus 1, as array is zero-based.
     if(this.messages[block - 1] === this.no_messages) {
       this.messages[block - 1] = '';
     }
@@ -2548,12 +2562,12 @@ class VirtualMachine {
       this.error_count++;
       this.issue_list.push(msg);
     }
-    // Show message on console or in Monitor dialog
+    // Show message on console or in Monitor dialog.
     MONITOR.logMessage(block, msg);
   }
   
   setRunMessages(n) {
-    // Sets the messages and solver times for experiment or SA run `n`
+    // Set the messages and solver times for experiment or SA run `n`.
     let r = null;
     if(EXPERIMENT_MANAGER.selected_experiment) {
       if(n < EXPERIMENT_MANAGER.selected_experiment.runs.length) {
@@ -2590,27 +2604,27 @@ class VirtualMachine {
   }
   
   startTimer() {
-    // Record time of this reset
+    // Record time of this timer reset.
     this.reset_time = new Date().getTime();
     this.time_stamp = this.reset_time;
-    // Activate the timer
+    // Activate the timer.
     this.timer_id = setInterval(() => MONITOR.updateMonitorTime(), 1000);
   }
 
   stopTimer() {
-    // Deactivate the timer
+    // Deactivate the timer.
     clearInterval(this.timer_id);
   }
 
   get elapsedTime() {
-    // Returns seconds since previous "elapsed time" check 
+    // Return seconds since previous "elapsed time" check.
     const ts = this.time_stamp;
     this.time_stamp = new Date().getTime();
     return (this.time_stamp - ts) / 1000;
   }
   
   addVariable(type, obj) {
-    // Adds a variable that will need a column in the Simplex tableau
+    // Add a variable that will need a column in the Simplex tableau.
     const index = this.variables.push([type, obj]);
     if((type === 'PL' || type === 'PiL') && obj.level_to_zero) {
       this.sec_var_indices[index] = true;
@@ -2621,11 +2635,11 @@ class VirtualMachine {
       this.bin_var_indices[index] = true;
     }
     if(obj instanceof Process && obj.pace > 1) {
-      // NOTE: binary variables can be "paced" just like level variables
+      // NOTE: Binary variables can be "paced" just like level variables.
       this.paced_var_indices[index] = obj.pace;
     }
-    // For constraint bound lines, add as many SOS variables as there are
-    // points on the bound line
+    // For constraint bound lines, add as many SOS variables as there
+    // are points on the bound line.
     if(type === 'W1' && obj instanceof BoundLine) {
       const n = obj.points.length;
       for(let i = 2; i <= n; i++) {
@@ -2637,7 +2651,7 @@ class VirtualMachine {
   }
   
   resetVariableIndices(p) {
-    // Set all variable indices to -1 ("no such variable") for node `p`
+    // Set all variable indices to -1 ("no such variable") for node `p`.
     p.level_var_index = -1;
     p.on_off_var_index = -1;
     p.is_zero_var_index = -1;
@@ -2654,12 +2668,13 @@ class VirtualMachine {
   }
   
   addNodeVariables(p) {
-    // Add tableau variables for process or product `p`
-    // NOTE: every node is represented by at least one variable: its "level"
-    // This is done even if a product has no storage capacity, because it
-    // simplifies the formulation of product-related (data) constraints
+    // Add tableau variables for process or product `p`.
+    // NOTE: Every node (process or product) is represented by at least
+    // one variable: its "level". This is done even if a product has no
+    // storage capacity, because it simplifies the formulation of
+    // product-related (data) constraints.
     p.level_var_index = this.addVariable(p.integer_level ? 'PiL': 'PL', p);
-    // Some "data-only" link multipliers require additional variables
+    // Some "data-only" link multipliers require additional variables.
     if(p.needsOnOffData) {
       p.on_off_var_index = this.addVariable('OO', p);
       p.is_zero_var_index = this.addVariable('IZ', p);
@@ -2682,11 +2697,12 @@ class VirtualMachine {
     // (1) Processes have NO slack variables, because sufficient slack is
     //     provided by adding slack variables to products; these slack
     //     variables will have high cost penalty values in the objective
-    //     function, to serve as "last resort" to still obtain a solution when
-    //     the "real" product levels are overconstrained
-    // (2) The modeler may selectively disable slack to force the solver to
-    //     respect certain constraints; this may result in infeasible MILP
-    //     problems; the solver will report this
+    //     function, to serve as "last resort" to still obtain a solution
+    //     when the "real" product levels are overconstrained
+    // (2) The modeler may selectively disable slack to force the solver
+    //     to respect certain constraints. This may result in infeasible
+    //     MILP problems. The solver will report this, but provide no
+    //     clue as to which constraints may be critical.
     if(p instanceof Product && !p.no_slack) {
       p.stock_LE_slack_var_index = this.addVariable('LE', p);
       p.stock_GE_slack_var_index = this.addVariable('GE', p);
@@ -2694,13 +2710,13 @@ class VirtualMachine {
   }
 
   priorValue(tuple, t) {
-    // Returns value of a tableau variable calculated for a prior block
-    // NOTE: tuple is a [type, object] VM variable specification 
+    // Return the value of a tableau variable calculated for a prior block.
+    // NOTE: `tuple` is a [type, object] VM variable specification. 
     const
         type = tuple[0],
         obj = tuple[1];
     if(type.indexOf('-peak') > 0) {
-      // Peak level variables have an array as node property
+      // Peak level variables have an array as node property.
       const c = Math.trunc(t / this.block_length);
       if(type.startsWith('b')) return obj.b_peak_inc[c];
       return obj.la_peak_inc[c];
@@ -2708,9 +2724,11 @@ class VirtualMachine {
     const prior_level = obj.actualLevel(t);
     if(type === 'OO') return prior_level > 0 ? 1 : 0;
     if(type === 'IZ') return prior_level === 0 ? 1 : 0;
-    // Start-up at time t entails that t is in the list of start-up time steps
+    // Start-up at time t entails that t is in the list of start-up
+    // time steps.
     if(type === 'SU') return obj.start_ups.indexOf(t) < 0 ? 0 : 1;
-    // Shut-down at time t entails that t is in the list of shut-down time steps
+    // Shut-down at time t entails that t is in the list of shut-down
+    // time steps.
     if(type === 'SD') return obj.shut_downs.indexOf(t) < 0 ? 0 : 1;
     if(['SO', 'SC', 'FC'].indexOf(type) >= 0) {
       let l = obj.start_ups.length;
@@ -2724,7 +2742,8 @@ class VirtualMachine {
   }
 
   variablesLegend(block) {
-    // Returns a string with each variable code and full name on a separate line
+    // Return a string with each variable code and full name on a
+    // separate line.
     const
         vcnt = this.variables.length,
         z = vcnt.toString().length;
@@ -2738,13 +2757,12 @@ class VirtualMachine {
       l += v + ' [' + this.variables[i][0] + p + ']\n';
     }
     if(this.chunk_variables.length > 0) {
-      // NOTE: chunk offset for last block may be lower than standard
-      const chof = (block >= this.nr_of_blocks ? this.chunk_offset :
-          this.cols * this.chunk_length + 1);
+      const chof = this.cols * this.chunk_length + 1;
       for(let i = 0; i < this.chunk_variables.length; i++) {
         const
             obj = this.chunk_variables[i][1],
-            // NOTE: chunk offset takes into account that indices are 0-based
+            // NOTE: chunk offset takes into account that variable
+            // indices are 0-based.
             cvi = chof + i;
         let v = 'X' + cvi.toString().padStart(z, '0');
         v += '     '.slice(v.length) + obj.displayName;
@@ -2755,8 +2773,9 @@ class VirtualMachine {
   }
   
   setBoundConstraints(p) {
-    // Sets LB and UB constraints for product `p`
-    // NOTE: this method affects the VM coefficient vector, so save it if needed!
+    // Set LB and UB constraints for product `p`.
+    // NOTE: This method affects the VM coefficient vector, so save it
+    // (if needed) before calling this method.
     const
         vi = p.level_var_index,
         lesvi = p.stock_LE_slack_var_index,
@@ -2764,13 +2783,13 @@ class VirtualMachine {
         notsrc = !p.isSourceNode,
         notsnk = !p.isSinkNode;
     this.code.push(
-      // Set coefficients vector to 0
+      // Set coefficients vector to 0.
       [VMI_clear_coefficients, null],
-      // Always add the index of the variable-to-be-constrained
+      // Always add the index of the variable-to-be-constrained.
       [VMI_add_const_to_coefficient, [vi, 1]]
     );
-    // Get the lower bound as number (static LB) or expression (dynamic LB)
-    // NOTE: by default, LB = 0 and UB = +INF
+    // Get the lower bound as number (static LB) or expression (dynamic LB).
+    // NOTE: By default, LB = 0 and UB = +INF.
     let l = 0,
         u = VM.PLUS_INFINITY;
     if(p.hasBounds) {
@@ -4031,37 +4050,37 @@ class VirtualMachine {
   }
 
   scaleCashFlowConstraints() {
-    // Scale cash flow coefficients per actor by dividing them by the largest
-    // cash flow coefficient (in absolute value) within the current block
-    // so that cash flows cannot easily "overrule" the slack penalties in the
-    // objective function
-    // NOTE: no scaling needed if model features no cash flows
+    // Scale cash flow coefficients per actor by dividing them by the
+    // largest cash flow coefficient (in absolute value) within the
+    // current block so that cash flows cannot easily "overrule" the
+    // slack penalties in the objective function.
+    // NOTE: No scaling needed if model features no cash flows.
     if(this.no_cash_flows) return;
     this.logMessage(this.block_count,
         'Cash flows scaled by 1/' + this.cash_scalar);
-    // Use reciprocal as multiplier to scale the constraint coefficients
+    // Use reciprocal as multiplier to scale the constraint coefficients.
     const m = 1 / this.cash_scalar;
     let cv;
     for(let i = 0; i < this.cash_constraints.length; i++) {
       const cc = this.matrix[this.cash_constraints[i]];
       for(let ci in cc) if(cc.hasOwnProperty(ci)) {
         if(ci < this.chunk_offset) {
-          // NOTE: subtract 1 as variables array is zero-based
+          // NOTE: Subtract 1 as variables array is zero-based.
           cv = this.variables[(ci - 1) % this.cols];
         } else {
-          // Chunk variable array is zero-based
+          // Chunk variable array is zero-based.
           cv = this.chunk_variables[ci - this.chunk_offset];
         }
-        // NOTE: do not scale the coefficient of the cash variable
+        // NOTE: Do not scale the coefficient of the cash variable.
         if(!cv[0].startsWith('C')) cc[ci] *= m;
       }
     }
   }
 
   checkForInfinity(n) {
-    // Returns floating point number `n`, or +INF or -INF if the absolute
+    // Return floating point number `n`, or +INF or -INF if the absolute
     // value of `n` is relatively (!) close to the VM infinity constants
-    // (since the solver may return imprecise values of such magnitude)
+    // (since the solver may return imprecise values of such magnitude).
     if(n > 0.5 * VM.PLUS_INFINITY && n < VM.BEYOND_PLUS_INFINITY) {
       return VM.PLUS_INFINITY;
     } 
@@ -4072,23 +4091,40 @@ class VirtualMachine {
   }
 
   setLevels(block, round, x, err) {
-    // Copies the values of decision variables calculated by the solver
-    // `x` holds the solver result, `err` is TRUE if the model was not computed
-    // First deal with quirk of JSON, which turns [one value] into value
+    // Copy the values of decision variables calculated by the solver.
+    // `x` holds the solver result, `err` is TRUE if the model was not
+    // computed. First deal with quirk of JSON, which turns a list with
+    // one value into just that value as a number.
     if(!(x instanceof Array)) x = [x];
     // `bb` is first time step of this block (blocks are numbered 1, 2, ...)
-    // `abl` is the actual block length, i.e., # time steps to set levels for
+    // `abl` is the actual block length, i.e., # time steps to set levels for,
+    // `cbl` is the cropped block length (applies only to last block).
     let bb = (block - 1) * MODEL.block_length + 1,
-        abl = this.chunk_length;
-    // If no results computed, preserve those already computed as "look-ahead"
+        abl = this.chunk_length,
+        cbl = this.actualBlockLength;
+    // For the last block, crop the actual block length so it does not
+    // extend beyond the simulation period (these results should be ignored).
+    // If no results computed, preserve those already computed for the
+    // pervious chunk as "look-ahead".
     if(err && block > 1 && MODEL.look_ahead > 0) {
       bb += MODEL.look_ahead;
       abl -= MODEL.look_ahead;
+      cbl -= MODEL.look_ahead;
+      this.logMessage(block,
+          'No results from solver -- retained results of ' +
+              pluralS(MODEL.look_ahead, 'look-ahead time step'));
     }
-    // NOTE: length of solution vector divided by number of columns should
-    // be integer, and typically equal to the actual block length, except for
-    // the last block when look-ahead > 0 (as Linny-R never "looks" beyond the
-    // simulation end time)
+    if(cbl <= 0) {
+      this.logMessage(block, 'Results of last optimization could be discarded');
+      abl = 0;
+    } else if(cbl < abl) {
+      this.logMessage(block, ['Last chunk (',
+          pluralS(this.chunk_length, 'time step'), ') cropped to ',
+          pluralS(cbl, 'time step')].join(''));
+      abl = cbl;
+    }
+    // NOTE: Length of solution vector divided by number of columns should
+    // be integer, and typically equal to the actual block length.
     const
         ncv = this.chunk_variables.length,
         ncv_msg = (ncv ? ' minus ' + pluralS(ncv, 'singular variable') : ''),
@@ -4096,12 +4132,7 @@ class VirtualMachine {
         xbl = Math.floor(xratio);
     if(xbl < xratio) console.log('ANOMALY: solution vector length', x.length,
         ncv_msg + ' is not a multiple of # columns', this.cols);
-    if(xbl < abl) {
-      console.log('Cropping actual block length', abl,
-          'to solved block length', xbl);
-      abl = xbl;
-    }
-    // Assume no warnings or errors
+    // Assume no warnings or errors.
     this.error_count = 0;
     // Set cash flows for all actors
     // NOTE: all cash IN and cash OUT values should normally be non-negative,
@@ -4272,15 +4303,16 @@ class VirtualMachine {
   }
   
   calculateDependentVariables(block) {
-    // Calculates the values of all model variables that depend on the values
-    // of the decision variables output by the solver
-    // NOTE: only for the block that was just solved, but the values are stored
-    // in the vectors of nodes and links that span the entire optimization period,
-    // hence start by calculating the offset `bb` being the first time step of
-    // this block (blocks are numbered 1, 2, ...)
+    // Calculate the values of all model variables that depend on the
+    // values of the decision variables output by the solver.
+    // NOTE: Only for the block that was just solved, but the values are
+    // stored in the vectors of nodes and links that span the entire
+    // optimization period, hence start by calculating the offset `bb`
+    // being the first time step of this block.
+    // Blocks are numbered 1, 2, ...
     const bb = (block - 1) * MODEL.block_length + 1;
 
-    // FIRST: calculate the actual flows on links
+    // FIRST: Calculate the actual flows on links.
     let b, bt, p, pl, ld;
     for(let l in MODEL.links) if(MODEL.links.hasOwnProperty(l) &&
         !MODEL.ignored_entities[l]) {
@@ -4473,11 +4505,10 @@ class VirtualMachine {
   
   showSetUpProgress(next_start, abl) {
     if(this.show_progress) {
-      // NOTE: display 1 more segment progress so that the bar reaches 100%
+      // Display 1 more segment progress so that the bar reaches 100%
       UI.setProgressNeedle((next_start + this.tsl) / abl);
     }
-    setTimeout(
-        function(t, n) { VM.addTableauSegment(t, n); }, 0, next_start, abl);
+    setTimeout((t, n) => { VM.addTableauSegment(t, n); }, 0, next_start, abl);
   }
 
   hideSetUpOrWriteProgress() {
@@ -4486,7 +4517,7 @@ class VirtualMachine {
   }
   
   logCode() {
-    // Prints VM instructions to console
+    // Print VM instructions to console.
     const arg = (a) => {
         if(a === null) return '';
         if(typeof a === 'number') return a + '';
@@ -4513,12 +4544,12 @@ class VirtualMachine {
   setupBlock() {
     if(DEBUGGING) this.logCode();
     const abl = this.actualBlockLength;
-    // NOTE: tableau segment length is the number of time steps between
+    // NOTE: Tableau segment length is the number of time steps between
     // updates of the progress needle. The default progress needle interval
-    // is calibrated for 1000 VMI instructions
+    // is calibrated for 1000 VMI instructions.
     this.tsl = Math.ceil(CONFIGURATION.progress_needle_interval *
         1000 / this.code.length);
-    if(abl > this.tsl * 5) {
+    if(true||abl > this.tsl * 5) {
       UI.setMessage('Constructing the Simplex tableau');
       UI.setProgressNeedle(0);
       this.show_progress = true;
@@ -4706,6 +4737,17 @@ class VirtualMachine {
     setTimeout(() => VM.solveBlock(), 0);
   }
   
+  get actualBlockLength() {
+    // The actual block length is the number of time steps to be considered
+    // by the solver; the abl of the last block is likely to be shorter
+    // than the standard, as it should not go beyond the end time plus
+    // look-ahead.
+    if(this.block_count < this.nr_of_blocks) return this.chunk_length;
+    let rem = MODEL.runLength % MODEL.block_length;
+    if(rem === 0) rem = MODEL.block_length;
+    return rem + MODEL.look_ahead;
+  }
+  
   setNumericIssue(n, p, where) {
     let vbl;
     if(p >= this.chunk_offset) {
@@ -4715,41 +4757,31 @@ class VirtualMachine {
       vbl = this.variables[(p-1) % this.cols];
     }
     this.numeric_issue = where + ' for ' + vbl[1].name +
-        ' (' + vbl[0] + ', bt=' + Math.floor((p-1) / this.cols + 1) + ')';
-    // NOTE: numeric issues are detected on ABSOLUTE values, while error codes
-    // are extreme negative values => negate when greater than the special
-    // values VM.UNDEFINED, VM.NOT_COMPUTED and VM.COMPUTING
-    if(-n <= VM.ERROR) n = -n;
-    let err = this.errorMessage(n);
-    if(err === n) {
-      err = 'value = ' + n;
-    } else if(this.error_codes.indexOf(n) < 0) {
-      err += '? value = ' + n;
-    }
-    this.logMessage(this.block_count, err);
-    UI.alert(err);
-  }
-  
-  get actualBlockLength() {
-    // The actual block length is the number of time steps to be considered by
-    // the solver; the abl of the last block is likely to be shorter than the
-    // standard, as it should not go beyond the end time, assuming that
-    // parameter data are undefined beyond this end time
-    if(this.block_count < this.nr_of_blocks) return this.chunk_length;
-    return (MODEL.end_period - MODEL.start_period + 1) -
-        (this.block_count - 1) * MODEL.block_length;
+        ' (' + vbl[0] + ', bt=' + Math.floor((p-1) / this.cols + 1) + ') ';
+    // NOTE: Numeric issues may be detected on negated values, because
+    // coefficients may be transformed algebraically. Exception and
+    // error codes are extremely high + or - values => negate them when
+    // they exceed the negated exception or error threshold.
+    if(n <= -VM.EXCEPTION || n >= -VM.ERROR) n = -n;
+    const msg = ['Tableau error: ', this.numeric_issue, ' - ',
+        this.errorMessage(n), ' (value = ', this.sig2Dig(n), ')'].join('');
+    this.logMessage(this.block_count, msg);
+    UI.alert(msg);
   }
   
   get columnsInBlock() {
-    // Returns the actual block length plus the number of chunk variables
-    return this.actualBlockLength * this.cols + this.chunk_variables.length;
+    // Return the chunk length plus the number of chunk variables.
+    return this.chunk_length * this.cols + this.chunk_variables.length;
   }
   
   writeLpFormat(cplex=false) {
-    // NOTE: actual block length `abl` of last block is likely to be
-    // shorter than the standard, as it should not go beyond the end time
-
-
+    // NOTE: Up to version 1.5.6, actual block length of last block used
+    // to be shorter than the chunk length so as not to go beyond the
+    // simulation end time. The look-ahead is now *always* part of the
+    // chunk, even if this extends beyond the simulation period. The
+    // model is expected to provide the necessary data. The former model
+    // behavior can still be generated by limiting time series length to
+    // the simulation period.
     const
         abl = this.actualBlockLength,
         // Get the number digits for variable names
@@ -4982,9 +5014,9 @@ class VirtualMachine {
   }
 
   writeMPSFormat() {
-    // Write model code lines in MPS format
-    // NOTE: for each column a separate list
-    // NOTE: columns are numbered from 1 to N, hence dummy list for c=0
+    // Write model code lines in MPS format. This format is column-based
+    // instead of row-based, hence for each column a separate string list.
+    // NOTE: Columns are numbered from 1 to N, hence a dummy list for c=0.
     const
         abl = this.actualBlockLength,
         cols = [[]],
@@ -5165,7 +5197,7 @@ class VirtualMachine {
   
   writeLastMPSLines() {
     this.hideSetUpOrWriteProgress();
-    // Add the SOS section
+    // Add the SOS section.
     if(this.sos_var_indices.length > 0) {
       this.lines += 'SOS\n';
       const abl = this.actualBlockLength;
@@ -5185,14 +5217,14 @@ class VirtualMachine {
         }
       }
     }
-    // Add the end-of-model marker
+    // Add the end-of-model marker.
     this.lines += 'ENDATA';
     setTimeout(() => VM.submitFile(), 0);
   }
   
   get noSolutionStatus() {
-    // Returns set of status codes that indicate that solver did not return
-    // a solution (so look-ahead should be conserved)
+    // Return the set of status codes that indicate that solver did not
+    // return a solution (so look-ahead should be conserved).
     if(this.solver_name === 'lp_solve') {
       return [-2, 2, 6];
     } else if(this.solver_name === 'gurobi') {
@@ -5203,10 +5235,10 @@ class VirtualMachine {
   }
   
   checkLicense() {
-    // Compares license expiry date (if set) with current time, and notifies
-    // when three days or less remain
+    // Compare license expiry date (if set) with current time, and notify
+    // when three days or less remain.
     if(this.license_expires && this.license_expires.length) {
-      // NOTE: expiry date has YYYY-MM-DD format
+      // NOTE: Expiry date has YYYY-MM-DD format.
       const
           xds = this.license_expires[0].slice(-10).split('-'),
           y = parseInt(xds[0]),
@@ -5217,7 +5249,8 @@ class VirtualMachine {
           three_days = 3*24*3.6e+6;
       if(time_left < three_days) {
         const
-            opts = {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'},
+            opts = {weekday: 'long', year: 'numeric', month: 'long',
+                day: 'numeric'},
             lds = ' (' + xdate.toLocaleDateString(undefined, opts) + ')';
         UI.notify('Solver license will expire in less than 3 days' + lds);
       }
@@ -5236,7 +5269,7 @@ class VirtualMachine {
     // - model: the MILP equations in LP format
     // - data: data object {block, round, x}
     let msg = '';
-    // NOTE: block number is passed as string => convert to integer
+    // NOTE: Block number is passed as string => convert to integer.
     const
         bnr = safeStrToInt(json.data.block),
         rl = json.data.round,
@@ -5247,7 +5280,7 @@ class VirtualMachine {
 Solver status = ${json.status}`);
     if(json.messages) {
       msg = json.messages.join('\n');
-      // Check whether Gurobi version is at least version 9.5
+      // Check whether Gurobi version is at least version 9.5.
       let gv = msg.match(/Gurobi \d+\.\d+\.\d+/);
       if(gv) {
         gv = gv[0].split(' ')[1].split('.');
@@ -5256,7 +5289,8 @@ Solver status = ${json.status}`);
           UI.alert('Gurobi version is too old -- upgrade to 9.5 or higher');
         }
       }
-      // NOTE: server script adds a license expiry notice for the Gurobi solver
+      // NOTE: Server script adds a license expiry notice for the Gurobi
+      // solver.
       this.license_expires = msg.match(/ expires \d{4}\-\d{2}\-\d{2}/);
     }
     if(json.error) {
@@ -5270,42 +5304,44 @@ Solver status = ${json.status}`);
     this.logMessage(bnr, msg);
     this.equations[bnr - 1] = json.model;
     if(DEBUGGING) console.log(json.data);
-    // Store the results in the decision variable vectors (production levels
-    // and stock level), but do NOT overwrite "look-ahead" levels if this block
-    // was not solved (indicated by the 4th parameter that tests the status)
-    // NOTE: appropriate status codes are solver-dependent
+    // Store the results in the decision variable vectors (production
+    // levels and stock level), but do NOT overwrite "look-ahead" levels
+    // if this block was not solved (indicated by the 4th parameter that
+    // tests the status).
+    // NOTE: Appropriate status codes are solver-dependent.
     this.setLevels(bnr, rl, json.data.x,
       this.noSolutionStatus.indexOf(json.status) >= 0);
     // NOTE: Post-process levels only AFTER the last round!
     if(rl === this.lastRound) {
-      // Calculate data for all other dependent variables
+      // Calculate data for all other dependent variables.
       this.calculateDependentVariables(bnr);    
-      // Add progress bar segment only now, knowing status AND slack use
+      // Add progress bar segment only now, knowing status AND slack use.
       const issue = json.status !== 0 || this.error_count > 0;
       if(issue) this.block_issues++;
-      // NOTE: in case of multiple rounds, use the sum of the round times
+      // NOTE: in case of multiple rounds, use the sum of the round times.
       const time = this.round_times.reduce((a, b) => a + b, 0);
       this.round_times.length = 0;
       this.solver_times[bnr - 1] = time;
-      this.solver_secs[bnr - 1] = this.round_secs.reduce((a, b) => a + b, 0);
+      const ssecs = this.round_secs.reduce((a, b) => a + b, 0);
+      this.solver_secs[bnr - 1] = (ssecs ? VM.sig4Dig(ssecs) : '');
       this.round_secs.length = 0;
       MONITOR.addProgressBlock(bnr, issue, time);
     }
-    // Free up memory
+    // Free up memory.
     json = null;
   }
 
   solveBlocks() {
-    // Check if blocks remain to be done; if not, redraw the graph and exit
-    // NOTE: set IF-condition to TRUE for testing WITHOUT computation
+    // Check if blocks remain to be done. If not, redraw the graph and exit.
+    // NOTE: Set IF-condition to TRUE for testing WITHOUT computation.
     if(this.halted || this.block_count > this.nr_of_blocks) {
-      // Set current time step to 1 (= first time step of simulation period)
+      // Set current time step to 1 (= first time step of simulation period).
       MODEL.t = 1;
       this.stopSolving();
       MODEL.solved = true;
       this.checkLicense();
       UI.drawDiagram(MODEL);
-      // Show the reset button (GUI only)
+      // Show the reset button (GUI only).
       UI.readyToReset();
       if(MODEL.running_experiment) {
        // If experiment is active, signal the manager.
@@ -5314,7 +5350,7 @@ Solver status = ${json.status}`);
         // Otherwise report results now, if applicable.
         RECEIVER.report();
       }
-      // Warn modeler if any issues occurred
+      // Warn modeler if any issues occurred.
       if(this.block_issues) {
         let msg = 'Issues occurred in ' +
             pluralS(this.block_issues, 'block') +
@@ -5326,17 +5362,22 @@ Solver status = ${json.status}`);
         UI.updateIssuePanel();
       }
       if(this.license_expired > 0) {
-        // Special message to draw attention to this critical error
+        // Special message to draw attention to this critical error.
         UI.alert('SOLVER LICENSE EXPIRED: Please check!');
       }
-      // Call back to the console (if callback hook has been set)
+      // Call back to the console (if callback hook has been set).
       if(this.callback) this.callback(this);
       return;
     }
-    const bwr = this.blockWithRound;
+    const
+        bwr = this.blockWithRound,
+        fromt = (this.block_count - 1) * MODEL.block_length + 1,
+        abl = this.actualBlockLength;
     MONITOR.updateBlockNumber(bwr);
-    // NOTE: add blank line to message to visually separate rounds
-    this.logMessage(this.block_count, '\nSetting up block #' + bwr);
+    // NOTE: Add blank line to message to visually separate rounds.
+    this.logMessage(this.block_count, ['\nSetting up block #', bwr,
+        ' (t=', fromt, '-', fromt + abl - 1, '; ',
+        pluralS(abl, 'time step'), ')'].join(''));
     UI.logHeapSize('Before set-up of block #' + bwr);
     this.setupBlock();
   }
@@ -5361,13 +5402,13 @@ Solver status = ${json.status}`);
     } else {
       this.show_progress = false;
     }
-    // Generate lines of code in format that should be accepted by solver
+    // Generate lines of code in format that should be accepted by solver.
     if(this.solver_name === 'gurobi') {
       this.writeMPSFormat();
     } else if(this.solver_name === 'scip' || this.solver_name === 'cplex') {
-      // NOTE: the CPLEX LP format that is also used by SCIP differs from
-      // the LP_solve format that was used by the first versions of Linny-R;
-      // TRUE indicates "CPLEX format"
+      // NOTE: The CPLEX LP format that is also used by SCIP differs from
+      // the LP_solve format that was used by the first versions of Linny-R.
+      // TRUE indicates "CPLEX format".
       this.writeLpFormat(true);
     } else if(this.solver_name === 'lp_solve') {
       this.writeLpFormat(false);
@@ -5377,8 +5418,8 @@ Solver status = ${json.status}`);
   }  
 
   submitFile() {
-    // Prepares to POST the model file (LP or MPS) to the Linny-R server
-    // NOTE: the tableau is no longer needed, so free up its memory
+    // Prepares to POST the model file (LP or MPS) to the Linny-R server.
+    // NOTE: The tableau is no longer needed, so free up its memory.
     this.resetTableau();
     if(this.numeric_issue) {
       const msg = 'Invalid ' + this.numeric_issue;
@@ -5386,16 +5427,16 @@ Solver status = ${json.status}`);
       UI.alert(msg);
       this.stopSolving();
     } else {
-      // Log the time it took to create the code lines
+      // Log the time it took to create the code lines.
       this.logMessage(this.block_count,
           'Model file creation (' + UI.sizeInBytes(this.lines.length) +
               ') took ' + this.elapsedTime + ' seconds.');
-      // NOTE: monitor will use (and then clear) VM.lines, so no need
-      // to pass it on as parameter
+      // NOTE: Monitor will use (and then clear) VM.lines, so no need
+      // to pass it on as parameter.
       MONITOR.submitBlockToSolver();
       // Now the round number can be increased...
       this.current_round++;
-      // ... and also the blocknumber if all rounds have been played
+      // ... and also the blocknumber if all rounds have been played.
       if(this.current_round >= this.round_sequence.length) {
         this.current_round = 0;
         this.block_count++;
@@ -5404,7 +5445,7 @@ Solver status = ${json.status}`);
   }
   
   solve() {
-    // Compiles model to VM code and starts sequence of solving blocks
+    // Compile model to VM code; then start sequence of solving blocks.
     UI.logHeapSize('Before model reset');
     this.reset();
     UI.logHeapSize('After model reset');

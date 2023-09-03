@@ -750,8 +750,8 @@ class LinnyRModel {
   }
 
   isConstrained(node) {
-    // Return the constraint that node is involved in if such constraint exists,
-    // and otherwise NULL 
+    // Return the constraint that node is involved in if such constraint
+    // exists, and otherwise NULL. 
     let c = null;
     for(c in this.constraints) if(this.constraints.hasOwnProperty(c)) {
       c = this.constraints[c];
@@ -761,25 +761,25 @@ class LinnyRModel {
   }
 
   get runLength() {
-    // Return the number of time steps to by computed for a simulation
-    // NOTE: this includes a final lookahead period
+    // Return the number of time steps to by computed for a simulation.
+    // NOTE: This includes a final lookahead period.
     return this.end_period - this.start_period + 1 + this.look_ahead;
   }
-
+  
   inferDimensions() {
-    // Generates the list of dimensions for experimental design
-    // NOTE: a dimension is a list of one or more relevant selectors
+    // Generate the list of dimensions for experimental design.
+    // NOTE: A dimension is a list of one or more relevant selectors.
     let newdim;
     this.dimensions.length = 0;
-    // NOTE: ignore the equations dataset
+    // NOTE: Ignore the equations dataset.
     for(let d in this.datasets) if(this.datasets.hasOwnProperty(d) &&
         this.datasets[d] !== this.equations_dataset) {
       // Get selector list
       const
           ds = this.datasets[d],
-          // NOTE: ignore wildcard selectors!
+          // NOTE: Ignore wildcard selectors!
           sl = ds.plainSelectors;
-      // Ignore datasets with fewer than 2 "plain" selectors
+      // Ignore datasets with fewer than 2 "plain" selectors.
       if(sl.length > 1) {
         newdim = true;
         // Merge into dimension if there are shared selectors
@@ -3108,12 +3108,12 @@ class LinnyRModel {
     // Set an array to [0, ..., run length] of numbers initialized as
     // "not computed" to ensure that they will be evaluated "lazily"
     // NOTES:
-    // (1) the first element (0) corresponds to t = 0, i.e., the model time
-    //     step just prior to the time step defined by start_period
-    // (2) all vectors must be initialized with an appropriate value for
-    //     element 0
-    // (3) `other` specifies value for t = 1 and beyond if vector is static
-    //     and has to to be initialized to a constant (typically 0)
+    // (1) the first element (0) corresponds to t = 0, i.e., the model
+    //     time step just prior to the time step defined by start_period.
+    // (2) All vectors must be initialized with an appropriate value for
+    //     element 0.
+    // (3) `other` specifies value for t = 1 and beyond if vector is
+    //     static and has to to be initialized to a constant (typically 0).
     v.length = this.runLength + 1;
     v.fill(other);
     v[0] = initial;
@@ -9920,6 +9920,8 @@ class Chart {
         maxv *= (maxv > 0 ? 1.1 : 0.9);
         if(minv < 0) minv *= 1.1;
       }
+      // For bar chart, maxv must be non-negative.
+      if(stat_bars) maxv = Math.max(maxv, 0);
       const range = maxv - minv;
       if(range > 0) {
         const step = this.labelStep(range, 5, VM.NEAR_ZERO);
@@ -9930,12 +9932,15 @@ class Chart {
         y = miny;
         const labels = [];
         while(y <= maxy) {
-          // NOTE: force number to become a string so that its length
-          // attribute can be used when drawing it
-          labels.push('' + VM.sig4Dig(y));
+          // NOTE: Large values having exponents will be "neat" numbers,
+          // so then display fewer decimals, as these will be zeroes.
+          const v = (Math.abs(y) > 1e5 ? VM.sig2Dig(y) : VM.sig4Dig(y));
+          // NOTE: Force number to become a string so that its length
+          // attribute can be used when drawing it.
+          labels.push('' + v);
           y += step;
         }
-        // First calculate dy as the vertical distance between labels
+        // First calculate dy as the vertical distance between labels.
         dy = rh / (labels.length - 1);
         // Draw labels, starting at lowest Y
         y = rt + rh;
@@ -9946,11 +9951,11 @@ class Chart {
           y -= dy;
         }
         // Then calculate dx and dy as the respective horizontal and
-        // vertical pixel equivalents of one unit
+        // vertical pixel equivalents of one unit.
         dx = rw / time_steps;
         dy = rh / (maxy - miny);
         y0 = rt + rh + dy * miny;
-        // Draw axes Y = 0 and X = 0 in black and slightly thicker
+        // Draw axes Y = 0 and X = 0 in black and slightly thicker.
         this.addSVG(['<line x1="', x0, '" y1="', y0, '" x2="', x0 + rw,
             '" y2="', y0, '" stroke="black" stroke-width="2"/>']);
         this.addSVG(['<line x1="', x0, '" y1="', rt, '" x2="', x0,
@@ -10024,8 +10029,8 @@ class Chart {
                 const
                     rnr = runs[ri],
                     bv = bar_values[vi][rnr],
-                    bart = rt + (maxy - bv) * dy,
-                    barh = (bv - miny) * dy;
+                    barh = Math.abs(bv) * dy,
+                    bart = y0 - Math.max(0, bv) * dy;
                 x = rl + ri * dx + barsp + vcnt * varsp;
                 this.addSVG(['<rect x="', x, '" y="', bart,
                     '" width="', barw, '" height="', barh,
@@ -10328,8 +10333,8 @@ class ActorSelector {
 // CLASS ExperimentRunResult
 class ExperimentRunResult {
   constructor(r, v, a='') {
-    // NOTE: constructor can be called with `v` a chart variable, a dataset,
-    // or an XML node; if `v` is the equations dataset, then `a` is the
+    // NOTE: Constructor can be called with `v` a chart variable, a dataset,
+    // or an XML node. When `v` is the equations dataset, then `a` is the
     // identifier of the dataset modifier to be used. 
     this.run = r;
     if(v instanceof ChartVariable) {
@@ -10350,12 +10355,11 @@ class ExperimentRunResult {
         this.exceptions = VM.UNDEFINED;
         this.last = VM.UNDEFINED;
       } else {
-        // Copy relevant properties of chart variable `v`
-        // NOTE: vector must be computed (may not have happened when the chart
-        // manager is not showing; no computation is done when vector has length
-        // greater than 0)
-        // NOTE: computation will be for the running experiment, so NO need to
-        // set the run_index for the chart of this variable
+        // Copy relevant properties of chart variable `v`.
+        // NOTE: Vector must be computed, unless the vector already has
+        // length greater than 0. Computation will be for the running
+        // experiment, so NO need to set the run_index for the chart of
+        // this variable.
         v.computeVector();
         this.N = v.N;
         this.sum = v.sum;
@@ -10366,13 +10370,14 @@ class ExperimentRunResult {
         this.non_zero_tally = v.non_zero_tally;
         this.exceptions = v.exceptions;
         // NOTES:
-        // (1) run results are vectors: "initial value" v[0] is also stored
-        // (2) use slice() to make a copy of the vector, as the variable's
-        //     vector may change again (for the next experiment, or when drawing
-        //     a chart after a run)
-        // (3) slice(0, N) takes elements 0 to N-1, so add 1 to run length 
+        // (1) Run results are vectors: "initial value" v[0] is also stored.
+        // (2) Use slice() to make a copy of the vector, as the variable's
+        //     vector may change again (for the next experiment, or when
+        //     drawing a chart after a run).
+        // (3) slice(0, N) takes elements 0 to N-1, so add 1 to run length. 
         this.vector = v.vector.slice(0, this.run.time_steps + 1);
-        // NOTE: use the last step of the experiment time period
+        // Use the last step of the experiment time period for the LAST
+        // statistic.
         this.last = (this.vector.length > 0 ?
             this.vector[this.vector.length - 1] : VM.UNDEFINED);
       }
@@ -10380,18 +10385,18 @@ class ExperimentRunResult {
       // This dataset will be an "outcome" dataset => store statistics only
       // @@TO DO: deal with wildcard equations: these will have *multiple*
       // vectors associated with numbered entities (via #) and therefore
-      // *all* these results should be stored (with # replaced by its value)
+      // *all* these results should be stored (with # replaced by its value).
       this.x_variable = false;
       this.object_id = v.identifier;
       if(v === MODEL.equations_dataset && a) {
         this.attribute = a;
       } else {
         this.attribute = '';
-        // NOTE: the running experiment determines the modifier
+        // NOTE: The running experiment determines the modifier.
         const xx = MODEL.running_experiment;
         if(xx) {
           const mm = v.matchingModifiers(xx.activeCombination);
-          // Use the first matching selector, as this is the most specific one
+          // Use the first matching selector, as this is the most specific one.
           if(mm.length > 0) this.attribute = mm[0].selector;
         }
       }
@@ -10401,18 +10406,18 @@ class ExperimentRunResult {
       this.non_zero_tally = 0;
       this.exceptions = 0;
       const
-          // NOTE: run result dataset selector will be plain (no wildcards)
+          // NOTE: Run result dataset selector will be plain (no wildcards).
           x = v.modifiers[this.attribute].expression,
           t_end = MODEL.end_period - MODEL.start_period + 1;
-      // N = # time steps
+      // N = # time steps.
       this.N = t_end;
       let r,
           // Use the time-scaled (!) vector of the dataset...
           rv = v.vector;
       if(x) {
-        // ... or use the result of the modifier expression if defined
+        // ... or use the result of the modifier expression if defined.
         if(x.isStatic) {
-          // For static expressions, statistics can be inferred directly
+          // For static expressions, statistics can be inferred directly.
           r = x.result(0);
           this.mean = r;
           this.sum = r * t_end;
@@ -10423,7 +10428,7 @@ class ExperimentRunResult {
           } else if(Math.abs(r) > VM.NEAR_ZERO) {
             this.non_zero_tally = t_end;
           }
-          // Preclude further computation of statistics
+          // Preclude further computation of statistics.
           rv = null;
         } else {
           // Ensure that expression vector is computed in full 
@@ -10432,7 +10437,7 @@ class ExperimentRunResult {
         }
       }
       if(rv) {
-        // Do not include t = 0 in statistics
+        // Do not include t = 0 in statistics.
         for(let t = 1; t <= t_end; t++) {
           r = rv[t];
           // Map undefined values and all errors to 0
@@ -10446,68 +10451,71 @@ class ExperimentRunResult {
           this.minimum = Math.min(this.minimum, r);
           this.maximum = Math.max(this.maximum, r);
         }
-        // Compute the mean
+        // Compute the mean.
         this.mean = this.sum / t_end;
-        // Compute the variance
+        // Compute the variance.
         let sumsq = 0;
         for(let t = 1; t <= t_end; t++) {
           r = rv[t];
-          // Map undefined values and all errors to 0
+          // Map undefined values and all errors to 0.
           if(r < VM.MINUS_INFINITY || r > VM.PLUS_INFINITY) r = 0;
           sumsq += Math.pow(r - this.mean, 2);
         }
         this.variance = sumsq / t_end;
         this.last = rv[t_end];
       }
-      // Do not store the RR vector -- outcomes are meant to conserve space
+      // Do not store the RR vector, since outcomes are meant to reduce
+      // the amount of memory (and model file size).
       this.vector = [];
     } else {
-      // Parsing run results while loading a file: `v` is an XML tree
+      // Parsing run results while loading a file: `v` is an XML tree.
       this.initFromXML(v);
     }
-    // The vector MAY need to be scaled to model time by different methods, but
-    // since this is likely to be rare, such scaling is performed "lazily", so
-    // the method-specific vectors are initially set to NULL
+    // The vector MAY need to be scaled to model time by different methods,
+    // but since this is likely to be rare, such scaling is performed
+    // "lazily", so the method-specific vectors are initially set to NULL.
     this.resetScaledVectors();
   }
 
   resetScaledVectors() {
-    // Set the special vectors to null, so they will be recalculated
+    // Set the special vectors to null, so they will be recalculated.
     this.scaled_vectors = {'NEAREST': [], 'MEAN': [], 'SUM': [], 'MAX': []};
   }
   
   get displayName() {
-    // Returns the name of the result variable
+    // Return the name of the result variable.
     const
         obj = MODEL.objectByID(this.object_id),
         dn = obj.displayName;
-    // NOTE: for equations dataset, only display the modifier selector
+    // NOTE: For equations dataset, only display the modifier selector.
     if(obj === MODEL.equations_dataset) {
       const m = obj.modifiers[this.attribute.toLowerCase()];
       if(m) return m.selector;
-      console.log('WARNING: Run result of non-existent equation', this.attribute);
+      console.log('WARNING: Run result of non-existent equation',
+          this.attribute);
       return this.attribute;
     }
     return (this.attribute ? dn + '|' + this.attribute : dn);
   }
 
   get vectorString() {
-    // Vector is stored as semicolon-separated floating point numbers reduced
-    // to N-digit precision to keep model files more compact; default: N = 6
+    // Vector is stored as semicolon-separated floating point numbers
+    // reduced to N-digit precision to keep model files more compact.
+    // By default, N = 6; this can be altered in linny-r-config.js.
     if(this.was_ignored) return '';
     let v = [],
         prev = '',
         cnt = 1;
     for(let i = 0; i < this.vector.length; i++) {
-      // Format number with desired precision
+      // Format number with desired precision.
       const f = this.vector[i].toPrecision(CONFIGURATION.results_precision);
-      // While value is same as previous, do not store, but count
+      // While value is same as previous, do not store, but count.
       if(f === prev) {
         cnt++;
       } else {
         if(cnt > 1) {
-          // More than one => "compress"
-          // NOTE: parse so JavaScript will represent it most compactly
+          // More than one => "compress".
+          // NOTE: Parse so JavaScript will represent it most compactly.
           v.push(cnt + 'x' + parseFloat(prev));
           cnt = 1;
         } else if(prev) {
@@ -10516,10 +10524,10 @@ class ExperimentRunResult {
         prev = f;
       }
     }
-    // Add the last "batch" of numbers
+    // Add the last "batch" of numbers.
     if(cnt > 1) {
-      // More than one => "compress"
-      // NOTE: parse so JavaScript will represent it most compactly
+      // More than one => "compress".
+      // NOTE: Parse so JavaScript will represent it most compactly.
       v.push(cnt + 'x' + parseFloat(prev));
       cnt = 1;
     } else if(prev) {
@@ -10529,7 +10537,7 @@ class ExperimentRunResult {
   }
   
   unpackVectorString(str) {
-    // Converts semicolon-separated data to a numeric array
+    // Convert semicolon-separated data to a numeric array.
     this.vector = [];
     if(str && !this.was_ignored) {
       const numbers = str.split(';');
@@ -10571,8 +10579,8 @@ class ExperimentRunResult {
     this.x_variable = nodeParameterValue(node, 'x-variable') === '1';
     this.was_ignored = nodeParameterValue(node, 'ignored') === '1';
     this.object_id = xmlDecoded(nodeContentByTag(node, 'object-id'));
-    // NOTE: special check to guarantee upward compatibility to version
-    // 1.3.0 and higher
+    // NOTE: Special check to guarantee upward compatibility to version
+    // 1.3.0 and higher.
     let attr = nodeContentByTag(node, 'attribute');
     if(this.object_id === UI.EQUATIONS_DATASET_ID &&
         !earlierVersion(MODEL.version, '1.3.0')) attr = xmlDecoded(attr);
@@ -10590,40 +10598,40 @@ class ExperimentRunResult {
   }
   
   valueAtModelTime(t, mtsd, method, periodic) {
-    // Returns the experiment result value for model time t
-    // NOTE: result for t = 0 should always be v[0], irrespective of scaling
+    // Return the experiment result value for model time `t`.
+    // NOTE: Result for t = 0 should always be v[0], irrespective of scaling.
     if(t === 0 || this.was_ignored) return VM.UNDEFINED;
-    // Now t will be > 0
+    // Now t will be > 0.
     const
         rtsd = this.run.time_step_duration,
-        // NOTE: absolute scaling means "use time step t as index"
+        // NOTE: Absolute scaling means "use time step t as index".
         t_multiplier = (method === 'ABS' ||
             Math.abs(rtsd - mtsd) < VM.NEAR_ZERO ? 1 : mtsd / rtsd);
     let v = null,
         ti = t;
     if(t_multiplier !== 1 && !method) method = 'NEAREST';
     if(t_multiplier === 1) {
-      // If same time scale, use the result vector without any scaling
-      // NOTE: vector[0] corresponds with t = 1
+      // If same time scale, use the result vector without any scaling.
+      // NOTE: vector[0] corresponds with t = 1.
       v = this.vector;
     } else if(this.scaled_vectors.hasOwnProperty(method)) {
-      // Other methods: compute entire vector, anticipating on more "gets"
+      // Other methods: compute entire vector, anticipating on more "gets".
       v = this.scaled_vectors[method];
       if(v.length <= 0) {
-        // Infer the "official" method name
+        // Infer the "official" method name.
         let mcode = method.toLowerCase();
         if(mcode === 'mean' || mcode === 'sum') mcode = 'w-' + mcode;
-        // NOTE: scaleData expects "pure data", so slice off v[0]
+        // NOTE: scaleData expects "pure data", so slice off v[0].
         VM.scaleDataToVector(this.vector.slice(1), v, rtsd, mtsd, MODEL.runLength,
             1, VM.UNDEFINED, periodic, mcode);
-        // NOTE: the scaled vector WILL have an "initial value" v[0], which
-        // will depend on periodicity
+        // NOTE: The scaled vector WILL have an "initial value" v[0], which
+        // will depend on periodicity.
       }
     } else {
-      // Unrecognized method
+      // Unrecognized method.
       return VM.UNDEFINED;
     }
-    // Apply periodicity while ignoring v[0] (which is only used when t=0)
+    // Apply periodicity while ignoring v[0] (which is only used when t=0).
     if(periodic) ti = (ti - 1) % (v.length - 1) + 1;
     if(ti < v.length) return v[ti];
     return VM.UNDEFINED;
@@ -10740,17 +10748,17 @@ class ExperimentRun {
   }
 
   addResults() {
-    // Adds the experiment chart variables and outcomes as run results
-    // NOTE: experiments may have different time step durations
+    // Add the experiment chart variables and outcomes as run results.
+    // NOTE: Experiments may have different time step durations.
     this.time_step_duration = MODEL.timeStepDuration;
     // Reset each output chart to achieve that all chart variables will
-    // be recomputed for the current model settings
+    // be recomputed for the current model settings.
     for(let i = 0; i < this.experiment.charts.length; i++) {
       this.experiment.charts[i].resetVectors();
     }
-    // Calculate number of vectors/outcomes/equations to store
+    // Calculate number of vectors/outcomes/equations to store.
     this.oc_list = MODEL.outcomes;
-    // NOTE: all equations are also considered to be outcomes
+    // NOTE: All equations are also considered to be outcomes.
     this.eq_list = Object.keys(MODEL.equations_dataset.modifiers);
     const
         cv = this.experiment.variables.length,
@@ -10760,19 +10768,19 @@ class ExperimentRun {
     if(cv) xr.push(pluralS(cv, 'variable'));
     if(oc) xr.push(pluralS(oc, 'outcome'));
     if(eq) xr.push(pluralS(eq, 'equation'));
-    // NOTE: for long simulation periods, computing run results can take
-    // a substantial amount of time, hence it is performed using function
-    // timeouts so that the browser can update the progress needle
+    // NOTE: For long simulation periods, computing run results can take
+    // a substantial amount of time. Hence it is performed using function
+    // timeouts so that the browser can update the progress needle.
     UI.setMessage('Processing experiment run results: ' + xr.join(', '));
     UI.setProgressNeedle(0);
     this.steps = cv + oc + eq;
-    // Keep track of progress
+    // Keep track of progress.
     this.step = 0;
     this.addChartResults(0);
   }
 
   addChartResults(vi) {
-    // Add a run result object for chart variable with index `vi`
+    // Add a run result object for chart variable with index `vi`.
     if(vi < this.experiment.variables.length) {
       this.results.push(
           new ExperimentRunResult(this, this.experiment.variables[vi]));
@@ -10785,9 +10793,9 @@ class ExperimentRun {
   }
   
   addOutcomeResults(oi) {
-    // Add a run result object for outcome dataset with index `vi`
+    // Add a run result object for outcome dataset with index `vi`.
     if(oi < this.oc_list.length) {
-      // NOTE: this stores results only for "active" selectors (current run)
+      // NOTE: This stores results only for "active" selectors (current run).
       this.results.push(new ExperimentRunResult(this, MODEL.outcomes[oi]));
       this.step++;
       UI.setProgressNeedle(this.step / this.steps);
@@ -10798,22 +10806,22 @@ class ExperimentRun {
   }
 
   addEquationResults(ei) {
-    // Add a run result object for equation with index `ei`
+    // Add a run result object for equation with index `ei`.
     if(ei < this.eq_list.length) {
       const k = this.eq_list[ei];
-      // NOTE: passing key `k` as 3rd parameter signals "use this attribute"
+      // NOTE: Passing key `k` as 3rd parameter signals "use this attribute".
       this.results.push(
           new ExperimentRunResult(this, MODEL.equations_dataset, k));      
       this.step++;
       UI.setProgressNeedle(this.step / this.steps);
       setTimeout((x) => x.addEquationResults(ei + 1), 0, this);
     } else {
-      // Register when this result was stored
+      // Register when this result was stored.
       this.time_recorded = new Date().getTime();
-      // Clear the progress needle
+      // Clear the progress needle.
       UI.setProgressNeedle(0);
       UI.setMessage('');
-      // Log the time it took to compute all results
+      // Log the time it took to compute all results.
       VM.logMessage(VM.block_count - 1,
           `Processing run results took ${VM.elapsedTime} seconds.`);
       // Report results if applicable.
@@ -10829,8 +10837,8 @@ class ExperimentRun {
   }
   
   addMessages() {
-    // Stores the message texts of the virtual machine (one per block) so that
-    // they can be viewed when an experiment run is selected in the viewer
+    // Store the message texts of the virtual machine (one per block) so that
+    // they can be viewed when an experiment run is selected in the viewer.
     this.warning_count = 0;
     this.solver_seconds = 0;
     for(let i = 0; i < VM.messages.length; i++) {
@@ -10846,7 +10854,7 @@ class ExperimentRun {
   }
   
   resetScaledVectors() {
-    // Sets the vectors with scaled run results to NULL so they will recompute 
+    // Set the vectors with scaled run results to NULL so they will recompute. 
     for(let i = 0; i < this.results.length; i++) {
       this.results[i].resetScaledVectors();
     }

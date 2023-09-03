@@ -125,13 +125,15 @@ class GUIMonitor {
     for(let i = 0; i < b; i++) {
       total_time += VM.solver_times[i];
     }
-    const n = document.createElement('div');
+    const
+        n = document.createElement('div'),
+        ssecs = VM.solver_secs[b - 1];
     n.classList.add('progress-block');
     if(err) n.classList.add('error-pb');
     if(b % 2 == 0) n.classList.add('even-pb');
     n.setAttribute('title',
-        `Block #${b} took ${time.toPrecision(3)} seconds
-(solver: ${VM.solver_secs[b - 1]} seconds)`);
+        `Block #${b} took ${time.toPrecision(3)} seconds` +
+            (ssecs ? `\n(solver: ${ssecs} seconds)` : ''));
     n.setAttribute('data-blk', b); 
     n.addEventListener('click',
         (event) => {
