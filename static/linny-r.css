@@ -2644,7 +2644,7 @@ td.equation-expression {
   margin: 0;
   width: 570px;
   height: 255px;
-  min-width: 455px;
+  min-width: 520px;
   min-height: 180px;
   max-height: 99vh;
   max-width: 99vw;
@@ -2950,12 +2950,16 @@ img.v-disab {
   margin-left: 4px;
 }
 
-#chart-time-step {
+#chart-time-div {
   position: absolute;
-  bottom: 3px;
+  bottom: 0px;
   right: 3px;
-  width: 50px;
-  font-size: 11px;
+  width: 55px;
+  height: 22px;
+}
+
+#chart-time-step {
+  font-size: 10px;
 }
 
 #chart-toggle-chevron,

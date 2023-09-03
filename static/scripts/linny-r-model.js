@@ -9800,6 +9800,11 @@ class Chart {
           dy = 0,
           x = 0,
           y = rt + rh + font_height;
+      // Store XY-area coordinates for use by Chart Manager.
+      this.plot_ox = rl;
+      this.plot_oy = rt + rh;
+      this.plot_width = rw;
+      this.plot_height = rh;
       if(this.histogram) {
         // Draw bin boundaries along the horizontal axis
         dx = rw / this.bins;
@@ -9923,12 +9928,16 @@ class Chart {
       // For bar chart, maxv must be non-negative.
       if(stat_bars) maxv = Math.max(maxv, 0);
       const range = maxv - minv;
+      this.plot_min_y = minv;
+      this.plot_max_y = maxv;
       if(range > 0) {
         const step = this.labelStep(range, 5, VM.NEAR_ZERO);
         let x0 = rl,
             y0 = rt + rh,
             maxy = Math.ceil(maxv / step) * step,
             miny = (minv >= 0 ? 0 : -Math.ceil(-minv / step) * step);
+        this.plot_min_y = miny;
+        this.plot_max_y = maxy;
         y = miny;
         const labels = [];
         while(y <= maxy) {

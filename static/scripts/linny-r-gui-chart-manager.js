@@ -473,7 +473,16 @@ class GUIChartManager extends ChartManager {
           ox = r.left * scale,
           w = r.width * scale,
           x = e.pageX -
-              this.svg_container.getBoundingClientRect().left + window.scrollX;
+              this.svg_container.getBoundingClientRect().left + window.scrollX,
+          y = e.pageY -
+              this.svg_container.getBoundingClientRect().top + window.scrollY,
+          yfract = (c.plot_oy - y / scale) / c.plot_height,
+          yres = Math.round(
+              Math.max(Math.abs(c.plot_min_y), Math.abs(c.plot_max_y)) / 500),
+          yval = c.plot_min_y + yfract * (c.plot_max_y - c.plot_min_y),
+          ytrunc = Math.round(yval / yres) * yres,
+          ylbl = (yfract < 0 || yfract > 1 || c.plot_min_y >= c.plot_max_y ?
+              '' : 'y = ' + VM.sig2Dig(parseFloat(ytrunc.toPrecision(2))));
       let n = '';
       if(c.histogram) {
         let vv = [];
@@ -487,17 +496,30 @@ class GUIChartManager extends ChartManager {
             v = vv[b % l],
             t = Math.floor(b / l);
         if(x > ox && b < bars) n = 'N = ' + v.bin_tallies[t];
-      } else {
+      } else if(this.runs_stat) {
+        const
+            runs = EXPERIMENT_MANAGER.selectedRuns(c),
+            rcnt = runs.length,
+            ri = Math.max(0, Math.min(rcnt, Math.floor(rcnt * (x - ox) / w)));
+        if(x > ox && ri < rcnt) n = 'Run #' + runs[ri];
+      } else if(x > ox - 5) {
         const
             runs = EXPERIMENT_MANAGER.selectedRuns(c),
             p = c.total_time_steps,
             first = (runs.length > 0 ? 1 : MODEL.start_period),
             last = (runs.length > 0 ? p : MODEL.end_period),
             t = Math.round(first - 0.5 + p * (x - ox) / w);
-        n = 't = ' + Math.max(0, Math.min(t, last));
+        if(t <= last) n = 't = ' + Math.max(0, t);
       }
+      if(ylbl && n) {
+        n += '<br>' + ylbl;
+        this.time_step.style.marginTop = '-1px';
+      } else {
+        this.time_step.style.marginTop = '5px';
+      }
+      
       this.time_step.innerHTML = n;
-      this.time_step.style.display = 'block';
+      this.time_step.style.display = 'inline-block';
     } else {
       this.time_step.style.display = 'none';
     }
