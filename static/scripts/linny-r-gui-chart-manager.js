@@ -477,9 +477,9 @@ class GUIChartManager extends ChartManager {
           y = e.pageY -
               this.svg_container.getBoundingClientRect().top + window.scrollY,
           yfract = (c.plot_oy - y / scale) / c.plot_height,
-          yres = Math.round(
-              Math.max(Math.abs(c.plot_min_y), Math.abs(c.plot_max_y)) / 500),
           yval = c.plot_min_y + yfract * (c.plot_max_y - c.plot_min_y),
+          yhigh = Math.max(Math.abs(c.plot_min_y), Math.abs(c.plot_max_y)),
+          yres = (yhigh > 1000 ? Math.round(yhigh / 500) : 1),
           ytrunc = Math.round(yval / yres) * yres,
           ylbl = (yfract < 0 || yfract > 1 || c.plot_min_y >= c.plot_max_y ?
               '' : 'y = ' + VM.sig2Dig(parseFloat(ytrunc.toPrecision(2))));

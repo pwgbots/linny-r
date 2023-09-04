@@ -1,6 +1,6 @@
 {
   "name": "linny-r",
-  "version": "1.5.7",
+  "version": "1.5.8",
   "description": "Executable graphical language with WYSIWYG editor for MILP models",
   "main": "server.js",
   "scripts": {

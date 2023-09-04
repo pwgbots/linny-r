@@ -4743,8 +4743,12 @@ class VirtualMachine {
     // than the standard, as it should not go beyond the end time plus
     // look-ahead.
     if(this.block_count < this.nr_of_blocks) return this.chunk_length;
-    let rem = MODEL.runLength % MODEL.block_length;
-    if(rem === 0) rem = MODEL.block_length;
+    // Last block length equals remainder of simulation period divided
+    // by block length.
+    let rem = (MODEL.runLength - MODEL.look_ahead) % MODEL.block_length;
+    // If this remainder equals 0, the last block is a full chunk.
+    if(rem === 0) return this.chunk_length;
+    // Otherwise, the last block if remainder + look-ahead time steps.
     return rem + MODEL.look_ahead;
   }
   
