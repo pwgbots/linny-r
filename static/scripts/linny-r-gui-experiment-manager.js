@@ -684,8 +684,10 @@ class GUIExperimentManager extends ExperimentManager {
         for(let j = 0; j < n; j++) {
           const
               c = r + j + i * nrows,
+              run = x.runs[c],
               ic = x.chart_combinations.indexOf(c);
-          if(add) {
+          // NOTE: Only add if run has been executed and stored.
+          if(add && run) {
             if(ic < 0) x.chart_combinations.push(c);
           } else {
             if(ic >= 0) x.chart_combinations.splice(ic, 1);        
