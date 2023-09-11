@@ -33,7 +33,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// CLASS Expression (for all potentially time-dependent model parameters)
+// CLASS Expression
 class Expression {
   constructor(obj, attr, text) {
     // Expressions are typically defined for some attribute of some
@@ -42,12 +42,19 @@ class Expression {
     this.object = obj;
     this.attribute = attr;
     this.text = text;
+    // For method expressions only: the object to which they apply.
+    // This will be set dynamically by the VMI_push_method instruction.
+    this.method_object = null;
      // A stack for local time step (to allow lazy evaluation).
     this.step = [];
     // An operand stack for computation (elements must be numeric).
     this.stack = []; 
     // NOTE: code = NULL indicates: not compiled yet.
     this.code = null;
+    // Error message when last compiled.
+    this.compile_issue = '';
+    // Error message when last computed.
+    this.compute_issue = '';
     // NOTE: Use a semaphore to prevent cyclic recursion.
     this.compiling = false;
     // While compiling, check whether any operand depends on time.
@@ -75,22 +82,36 @@ class Expression {
   }
   
   get isWildcardExpression() {
-    // Returns TRUE if the owner is a dataset, and the attribute contains
+    // Return TRUE if the owner is a dataset, and the attribute contains
     // wildcards.
     return this.object instanceof Dataset &&
         this.object.isWildcardSelector(this.attribute); 
   }
   
+  get isMethod() {
+    // Return TRUE if the owner is the equations dataset, and the
+    // attribute starts with a colon.
+    return this.object === MODEL.equations_dataset &&
+        this.attribute.startsWith(':'); 
+  }
+  
+  get noMethodObject() {
+    // Return TRUE if expression is a method that does not apply to
+    // any entity group.
+    return this.isMethod && !(this.eligible_prefixes &&
+         Object.keys(this.eligible_prefixes).length > 0);
+  }
+  
   get variableName() {
-    // Return the name of the variable computed by this expression
+    // Return the name of the variable computed by this expression.
     if(this.object === MODEL.equations_dataset) return 'equation ' + this.attribute;
     if(this.object) return this.object.displayName + UI.OA_SEPARATOR + this.attribute;
     return 'Unknown variable (no object)';
   }
   
   get timeStepDuration() {
-    // Returns dt for dataset if this is a dataset modifier expression;
-    // otherwise dt for the current model
+    // Return dt for dataset if this is a dataset modifier expression;
+    // otherwise dt for the current model.
     if(this.object instanceof Dataset) {
       return this.object.time_scale * VM.time_unit_values[this.object.time_unit];
     }
@@ -98,36 +119,41 @@ class Expression {
   }
   
   get referencedEntities() {
-    // Returns a list of entities referenced in this expression.
-    if(this.text.indexOf('[') < 0) return [];
-    const
-        el = [],
-        ml = [...this.text.matchAll(/\[(\{[^\}]+\}){0,1}([^\]]+)\]/g)];
-    for(let i = 0; i < ml.length; i++) {
-      const n = ml[i][2].trim();
-      let sep = n.lastIndexOf('|');
-      if(sep < 0) sep = n.lastIndexOf('@');
-      const
-          en = (sep < 0 ? n : n.substring(0, sep)),
-          e = MODEL.objectByName(en.trim());
-      if(e) addDistinct(e, el);
-    }
-    return el;
+    // Return a list of entities referenced in this expression.
+    return MODEL.entitiesInString(this.text);
   }
-  
+
+  matchWithEligiblePrefixes(pref) {
+    // Return the entity for which `pref` matches with an eligible prefix
+    // of this expression.
+    // NOTE: This expression must have been compiled to "know" its
+    // eligible prefixes.
+    this.compile();
+    // NOTE: Prevent infinite recursion, but do not generate a warning;
+    // the expression parser will do this. 
+    if(this.compiling || !this.eligible_prefixes) return null;
+console.log('HERE attr pref el.prefs', this.attribute, pref, this.eligible_prefixes);
+    return this.eligible_prefixes[pref] || null;
+  }
+
   update(parser) {
-    // Must be called after successful compilation by the expression parser
+    // Must be called after successful compilation by the expression parser.
     this.text = parser.expr;
     this.code = parser.code;
-    // NOTE: overrule `is_static` to make that the "initial level" attribute
-    // is always evaluated for t=1
+console.log('HERE updating x-vbl el.prefs', this.variableName, this.eligible_prefixes);
+    this.eligible_prefixes = parser.eligible_prefixes;
+    // NOTE: Overrule `is_static` to make that the "initial level" attribute
+    // is always evaluated for t=1.
     this.is_static = (this.attribute === 'IL' ? true : parser.is_static);
     this.is_level_based = parser.is_level_based;
     this.reset();
   }
 
   reset(default_value=VM.NOT_COMPUTED) {
-    // Clears result of previous computation (if any)
+    // Clear result of previous computation (if any).
+    this.method_object = null;
+    this.compile_issue = '';
+    this.compute_issue = '';
     this.step.length = 0;
     this.stack.length = 0;
     this.wildcard_vectors = {};
@@ -136,9 +162,9 @@ class Expression {
     this.compile(); // if(!this.compiled)  REMOVED to ensure correct isStatic!! 
     // Static expressions only need a vector with one element (having index 0)
     if(this.is_static) {
-      // NOTE: empty expressions (i.e., no text) may default to different
+      // NOTE: Empty expressions (i.e., no text) may default to different
       // values: typically 0 for lower bounds, infinite for upper process
-      // bounds, etc., so this value must be passed as parameter
+      // bounds, etc., so this value must be passed as parameter.
       this.vector.length = 1;
       if(this.text.length === 0) {
         this.vector[0] = default_value;
@@ -180,6 +206,7 @@ class Expression {
       }
       this.update(xp);
     } else {
+      this.compile_issue = xp.error;
       this.is_static = true;
       this.vector.length = 0;
       this.vector[0] = VM.INVALID;
@@ -358,8 +385,10 @@ class Expression {
     this.wildcard_vector_index = false;
     // If error, display the call stack (only once).
     // NOTE: "undefined", "not computed" and "still computing" are NOT
-    // problematic unless they result in an error (stack over/underflow)
+    // problematic unless they result in an error (stack over/underflow).
     if(v[t] <= VM.ERROR) {
+      // NOTE: Record the first issue that is detected.
+      if(!this.compute_issue) this.compute_issue = VM.errorMessage(v[t]);      
       MONITOR.showCallStack(t);
       VM.logCallStack(t);
     }
@@ -419,7 +448,7 @@ class Expression {
   }
   
   top(no_check=false) {
-    // Returns the top element of the stack, or FALSE if the stack was empty
+    // Return the top element of the stack, or FALSE if the stack was empty.
     if(this.stack.length < 1) {
       this.trace('TOP: UNDERFLOW');
       this.stack = [VM.UNDERFLOW];
@@ -427,12 +456,12 @@ class Expression {
       return false;
     }
     const top = this.stack[this.stack.length - 1]; 
-    // Check for errors, "undefined", "not computed", and "still computing"
+    // Check for errors, "undefined", "not computed", and "still computing".
     if(top < VM.MINUS_INFINITY || top > VM.EXCEPTION) {
-      // If error or exception, ignore UNDEFINED if `no_check` is TRUE)
+      // If error or exception, ignore UNDEFINED if `no_check` is TRUE.
       if(no_check && top <= VM.UNDEFINED) return top;
       // Otherwise, leave the special value on top of the stack, and
-      // return FALSE so that the VM instruction will not alter it 
+      // return FALSE so that the VM instruction will not alter it.
       this.trace(
           VM.errorMessage(top) + ' at top of stack: ' + this.stack.toString());
       return false;
@@ -441,26 +470,26 @@ class Expression {
   }
 
   pop(no_check=false) {
-    // Returns the two top elements A and B as [A, B] after popping the top
-    // element B from the stack, or FALSE if the stack contains fewer than 2
-    // elements, or if A and/or B are error values
+    // Return the two top elements A and B as [A, B] after popping the
+    // top element B from the stack, or FALSE if the stack contains fewer
+    // than 2 elements, or if A and/or B are error values.
     if(this.stack.length < 2) {
       this.trace('POP: UNDERFLOW');
       this.stack.push(VM.UNDERFLOW);
       this.computed = true;
       return false;
     }
-    // Get the top two numbers on the stack as a list
+    // Get the top two numbers on the stack as a list.
     const dyad = this.stack.slice(-2);
     // Pop only the top one
     this.stack.pop();
-    // Check whether either number is an error code
+    // Check whether either number is an error code.
     let check = Math.min(dyad[0], dyad[1]);
     if(check < VM.MINUS_INFINITY &&
         // Exception: "array index out of bounds" error may also be
         // ignored by using the | operator.
         !(no_check && check === VM.ARRAY_INDEX)) {
-      // If error, leave the severest error on top of the stack
+      // If error, leave the most severe error on top of the stack.
       this.retop(check);
       this.trace(VM.errorMessage(check) + ' in dyad: ' + dyad.toString());
       return false;
@@ -487,33 +516,35 @@ class Expression {
   }
 
   retop(value) {
-    // Replaces the top element of the stack by the new value
-    // NOTE: does not check the stack length, as this instruction typically
-    // follows a TOP or POP instruction
+    // Replace the top element of the stack by the new value.
+    // NOTE: Do not check the stack length, as this instruction typically
+    // follows a TOP or POP instruction.
     this.stack[this.stack.length - 1] = value;
     return true;
   }
   
   replaceAttribute(re, a1, a2) {
-    // Replaces occurrences of attribute `a1` by `a2` for all variables that
-    // match the regular expression `re`
+    // Replace occurrences of attribute `a1` by `a2` for all variables
+    // that match the regular expression `re`.
     let n = 0;
     const matches = this.text.match(re);
     if(matches) {
-      // Match is case-insensitive, so check each for matching case of attribute
+      // Match is case-insensitive, so check each for matching case of
+      // attribute.
       for(let i = 0; i < matches.length; i++) {
         const
             m = matches[i],
             e = m.split('|');
-        // Let `ao` be attribute + offset (if any) without right bracket
+        // Let `ao` be attribute + offset (if any) without right bracket.
         let ao = e.pop().slice(0, -1),
-            // Then also trim offset and spaces)
+            // Then also trim offset and spaces.
             a = ao.split('@')[0].trim();
-        // Check if `a` (without bracket and without spaces) indeed matches `a1`
+        // Check whether `a` (without bracket and without spaces) indeed
+        // matches `a1`.
         if(a === a1) {
           // If so, append new attribute plus offset plus right bracket...
           e.push(ao.replace(a, a2) + ']');
-          // ... and replace the original match by the ensemble
+          // ... and replace the original match by the ensemble.
           this.text = this.text.replace(m, e.join('|'));
           n += 1;
         }
@@ -564,13 +595,20 @@ class ExpressionParser {
   constructor(text, owner=null, attribute='') {
     // Setting TRACE to TRUE will log parsing information to the console.
     this.TRACE = false;
-    // `text` is the expression string to be parsed.
-    this.expr = text;
     // NOTE: When expressions for dataset modifiers or equations are
     // parsed, `owner` is their dataset, and `attribute` is their name.
     this.owner = owner;
     this.owner_prefix = '';
     this.attribute = attribute;
+    // `text` is the expression string to be parsed.
+    this.expr = text;
+    this.expansions = [];
+    // Initialize eligible entities as NULL so it will be initialized
+    // when the first method expression variable is parsed.
+    this.eligible_prefixes = null;
+    // When parsing a method expression, keep a list of all attributes
+    // used in variables.
+    this.method_attributes = [];
     this.dataset = null;
     this.dot = null;
     this.selector = '';
@@ -652,7 +690,7 @@ class ExpressionParser {
     // Set the above IF condition to FALSE to profile dynamic expressions.
     console.log(`Expression for ${this.ownerName}: ${this.expr}\n${msg}`);
   }
-
+  
   // The method parseVariable(name) checks whether `name` fits this pattern:
   //   {run}statistic$entity|attribute@offset_1:offset_2
   // allowing spaces within {run} and around | and @ and :
@@ -667,8 +705,8 @@ class ExpressionParser {
   // NOTE: this array is used as argument for the virtual machine instructions
   // VMI_push_var, VMI_push_statistic and VMI_push_run_result.
   parseVariable(name) {
-    // Reduce whitespace to single space.
-    name = name.replace(/\s+/g, ' ');
+    // Remove non-functional whitespace.
+    name = name.replace(/\s+/g, ' ').trim();
     
     // For debugging, TRACE can be used to log to the console for
     // specific expressions and/or variables, for example:
@@ -975,23 +1013,6 @@ class ExpressionParser {
           return false;
         }
       }
-/*
-      // DEPRECATED -- Modeler can deal with this by smartly using AND
-      // clauses like "&x: &y:" to limit set to specific prefixes.
-      
-      // Deal with "prefix inheritance" when pattern starts with a colon.
-      if(pat.startsWith(':') && this.owner_prefix) {
-        // Add a "must start with" AND condition to all OR clauses of the
-        // pattern.
-        // NOTE: Issues may occur when prefix contains &, ^ or #.
-        // @@TO DO: See if this can be easily prohibited.
-        const oc = pat.substring(1).split('|');
-        for(let i = 0; i < oc.length; i++) {
-          oc[i] = `~${this.owner_prefix}&${oc[i]}`;
-        }
-        pat = oc.join('|');
-      }
-*/
       // NOTE: For patterns, assume that # *always* denotes the context-
       // sensitive number #, because if modelers wishes to include
       // ANY number, they can make their pattern less selective.
@@ -1118,7 +1139,7 @@ class ExpressionParser {
     }
     // A leading "!" denotes: pass variable reference instead of its value.
     // NOTE: This also applies to the "dot", so [!.] is a valid variable.
-    let by_reference = name.startsWith('!');
+    const by_reference = name.startsWith('!');
     if(by_reference) name = name.substring(1);
     // When `name` is a single dot, it refers to the dataset for which the
     // modifier expression is being parsed. Like all datasets, the "dot"
@@ -1134,11 +1155,164 @@ class ExpressionParser {
       return false;
     }
     // Check whether name refers to a Linny-R entity defined by the model.
+
+    // NOTE: When parsing the expression of a "method", variables starting
+    // with a colon may be special cases.
+    if(this.attribute.startsWith(':') && name.startsWith(':')) {
+      // When `name` identifies a method ":m" then this method can be
+      // called "as is".
+      const method = MODEL.equationByID(UI.nameToID(name));
+      if(method) {
+        // Check for auto-reference.
+        if(method.selector === this.attribute) {
+          this.error = 'Method cannot reference itself';
+          return false;
+        }
+        if(attr) {
+          // Methods are expressions and hence always return a number,
+          // not an entity.
+          this.error = 'Method cannot have an attribute';
+          return false;
+        }
+        // NOTE: If it has no eligible prefixes yet, the method being
+        // parsed "inherits" those of an "as is" method, or should
+        // intersect its eligible prefixes with the "inherited" ones.
+        method.expression.compile();
+        if(method.expression.compiling) {
+          this.error = 'Cannot resolve method "' + method.selector +
+              '" because this would create a cyclic reference';
+          return false;
+        }
+        const
+            ep = {},
+            mep = method.expression.eligible_prefixes,
+            prefs = Object.keys(mep);
+        for(let i = 0; i < prefs.length; i++) {
+          const pref = prefs[i];
+          if(this.eligible_prefixes === null) {
+            // New prefix => add it with a copy of the entity list.
+            ep[pref] = mep[pref].slice();
+          } else if(this.eligible_prefixes[pref]) {
+            // Add prefix only if some entities in common. 
+            const s = intersection(mep[pref], this.eligible_prefixes[pref]);
+            if(s.length > 0) ep[pref] = s;
+          }
+        }
+console.log('HERE "as is" method ep', method.displayName, ep);
+        this.eligible_prefixes = ep;
+        // NOTE: The method may be dynamic and/or level-dependent.
+        if(!method.expression.isStatic) {
+          this.is_static = false;
+          this.log('dynamic because dynamic method is used');
+        }
+        this.is_level_based = this.is_level_based ||
+            method.expression.is_level_based;
+        // Generate "call method" VM instruction with no additional
+        // arguments; the method will be applied to the object of the
+        // calling method..
+        return [{m: method}, anchor1, offset1, anchor2, offset2];
+      }
+      // If `name` does not identify a method, it must match the "tail"
+      // of some prefixed entity "prefix: name", because a method can
+      // only be used as [prefix: method name] in another expression.
+      // When compiling a method, a list of eligible prefixes is made.
+      // This should not be empty when a method reference is parsed.
+      const
+          tail = UI.PREFIXER + name.substring(1).trim(),
+          ee = MODEL.entitiesEndingOn(tail, attr),
+          ep = {};
+      for(let i = 0; i < ee.length; i++) {
+        const
+            en = ee[i].displayName,
+            pref = en.substring(0, en.length - tail.length);
+        if(this.eligible_prefixes === null) {
+          ep[pref] = [ee[i]];
+        } else if(this.eligible_prefixes[pref]) {
+          if(!ep[pref]) {
+            ep.pref = [ee[i]];
+          } else {
+            addDistinct(ee[i], ep[pref]);
+          }
+        }
+      }
+      this.eligible_prefixes = ep;
+      const uca = attr.toUpperCase();
+      // Capitalize `attr` if it is a standard entity attribute.
+      if(VM.attribute_names[uca]) attr = uca;
+      // Add attribute to method attribute list (for post-parsing check).
+      this.method_attributes.push(attr);
+      if(Object.keys(this.eligible_prefixes).length <= 0) {
+        const n = name + (attr ? `|${attr}` : '');
+        this.error =
+            `No match for variable [${n}] in this method expression`;
+        return false;
+      }
+      // NOTE: Some attributes make the method expression level-dependent.
+      this.is_level_based = this.is_level_based ||
+         VM.level_based_attr.indexOf(attr) >= 0;
+      // NOTE: Postpone check whether method will make the expression
+      // dynamic to after the expression has been parsed and the exact
+      // set of eligible entities and the set of attributes is known.
+      
+      // Colon-prefixed variables in method expressions are similar to
+      // wildcard variables, so the same VM instruction is coded for,
+      // except that the entity that is the object of the method will
+      // be set (as `method_object` property) for expressions that "call"
+      // the method. The distinction is indicated by passing the string
+      // "MO" instead of the list of eligible entities.
+      if(this.TRACE) console.log('TRACE: Variable', name,
+          'references the method object. Attribute used:', attr);
+      return [{n: name, ee: 'MO', a: attr, br: by_reference},
+          anchor1, offset1, anchor2, offset2];
+    }
+    
+    // Special "method-parsing" cases will now have been handled.
+    // The other cases apply also to normal expressions. 
     if(!obj) {
-      // Variable name may start with a colon to denote that the owner
-      // prefix should be added.
+      // If variable name starts with a colon, then the owner prefix
+      // should be added.
       name = UI.colonPrefixedName(name, this.owner_prefix);
-      // Start with wildcard equations, as these are likely to be few
+      // Now check whether the variable appends a method.
+      const
+          parts = name.split(UI.PREFIXER),
+          tail = parts.pop();
+      if(parts.length > 0) {
+        // Name contains at least one prefix => last part *could* be a
+        // method name, so look it up after adding a leading colon.
+        const method = MODEL.equationByID(UI.nameToID(':' + tail));
+        // If tail matches with a method, the head must identify an
+        // entity.
+        if(method) {
+          const
+              en = parts.join(UI.PREFIXER),
+              el = method.expression.matchWithEligiblePrefixes(en);
+console.log('HERE name en el', name, en, el);
+          if(!el) {
+            if(method.expression.compiling) {
+              this.error = `Cannot resolve "${en}", possibly because ` +
+                  `method "${method.selector}" creates a cyclic reference`;
+            } else {
+              this.error = 'Method "'+ method.selector +
+                  `" does not apply to "${en}"`;
+            }
+            return false;
+          }
+          // NOTE: The method may be dynamic and/or level-dependent.
+          if(!method.expression.isStatic) {
+            this.is_static = false;
+            this.log('dynamic because dynamic method is used');
+          }
+          this.is_level_based = this.is_level_based ||
+              method.expression.is_level_based;
+          if(el.length > 1) {
+            console.log('HERE multiple matches', el);
+          }
+          return [{m: method, e: el[0]}, anchor1, offset1, anchor2, offset2];
+        }
+      }
+    }
+    if(!obj) {  
+      // Now check wildcard equations, as these are likely to be few
       // (so a quick scan) and constitute a special case.
       const
           id = UI.nameToID(name),
@@ -1151,7 +1325,7 @@ class ExpressionParser {
         // so this equation must be evaluated for that number.
         return [
             {d: w[0].dataset, s: w[1], x: w[0].expression},
-            anchor1, offset1, anchor2, offset2];        
+            anchor1, offset1, anchor2, offset2];
       }
       // If no match, try to match the object ID with any type of entity.
       obj = MODEL.objectByID(id);
@@ -1313,8 +1487,7 @@ class ExpressionParser {
         // No explicit selector means that this variable is dynamic if
         // the dataset has time series data, or if some of its modifier
         // expressions are dynamic.
-        if(obj.data.length > 1 || (obj.data.length > 0 && !obj.periodic) ||
-            !obj.allModifiersAreStatic) {
+        if(obj.mayBeDynamic) {
           this.is_static = false;
           this.log('dynamic because dataset without explicit selector is used');
         }
@@ -1377,11 +1550,9 @@ class ExpressionParser {
     // NOTE: `arg0` can now be a single value, a vector, or NULL.
     if(arg0 === null) arg0 = obj.attributeValue(attr);
     if(Array.isArray(arg0)) {
-      if(obj instanceof Dataset) {
-        if(obj.data.length > 1 || obj.data.length > 0 && !obj.periodic) {
-          this.is_static = false;
-          this.log('dynamic because dataset vector is used');
-        }
+      if(obj instanceof Dataset && obj.mayBeDynamic) {
+        this.is_static = false;
+        this.log('dynamic because dataset vector is used');
       } else if(VM.level_based_attr.indexOf(attr) >= 0) {
         this.is_static = false;
         this.log('dynamic because level-based attribute');
@@ -1389,7 +1560,8 @@ class ExpressionParser {
         // Unusual (?) combi, so let's assume dynamic.
         this.is_static = false;
         this.log('probably dynamic --  check below:'); 
-        console.log('ANOMALY: array for', obj.displayName, obj, attr, arg0);
+        console.log('ANOMALY: array for', obj.type, obj.displayName, obj, attr, arg0);
+        console.log('Expression for', this.ownerName, '; text =', this.expr);
       }
       if(this.TRACE) console.log('TRACE: arg[0] is a vector');
     }
@@ -1441,10 +1613,10 @@ class ExpressionParser {
   }
 
   getSymbol() {
-    // Gets the next substring in the expression that is a valid symbol
+    // Get the next substring in the expression that is a valid symbol
     // while advancing the position-in-text (`pit`) and length-of-symbol
     // (`los`), which are used to highlight the position of a syntax error
-    // in the expression editor
+    // in the expression editor.
     let c, f, i, l, v;
     this.prev_sym = this.sym;
     this.sym = null;
@@ -1652,35 +1824,35 @@ class ExpressionParser {
   }
 
   compile() {
-    // Compiles expression into array of VM instructions `code`
-    // NOTE: always create a new code array instance, as it will typically
-    // become the code attribute of an expression object
+    // Compile expression into array of VM instructions `code`.
+    // NOTE: Always create a new code array instance, as it will typically
+    // become the code attribute of an expression object.
     if(DEBUGGING) console.log('COMPILING', this.ownerName, ':\n',
         this.expr, '\ncontext number =', this.context_number);
     this.code = [];
-    // Position in text
+    // Position in text.
     this.pit = 0;
-    // Length of symbol
+    // Length of symbol.
     this.los = 0;
-    // Error message also serves as flag: stop compiling if not empty
+    // Error message also serves as flag: stop compiling if not empty.
     this.error = '';
-    // `is_static` becomes FALSE when a time-dependent operand is detected
+    // `is_static` becomes FALSE when a time-dependent operand is detected.
     this.is_static = true;
-    // `is_level_based` becomes TRUE when a level-based variable is detected
+    // `is_level_based` becomes TRUE when a level-based variable is detected.
     this.is_level_based = false;
-    // `concatenating` becomes TRUE when a concatenation operator (semicolon)
-    // is pushed, and FALSE when a reducing operator (min, max, normal, weibull,
-    // triangular) is pushed
+    // `concatenating` becomes TRUE when a concatenation operator
+    // (semicolon) is pushed, and FALSE when a reducing operator (min, max,
+    // normal, weibull, triangular) is pushed.
     this.concatenating = false;
-    // An empty expression should return the "undefined" value
+    // An empty expression should return the "undefined" value.
     if(this.expr.trim() === '') {
       this.code.push([VMI_push_number, VM.UNDEFINED]);
       return; 
     }
-    // Parse the expression using Edsger Dijkstra's shunting-yard algorithm
-    // vmi = virtual machine instruction (a function)
+    // Parse the expression using Edsger Dijkstra's shunting-yard algorithm.
+    // vmi = virtual machine instruction (a function).
     let vmi;
-    // eot = end of text (index of last character in string)
+    // eot = end of text (index of last character in string).
     this.eot = this.expr.length - 1;
     this.sym = null; // current symbol
     this.prev_sym = null; // previous symbol
@@ -1693,27 +1865,27 @@ class ExpressionParser {
       this.getSymbol();
       if(this.error !== '') break;
       if(this.sym === '(') {
-        // Opening parenthesis is ALWAYS pushed onto the stack
+        // Opening parenthesis is ALWAYS pushed onto the stack.
         this.op_stack.push(this.sym);
       } else if(this.sym === ')') {
         // Closing parenthesis => pop all operators until its matching
-        // opening parenthesis is found 
+        // opening parenthesis is found.
         if(this.op_stack.indexOf('(') < 0) {
           this.error = 'Unmatched \')\'';
         } else if(this.prev_sym === '(' ||
           OPERATOR_CODES.indexOf(this.prev_sym) >= 0) {
-          // Parenthesis immediately after an operator => missing operand
+          // Parenthesis immediately after an operator => missing operand.
           this.error = 'Missing operand';
         } else {
-          // Pop all operators up to and including the matching parenthesis
+          // Pop all operators up to and including the matching parenthesis.
           vmi = null;
           while(this.op_stack.length > 0 &&
             this.op_stack[this.op_stack.length - 1] !== '(') {
-            // Pop the operator
+            // Pop the operator.
             vmi = this.op_stack.pop();
             this.codeOperation(vmi);
           }
-          // Also pop the opening parenthesis
+          // Also pop the opening parenthesis.
           this.op_stack.pop();
         }
       } else if(this.sym === VMI_if_else &&
@@ -1725,13 +1897,13 @@ class ExpressionParser {
               this.op_stack[this.op_stack.length - 1] : null),
             topprio = PRIORITIES[OPERATOR_CODES.indexOf(topop)],
             symprio = PRIORITIES[OPERATOR_CODES.indexOf(this.sym)];
-        // Pop all operators having a higher or equal priority than the one
-        // to be pushed EXCEPT when this priority equals 9, as monadic operators
-        // bind right-to-left
+        // Pop all operators having a higher or equal priority than the
+        // one to be pushed EXCEPT when this priority equals 9, as monadic
+        // operators bind right-to-left.
         while(this.op_stack.length > 0 && OPERATOR_CODES.indexOf(topop) >= 0 &&
           topprio >= symprio && symprio !== 9) {
           // The stack may be emptied, but if it contains a (, this
-          // parenthesis is unmatched
+          // parenthesis is unmatched.
           if(topop === '(') {
             this.error = 'Missing \')\'';
           } else {
@@ -1747,27 +1919,27 @@ class ExpressionParser {
           }
         }
         
-        // NOTE: as of version 1.0.14, (a ? b : c) is implemented with
+        // NOTE: As of version 1.0.14, (a ? b : c) is implemented with
         // "jump"-instructions so that only b OR c is evaluated instead
-        // of both
+        // of both.
         if(this.sym === VMI_if_then) {
           // Push index of JUMP-IF-FALSE instruction on if_stack so that
           // later its dummy argument (NULL) can be replaced by the
-          // index of the first instruction after the THEN part
+          // index of the first instruction after the THEN part.
           this.if_stack.push(this.code.length);
           this.code.push([VMI_jump_if_false, null]);
         } else if(this.sym === VMI_if_else) {
           this.then_stack.push(this.code.length);
           this.code.push([VMI_jump, null]);
-          // NOTE: if : is not omitted, the code for the ELSE part must
-          // start by popping the FALSE result of the IF condition
+          // NOTE: If : is not omitted, the code for the ELSE part must
+          // start by popping the FALSE result of the IF condition.
           this.code.push([VMI_pop_false, null]);
         }
         // END of new code for IF-THEN-ELSE
 
         this.op_stack.push(this.sym);
       } else if(this.sym !== null) {
-        // Symbol is an operand
+        // Symbol is an operand.
         if(CONSTANT_CODES.indexOf(this.sym) >= 0) {
           this.code.push([this.sym, null]);
         } else if(Array.isArray(this.sym)) {
@@ -1778,6 +1950,8 @@ class ExpressionParser {
             this.code.push([VMI_push_statistic, this.sym]);
           } else if(this.sym[0].hasOwnProperty('d')) {
             this.code.push([VMI_push_dataset_modifier, this.sym]);
+          } else if(this.sym[0].hasOwnProperty('m')) {
+            this.code.push([VMI_push_method, this.sym]);
           } else if(this.sym[0].hasOwnProperty('ee')) {
             this.code.push([VMI_push_wildcard_entity, this.sym]);
           } else if(this.sym[0].hasOwnProperty('x')) {
@@ -1809,6 +1983,21 @@ class ExpressionParser {
         this.error = 'Missing operator';
       } else if(this.concatenating) {
         this.error = 'Invalid parameter list';
+      }
+    }
+    // When compiling a method, check for all eligible prefixes whether
+    // they might make the expression dynamic.
+    if(this.is_static && this.eligible_prefixes) {
+      const epl = Object.keys(this.eligible_prefixes);
+      for(let i = 0; i < epl.length; i++) {
+        const ep = epl[i];
+        for(let j = 0; j < ep.length; j++) {
+          if(ep[j] instanceof Dataset && ep[j].mayBeDynamic) {
+            this.is_static = false;
+            this.log('dynamic because some modifiers of eligible datasets are dynamic');
+            break;
+          }
+        }
       }
     }
     if(this.TRACE || DEBUGGING) console.log('PARSED', this.ownerName, ':',
@@ -2741,7 +2930,7 @@ class VirtualMachine {
     return prior_level;
   }
 
-  variablesLegend(block) {
+  variablesLegend() {
     // Return a string with each variable code and full name on a
     // separate line.
     const
@@ -5533,96 +5722,99 @@ Solver status = ${json.status}`);
 // automaton instruction has parameters x and a, where x is the computing
 // expression and a the argument, which may be a single number or a list
 // (array) of objects. When no arguments need to be passed, the second
-// parameter is named 'empty' (and is not used).
+// parameter is omitted.
 
 function VMI_push_number(x, number) {
-  // Pushes a numeric constant on the VM stack
+  // Push a numeric constant on the VM stack.
   if(DEBUGGING) console.log('push number = ' + number);
   x.push(number);
 }
 
-function VMI_push_time_step(x, empty) {
-  // Pushes the current time step.
-  // NOTE: this is the "local" time step for expression `x` (which always
-  // starts at 1), adjusted for the first time step of the simulation period 
+function VMI_push_time_step(x) {
+  // Push the current time step.
+  // NOTE: This is the "local" time step for expression `x` (which always
+  // starts at 1), adjusted for the first time step of the simulation period.
   const t = x.step[x.step.length - 1] + MODEL.start_period - 1; 
   if(DEBUGGING) console.log('push absolute t = ' + t);
   x.push(t);
 }
 
-function VMI_push_delta_t(x, empty) {
-  // Pushes the duration of 1 time step (in hours).
+function VMI_push_delta_t(x) {
+  // Push the duration of 1 time step (in hours).
   const dt = MODEL.time_scale * VM.time_unit_values[MODEL.time_unit]; 
   if(DEBUGGING) console.log('push delta-t = ' + dt);
   x.push(dt);
 }
 
-function VMI_push_relative_time(x, empty) {
-  // Pushes the "local" time step for expression `x` (which always starts at 1)
+function VMI_push_relative_time(x) {
+  // Push the "local" time step for expression `x`.
+  // NOTE: Time step for optimization period always starts at 1.
   const t = x.step[x.step.length - 1]; 
   if(DEBUGGING) console.log('push relative t = ' + t);
   x.push(t);
 }
 
-function VMI_push_block_time(x, empty) {
-  // Pushes the "local" time step for expression `x` (which always starts at 1)
-  // adjusted for the first time step of the current block
-  const lt = x.step[x.step.length - 1] - 1,
-        bnr = Math.floor(lt / MODEL.block_length),
-        t = lt - bnr * MODEL.block_length + 1; 
+function VMI_push_block_time(x) {
+  // Push the "local" time step for expression `x` (which always starts
+  // at 1) adjusted for the first time step of the current block.
+  const
+      lt = x.step[x.step.length - 1] - 1,
+      bnr = Math.floor(lt / MODEL.block_length),
+      t = lt - bnr * MODEL.block_length + 1; 
   if(DEBUGGING) console.log('push block time bt = ' + t);
   x.push(t);
 }
 
-function VMI_push_block_number(x, empty) {
-  // Pushes the block currently being optimized (block numbering starts at 1)
+function VMI_push_block_number(x) {
+  // Push the number of the block currently being optimized.
+  // NOTE: Block numbering starts at 1.
   const local_t = x.step[x.step.length - 1] - 1,
         bnr = Math.floor(local_t / MODEL.block_length) + 1;
   if(DEBUGGING) console.log('push current block number = ' + bnr);
   x.push(bnr);
 }
 
-function VMI_push_run_length(x, empty) {
-  // Pushes the run length (excl. look-ahead!)
+function VMI_push_run_length(x) {
+  // Push the run length (excl. look-ahead!).
   const n = MODEL.end_period - MODEL.start_period + 1;
   if(DEBUGGING) console.log('push run length N = ' + n);
   x.push(n);
 }
 
-function VMI_push_block_length(x, empty) {
-  // Pushes the block length (is set via model settings dialog)
+function VMI_push_block_length(x) {
+  // Push the block length.
   if(DEBUGGING) console.log('push block length n = ' + MODEL.block_length);
   x.push(MODEL.block_length);
 }
 
-function VMI_push_look_ahead(x, empty) {
-  // Pushes the look-ahead
+function VMI_push_look_ahead(x) {
+  // Push the look-ahead.
   if(DEBUGGING) console.log('push look-ahead l = ' + MODEL.look_ahead);
   x.push(MODEL.look_ahead);
 }
 
-function VMI_push_round(x, empty) {
-  // Pushes the current round number (a=1, z=26, etc.)
+function VMI_push_round(x) {
+  // Push the current round number (a=1, z=26, etc.).
   const r = VM.round_letters.indexOf(VM.round_sequence[VM.current_round]);
   if(DEBUGGING) console.log('push round number R = ' + r);
   x.push(r);
 }
 
-function VMI_push_last_round(x, empty) {
-  // Pushes the last round number (a=1, z=26, etc.)
+function VMI_push_last_round(x) {
+  // Push the last round number (a=1, z=26, etc.).
   const r = VM.round_letters.indexOf(VM.round_sequence[MODEL.rounds - 1]);
   if(DEBUGGING) console.log('push last round number LR = ' + r);
   x.push(r);
 }
 
-function VMI_push_number_of_rounds(x, empty) {
-  // Pushes the number of rounds (= length of round sequence)
+function VMI_push_number_of_rounds(x) {
+  // Push the number of rounds (= length of round sequence).
   if(DEBUGGING) console.log('push number of rounds NR = ' + MODEL.rounds);
   x.push(MODEL.rounds);
 }
 
-function VMI_push_run_number(x, empty) {
-  // Pushes the number of the current run in the selected experiment (or 0)
+function VMI_push_run_number(x) {
+  // Push the number of the current run in the selected experiment (or 0).
   const
       sx = EXPERIMENT_MANAGER.selected_experiment,
       nox = (sx ? ` (in ${sx.title})` : ' (no experiment)'),
@@ -5631,8 +5823,8 @@ function VMI_push_run_number(x, empty) {
   x.push(xr);
 }
 
-function VMI_push_number_of_runs(x, empty) {
-  // Pushes the number of runs in the current experiment (0 if no experiment)
+function VMI_push_number_of_runs(x) {
+  // Push the number of runs in the current experiment (0 if no experiment).
   const
       sx = EXPERIMENT_MANAGER.selected_experiment,
       nox = (sx ? `(in ${sx.title})` : '(no experiment)'),
@@ -5641,40 +5833,41 @@ function VMI_push_number_of_runs(x, empty) {
   x.push(nx);
 }
 
-function VMI_push_random(x, empty) {
-  // Pushes a random number from the interval [0, 1)
+function VMI_push_random(x) {
+  // Push a random number from the interval [0, 1).
   const r = Math.random();
   if(DEBUGGING) console.log('push random =', r);
   x.push(r);
 }
 
-function VMI_push_pi(x, empty) {
-  // Pushes the goniometric constant pi
+function VMI_push_pi(x) {
+  // Push the goniometric constant pi.
   if(DEBUGGING) console.log('push pi');
   x.push(Math.PI);
 }
 
-function VMI_push_true(x, empty) {
-  // pushes the Boolean constant TRUE
+function VMI_push_true(x) {
+  // Push the Boolean constant TRUE.
   if(DEBUGGING) console.log('push TRUE');
   x.push(1);
 }
 
-function VMI_push_false(x, empty) {
-  // Pushes the Boolean constant FALSE
+function VMI_push_false(x) {
+  // Push the Boolean constant FALSE.
   if(DEBUGGING) console.log('push FALSE');
   x.push(0);
 }
 
-function VMI_push_infinity(x, empty) {
-  // Pushes the constant representing infinity for the solver
+function VMI_push_infinity(x) {
+  // Push the constant representing infinity for the solver.
   if(DEBUGGING) console.log('push +INF');
   x.push(VM.PLUS_INFINITY);
 }
 
 function valueOfIndexVariable(v) {
-  // AUXILIARY FUNCTION for the VMI_push_(i, j or k) instructions
-  // Returns value of iterator index variable for the current experiment
+  // AUXILIARY FUNCTION for the VMI_push_(i, j or k) instructions.
+  // Return the value of the iterator index variable for the current
+  // experiment.
   if(MODEL.running_experiment) {
     const
         lead = v + '=',
@@ -5687,68 +5880,69 @@ function valueOfIndexVariable(v) {
   return 0;
 }
 
-function VMI_push_i(x, empty) {
-  // Pushes the value of iterator index i
+function VMI_push_i(x) {
+  // Push the value of iterator index i.
   const i = valueOfIndexVariable('i');
   if(DEBUGGING) console.log('push i = ' + i);
   x.push(i);
 }
 
-function VMI_push_j(x, empty) {
-  // Pushes the value of iterator index j
+function VMI_push_j(x) {
+  // Push the value of iterator index j.
   const j = valueOfIndexVariable('j');
   if(DEBUGGING) console.log('push j = ' + j);
   x.push(j);
 }
 
-function VMI_push_k(x, empty) {
-  // Pushes the value of iterator index k
+function VMI_push_k(x) {
+  // Push the value of iterator index k.
   const k = valueOfIndexVariable('k');
   if(DEBUGGING) console.log('push k = ' + k);
   x.push(k);
 }
 
 function pushTimeStepsPerTimeUnit(x, unit) {
-  // AUXILIARY FUNCTION for the VMI_push_(time unit) instructions
-  // Pushes the number of model time steps represented by 1 unit 
+  // AUXILIARY FUNCTION for the VMI_push_(time unit) instructions.
+  // Push the number of model time steps represented by 1 unit.
+  // NOTE: This will typically be a real number -- no rounding.
   const t = VM.time_unit_values[unit] / MODEL.time_scale /
       VM.time_unit_values[MODEL.time_unit]; 
   if(DEBUGGING) console.log(`push ${unit} = ${VM.sig4Dig(t)}`);
   x.push(t);
 }
 
-function VMI_push_year(x, empty) {
-  // Pushes the number of time steps in one year
+function VMI_push_year(x) {
+  // Push the number of time steps in one year.
   pushTimeStepsPerTimeUnit(x, 'year');
 }
 
-function VMI_push_week(x, empty) {
-  // Pushes the number of time steps in one week
+function VMI_push_week(x) {
+  // Push the number of time steps in one week.
   pushTimeStepsPerTimeUnit(x, 'week');
 }
 
-function VMI_push_day(x, empty) {
-  // Pushes the number of time steps in one day
+function VMI_push_day(x) {
+  // Push the number of time steps in one day.
   pushTimeStepsPerTimeUnit(x, 'day');
 }
 
-function VMI_push_hour(x, empty) {
-  // Pushes the number of time steps in one hour
+function VMI_push_hour(x) {
+  // Push the number of time steps in one hour.
   pushTimeStepsPerTimeUnit(x, 'hour');
 }
 
-function VMI_push_minute(x, empty) {
-  // Pushes the number of time steps in one minute
+function VMI_push_minute(x) {
+  // Push the number of time steps in one minute.
   pushTimeStepsPerTimeUnit(x, 'minute');
 }
 
-function VMI_push_second(x, empty) {
-  // Pushes the number of time steps in one minute
+function VMI_push_second(x) {
+  // Push the number of time steps in one second.
   pushTimeStepsPerTimeUnit(x, 'second');
 }
 
-function VMI_push_contextual_number(x, empty) {
-  // Pushes the numeric value of the context-sensitive number #
+function VMI_push_contextual_number(x) {
+  // Push the numeric value of the context-sensitive number #.
   const n = valueOfNumberSign(x);
   if(DEBUGGING) {
     console.log('push contextual number: # = ' + VM.sig2Dig(n));
@@ -5759,11 +5953,12 @@ function VMI_push_contextual_number(x, empty) {
 /* VM instruction helper functions */
 
 function valueOfNumberSign(x) {
-  // Pushes the numeric value of the # sign for the context of expression `x`
-  // NOTE: this can be a wildcard match, an active experiment run selector
-  // ending on digits, or tne number context of an entity. The latter typically
-  // is the number its name or any of its prefixes ends on, but notes are
-  // more "creative" and can return the number context of nearby entities.
+  // Push the numeric value of the # sign for the context of expression `x`.
+  // NOTE: This can be a wildcard match, an active experiment run selector
+  // ending on digits, or the number context of an entity. The latter
+  // typically is the number its name or any of its prefixes ends on, but
+  // notes are more "creative" and can return the number context of nearby
+  // entities.
   let s = '!NO SELECTOR',
       m = '!NO MATCH',
       n = VM.UNDEFINED;
@@ -5792,7 +5987,7 @@ function valueOfNumberSign(x) {
       }
     }
     // If selector contains no wildcards, get number context (typically
-    // inferred from a number in the name of the object)
+    // inferred from a number in the name of the object).
     if(s.indexOf('*') < 0 && s.indexOf('?') < 0) {
       const d = x.object.numberContext;
       if(d) {
@@ -5802,7 +5997,7 @@ function valueOfNumberSign(x) {
       }
     }
   }
-  // For datasets, set the parent anchor to be the context-sensitive number
+  // For datasets, set the parent anchor to be the context-sensitive number.
   if(x.object instanceof Dataset) x.object.parent_anchor = n;
   if(DEBUGGING) {
     console.log(`context for # in expression for ${x.variableName}
@@ -5813,7 +6008,7 @@ function valueOfNumberSign(x) {
 }
 
 function relativeTimeStep(t, anchor, offset, dtm, x) {
-  // Returns the relative time step, given t, anchor, offset,
+  // Return the relative time step, given t, anchor, offset,
   // delta-t-multiplier and the expression being evaluated (to provide
   // context for anchor #).
   // NOTE: t = 1 corresponds with first time step of simulation period.
@@ -5833,7 +6028,7 @@ function relativeTimeStep(t, anchor, offset, dtm, x) {
       if(DEBUGGING) {
         console.log('Parent anchor', x.object.parent_anchor);
       }
-      // NOTE: For not array-type datasets, ^ is equivalent to #
+      // NOTE: For not array-type datasets, ^ is equivalent to #.
       return x.object.parent_anchor;
     }
     return valueOfNumberSign(x) + offset;
@@ -5872,17 +6067,18 @@ function relativeTimeStep(t, anchor, offset, dtm, x) {
 }
 
 function twoOffsetTimeStep(t, a1, o1, a2, o2, dtm, x) {
-  // Returns the list [rt, ao1, ao2] where rt is the time step, and ao1 and ao2
-  // are anchor-offset shorthand for the debugging message, given t, two anchors
-  // and offsets, and the delta-t-multiplier
-  // NOTE: `dtm` will differ from 1 only for experiment results
-  // NOTE: expression `x` is passed to provide context for evaluation of #
+  // Return the list [rt, ao1, ao2] where `rt` is the time step, and
+  // `ao1` and `ao2` are anchor-offset shorthand for the debugging message,
+  // given `t`, the two anchors plus offsets, and the delta-t-multiplier.
+  // NOTES:
+  // (1) `dtm` will differ from 1 only for experiment results.
+  // (2) Expression `x` is passed to provide context for evaluation of #.
   let t1 = relativeTimeStep(t, a1, o1, dtm, x),
       ao1 = [' @ ', a1, (o1 > 0 ? '+' : ''), (o1 ? o1 : ''),
           ' = ', t1].join(''),
       ao2 = '';
   if(o2 !== o1 || a2 !== a1) {
-    // Two different offsets => use the midpoint as time (NO aggregation!)
+    // Two different offsets => use the midpoint as time (NO aggregation!).
     const t2 = relativeTimeStep(t, a2, o2, dtm, x);
     ao2 = [' : ', a2, (o2 > 0 ? '+' : ''), (o2 ? o2 : ''), ' = ', t2].join('');
     t1 = Math.floor((t1 + t2) / 2);
@@ -5894,51 +6090,51 @@ function twoOffsetTimeStep(t, a1, o1, a2, o2, dtm, x) {
 /* VM instructions (continued) */
 
 function VMI_push_var(x, args) {
-  // Pushes the value of the variable specified by `args`, being the list
+  // Push the value of the variable specified by `args`, being the list
   // [obj, anchor1, offset1, anchor2, offset2] where `obj` can be a vector
-  // or an expression, or a cluster unit balance specifier 
+  // or an expression, or a cluster unit balance specifier.
   const
       obj = args[0],
-      // NOTE: use the "local" time step for expression x
+      // NOTE: Use the "local" time step for expression `x`.
       tot = twoOffsetTimeStep(x.step[x.step.length - 1],
           args[1], args[2], args[3], args[4], 1, x);
   let t = tot[0];
-  // Negative time step is evaluated as t = 0 (initial value), while t beyond
-  // optimization period is evaluated as its last time step UNLESS t is
-  // used in a self-referencing variable
+  // Negative time step is evaluated as t = 0 (initial value), while t
+  // beyond the optimization period is evaluated as its last time step
+  // UNLESS t is used in a self-referencing variable.
   const xv = obj.hasOwnProperty('xv');
   if(!xv) {
     t = Math.max(0, Math.min(
         MODEL.end_period - MODEL.start_period + MODEL.look_ahead + 1, t));
   }
-  // Trace only now that time step t has been computed
+  // Trace only now that time step t has been computed.
   if(DEBUGGING) {
     console.log('push var:', (xv ? '[SELF]' :
         (obj instanceof Expression ? obj.text : '[' + obj.toString() + ']')),
         tot[1] + ' ' + tot[2]);
   }
   if(Array.isArray(obj)) {
-    // Object is a vector
+    // Object is a vector.
     let v = t < obj.length ? obj[t] : VM.UNDEFINED;
-    // NOTE: when the vector is the "active" parameter for sensitivity
-    // analysis, the value is multiplied by 1 + delta %
+    // NOTE: When the vector is the "active" parameter for sensitivity
+    // analysis, the value is multiplied by 1 + delta %.
     if(obj === MODEL.active_sensitivity_parameter) {
-      // NOTE: do NOT scale exceptional values
+      // NOTE: Do NOT scale exceptional values.
       if(v > VM.MINUS_INFINITY && v < VM.PLUS_INFINITY) {
         v *= (1 + MODEL.sensitivity_delta * 0.01);
       }
     }
     x.push(v);
   } else if(xv) {
-    // Variable references an earlier value computed for this expression `x`
+    // Variable references an earlier value computed for this expression `x`.
     x.push(t >= 0 && t < x.vector.length ? x.vector[t] : obj.dv);
   } else if(obj.hasOwnProperty('c') && obj.hasOwnProperty('u')) {
-    // Object holds link lists for cluster balance computation
+    // Object holds link lists for cluster balance computation.
     x.push(MODEL.flowBalance(obj, t));
   } else if(obj instanceof Expression) {
     x.push(obj.result(t));
   } else if(typeof obj === 'number') {
-    // Object is a number
+    // Object is a number.
     x.push(obj);
   } else {
     console.log('ERROR: VMI_push_var object =', obj);
@@ -5947,17 +6143,17 @@ function VMI_push_var(x, args) {
 }
 
 function VMI_push_entity(x, args) {
-  // Pushes a special "entity reference" object based on `args`, being the
+  // Push a special "entity reference" object based on `args`, being the
   // list [obj, anchor1, offset1, anchor2, offset2] where `obj` has the
-  // format {r: entity object, a: attribute}
-  // The object that is pushed on the stack passes the entity, the attribute
-  // to use, and the time interval
+  // format {r: entity object, a: attribute}.
+  // The object that is pushed on the stack passes the entity, the
+  // attribute to use, and the time interval.
   const
-      // NOTE: use the "local" time step for expression x
+      // NOTE: Use the "local" time step for expression `x`.
       tot = twoOffsetTimeStep(x.step[x.step.length - 1],
           args[1], args[2], args[3], args[4], 1, x),
       er = {entity: args[0].r, attribute: args[0].a, t1: tot[0], t2: tot[1]};
-  // Trace only now that time step t has been computed
+  // Trace only now that time step t has been computed.
   if(DEBUGGING) {
     console.log(['push entity: ', er.entity.displayName, '|', er.attribute,
         ', t = ', er.t1, ' - ', er.t2].join(''));
@@ -5965,27 +6161,79 @@ function VMI_push_entity(x, args) {
   x.push(er);
 }
 
-function VMI_push_wildcard_entity(x, args) {
-  // Pushes the value of (or reference to) an entity attribute, based on
-  // `args`, being the list [obj, anchor1, offset1, anchor2, offset2]
-  // where `obj` has the format {ee: list of eligible entities,
-  // n: name (with wildcard #), a: attribute, br: by reference (boolean)}
-  // First select the first entity in `ee` that matches the wildcard vector
-  // index of the expression `x` being executed.
-  const el = args[0].ee;
-  let nn = args[0].n.replace('#', x.wildcard_vector_index),
-      obj = null;
-  for(let i = 0; !obj && i < el.length; i++) {
-    if(el[i].name === nn) obj = el[i];
-  }
-  // If no match, then this indicates a bad reference.
+function VMI_push_method(x, args) {
+  // Push the result of the expression associated with the method (a
+  // dataset modifier with a selector that starts with a colon).
+  // The first element of the argument list specifies the method,
+  // and possibly also the entity to be used as its object.
+  // NOTE: Methods can only be called "as is" (without prefix) in a
+  // method expression. The object of such "as is" method calls is
+  // the object of the calling method expression `x`.
+  const
+      method = args[0].m,
+      obj = args[0].e || x.method_object;
+      // NOTE: Use the "local" time step for expression `x`.
+      tot = twoOffsetTimeStep(x.step[x.step.length - 1],
+          args[1], args[2], args[3], args[4], 1, x);
+  // If no entity specified, use the method object of `x`.
+  // NOTE: This will only be set when `x` itself is a method expression.
   if(!obj) {
-    console.log(`ERROR: no match for "${nn}" in eligible entity list`, el);
+    console.log(`ERROR: Undefined method object`, x);
     x.push(VM.BAD_REF);
     return;
   }
-  // Otherwise, if args[0] indicates "by reference", then VMI_push_entity
-  // can be called with the appropriate parameters.
+console.log('HERE VMI_push_method obj =', obj, x.method_object);
+  // Set the method object to be used in VMI_push_wildcard_entity.
+  method.expression.method_object = obj;
+  const
+      t = tot[0],
+      v = method.expression.result(t);
+  // Clear the method object -- just to be neat.
+  method.expression.method_object = null;
+  // Trace only now that time step t has been computed.
+  if(DEBUGGING) {
+    console.log('push method:', obj.displayName, method.selector,
+        tot[1] + (tot[2] ? ':' + tot[2] : ''), 'value =', VM.sig4Dig(v));
+  }
+  x.push(v);
+}
+
+function VMI_push_wildcard_entity(x, args) {
+  // Push the value of (or reference to) an entity attribute, based on
+  // `args`, being the list [obj, anchor1, offset1, anchor2, offset2]
+  // where `obj` has the format {ee: list of eligible entities,
+  // n: name (with wildcard #), a: attribute, br: by reference (boolean)}
+  let obj = null,
+      nn = args[0].n;
+  const el = args[0].ee;
+  // NOTE: Variables in method expressions that reference the object of
+  // the method also code with this VM instruction, but then pass the
+  // string "MO" instead of the list of eligible entities. This indicates
+  // that the `method_object` property of expression `x` should be used.
+  if(el === 'MO') {
+    obj = x.method_object;
+    if(!obj) {
+      console.log(`ERROR: Undefined method object`, x);
+      x.push(VM.BAD_REF);
+      return;
+    }
+  } else {
+    // Select the first entity in `ee` that matches the wildcard vector
+    // index of the expression `x` being executed.
+    nn = nn.replace('#', x.wildcard_vector_index);
+    for(let i = 0; !obj && i < el.length; i++) {
+      if(el[i].name === nn) obj = el[i];
+    }
+    // If no match, then this indicates a bad reference.
+    if(!obj) {
+      console.log(`ERROR: no match for "${nn}" in eligible entity list`, el);
+      x.push(VM.BAD_REF);
+      return;
+    }
+  }
+  // Now `obj` should be an existing model entity.
+  // If args[0] indicates "by reference", then VMI_push_entity can be
+  // called with the appropriate parameters.
   const attr = args[0].a || obj.defaultAttribute;
   if(args[0].br) {
     VMI_push_entity(x, {r: obj, a: attr});
@@ -6395,7 +6643,7 @@ function VMI_push_statistic(x, args) {
   x.push(VM.UNDEFINED);
 }
 
-function VMI_replace_undefined(x, empty) {
+function VMI_replace_undefined(x) {
   // Replaces one of the two top numbers on the stack by the other if the one
   // is undefined
   const d = x.pop(true); // TRUE denotes that "undefined" should be ignored as issue
@@ -6408,7 +6656,7 @@ function VMI_replace_undefined(x, empty) {
 // NOTE: when the VM computes logical OR, AND and NOT, any non-zero number
 // is interpreted as TRUE
 
-function VMI_or(x, empty) {
+function VMI_or(x) {
   // Performs a logical OR on the two top numbers on the stack
   const d = x.pop();
   if(d !== false) {
@@ -6417,7 +6665,7 @@ function VMI_or(x, empty) {
   }
 }
 
-function VMI_and(x, empty) {
+function VMI_and(x) {
   // Performs a logical AND on the two top numbers on the stack
   const d = x.pop();
   if(d !== false) {
@@ -6426,7 +6674,7 @@ function VMI_and(x, empty) {
   }
 }
 
-function VMI_not(x, empty) {
+function VMI_not(x) {
   // Performs a logical NOT on the top number of the stack
   const d = x.top();
   if(d !== false) {
@@ -6435,7 +6683,7 @@ function VMI_not(x, empty) {
   }
 }
 
-function VMI_abs(x, empty) {
+function VMI_abs(x) {
   // Replaces the top number of the stack by its absolute value
   const d = x.top();
   if(d !== false) {
@@ -6444,7 +6692,7 @@ function VMI_abs(x, empty) {
   }
 }
 
-function VMI_eq(x, empty) {
+function VMI_eq(x) {
   // Tests equality of the two top numbers on the stack
   const d = x.pop();
   if(d !== false) {
@@ -6453,7 +6701,7 @@ function VMI_eq(x, empty) {
   }
 }
 
-function VMI_ne(x, empty) {
+function VMI_ne(x) {
   // Tests inequality of the two top numbers on the stack
   const d = x.pop();
   if(d !== false) {
@@ -6462,7 +6710,7 @@ function VMI_ne(x, empty) {
   }
 }
 
-function VMI_lt(x, empty) {
+function VMI_lt(x) {
   // Tests whether second number on the stack is less than the top number
   const d = x.pop();
   if(d !== false) {
@@ -6471,7 +6719,7 @@ function VMI_lt(x, empty) {
   }
 }
 
-function VMI_gt(x, empty) {
+function VMI_gt(x) {
   // Tests whether second number on the stack is greater than the top number
   const d = x.pop();
   if(d !== false) {
@@ -6480,7 +6728,7 @@ function VMI_gt(x, empty) {
   }
 }
 
-function VMI_le(x, empty) {
+function VMI_le(x) {
   // Tests whether second number on the stack is less than, or equal to,
   // the top number
   const d = x.pop();
@@ -6490,7 +6738,7 @@ function VMI_le(x, empty) {
   }
 }
 
-function VMI_ge(x, empty) {
+function VMI_ge(x) {
   // Tests whether second number on the stack is greater than, or equal to,
   // the top number
   const d = x.pop();
@@ -6500,7 +6748,7 @@ function VMI_ge(x, empty) {
   }
 }
 
-function VMI_add(x, empty) {
+function VMI_add(x) {
   // Pops the top number on the stack and adds it to the new top number
   const d = x.pop();
   if(d !== false) {
@@ -6509,7 +6757,7 @@ function VMI_add(x, empty) {
   }
 }
 
-function VMI_sub(x, empty) {
+function VMI_sub(x) {
   // Pops the top number on the stack and subtracts it from the new
   // top number
   const d = x.pop();
@@ -6519,7 +6767,7 @@ function VMI_sub(x, empty) {
   }
 }
 
-function VMI_mul(x, empty) {
+function VMI_mul(x) {
   // Pops the top number on the stack and multiplies it with the new
   // top number
   const d = x.pop();
@@ -6529,7 +6777,7 @@ function VMI_mul(x, empty) {
   }
 }
 
-function VMI_div(x, empty) {
+function VMI_div(x) {
   // Pops the top number on the stack and divides the new top number
   // by it. In case of division by zero, the top is replaced by #DIV0!
   const d = x.pop();
@@ -6543,7 +6791,7 @@ function VMI_div(x, empty) {
   }
 }
 
-function VMI_mod(x, empty) {
+function VMI_mod(x) {
   // Pops the top number on the stack, divides the new top number by it
   // (if non-zero, or it pushes error code #DIV0!), takes the fraction
   // part, and multiplies this with the divider; in other words, it
@@ -6559,7 +6807,7 @@ function VMI_mod(x, empty) {
   }
 }
 
-function VMI_negate(x, empty) {
+function VMI_negate(x) {
   // Performs a negation on the top number of the stack
   const d = x.top();
   if(d !== false) {
@@ -6568,7 +6816,7 @@ function VMI_negate(x, empty) {
   }
 }
 
-function VMI_power(x, empty) {
+function VMI_power(x) {
   // Pops the top number on the stack and raises the new top number
   // to its power
   const d = x.pop();
@@ -6578,7 +6826,7 @@ function VMI_power(x, empty) {
   }
 }
 
-function VMI_sqrt(x, empty) {
+function VMI_sqrt(x) {
   // Replaces the top number of the stack by its square root, or by
   // error code #VALUE! if the top number is negative
   const d = x.top();
@@ -6592,7 +6840,7 @@ function VMI_sqrt(x, empty) {
   }
 }
 
-function VMI_sin(x, empty) {
+function VMI_sin(x) {
   // Replaces the top number X of the stack by sin(X)
   const d = x.top();
   if(d !== false) {
@@ -6601,7 +6849,7 @@ function VMI_sin(x, empty) {
   }
 }
 
-function VMI_cos(x, empty) {
+function VMI_cos(x) {
   // Replaces the top number X of the stack by cos(X)
   const d = x.top();
   if(d !== false) {
@@ -6610,7 +6858,7 @@ function VMI_cos(x, empty) {
   }
 }
 
-function VMI_atan(x, empty) {
+function VMI_atan(x) {
   // Replaces the top number X of the stack by atan(X)
   const d = x.top();
   if(d !== false) {
@@ -6619,7 +6867,7 @@ function VMI_atan(x, empty) {
   }
 }
 
-function VMI_ln(x, empty) {
+function VMI_ln(x) {
   // Replaces the top number X of the stack by ln(X), or by error
   // code #VALUE! if X is negative
   const d = x.top();
@@ -6633,7 +6881,7 @@ function VMI_ln(x, empty) {
   }
 }
 
-function VMI_exp(x, empty) {
+function VMI_exp(x) {
   // Replaces the top number X of the stack by exp(X)
   const d = x.top();
   if(d !== false) {
@@ -6642,7 +6890,7 @@ function VMI_exp(x, empty) {
   }
 }
 
-function VMI_log(x, empty) {
+function VMI_log(x) {
   // Pops the top number B from the stack and replaces the new top
   // number A by A log B. NOTE: x = A log B  <=>  x = ln(B) / ln(A)
   let d = x.pop();
@@ -6657,7 +6905,7 @@ function VMI_log(x, empty) {
   }
 }
 
-function VMI_round(x, empty) {
+function VMI_round(x) {
   // Replaces the top number X of the stack by round(X)
   const d = x.top();
   if(d !== false) {
@@ -6666,7 +6914,7 @@ function VMI_round(x, empty) {
   }
 }
 
-function VMI_int(x, empty) {
+function VMI_int(x) {
   // Replaces the top number X of the stack by its integer part
   const d = x.top();
   if(d !== false) {
@@ -6675,7 +6923,7 @@ function VMI_int(x, empty) {
   }
 }
 
-function VMI_fract(x, empty) {
+function VMI_fract(x) {
   // Replaces the top number X of the stack by its fraction part
   const d = x.top();
   if(d !== false) {
@@ -6684,7 +6932,7 @@ function VMI_fract(x, empty) {
   }
 }
 
-function VMI_exponential(x, empty) {
+function VMI_exponential(x) {
   // Replaces the top number X of the stack by a random number from the
   // negative exponential distribution with parameter X (so X is the lambda,
   // and the mean will be 1/X)
@@ -6696,7 +6944,7 @@ function VMI_exponential(x, empty) {
   }
 }
 
-function VMI_poisson(x, empty) {
+function VMI_poisson(x) {
   // Replaces the top number X of the stack by a random number from the
   // poisson distribution with parameter X (so X is the mean value lambda)
   const d = x.top();
@@ -6707,7 +6955,7 @@ function VMI_poisson(x, empty) {
   }
 }
 
-function VMI_binomial(x, empty) {
+function VMI_binomial(x) {
   // Replaces the top list (!) A of the stack by Bin(A[0], A[1]), i.e., a random
   // number from the binomial distribution with n = A[0] and p = A[1]
   const d = x.top();
@@ -6723,7 +6971,7 @@ function VMI_binomial(x, empty) {
   }
 }
 
-function VMI_normal(x, empty) {
+function VMI_normal(x) {
   // Replaces the top list (!) A of the stack by N(A[0], A[1]), i.e., a random
   // number from the normal distribution with mu = A[0] and sigma = A[1]
   const d = x.top();
@@ -6739,7 +6987,7 @@ function VMI_normal(x, empty) {
   }
 }
 
-function VMI_weibull(x, empty) {
+function VMI_weibull(x) {
   // Replaces the top list (!) A of the stack by Weibull(A[0], A[1]), i.e., a
   // random number from the Weibull distribution with lambda = A[0] and k = A[1]
   const d = x.top();
@@ -6755,7 +7003,7 @@ function VMI_weibull(x, empty) {
   }
 }
 
-function VMI_triangular(x, empty) {
+function VMI_triangular(x) {
   // Replaces the top list (!) A of the stack by Tri(A[0], A[1]), A[2]), i.e.,
   // a random number from the triangular distribution with a = A[0], b = A[1],
   // and c = A[2]. NOTE: if only 2 parameters are passed, c is assumed to equal
@@ -6773,7 +7021,7 @@ function VMI_triangular(x, empty) {
   }
 }
 
-function VMI_npv(x, empty) {
+function VMI_npv(x) {
   // Replaces the top list (!) A of the stack by the net present value (NPV)
   // of the arguments in A. A[0] is the interest rate r, A[1] is the number of
   // time periods n. If A has only 1 or 2 elements, the NPV is 0. If A has 3
@@ -6813,7 +7061,7 @@ function VMI_npv(x, empty) {
   }  
 }
 
-function VMI_min(x, empty) {
+function VMI_min(x) {
   // Replaces the top list (!) A of the stack by the lowest value in this list
   // NOTE: if A is not a list, A is left on the stack
   const d = x.top();
@@ -6825,7 +7073,7 @@ function VMI_min(x, empty) {
   }
 }
 
-function VMI_max(x, empty) {
+function VMI_max(x) {
   // Replaces the top list (!) A of the stack by the highest value in this list
   // NOTE: if A is not a list, A is left on the stack
   const d = x.top();
@@ -6837,7 +7085,7 @@ function VMI_max(x, empty) {
   }
 }
 
-function VMI_concat(x, empty) {
+function VMI_concat(x) {
   // Pops the top number B from the stack, and then replaces the new top
   // element A by [A, B] if A is a number, or adds B to A is A is a list
   // of numbers (!) or
@@ -6882,20 +7130,20 @@ function VMI_jump_if_false(x, index) {
   }
 }
 
-function VMI_pop_false(x, empty) {
+function VMI_pop_false(x) {
   // Removes the top value from the stack, which should be 0 or
   // VM.UNDEFINED (but this is not checked)
   const r = x.stack.pop();
   if(DEBUGGING) console.log(`POP-FALSE (${r})`);
 }
 
-function VMI_if_then(x, empty) {
+function VMI_if_then(x) {
   // NO operation -- as of version 1.0.14, this function only serves as
   // operator symbol, and its executions would indicate an error
   console.log('WARNING: this IF-THEN instruction is obsolete!');
 }
 
-function VMI_if_else(x, empty) {
+function VMI_if_else(x) {
   // NO operation -- as of version 1.0.14, this function only serves as
   // operator symbol, and its executions would indicate an error
   console.log('WARNING: this IF-THEN instruction is obsolete!');
@@ -7824,7 +8072,7 @@ const
 
 // Each custom operator must have its own Virtual Machine instruction
   
-function VMI_profitable_units(x, empty) {
+function VMI_profitable_units(x) {
   // Replaces the argument list that should be at the top of the stack by the
   // number of profitable units having a standard capacity (number), given the
   // level (vector) of the process that represents multiple such units, the
@@ -7958,7 +8206,7 @@ DYNAMIC_SYMBOLS.push('npu');
 LEVEL_BASED_CODES.push(VMI_profitable_units);
 
 
-function VMI_highest_cumulative_consecutive_deviation(x, empty) {
+function VMI_highest_cumulative_consecutive_deviation(x) {
   // Replaces the argument list that should be at the top of the stack by
   // the HCCD (as in the function name) of the vector V that is passed as
   // the first argument of this function. The HCCD value is computed by

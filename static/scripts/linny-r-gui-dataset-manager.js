@@ -486,12 +486,14 @@ class GUIDatasetManager extends DatasetManager {
           m = sd.modifiers[UI.nameToID(msl[i])],
           wild = m.hasWildcards,
           defsel = (m.selector === sd.default_selector),
+          issue = (m.expression.compile_issue ? ' compile-issue' :
+              (m.expression.compute_issue ? ' compute-issue' : '')),
           clk = '" onclick="DATASET_MANAGER.selectModifier(event, \'' +
               m.selector + '\'';
       if(m === sm) smid += i;
       ml.push(['<tr id="dsmtr', i, '" class="dataset-modif',
           (m === sm ? ' sel-set' : ''),
-          '"><td class="dataset-selector',
+          '"><td class="dataset-selector', issue,
           (wild ? ' wildcard' : ''),
           '" title="Shift-click to ', (defsel ? 'clear' : 'set as'),
           ' default modifier',
@@ -499,7 +501,10 @@ class GUIDatasetManager extends DatasetManager {
           (defsel ? '<img src="images/solve.png" style="height: 14px;' +
               ' width: 14px; margin: 0 1px -3px -1px;">' : ''),
           (wild ? wildcardFormat(m.selector, true) : m.selector),
-          '</td><td class="dataset-expression',
+          '</td><td class="dataset-expression', issue,
+          (issue ? '"title="' +
+              safeDoubleQuotes(m.expression.compile_issue ||
+                  m.expression.compute_issue) : ''),
           clk, ');">', m.expression.text, '</td></tr>'].join(''));
     }
     this.modifier_table.innerHTML = ml.join('');

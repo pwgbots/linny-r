@@ -114,11 +114,14 @@ class GUIExperimentManager extends ExperimentManager {
     document.getElementById('xv-download-btn').addEventListener(
         'click', () => EXPERIMENT_MANAGER.promptForDownload());
     // The viewer's drop-down selectors
-    document.getElementById('viewer-variable').addEventListener( 
+    this.viewer_variable = document.getElementById('viewer-variable');
+    this.viewer_variable.addEventListener( 
         'change', () => EXPERIMENT_MANAGER.setVariable());
-    document.getElementById('viewer-statistic').addEventListener( 
+    this.viewer_statistic = document.getElementById('viewer-statistic');
+    this.viewer_statistic.addEventListener( 
         'change', () => EXPERIMENT_MANAGER.setStatistic());
-    document.getElementById('viewer-scale').addEventListener( 
+    this.viewer_scale = document.getElementById('viewer-scale');
+    this.viewer_scale.addEventListener( 
         'change', () => EXPERIMENT_MANAGER.setScale());
     // The spin buttons
     document.getElementById('xp-cd-minus').addEventListener( 
@@ -272,12 +275,12 @@ class GUIExperimentManager extends ExperimentManager {
   
   updateDialog() {
     this.updateChartList();
-    // Warn modeler if no meaningful experiments can be defined
+    // Warn modeler if no meaningful experiments can be defined.
     if(MODEL.outcomeNames.length === 0 && this.suitable_charts.length === 0) {
       this.default_message.style.display = 'block';
       this.params_div.style.display = 'none';
       this.selected_experiment = null;
-      // Disable experiment dialog menu buttons
+      // Disable experiment dialog menu buttons.
       UI.disableButtons('xp-new xp-rename xp-view xp-delete xp-ignore');
     } else {
       this.default_message.style.display = 'none';
@@ -388,7 +391,7 @@ class GUIExperimentManager extends ExperimentManager {
           x.charts[i].title, '</td></tr>'].join(''));
     }
     this.chart_table.innerHTML = tr.join('');
-    // Do not show viewer unless at least 1 dependent variable has been defined
+    // Do not show viewer unless at least 1 dependent variable has been defined.
     if(x.charts.length === 0 && MODEL.outcomeNames.length === 0) canview = false;
     if(tr.length >= this.suitable_charts.length) {
       document.getElementById('xp-c-add-btn').classList.add('v-disab');
@@ -409,7 +412,7 @@ class GUIExperimentManager extends ExperimentManager {
       dbtn.classList.add('v-disab');
       cbtn.classList.add('v-disab');
     }
-    // Enable viewing only if > 1 dimensions and > 1 outcome variables
+    // Enable viewing only if > 1 dimensions and > 1 outcome variables.
     if(canview) {
       UI.enableButtons('xp-view');
     } else {
@@ -478,38 +481,51 @@ class GUIExperimentManager extends ExperimentManager {
     if(x) {
       this.design.style.display = 'none';
       document.getElementById('viewer-title').innerHTML = x.title;
-      document.getElementById('viewer-statistic').value = x.selected_statistic;
+      this.viewer_statistic.value = x.selected_statistic;
       this.updateViewerVariable();
       // NOTE: calling updateSpinner with dir=0 will update without changes
       this.updateSpinner('c', 0);
       this.drawTable(); 
-      document.getElementById('viewer-scale').value = x.selected_scale;
+      this.viewer_scale.value = x.selected_scale;
       this.setColorScale(x.selected_color_scale);
       this.viewer.style.display = 'block';
     }
   }
   
   updateViewerVariable() {
-    // Update the variable drop-down selector of the viewer
+    // Update the variable drop-down selector of the viewer.
     const x = this.selected_experiment;
     if(x) {
       x.inferVariables();
       const
           ol = [],
-          vl = MODEL.outcomeNames;
+          ov = MODEL.outcomeNames,
+          vl = [...ov];
       for(let i = 0; i < x.variables.length; i++) {
-        addDistinct(x.variables[i].displayName, vl); 
+        const
+            vn = x.variables[i].displayName,
+            oi = ov.indexOf(vn);
+        // If an outcome dataset or equation is plotted in an experiment
+        // chart, remove its name from the outcome variable list.
+        if(oi >= 0) ov.splice(oi, 1);
+        addDistinct(vn, vl); 
       }
       vl.sort((a, b) => UI.compareFullNames(a, b));
       for(let i = 0; i < vl.length; i++) {
-        ol.push(['<option value="', vl[i], '"',
-            (vl[i] == x.selected_variable ? ' selected="selected"' : ''),
-            '>', vl[i], '</option>'].join(''));
+        const vn = vl[i];
+        // NOTE: FireFox selector dropdown areas have a pale gray
+        // background that darkens when color is set, so always set it
+        // to white (like Chrome). Then set color of outcome variables
+        // to fuchsia to differentiate from variables for which time
+        // series are stored as experiment run results.
+        ol.push(['<option value="', vn, '" style="background-color: white',
+            (ov.indexOf(vn) >= 0 ? '; color: #b00080"' : '"'),
+            (vn == x.selected_variable ? ' selected="selected"' : ''),
+            '>', vn, '</option>'].join(''));
       }
-      document.getElementById('viewer-variable').innerHTML = ol.join('');
-      if(x.selected_variable === '') {
-        x.selected_variable = vl[0];
-      }
+      this.viewer_variable.innerHTML = ol.join('');
+      // Initially, select the first variable on the list.
+      if(x.selected_variable === '') x.selected_variable = vl[0];
     }
   }
   
@@ -954,7 +970,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     // Update view for selected variable
     const x = this.selected_experiment;
     if(x) {
-      x.selected_variable = document.getElementById('viewer-variable').value;
+      x.selected_variable = this.viewer_variable.value;
       this.updateData();
     }
   }
@@ -963,7 +979,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     // Update view for selected variable.
     const x = this.selected_experiment;
     if(x) {
-      x.selected_statistic = document.getElementById('viewer-statistic').value;
+      x.selected_statistic = this.viewer_statistic.value;
       this.updateData();
       // NOTE: Update of Chart Manager is needed only when it is showing
       // run statistics.
@@ -1029,7 +1045,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     // Update view for selected scale
     const x = this.selected_experiment;
     if(x) {
-      x.selected_scale = document.getElementById('viewer-scale').value;
+      x.selected_scale = this.viewer_scale.value;
       this.updateData();
       // NOTE: Update of Chart Manager is needed when it is showing
       // run statistics because solver times may be plotted.

@@ -2608,10 +2608,11 @@ class GUIController extends Controller {
     document.body.className = '';
   }
 
-  setProgressNeedle(fraction) {
+  setProgressNeedle(fraction, color='#500080') {
     // Shows a thin purple line just above the status line to indicate progress
     const el = document.getElementById('set-up-progress-bar');
     el.style.width = Math.round(Math.max(0, Math.min(1, fraction)) * 100) + '%';
+    el.style.backgroundColor = color;
   }
   
   hideStayOnTopDialogs() {

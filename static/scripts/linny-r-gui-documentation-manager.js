@@ -309,30 +309,50 @@ class DocumentationManager {
   }
 
   update(e, shift) {
-    // Display name of entity under cursor on the infoline, and details in
-    // the documentation dialog
+    // Display name of entity under cursor on the infoline, and details
+    // in the documentation dialog.
     if(!e) return;
-    const
-        et = e.type,
+    let et = e.type,
         edn = e.displayName;
-    // TO DO: when debugging, display additional data for nodes on the infoline 
+    if(et === 'Equation' && e.selector.startsWith(':')) et = 'Method';
+    // TO DO: when debugging, display additional data for nodes on the
+    // infoline. 
     UI.setMessage(
         e instanceof NodeBox ? e.infoLineName : `<em>${et}:</em> ${edn}`);
-    // NOTE: update the dialog ONLY when shift is pressed (this permits modelers
-    // to rapidly browse comments without having to click on entities, and then
-    // release the shift key to move to the documentation dialog to edit)
-    // Moreover, the documentation dialog must be visible, and the entity must
-    // have the `comments` property
-    if(!this.editing && shift && this.visible && e.hasOwnProperty('comments')) {
-      this.title.innerHTML = `<em>${et}:</em>&nbsp;${edn}`;
-      this.entity = e;
-      this.markup = (e.comments ? e.comments : '');
-      this.editor.value = this.markup;
-      this.viewer.innerHTML = this.markdown;
-      this.edit_btn.classList.remove('disab');
-      this.edit_btn.classList.add('enab');
-      // NOTE: permit documentation of the model by raising the dialog
-      if(this.entity === MODEL) this.dialog.style.zIndex = 101;
+    // NOTE: Update the dialog ONLY when shift is pressed. This permits
+    // modelers to rapidly browse comments without having to click on
+    // entities, and then release the shift key to move to the documentation
+    // dialog to edit. Moreover, the documentation dialog must be visible,
+    // and the entity must have the `comments` property.
+    // NOTE: Equations constitute an exception, as DatasetModifiers do
+    // not have the `comments` property. Now that methods can be defined
+    // (since version 1.6.0), the documentation window displays the eligible
+    // prefixes when the cursor is Shift-moved over the name of a method
+    // (in the Equation Manager).
+    if(!this.editing && shift && this.visible) {
+      if(e.hasOwnProperty('comments')) {
+        this.title.innerHTML = `<em>${et}:</em>&nbsp;${edn}`;
+        this.entity = e;
+        this.markup = (e.comments ? e.comments : '');
+        this.editor.value = this.markup;
+        this.viewer.innerHTML = this.markdown;
+        this.edit_btn.classList.remove('disab');
+        this.edit_btn.classList.add('enab');
+        // NOTE: permit documentation of the model by raising the dialog
+        if(this.entity === MODEL) this.dialog.style.zIndex = 101;
+      } else if(e instanceof DatasetModifier) {
+        this.title.innerHTML = e.selector;
+        this.viewer.innerHTML = 'Method <tt>' + e.selector +
+            '</tt> does not apply to any entity';
+        if(e.expression.eligible_prefixes) {
+          const el = Object.keys(e.expression.eligible_prefixes)
+              .sort(compareSelectors);
+          if(el.length > 0) this.viewer.innerHTML = 'Method <tt>' +
+              e.selector + '</tt> applies to ' +
+              pluralS(el.length, 'prefixed entity group').toLowerCase() +
+              ':<ul><li>' + el.join('</li><li>') + '</li></ul>';
+        }
+      }
     }
   }
   

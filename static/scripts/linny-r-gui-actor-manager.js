@@ -304,15 +304,15 @@ class ActorManager {
       if(a.displayName != ali[1]) a.rename(ali[1]);
       // Set its round flags
       a.round_flags = ali[2];
-      // Double-check: parse expression if weight has been changed
+      // Double-check: parse expression if weight has been changed.
       if(a.weight.text != ali[3]) {
-        xp.expr = ali[3];
+        xp.expr = monoSpacedVariables(ali[3]);
         xp.compile();
         if(xp.error) {
           UI.warningInvalidWeightExpression(a, xp.error);
           ok = false;
         } else {
-          a.weight.update(xp);
+          a.weight.update(ali[3]);
         }
       }
       // Update import/export status

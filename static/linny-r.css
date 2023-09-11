@@ -2366,6 +2366,24 @@ td.equation-selector {
   text-overflow: ellipsis;
 }
 
+td.method {
+  color: #1080e0;
+  font-weight: bold;
+}
+
+td.no-object {
+  color: #80a0c0;
+  font-weight: normal;
+}
+
+td.compile-issue {
+  color: #e00000;
+}
+
+td.compute-issue {
+  color: #f08000;
+}
+
 td.wildcard {
   color: #400080;
 }
@@ -3558,6 +3576,7 @@ td.sa-not-run {
 #viewer-variable {
   font-size: 10px;
   max-width: calc(100% - 160px);
+  margin-right: 10px;
 }
 
 #sensitivity-statistic,

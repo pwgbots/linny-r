@@ -175,7 +175,7 @@ class GUIMonitor {
     this.block_count = VM.block_count;
     // Shows the appropriate text in the monitor's textarea
     let b = this.shown_block;
-    // By default, show information on the block being calculated
+    // By default, show information on the block being calculated.
     if(b === 0) b = this.block_count;
     if(this.block_count === 0) {
       this.messages_text.value = VM.no_messages;
@@ -184,9 +184,9 @@ class GUIMonitor {
       this.messages_text.value = VM.messages[b - 1];
       this.equations_text.value = VM.equations[b - 1];
     }
-    // Legend to variables is not block-dependent
-    this.variables_text.value = VM.variablesLegend(b);
-    // Show the text area for the selected tab
+    // Legend to variables is not block-dependent.
+    this.variables_text.value = VM.variablesLegend();
+    // Show the text area for the selected tab.
     if(this.tab !== tab) {
       let mt = 'monitor-' + this.tab;
       document.getElementById(mt).style.display = 'none';

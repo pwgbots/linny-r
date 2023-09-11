@@ -307,6 +307,26 @@ function indexOfMatchingBracket(str, offset) {
   return -1;
 }
 
+function monoSpaced(vbl) {
+  // Removes all non-essential spaces from variable reference `vbl`.
+  // First reduce all whitespace to a single space.
+  return vbl.replace(/\s+/g, ' ')
+       // Then remove spaces after the opening bracket.
+      .replace(/\[\s+/g, '[')
+      // Also remove spaces after a leading colon (if any).
+      .replace(/\[:\s+/g, '[:')
+      // Also remove spaces before closing bracket.
+      .replace(/\s+\]/, ']');
+}
+
+function monoSpacedVariables(xt) {
+  // Return expression text `xt` with all non-functional whitespace
+  // *inside* its variable references (i.e., substrings like
+  // "[entity name|attribute]") removed.
+  // NOTE: All spacing *outside* variable references is preserved.
+  return xt.replace(/\[[^\]]*\]/g, monoSpaced);
+}
+
 function patternList(str) {
   // Returns the &|^-pattern defined by `str`
   // Pattern operators: & (and), ^ (not) and | (or) in sequence, e.g.,
@@ -510,13 +530,19 @@ function compareWithTailNumbers(s1, s2) {
 
 function compareSelectors(s1, s2) {
   // Dataset selectors comparison is case-insensitive, and puts wildcards
-  // last, where * comes later than ?
-  // NOTE: without wildcards, strings that are identical except for the
-  // digits they *end* on are sorted on this "end number" (so abc12 > abc2)
-  // NOTE: this also applies to percentages ("end number"+ %)
+  // last, where * comes later than ?, and leading colons come AFTER
+  // regular selector names.
+  // NOTE: Without wildcards, strings that are identical except for the
+  // digits they *end* on are sorted on this "end number" (so abc12 > abc2).
+  // NOTE: This also applies to percentages ("end number"+ %).
   if(s1 === s2) return 0;
   if(s1 === '*') return 1;
   if(s2 === '*') return -1;
+  // Replace leading colon by | because | has a higher ASCII value than
+  // all other characters. This will move selectors with leading colons
+  // to the end of the list.
+  if(s1.startsWith(':')) s1 = '|' + s1.substring(1);
+  if(s2.startsWith(':')) s2 = '|' + s2.substring(1);
   const
       star1 = s1.indexOf('*'),
       star2 = s2.indexOf('*');
@@ -525,10 +551,10 @@ function compareSelectors(s1, s2) {
     return ciCompare(s1, s2);
   }
   if(star2 >= 0) return -1;  
-  // Replace ? by | because | has a higher ASCII value than all other chars
+  // Now replace ? by | to make it sort further down than other characters.
   let s_1 = s1.replace('?', '|').toLowerCase(), 
       s_2 = s2.replace('?', '|').toLowerCase(),
-      // NOTE: treat selectors ending on a number or percentage as special case
+      // NOTE: Selectors ending on a number or percentage are special.
       n_1 = endsWithDigits(s_1),
       p_1 = (s1.endsWith('%') ? endsWithDigits(s1.slice(0, -1)) : '');
   if(n_1) {
@@ -546,10 +572,11 @@ function compareSelectors(s1, s2) {
       return parseInt(p_1) - parseInt(p_2);
     }
   }
-  // Also sort selectors ending on minuses lower than those ending on plusses,
-  // and such that X-- comes before X-, like X+ automatically comes before X++
-  // ASCII(+) = 43, ASCII(-) = 45, so replace trailing minuses by as many spaces
-  // (ASCII 32) and add a '!' (ASCII 33) -- this then "sorts things out"
+  // Also sort selectors ending on minuses lower than those ending on
+  // plusses, and so that X-- comes before X-, like X+ automatically comes
+  // before X++. ASCII(+) = 43, ASCII(-) = 45, so replace trailing minuses
+  // by as many spaces (ASCII 32) and add a '!' (ASCII 33). This will then
+  // "sorts things out".
   let n = s_1.length,
       i = n - 1;
   while(i >= 0 && s_1[i] === '-') i--;
@@ -830,8 +857,20 @@ function randomID() {
 }
 
 function escapedSingleQuotes(s) {
-  // Returns string `s` with "escaped" single quotes
+  // Return string `s` with "escaped" single quotes.
   return s.replace('\'', '\\\'');
+}
+
+function safeDoubleQuotes(s) {
+  // Return string `s` with ASCII quotes " replaced by curly quotes to
+  // ensure that it does not break HTML attribute strings.
+  const q = ['\u201C', '\u201D'];
+  let index = 0; 
+  while(s.indexOf('"') >= 0) {
+    s = s.replace('"', q[index]);
+    index = 1 - index;
+  }
+  return s;
 }
 
 function nameToLines(name, actor_name = '') {

@@ -162,24 +162,24 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
   Monadic operators take precedence over dyadic operators.
   Use parentheses to override the default evaluation precedence.
 </p>`;
-    // Add listeners to the GUI elements
+    // Add listeners to the GUI elements.
     const md = UI.modals.expression;
     md.ok.addEventListener('click', () => X_EDIT.parseExpression());
     md.cancel.addEventListener('click', () => X_EDIT.cancel());
-    // NOTE: this modal also has an information button in its header
+    // NOTE: This modal also has an information button in its header.
     md.info.addEventListener(
         'click', () => X_EDIT.toggleExpressionInfo());
-    document.getElementById('variable-obj').addEventListener(
+    this.obj.addEventListener(
         'change', () => X_EDIT.updateVariableBar());
-    document.getElementById('variable-name').addEventListener(
+    this.name.addEventListener(
         'change', () => X_EDIT.updateAttributeSelector());
     document.getElementById('variable-insert').addEventListener(
         'click', () => X_EDIT.insertVariable());
   }
 
   editExpression(event) {
-    // Infers which entity property expression is to edited from the button
-    // that was clicked, and then opens the dialog
+    // Infer which entity property expression is to edited from the button
+    // that was clicked, and then opens the dialog.
     const
         btn = event.target,
         ids = btn.id.split('-'), // 3-tuple [entity type, attribute, 'x']
@@ -196,7 +196,8 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
       let n = '',
           a = '';
       if(ids[0] === 'link') {
-        n = document.getElementById('link-from-name').innerHTML + UI.LINK_ARROW +
+        n = document.getElementById('link-from-name').innerHTML +
+            UI.LINK_ARROW +
             document.getElementById('link-to-name').innerHTML;
       } else {
         n = document.getElementById(ids[0] + '-name').value;
@@ -211,20 +212,19 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
       this.edited_expression = UI.edited_object.attributeExpression(ids[1]);
     }
     const md = UI.modals.expression;
-    md.element('property').innerHTML = prop;
-    md.element('text').value = document.getElementById(
-        this.edited_input_id).value.trim();
-    document.getElementById('variable-obj').value = 0;
+    this.property.innerHTML = prop;
+    this.text.value = document.getElementById(this.edited_input_id).value.trim();
+    this.obj.value = 0;
     this.updateVariableBar();
     this.clearStatusBar();
     md.show('text');
   }
  
   cancel() {
-    // Closes the expression editor dialog
+    // Close the expression editor dialog.
     UI.modals.expression.hide();
     // Clear the "shortcut flag" that may be set by Shift-clicking the
-    // "add chart variable" button in the chart dialog 
+    // "add chart variable" button in the chart dialog.
     EQUATION_MANAGER.add_to_chart = false;
     // CLear other properties that relate to the edited expression.
     this.edited_input_id = '';
@@ -232,20 +232,25 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
   }
   
   parseExpression() {
-    // Parses the contents of the expression editor
-    let xt = this.text.value;
-    // NOTE: the Insert button is quite close to the OK button, and often
-    // the modeler clicks OK before Insert, leaving the expression empty;
-    // hence assume that modeler meant to insert a variable if text is empty,
-    // but all three variable components have been selected
+    // Parse the contents of the expression editor.
+    let xt = this.text.value.trim();
+    // NOTE: The Insert button is quite close to the OK button, and often
+    // the modeler clicks OK before Insert, leaving the expression empty.
+    // Hence assume that modeler meant to insert a variable if text is
+    // empty but all three variable components have been selected.
     if(xt === '') {
       const
           n = this.name.options[this.name.selectedIndex].innerHTML,
           a = this.attr.options[this.attr.selectedIndex].innerHTML;
       if(n && a) xt = `[${n}${UI.OA_SEPARATOR}${a}]`;
     }
+    // Remove all non-functional whitespace from variable references. 
+    xt = monoSpacedVariables(xt);
+    // Update the text shown in the editor, otherwise the position of
+    // errors in the text may be incorrect.
+    this.text.value = xt;
     // NOTE: If the expression is a dataset modifier or an equation, pass
-    // the dataset and the selector as extra parameters for the parser 
+    // the dataset and the selector as extra parameters for the parser.
     let own = null,
         sel = '';
     if(!this.edited_input_id && DATASET_MANAGER.edited_expression) {
@@ -270,7 +275,7 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
     } else {
       if(this.edited_input_id) {
         document.getElementById(this.edited_input_id).value = xp.expr;
-        // NOTE: entity properties must be exogenous parameters
+        // NOTE: Entity properties must be exogenous parameters.
         const eo = UI.edited_object; 
         if(eo && xp.is_level_based &&
             !(eo instanceof Dataset || eo instanceof Note)) {

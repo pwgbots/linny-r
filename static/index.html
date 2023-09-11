@@ -304,8 +304,12 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       </svg>
     </div>
   </main>
-  <!-- the footer displays the status bar with X/Y coordinates, zoom in/out buttons, buttons for moving forward/backward
-       in time, and the status line that displays info, notifications, warnings, and error messages
+  <!-- The footer displays the status bar with X/Y coordinates, zoom
+       in/out buttons, buttons for moving forward/backward in time, and
+       the status line that displays info, notifications, warnings, and
+       error messages. The set-up progress bar shows a growing colored
+       needle indicating progress of making Simplex tableau and input
+       file for the solver.
    -->
   <footer>
     <div id="set-up-progress">
@@ -2238,7 +2242,7 @@ NOTE: * and ? will be interpreted as wildcards"
       </div>
       <div id="viewer-selectors">
         <label>Variable:</label>
-        <select id="viewer-variable" style="margin-right: 10px">
+        <select id="viewer-variable">
         </select>
         <label>Statistic:</label>
         <select id="viewer-statistic">

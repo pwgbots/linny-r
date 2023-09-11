@@ -159,22 +159,28 @@ class LinnyRModel {
   }
 
   get outcomeNames() {
+    // Return the list of names of experiment outcome variables, i.e.,
+    // datasets that have been designated as outcomes, and all regular
+    // equations (not methods).
     const olist = [];
     for(let k in this.datasets) if(this.datasets.hasOwnProperty(k)) {
       const ds = this.datasets[k];
       if(ds !== this.equations_dataset && ds.outcome) {
-        // NOTE: experiments store only ONE modifier result per run
+        // NOTE: Experiments store only ONE modifier result per run.
         olist.push(ds.displayName);
       }
     }
-    // ALL equation results are stored, so add all equation selectors
+    // ALL equation results are stored, so add all equation selectors...
     const dsm = this.equations_dataset.modifiers;
-    for(let k in dsm) if(dsm.hasOwnProperty(k)) olist.push(dsm[k].selector);
+    // ... except selectors starting with a colon (methods).
+    for(let k in dsm) if(dsm.hasOwnProperty(k) && !k.startsWith(':')) {
+      olist.push(dsm[k].selector);
+    }
     return olist;
   }
   
   get newProcessCode() {
-    // Return the next unused process code
+    // Return the next unused process code.
     const n = this.next_process_number;
     this.next_process_number++;
     // Process codes are decimal number STRINGS
@@ -417,30 +423,67 @@ class LinnyRModel {
   }
   
   setByType(type) {
-    // Returns a "dictionary" object with entities of the specified types
+    // Return a "dictionary" object with entities of the specified types
     if(type === 'Process') return this.processes;
     if(type === 'Product') return this.products;
     if(type === 'Cluster') return this.clusters;
+    // NOTE: the returned "dictionary" also contains the equations dataset
+    if(type === 'Dataset') return this.datasets;
     if(type === 'Link') return this.links;
     if(type === 'Constraint') return this.constraints;
     if(type === 'Actor') return this.actors;
-    // NOTE: the returned "dictionary" also contains the equations dataset
-    if(type === 'Dataset') return this.datasets;
     return {};
   }
-
+  
+  get allEntities() {
+    // Return a "dictionary" of all entities in the model.
+    // NOTE: This includes equations (instances of DatasetModifier) but
+    // not the equations dataset itself.
+    const all = Object.assign({}, this.processes, this.products,
+        this.clusters, this.datasets, this.equations_dataset.modifiers,
+        this.links, this.actors, this.constraints);
+    // Remove the equations dataset from this dictionary
+    delete all[this.equations_dataset.identifier];
+    return all;
+  }
+  
+  get allMethods() {
+    // Return a list of dataset modifiers that are "methods".
+    const
+        list = [],
+        keys = Object.keys(this.equations_dataset.modifiers);
+    for(let i = 0; i < keys.length; i++) {
+      if(keys[i].startsWith(':')) {
+        list.push(this.equations_dataset.modifiers[keys[i]]);
+      }
+    }
+    return list;
+  }
+  
+  endsWithMethod(name) {
+    // Return method (instance of DatasetModifier) if `name` ends with
+    // ":(whitespace)m" for some method having selector ":m".
+    const ml = this.allMethods;
+    for(let i = 0; i < ml.length; i++) {
+      const re = new RegExp(
+          ':\\s*' + escapeRegex(ml[i].selector.substring(1)) + '$', 'i');
+      if(name.match(re)) return ml[i];
+    }
+    return null;
+  }
+  
   entitiesWithAttribute(attr, et='ABCDLPQ') {
-    // Returns a list of entities (of any type) having the specified attribute
+    // Return a list of entities (of any type) having the specified attribute.
     const list = [];
     if(attr === '' && et.indexOf('D') >= 0) {
-      // Only datasets can have a value for "no attribute"
+      // Only datasets can have a value for "no attribute".
       for(let k in this.datasets) if(this.datasets.hasOwnProperty(k)) {
-        // NOTE: ignore the equations dataset
+        // NOTE: Ignore the equations dataset.
         if(this.datasets[k] !== this.equations_dataset) {
           list.push(this.datasets[k]);
         }
       }
-      // No other types of entity, so return this list
+      // No other types of entity, so return this list.
       return list;
     }
     if(VM.process_attr.indexOf(attr) >= 0 && et.indexOf('P') >= 0) {
@@ -477,15 +520,19 @@ class LinnyRModel {
   }
   
   allMatchingEntities(re, attr='') {
-    // NOTE: this routine is computationally intensive as it performs matches
-    // on the display names of entities while iterating over all relevant sets
+    // Return list of enties with a display name that matches RegExp `re`,
+    // and having attribute `attr` if specified.
+    // NOTE: This routine is computationally intensive as it performs
+    // matches on the display names of entities while iterating over all
+    // relevant entity sets.
     const
         me = [],
         res = re.toString();
         
     function scan(dict) {
-      // Try to match all entities in `dict` 
-      for(let k in dict) if(dict.hasOwnProperty(k)) {
+      // Try to match all entities in `dict`.
+      // NOTE: Ignore method identifiers.
+      for(let k in dict) if(dict.hasOwnProperty(k) && !k.startsWith(':')) {
         const
             e = dict[k],
             m = [...e.displayName.matchAll(re)];
@@ -496,26 +543,63 @@ class LinnyRModel {
           for(let i = 1; same && i < m.length; i++) {
             same = parseInt(m[i][1]) === n;
           }
-          // If so, add the entity to the set
+          // If so, add the entity to the set.
           if(same) me.push(e);
         }
       }  
     }
     
-    // Links limit the search (constraints have no attributes => skip)
+    // Links limit the search (constraints have no attributes => skip).
     if(res.indexOf(UI.LINK_ARROW) >= 0) {
       scan(this.links);
     } else {
+      // First get list of matching datasets.
+      scan(this.datasets);
+      if(me.length > 0 && attr) {
+        // If attribute is specified, retain only datasets having a
+        // modifier with selector = `attr`.
+        for(let i = me.length - 1; i >= 0; i--) {
+          if(!me[i].modifiers[attr]) me.splice(i, 1);
+        }
+      }
+      attr = attr.toUpperCase();
       if(!attr || VM.actor_attr.indexOf(attr) >= 0) scan(this.actors);
       if(!attr || VM.cluster_attr.indexOf(attr) >= 0) scan(this.clusters);
-      if(!attr) scan(this.datasets);
       if(!attr || VM.process_attr.indexOf(attr) >= 0) scan(this.processes);
       if(!attr || VM.product_attr.indexOf(attr) >= 0) scan(this.products);
+      // NOTE: Equations cannot have an attribute.
       if(!attr && this.equations_dataset) scan(this.equations_dataset.modifiers);
     }
     return me;
   }
+  
+  entitiesEndingOn(s, attr='') {
+    // Return a list of entities (of any type) having a display name that
+    // ends on string `s`.
+    // NOTE: The current implementation will overlook links having a FROM
+    // node that ends on `s`.
+    const re = new RegExp(escapeRegex(s) + '$', 'gi');
+    return this.allMatchingEntities(re, attr);
+  }
 
+  entitiesInString(s) {
+    // Return a list of entities referenced in string `s`.
+    if(s.indexOf('[') < 0) return [];
+    const
+        el = [],
+        ml = [...s.matchAll(/\[(\{[^\}]+\}){0,1}([^\]]+)\]/g)];
+    for(let i = 0; i < ml.length; i++) {
+      const n = ml[i][2].trim();
+      let sep = n.lastIndexOf('|');
+      if(sep < 0) sep = n.lastIndexOf('@');
+      const
+          en = (sep < 0 ? n : n.substring(0, sep)).trim(),
+          e = this.objectByName(en);
+      if(e) addDistinct(e, el);
+    }
+    return el;
+  }
+  
   get clustersToIgnore() {
     // Returns a "dictionary" with all clusters that are to be ignored
     const cti = {};
@@ -4909,7 +4993,7 @@ class Note extends ObjectWithXYWH {
             bar = inner.lastIndexOf('|'),
             arrow = inner.lastIndexOf('->');
         // Special case: [[#]] denotes the number context of this note.
-        if(tag.replace(/\s+/, '') === '[[#]]') {
+        if(inner === '#') {
           this.fields.push(new NoteField(this, tag, this));
           // Done, so move on to the next tag
           continue;
@@ -4937,7 +5021,6 @@ class Note extends ObjectWithXYWH {
           ena = inner.split('|');
         }
         // Look up entity for name and attribute.
-        // NOTE: A leading colon denotes "prefix with cluster name". 
         let en = UI.colonPrefixedName(ena[0].trim(), this.clusterPrefix),
             id = UI.nameToID(en),
             // First try to match `id` with the IDs of wildcard equations,
@@ -4965,9 +5048,14 @@ class Note extends ObjectWithXYWH {
           }
         }
         if(!obj) {
-          UI.warn(`Unknown model entity "${en}"`);
+          const m = MODEL.equations_dataset.modifiers[UI.nameToID(ena[0])];
+          if(m) {
+            UI.warn('Methods cannot be evaluated without prefix');
+          } else {
+            UI.warn(`Unknown model entity "${en}"`);
+          }
         } else if(obj instanceof DatasetModifier) {
-          // NOTE: equations are (for now) dimensionless => unit '1'.
+          // NOTE: equations are (for now) dimenssonless => unit '1'.
           if(obj.dataset !== MODEL.equations_dataset) {
             from_unit = obj.dataset.scale_unit;
             multiplier = MODEL.unitConversionMultiplier(from_unit, to_unit);
@@ -8316,17 +8404,17 @@ class DatasetModifier {
   }
   
   get identifier() {
-    // NOTE: identifier will be unique only for equations
+    // NOTE: Identifier will be unique only for equations.
     return UI.nameToID(this.selector);
   }
   get displayName() {
-    // NOTE: when "displayed", dataset modifiers have their selector as name
+    // NOTE: When "displayed", dataset modifiers have their selector as name.
     return this.selector;
   }
   
   get asXML() {
-    // NOTE: for some reason, selector may become empty string, so prevent
-    // saving such unidentified modifiers
+    // NOTE: For some reason, selector may become empty string, so prevent
+    // saving such unidentified modifiers.
     if(this.selector.trim().length === 0) return '';
     return ['<modifier><selector>', xmlEncoded(this.selector),
       '</selector><expression>', xmlEncoded(this.expression.text),
@@ -8336,18 +8424,18 @@ class DatasetModifier {
   initFromXML(node) {
     this.expression.text = xmlDecoded(nodeContentByTag(node, 'expression'));
     if(IO_CONTEXT) {
-      // Contextualize the included expression
+      // Contextualize the included expression.
       IO_CONTEXT.rewrite(this.expression);
     }
   }
 
   get hasWildcards() {
-    // Returns TRUE if this modifier contains wildcards
+    // Return TRUE if this modifier contains wildcards.
     return this.dataset.isWildcardSelector(this.selector);
   }
 
   get numberContext() {
-    // Returns the string to be used to evaluate #.
+    // Return the string to be used to evaluate #.
     // NOTE: If the selector contains wildcards, return "?" to indicate
     // that the value of # cannot be inferred at compile time. 
     if(this.hasWildcards) return '?'; 
@@ -8358,12 +8446,12 @@ class DatasetModifier {
   }
 
   match(s) {
-    // Returns TRUE if string `s` matches with the wildcard pattern of
+    // Return TRUE if string `s` matches with the wildcard pattern of
     // the selector.
     if(!this.hasWildcards) return s === this.selector;
     let re;
     if(this.dataset === MODEL.equations_dataset) {
-      // Equations wildcards only match with digits
+      // Equations wildcards only match with digits.
       re = wildcardMatchRegex(this.selector, true);
     } else {
       // Selector wildcards match with any character, so replace ? by .
@@ -8508,14 +8596,22 @@ class Dataset {
   }
   
   get allModifiersAreStatic() {
-    // Returns TRUE if all modifier expressions are static
+    // Return TRUE if all modifier expressions are static.
     return this.modifiersAreStatic(Object.keys(this.modifiers));
   }
   
+  get mayBeDynamic() {
+    // Return TRUE if this dataset has time series data, or if some of
+    // its modifier expressions are dynamic.
+    return !this.array && (this.data.length > 1 ||
+        (this.data.length > 0 && !this.periodic) ||
+        !this.allModifiersAreStatic);
+  }
+  
   get inferPrefixableModifiers() {
-    // Returns list of dataset modifiers with expressions that do not
+    // Return a list of dataset modifiers with expressions that do not
     // reference any variable and hence could probably better be represented
-    // by a prefixed dataset having the expression value as its default
+    // by a prefixed dataset having the expression value as its default.
     const pml = [];
     if(this !== this.equations_dataset) {
       const sl = this.plainSelectors;
@@ -8525,7 +8621,7 @@ class Dataset {
               m = this.modifiers[sl[i].toLowerCase()],
               x = m.expression;
           // Static expressions without variables can also be used
-          // as dataset default value
+          // as dataset default value.
           if(x.isStatic && x.text.indexOf('[') < 0) pml.push(m);
         }
       }
@@ -8534,13 +8630,13 @@ class Dataset {
   }
 
   get timeStepDuration() {
-    // Returns duration of 1 time step on the time scale of this dataset
+    // Return duration of 1 time step on the time scale of this dataset.
     return this.time_scale * VM.time_unit_values[this.time_unit];
   }
   
   get defaultValue() {
-    // Returns default value *scaled to the model time step*
-    // NOTE: scaling is only needed for the weighted sum method
+    // Return default value *scaled to the model time step*.
+    // NOTE: Scaling is only needed for the weighted sum method.
     if(this.method !== 'w-sum' || this.default_value >= VM.PLUS_INFINITY) {
       return this.default_value;
     }
@@ -8708,16 +8804,26 @@ class Dataset {
         return null;
       }
       // Wildcard selectors must be exactly 2 consecutive question marks,
-      // so reduce longer sequences (no warning)
+      // so reduce longer sequences (no warning).
       s = s.replace(/\?\?+/g, '??');
       if(s.split('??').length > 2) {
         UI.warn('Equation name can contain only 1 wildcard');
         return null;
       }
-      // Reduce inner spaces to one, and trim outer spaces
+      // Reduce inner spaces to one, and trim outer spaces.
       s = s.replace(/\s+/g, ' ').trim();
-      // Then prefix it when the IO context argument is defined 
-      if(ioc) s = ioc.actualName(s);
+      if(s.startsWith(':')) {
+        // Methods must have no spaces directly after their leading colon,
+        // and must not contain other colons.
+        if(s.startsWith(': ')) s = ':' + s.substring(2);
+        if(s.lastIndexOf(':') > 0) {
+          UI.warn('Method name can contain only 1 colon');
+          return null;
+        }
+      } else {
+        // Prefix it when the IO context argument is defined 
+        if(ioc) s = ioc.actualName(s);
+      }
       // If equation already exists, return its modifier
       const id = UI.nameToID(s);
       if(this.modifiers.hasOwnProperty(id)) return this.modifiers[id];
@@ -10767,8 +10873,13 @@ class ExperimentRun {
     }
     // Calculate number of vectors/outcomes/equations to store.
     this.oc_list = MODEL.outcomes;
-    // NOTE: All equations are also considered to be outcomes.
-    this.eq_list = Object.keys(MODEL.equations_dataset.modifiers);
+    // NOTE: All equations are also considered to be outcomes EXCEPT
+    // methods (selectors starting with a colon).
+    this.eq_list = [];
+    const eml = Object.keys(MODEL.equations_dataset.modifiers);
+    for(let i = 0; i < eml.length; i++) {
+      if(!eml[i].startsWith(':')) this.eq_list.push(eml[i]);
+    }
     const
         cv = this.experiment.variables.length,
         oc = this.oc_list.length,
@@ -10807,7 +10918,7 @@ class ExperimentRun {
       // NOTE: This stores results only for "active" selectors (current run).
       this.results.push(new ExperimentRunResult(this, MODEL.outcomes[oi]));
       this.step++;
-      UI.setProgressNeedle(this.step / this.steps);
+      UI.setProgressNeedle(this.step / this.steps, '#d00080');
       setTimeout((x) => x.addOutcomeResults(oi + 1), 0, this);
     } else {
       this.addEquationResults(0);
@@ -10822,7 +10933,7 @@ class ExperimentRun {
       this.results.push(
           new ExperimentRunResult(this, MODEL.equations_dataset, k));      
       this.step++;
-      UI.setProgressNeedle(this.step / this.steps);
+      UI.setProgressNeedle(this.step / this.steps, '#2000d0');
       setTimeout((x) => x.addEquationResults(ei + 1), 0, this);
     } else {
       // Register when this result was stored.
@@ -11544,18 +11655,18 @@ class Experiment {
         return i;
       }
     }
-    // NOTE: variables are stored first, outcomes second, equations last,
+    // NOTE: Variables are stored first, outcomes second, equations last,
     // *while numbering continues*, hence index is position in unsorted
     // variable list, or position in outcome list, where this method
-    // takes into account that experiments store ONE modifier expression per
-    // outcome, and ALL equations
+    // takes into account that experiments store ONE modifier expression
+    // per outcome, and ALL equations except methods.
     const oci = MODEL.outcomeNames.indexOf(dn);
     if(oci >= 0) return oci + this.variables.length;
     return -1;
   }
 
   differences(x) {
-    // Return "dictionary" of differences, or NULL if none
+    // Return "dictionary" of differences, or NULL if none.
     const d = differences(this, x, UI.MC.EXPERIMENT_PROPS);
 /*
     @@TO DO: add diffs for array properties:

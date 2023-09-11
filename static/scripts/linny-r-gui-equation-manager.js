@@ -139,16 +139,27 @@ class EquationManager {
       const
           m = ed.modifiers[UI.nameToID(msl[i])],
           wild = (m.selector.indexOf('??') >= 0),
+          method = m.selector.startsWith(':'),
+          issue = (m.expression.compile_issue ? ' compile-issue' :
+              (m.expression.compute_issue ? ' compute-issue' : '')),
           clk = '" onclick="EQUATION_MANAGER.selectModifier(event, \'' +
-              m.selector + '\'';
+              m.selector + '\'',
+          mover = (method ? ' onmouseover="EQUATION_MANAGER.showInfo(\'' +
+              m.identifier + '\', event.shiftKey);"' : '');
       if(m === sm) smid += i;
       ml.push(['<tr id="eqmtr', i, '" class="dataset-modif',
           (m === sm ? ' sel-set' : ''),
           '"><td class="equation-selector',
-          (m.expression.isStatic ? '' : ' it'),
-          (wild ? ' wildcard' : ''), clk, ', false);">',
+          (method ? ' method' : ''),
+          // Display in gray when method cannot be applied
+          (m.expression.noMethodObject ? ' no-object' : ''),
+          (m.expression.isStatic ? '' : ' it'), issue,
+          (wild ? ' wildcard' : ''), clk, ', false);"', mover, '>',
           (wild ? wildcardFormat(m.selector) : m.selector),
-          '</td><td class="equation-expression',
+          '</td><td class="equation-expression', issue,
+          (issue ? '"title="' +
+              safeDoubleQuotes(m.expression.compile_issue ||
+                  m.expression.compute_issue) : ''),
           clk, ');">', m.expression.text, '</td></tr>'].join(''));
     }
     this.table.innerHTML = ml.join('');
@@ -164,6 +175,8 @@ class EquationManager {
   
   showInfo(id, shift) {
     // @@TO DO: Display documentation for the equation => extra comments field?
+    const d = MODEL.equations_dataset.modifiers[id];
+    if(d) DOCUMENTATION_MANAGER.update(d, shift);
   }
   
   selectModifier(event, id, x=true) {
