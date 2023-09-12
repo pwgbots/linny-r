@@ -574,7 +574,7 @@ class GUIChartManager extends ChartManager {
   }
   
   cloneChart() {
-    // Creates a new chart that is identical to the current one
+    // Create a new chart that is identical to the current one.
     if(this.chart_index >= 0) {
       let c = MODEL.charts[this.chart_index],
           nt = c.title + '-copy';
@@ -582,7 +582,7 @@ class GUIChartManager extends ChartManager {
         nt += '-copy';
       }
       const nc = MODEL.addChart(nt);
-      // Copy properties of c to nc
+      // Copy properties of `c` to `nc`;
       nc.histogram = c.histogram;
       nc.bins = c.bins;
       nc.show_title = c.show_title;
@@ -609,7 +609,7 @@ class GUIChartManager extends ChartManager {
   }
   
   toggleRunStat() {
-    // Toggles the Boolean property that signals charts that they must
+    // Toggle the Boolean property that signals charts that they must
     // plot the selected statistic for the selected runs if they are
     // part of the selected experiment chart set.
     this.setRunsStat(!this.runs_stat);
@@ -618,16 +618,17 @@ class GUIChartManager extends ChartManager {
   }
   
   deleteChart() {
-    // Deletes the shown chart (if any)
+    // Delete the shown chart (if any).
     if(this.chart_index >= 0) {
-      // NOTE: do not delete the default chart, but clear it
+      // NOTE: Do not delete the default chart, but clear it instead.
       if(MODEL.charts[this.chart_index].title === this.new_chart_title) {
         MODEL.charts[this.chart_index].reset();
       } else {
         MODEL.charts.splice(this.chart_index, 1);
         this.chart_index = -1;
       }
-      // Also update the experiment viewer (charts define the output variables)
+      // Also update the experiment viewer, because this chart may be
+      // one of the output charts of the selected experiment.
       UI.updateControllerDialogs('CFX');
     }
   }
@@ -689,8 +690,8 @@ class GUIChartManager extends ChartManager {
   }
 
   addVariable(eq='') {
-    // Adds the variable specified by the add-variable-dialog to the chart
-    // NOTE: when defined, `eq` is the selector of the equation to be added
+    // Add the variable specified by the add-variable-dialog to the chart.
+    // NOTE: When defined, `eq` is the selector of the equation to be added.
     if(this.chart_index >= 0) {
       let o = '',
           a = eq;
@@ -698,7 +699,7 @@ class GUIChartManager extends ChartManager {
         o = this.add_variable_modal.selectedOption('name').text;
         a = this.add_variable_modal.selectedOption('attr').text;
       }
-      // NOTE: when equation is added, object specifier is empty string
+      // NOTE: When equation is added, object specifier is empty string.
       if(!o && a) o = UI.EQUATIONS_DATASET_NAME;
       this.variable_index = MODEL.charts[this.chart_index].addVariable(o, a);
       if(this.variable_index >= 0) {

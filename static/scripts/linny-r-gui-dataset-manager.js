@@ -659,14 +659,14 @@ class GUIDatasetManager extends DatasetManager {
   }
   
   renameDataset() {
-    // Changes the name of the selected dataset
+    // Change the name of the selected dataset.
     if(this.selected_dataset) {
       const
           inp = this.rename_modal.element('name'),
           n = UI.cleanName(inp.value);
-      // Show modeler the "cleaned" new name
+      // Show modeler the "cleaned" new name.
       inp.value = n;
-      // Then try to rename -- this may generate a warning
+      // Then try to rename -- this may generate a warning.
       if(this.selected_dataset.rename(n)) {
         this.rename_modal.hide();
         if(EXPERIMENT_MANAGER.selected_experiment) {
@@ -675,59 +675,22 @@ class GUIDatasetManager extends DatasetManager {
         UI.updateControllerDialogs('CDEFJX');
       }
     } else if(this.selected_prefix_row) {
-      // Create a list of datasets to be renamed
+      // Create a list of datasets to be renamed.
       let e = this.rename_modal.element('name'),
           prefix = e.value.trim();
       e.focus();
-      // Trim trailing colon if user entered it
+      // Trim trailing colon if user added it.
       while(prefix.endsWith(':')) prefix = prefix.slice(0, -1);
-      // NOTE: prefix may be empty string, but otherwise should be a valid name
+      // NOTE: Prefix may be empty string, but otherwise should be a
+      // valid name.
       if(prefix && !UI.validName(prefix)) {
         UI.warn('Invalid prefix');
         return;
       }
-      // Now add the colon-plus-space prefix separator
+      // Now add the colon-plus-space prefix separator.
       prefix += UI.PREFIXER;
-      const
-          oldpref = this.selectedPrefix,
-          key = oldpref.toLowerCase().split(UI.PREFIXER).join(':_'),
-          newkey = prefix.toLowerCase().split(UI.PREFIXER).join(':_'),
-          dsl = [];
-      // No change if new prefix is identical to old prefix
-      if(oldpref !== prefix) { 
-        for(let k in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(k)) {
-          if(k.startsWith(key)) dsl.push(k);
-        }
-        // NOTE: no check needed for mere upper/lower case changes
-        if(newkey !== key) {
-          let nc = 0;
-          for(let i = 0; i < dsl.length; i++) {
-            let nk = newkey + dsl[i].substring(key.length);
-            if(MODEL.datasets[nk]) nc++;
-          }
-          if(nc) {
-            UI.warn('Renaming ' + pluralS(dsl.length, 'dataset').toLowerCase() +
-                ' would cause ' + pluralS(nc, 'name conflict'));
-            return;
-          }
-        }
-        // Reset counts of effects of a rename operation
-        this.entity_count = 0;
-        this.expression_count = 0;
-        // Rename datasets one by one, suppressing notifications
-        for(let i = 0; i < dsl.length; i++) {
-          const d = MODEL.datasets[dsl[i]];
-          d.rename(d.displayName.replace(oldpref, prefix), false);
-        }
-        let msg = 'Renamed ' + pluralS(dsl.length, 'dataset').toLowerCase();
-        if(MODEL.variable_count) msg += ', and updated ' +
-            pluralS(MODEL.variable_count, 'variable') + ' in ' +
-            pluralS(MODEL.expression_count, 'expression');
-        UI.notify(msg);
-        if(EXPERIMENT_MANAGER.selected_experiment) {
-          EXPERIMENT_MANAGER.selected_experiment.inferVariables();
-        }
-        UI.updateControllerDialogs('CDEFJX');
+      // Perform the renaming operation.
+      if(MODEL.renamePrefixedDatasets(this.selectedPrefix, prefix)) {
         this.selectPrefixRow(prefix);
       }
     }

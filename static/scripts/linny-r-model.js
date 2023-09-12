@@ -448,7 +448,7 @@ class LinnyRModel {
   }
   
   get allMethods() {
-    // Return a list of dataset modifiers that are "methods".
+    // Return a list with dataset modifiers that are "methods".
     const
         list = [],
         keys = Object.keys(this.equations_dataset.modifiers);
@@ -990,6 +990,53 @@ class LinnyRModel {
     return ss.length > 0;
   }
 
+  renamePrefixedDatasets(old_prefix, new_prefix) {
+    // Rename all datasets having the specified old prefix so that they
+    // have the specified new prefix UNLESS this would cause name conflicts.
+    const
+        oldkey = old_prefix.toLowerCase().split(UI.PREFIXER).join(':_'),
+        newkey = new_prefix.toLowerCase().split(UI.PREFIXER).join(':_'),
+        dsl = [];
+    // No change if new prefix is identical to old prefix.
+    if(old_prefix !== new_prefix) { 
+      for(let k in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(k)) {
+        if(k.startsWith(oldkey)) dsl.push(k);
+      }
+      // NOTE: No check for name conflicts needed when name change is
+      // merely some upper/lower case change.
+      if(newkey !== oldkey) {
+        let nc = 0;
+        for(let i = 0; i < dsl.length; i++) {
+          let nk = newkey + dsl[i].substring(oldkey.length);
+          if(MODEL.datasets[nk]) nc++;
+        }
+        if(nc) {
+          UI.warn('Renaming ' + pluralS(dsl.length, 'dataset') +
+              ' would cause ' + pluralS(nc, 'name conflict'));
+          return false;
+        }
+      }
+      // Reset counts of effects of a rename operation.
+      this.entity_count = 0;
+      this.expression_count = 0;
+      // Rename datasets one by one, suppressing notifications.
+      for(let i = 0; i < dsl.length; i++) {
+        const d = MODEL.datasets[dsl[i]];
+        d.rename(d.displayName.replace(old_prefix, new_prefix), false);
+      }
+      let msg = 'Renamed ' + pluralS(dsl.length, 'dataset').toLowerCase();
+      if(MODEL.variable_count) msg += ', and updated ' +
+          pluralS(MODEL.variable_count, 'variable') + ' in ' +
+          pluralS(MODEL.expression_count, 'expression');
+      UI.notify(msg);
+      if(EXPERIMENT_MANAGER.selected_experiment) {
+        EXPERIMENT_MANAGER.selected_experiment.inferVariables();
+      }
+      UI.updateControllerDialogs('CDEFJX');
+    }
+    return true;
+  }
+  
   //
   //  Methods that add an entity to the model
   //
@@ -3048,7 +3095,7 @@ class LinnyRModel {
         names = [],
         scale_re = /\s+\(x[0-9\.\,]+\)$/;
     // First create list of distinct variables used in charts.
-    // NOTE: Also include those that are not "visible" in a chart.
+    // NOTE: Also include those that are not checked as "visible".
     for(let i = 0; i < this.charts.length; i++) {
       const c = this.charts[i];
       for(let j = 0; j < c.variables.length; j++) {
@@ -3060,7 +3107,7 @@ class LinnyRModel {
           vn = vn.replace(scale_re, '');
           // Add only if (now unscaled) variable has not been added already.
           if(names.indexOf(vn) < 0) {
-            // NOTE: Chart variable object is used ony as adummy, so NULL
+            // NOTE: Chart variable object is used ony as a dummy, so NULL
             // can be used as its "owner chart". 
             const cv = new ChartVariable(null);
             cv.setProperties(v.object, v.attribute, false, '#000000');
@@ -3112,12 +3159,12 @@ class LinnyRModel {
   }
     
   get listOfAllSelectors() {
-    // Returns list of all dataset modifier selectors as "dictionary" like so:
-    // {selector_1: [list of datasets], ...}
+    // Returns list of all dataset modifier selectors as a "dictionary"
+    // like so: {selector_1: [list of datasets], ...}
     const ds_dict = {};
     for(let k in this.datasets) if(this.datasets.hasOwnProperty(k)) {
       const ds = this.datasets[k];
-      // NOTE: ignore selectors of the equations dataset
+      // NOTE: Ignore selectors of the equations dataset.
       if(ds !== this.equations_dataset) {
         for(let m in ds.modifiers) if(ds.modifiers.hasOwnProperty(m)) {
           const s = ds.modifiers[m].selector;
@@ -6467,7 +6514,7 @@ class Cluster extends NodeBox {
     }
 
 /*  DISABLED -- idea was OK but this results in many additional links
-    that clutter the diagram; represemting these lins by block arrows
+    that clutter the diagram; representing these lines by block arrows
     produces better results
     
     // Special case: P1 --> Q with process Q outside this cluster that
@@ -9047,15 +9094,33 @@ class ChartVariable {
   }
   
   get displayName() {
-    // Returns the name of the Linny-R entity and its attribute, followed
-    // by its scale factor unless it equals 1 (no scaling).
+    // Returns the display name for this variable. This is the name of
+    // the Linny-R entity and its attribute, followed by its scale factor
+    // unless it equals 1 (no scaling).
     const sf = (this.scale_factor === 1 ? '' :
         ` (x${VM.sig4Dig(this.scale_factor)})`);
-    //Display name of equation is just the equations dataset selector. 
+    // Display name of equation is just the equations dataset selector. 
     if(this.object instanceof DatasetModifier) {
       let eqn = this.object.selector;
+      // If for this variable the `wildcard_index` property has been set,
+      // this indicates that it is a Wildcard selector or a method, and
+      // that the specified result vector should be used.
       if(this.wildcard_index !== false) {
-        eqn = eqn.replace('??', this.wildcard_index);
+        // NOTE: A wildcard index (a number) can also indicate that this
+        // variable is a method, so check for a leading colon.
+        if(eqn.startsWith(':')) {
+          // For methods, use "entity name or prefix: method" as variable
+          // name, so first get the method object prefix, expand it if
+          // it identifies a specific model entity, and then append the
+          // method name (leading colon replaced by the prefixer ": ").
+          const
+              mop = this.object.expression.method_object_list[this.wildcard_index],
+              obj = MODEL.objectByID(mop);
+          eqn = (obj ? obj.displayName : (mop || '')) +
+              UI.PREFIXER + eqn.substring(1);
+        } else {
+          eqn = eqn.replace('??', this.wildcard_index);
+        }
       }
       return eqn + sf;
     }
@@ -9425,7 +9490,7 @@ class Chart {
 
   addVariable(n, a) {
     // Adds variable [entity name `n`|attribute `a`] to the chart unless it
-    // is already in the variable list
+    // is already in the variable list.
     let dn = n + UI.OA_SEPARATOR + a;
     // Adapt display name for special cases
     if(n === UI.EQUATIONS_DATASET_NAME) {
@@ -9445,31 +9510,26 @@ class Chart {
       return null;
     }
     const eq = obj instanceof DatasetModifier;
-    if(!eq) {
-      // No equation and no attribute specified? Then assume default.
-      if(a === '') a = obj.defaultAttribute;
-    } else if(n.indexOf('??') >= 0) {
-      // Special case: for wildcard equations, add dummy variables
-      // for each vector in the wildcard vector set of the equation
+    // No equation and no attribute specified? Then assume default.
+    if(!eq && a === '') a = obj.defaultAttribute;
+    if(eq && (n.indexOf('??') >= 0 || obj.expression.isMethod)) {
+      // Special case: for wildcard equations and methods, add dummy
+      // variables for each vector in the wildcard vector set of the
       // expression.
       const
-          vlist = [],
           clr = this.nextAvailableDefaultColor,
           indices = Object.keys(obj.expression.wildcard_vectors);
       for(let i = 0; i < indices.length; i++) {
         const v = new ChartVariable(this);
-        v.setProperties(MODEL.equations_dataset, dn, false, clr);
+        v.setProperties(obj, dn, false, clr);
         v.wildcard_index = parseInt(indices[i]);
         this.variables.push(v);
-        vlist.push(v);
       }
-      return vlist;
-      // FALL-THROUGH: Equation name has no wildcard => use the equation
-      // object (= dataset modifier) as `obj`.
+    } else {
+      const v = new ChartVariable(this);
+      v.setProperties(obj, a, false, this.nextAvailableDefaultColor, 1, 1);
+      this.variables.push(v);
     }
-    const v = new ChartVariable(this);
-    v.setProperties(obj, a, false, this.nextAvailableDefaultColor, 1, 1);
-    this.variables.push(v);
     return this.variables.length - 1;
   }
 

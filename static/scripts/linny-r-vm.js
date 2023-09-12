@@ -45,6 +45,9 @@ class Expression {
     // For method expressions only: the object to which they apply.
     // This will be set dynamically by the VMI_push_method instruction.
     this.method_object = null;
+    // Likewise, VMI_push_method may set the method object prefix if
+    // the specific entity needs to be inferred dynamically.
+    this.method_object_prefix = '';
      // A stack for local time step (to allow lazy evaluation).
     this.step = [];
     // An operand stack for computation (elements must be numeric).
@@ -76,6 +79,11 @@ class Expression {
     // by VMI_push_dataset_modifier (read and/or write) and by
     // VMI_push_contextual_number (read only). 
     this.wildcard_vector_index = false;
+    // Method expressions are similar to wildcard expressions, but have
+    // not natural numbering scheme. By keeping a list of all objects
+    // to which a method has been applied, the index of such an object
+    // in this list serves as the vector number.
+    this.method_object_list = [];
     // Special instructions can store results as cache properties to save
     // (re)computation time; cache is cleared when expression is reset.
     this.cache = {};
@@ -101,6 +109,26 @@ class Expression {
     return this.isMethod && !(this.eligible_prefixes &&
          Object.keys(this.eligible_prefixes).length > 0);
   }
+
+  matchWithEligiblePrefixes(pref) {
+    // Return the entity for which `pref` matches with an eligible prefix
+    // of this expression.
+    // NOTE: This expression must have been compiled to "know" its
+    // eligible prefixes.
+    this.compile();
+    // NOTE: Prevent infinite recursion, but do not generate a warning;
+    // the expression parser will do this. 
+    if(this.compiling || !this.eligible_prefixes) return false;
+    return this.eligible_prefixes[pref.toLowerCase()] || false;
+  }
+
+  isEligible(prefix) {
+    // Return TRUE if `prefix` is an eligible prefix for this method.
+    if(this.eligible_prefixes) {
+      return this.eligible_prefixes[prefix.toLowerCase()] || false;
+    }
+    return false;
+  }
   
   get variableName() {
     // Return the name of the variable computed by this expression.
@@ -123,24 +151,10 @@ class Expression {
     return MODEL.entitiesInString(this.text);
   }
 
-  matchWithEligiblePrefixes(pref) {
-    // Return the entity for which `pref` matches with an eligible prefix
-    // of this expression.
-    // NOTE: This expression must have been compiled to "know" its
-    // eligible prefixes.
-    this.compile();
-    // NOTE: Prevent infinite recursion, but do not generate a warning;
-    // the expression parser will do this. 
-    if(this.compiling || !this.eligible_prefixes) return null;
-console.log('HERE attr pref el.prefs', this.attribute, pref, this.eligible_prefixes);
-    return this.eligible_prefixes[pref] || null;
-  }
-
   update(parser) {
     // Must be called after successful compilation by the expression parser.
     this.text = parser.expr;
     this.code = parser.code;
-console.log('HERE updating x-vbl el.prefs', this.variableName, this.eligible_prefixes);
     this.eligible_prefixes = parser.eligible_prefixes;
     // NOTE: Overrule `is_static` to make that the "initial level" attribute
     // is always evaluated for t=1.
@@ -158,6 +172,7 @@ console.log('HERE updating x-vbl el.prefs', this.variableName, this.eligible_pre
     this.stack.length = 0;
     this.wildcard_vectors = {};
     this.wildcard_vector_index = false;
+    this.method_object_list.length = 0;
     this.cache = {};
     this.compile(); // if(!this.compiled)  REMOVED to ensure correct isStatic!! 
     // Static expressions only need a vector with one element (having index 0)
@@ -298,9 +313,22 @@ console.log('HERE updating x-vbl el.prefs', this.variableName, this.eligible_pre
   
   chooseVector(number) {
     // Return the vector to use for computation (defaults to "own" vector).
-    // NOTE: Static wildcard expressions must also choose a vector!
-    if(typeof number !== 'number' ||
-       (this.isStatic && !this.isWildcardExpression)) return this.vector;
+    // NOTE: Static wildcard and method expressions must also choose a vector!
+    if((typeof number !== 'number' ||
+        (this.isStatic && !this.isWildcardExpression)) &&
+        !this.isMethod) return this.vector;
+    // Method expressions are not "numbered" but differentiate by the
+    // entity to which they are applied. Their "vector number" is then
+    // inferred by looking up this entity in a method object list.
+    const mop = (this.method_object && this.method_object.identifier) ||
+        this.method_object_prefix || '';
+    if(mop) {
+      number = this.method_object_list.indexOf(mop);
+      if(number < 0) {
+        this.method_object_list.push(mop);
+        number = this.method_object_list.length - 1;
+      }
+    }
     // Use the vector for the wildcard number (create it if necessary).
     if(!this.wildcard_vectors.hasOwnProperty(number)) {
       this.wildcard_vectors[number] = [];
@@ -426,17 +454,19 @@ console.log('HERE updating x-vbl el.prefs', this.variableName, this.eligible_pre
   }
 
   get asAttribute() {
-    // Returns the result for the current time step if the model has been solved
-    // (special values as human-readable string), or the expression as text
+    // Return the result for the current time step if the model has been
+    // solved (with special values as human-readable string), or the
+    // expression as text.
     if(!(MODEL.solved || this.isStatic)) return this.text;
     const sv = VM.specialValue(this.result(MODEL.t))[1];
-    // NOTE: ?? is replaced by empty string (undefined => empty cell in Excel)
+    // NOTE: ?? is replaced by empty string to facilitate copy/paste to
+    // Excel-like spreadsheets, where an empty cell indicates "undefined".
     if(sv === '\u2047') return '';
     return sv;
   }
   
   push(value) {
-    // Pushes a numeric value onto the computation stack
+    // Push a numeric value onto the computation stack.
     if(this.stack.length >= VM.MAX_STACK) {
       this.trace('STACK OVERFLOW');
       this.stack.push(VM.OVERFLOW);
@@ -481,7 +511,7 @@ console.log('HERE updating x-vbl el.prefs', this.variableName, this.eligible_pre
     }
     // Get the top two numbers on the stack as a list.
     const dyad = this.stack.slice(-2);
-    // Pop only the top one
+    // Pop only the top one.
     this.stack.pop();
     // Check whether either number is an error code.
     let check = Math.min(dyad[0], dyad[1]);
@@ -511,7 +541,7 @@ console.log('HERE updating x-vbl el.prefs', this.variableName, this.eligible_pre
       this.trace(VM.errorMessage(check) + ' in dyad: ' + dyad.toString());
       return false;
     }
-    // No problem(s)? Then return the dyad.
+    // No issue(s)? Then return the dyad.
     return dyad;
   }
 
@@ -1187,18 +1217,13 @@ class ExpressionParser {
             ep = {},
             mep = method.expression.eligible_prefixes,
             prefs = Object.keys(mep);
+        // NOTE: Prefix keys will always be in lower case.
         for(let i = 0; i < prefs.length; i++) {
           const pref = prefs[i];
-          if(this.eligible_prefixes === null) {
-            // New prefix => add it with a copy of the entity list.
-            ep[pref] = mep[pref].slice();
-          } else if(this.eligible_prefixes[pref]) {
-            // Add prefix only if some entities in common. 
-            const s = intersection(mep[pref], this.eligible_prefixes[pref]);
-            if(s.length > 0) ep[pref] = s;
+          if(this.eligible_prefixes === null || this.eligible_prefixes[pref]) {
+            ep[pref] = true;
           }
         }
-console.log('HERE "as is" method ep', method.displayName, ep);
         this.eligible_prefixes = ep;
         // NOTE: The method may be dynamic and/or level-dependent.
         if(!method.expression.isStatic) {
@@ -1208,9 +1233,9 @@ console.log('HERE "as is" method ep', method.displayName, ep);
         this.is_level_based = this.is_level_based ||
             method.expression.is_level_based;
         // Generate "call method" VM instruction with no additional
-        // arguments; the method will be applied to the object of the
-        // calling method..
-        return [{m: method}, anchor1, offset1, anchor2, offset2];
+        // arguments; the method equation will be applied to the object
+        // of the calling method.
+        return [{meq: method}, anchor1, offset1, anchor2, offset2];
       }
       // If `name` does not identify a method, it must match the "tail"
       // of some prefixed entity "prefix: name", because a method can
@@ -1224,15 +1249,9 @@ console.log('HERE "as is" method ep', method.displayName, ep);
       for(let i = 0; i < ee.length; i++) {
         const
             en = ee[i].displayName,
-            pref = en.substring(0, en.length - tail.length);
-        if(this.eligible_prefixes === null) {
-          ep[pref] = [ee[i]];
-        } else if(this.eligible_prefixes[pref]) {
-          if(!ep[pref]) {
-            ep.pref = [ee[i]];
-          } else {
-            addDistinct(ee[i], ep[pref]);
-          }
+            pref = en.substring(0, en.length - tail.length).toLowerCase();
+        if(this.eligible_prefixes === null || this.eligible_prefixes[pref]) {
+          ep[pref] = true;
         }
       }
       this.eligible_prefixes = ep;
@@ -1285,9 +1304,8 @@ console.log('HERE "as is" method ep', method.displayName, ep);
         if(method) {
           const
               en = parts.join(UI.PREFIXER),
-              el = method.expression.matchWithEligiblePrefixes(en);
-console.log('HERE name en el', name, en, el);
-          if(!el) {
+              mep = method.expression.matchWithEligiblePrefixes(en);
+          if(!mep) {
             if(method.expression.compiling) {
               this.error = `Cannot resolve "${en}", possibly because ` +
                   `method "${method.selector}" creates a cyclic reference`;
@@ -1304,10 +1322,21 @@ console.log('HERE name en el', name, en, el);
           }
           this.is_level_based = this.is_level_based ||
               method.expression.is_level_based;
-          if(el.length > 1) {
-            console.log('HERE multiple matches', el);
-          }
-          return [{m: method, e: el[0]}, anchor1, offset1, anchor2, offset2];
+          // NOTE: `en` may be an incomplete identification of the object
+          // of the method, which can be completed only at execution time.
+          // For example: [x: m] is a valid method call when "x: a: b"
+          // and "x: c" identify model entities, and the expression of
+          // method "m" contains variables [:a :b] and [:c] as operands.
+          // These operands code as VMI_push_dataset_modifier instructions
+          // with specifier {n: name, ee: "MO"} where, for the examples
+          // above, "name" would be ":a :b" and ":c". By passing `en`
+          // as the "method object prefix" to VMI_push_method, this
+          // instruction can set the `method_object_prefix` attribute
+          // of the expression so that it can be used by the VMI_push_
+          // _dataset_modifier instruction to identify the method object
+          // by assembling prefix + name (with its leading colon replaced
+          // by the prefixer ": ").
+          return [{meq: method, mo: en}, anchor1, offset1, anchor2, offset2];
         }
       }
     }
@@ -1556,12 +1585,12 @@ console.log('HERE name en el', name, en, el);
       } else if(VM.level_based_attr.indexOf(attr) >= 0) {
         this.is_static = false;
         this.log('dynamic because level-based attribute');
-      } else {
-        // Unusual (?) combi, so let's assume dynamic.
+      } else if(new Set(arg0).size > 1) {
+        // Not all values qre equal => dynamic.
         this.is_static = false;
-        this.log('probably dynamic --  check below:'); 
-        console.log('ANOMALY: array for', obj.type, obj.displayName, obj, attr, arg0);
-        console.log('Expression for', this.ownerName, '; text =', this.expr);
+        this.log('Dynamic because array contains different values'); 
+        // console.log('ANOMALY: array for', obj.type, obj.displayName, obj, attr, arg0);
+        // console.log('Expression for', this.ownerName, '; text =', this.expr);
       }
       if(this.TRACE) console.log('TRACE: arg[0] is a vector');
     }
@@ -1950,7 +1979,7 @@ console.log('HERE name en el', name, en, el);
             this.code.push([VMI_push_statistic, this.sym]);
           } else if(this.sym[0].hasOwnProperty('d')) {
             this.code.push([VMI_push_dataset_modifier, this.sym]);
-          } else if(this.sym[0].hasOwnProperty('m')) {
+          } else if(this.sym[0].hasOwnProperty('meq')) {
             this.code.push([VMI_push_method, this.sym]);
           } else if(this.sym[0].hasOwnProperty('ee')) {
             this.code.push([VMI_push_wildcard_entity, this.sym]);
@@ -6170,26 +6199,36 @@ function VMI_push_method(x, args) {
   // method expression. The object of such "as is" method calls is
   // the object of the calling method expression `x`.
   const
-      method = args[0].m,
-      obj = args[0].e || x.method_object;
+      method = args[0].meq,
+      mex = method.expression,
+      // NOTE: If method object prefix is not specified in the first
+      // argument, use the MOP of the calling method (if specified).
+      mo_prefix = args[0].mo || x.method_object_prefix,
       // NOTE: Use the "local" time step for expression `x`.
       tot = twoOffsetTimeStep(x.step[x.step.length - 1],
           args[1], args[2], args[3], args[4], 1, x);
-  // If no entity specified, use the method object of `x`.
-  // NOTE: This will only be set when `x` itself is a method expression.
-  if(!obj) {
-    console.log(`ERROR: Undefined method object`, x);
+  if(!x.method_object && !mo_prefix) {
+    console.log('ERROR: Undefined method object', x);
     x.push(VM.BAD_REF);
     return;
   }
-console.log('HERE VMI_push_method obj =', obj, x.method_object);
-  // Set the method object to be used in VMI_push_wildcard_entity.
-  method.expression.method_object = obj;
+  if(x.method_object) {
+    // Set the method object to be used in VMI_push_wildcard_entity.
+    mex.method_object = x.method_object;
+  } else if(mex.isEligible(mo_prefix)) {
+    mex.method_object_prefix = mo_prefix;
+  } else {
+    console.log('ERROR: ', mo_prefix, 'is not in eligible list of',
+        method.selector, method.eligible_prefixes);
+    x.push(VM.BAD_REF);
+    return;
+  }
   const
       t = tot[0],
-      v = method.expression.result(t);
-  // Clear the method object -- just to be neat.
-  method.expression.method_object = null;
+      v = mex.result(t);
+  // Clear the method object & prefix -- just to be neat.
+  mex.method_object = null;
+  mex.method_object_prefix = '';
   // Trace only now that time step t has been computed.
   if(DEBUGGING) {
     console.log('push method:', obj.displayName, method.selector,
@@ -6212,6 +6251,11 @@ function VMI_push_wildcard_entity(x, args) {
   // that the `method_object` property of expression `x` should be used.
   if(el === 'MO') {
     obj = x.method_object;
+    if(!obj && x.method_object_prefix) {
+      // Try to identity the object by the prefixed name.
+      obj = MODEL.objectByName(x.method_object_prefix +
+          UI.PREFIXER + nn.substring(1));
+    }
     if(!obj) {
       console.log(`ERROR: Undefined method object`, x);
       x.push(VM.BAD_REF);
