@@ -151,7 +151,7 @@ class EquationManager {
           (m === sm ? ' sel-set' : ''),
           '"><td class="equation-selector',
           (method ? ' method' : ''),
-          // Display in gray when method cannot be applied
+          // Display in gray when method cannot be applied.
           (m.expression.noMethodObject ? ' no-object' : ''),
           (m.expression.isStatic ? '' : ' it'), issue,
           (wild ? ' wildcard' : ''), clk, ', false);"', mover, '>',
@@ -268,20 +268,23 @@ class EquationManager {
     if(!this.selected_modifier) return;
     const
         sel = this.rename_modal.element('name').value,
-        // Keep track of old name
+        // Keep track of old name.
         oldm = this.selected_modifier,
         olds = oldm.selector,
-        // NOTE: addModifier returns existing one if selector not changed
+        // NOTE: addModifier returns existing one if selector not changed.
         m = MODEL.equations_dataset.addModifier(sel);
-    // NULL indicates invalid name
+    // NULL indicates invalid name.
     if(!m) return;
-    // If only case has changed, update the selector
-    // NOTE: equation names may contain spaces; if so, reduce to single space
+    // If only case has changed, update the selector.
+    // NOTE: Equation names may contain spaces; if so, reduce to single space.
     if(m === oldm) {
       m.selector = sel.trim().replace(/\s+/g, ' ');
     } else {
-      // When a new modifier has been added, more actions are needed
+      // When a new modifier has been added, more actions are needed.
       m.expression = oldm.expression;
+      // NOTE: The `attribute` property of the expression must be updated
+      // because it identifies the "owner" of the expression.
+      m.expression.attribute = m.selector;
       this.deleteEquation();
       this.selected_modifier = m;
     }

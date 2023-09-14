@@ -441,6 +441,7 @@ class Finder {
       }
     }
     document.getElementById('finder-item-header').innerHTML = hdr;
+    occ.sort(compareSelectors);
     for(let i = 0; i < occ.length; i++) {
       const e = MODEL.objectByID(occ[i]);
       el.push(['<tr id="eotr', i, '" class="dataset" onclick="FINDER.reveal(\'',

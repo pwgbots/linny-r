@@ -338,7 +338,7 @@ class DocumentationManager {
         this.viewer.innerHTML = this.markdown;
         this.edit_btn.classList.remove('disab');
         this.edit_btn.classList.add('enab');
-        // NOTE: permit documentation of the model by raising the dialog
+        // NOTE: Permit documentation of the model by raising the dialog.
         if(this.entity === MODEL) this.dialog.style.zIndex = 101;
       } else if(e instanceof DatasetModifier) {
         this.title.innerHTML = e.selector;
@@ -347,17 +347,17 @@ class DocumentationManager {
         if(e.expression.eligible_prefixes) {
           const el = Object.keys(e.expression.eligible_prefixes)
               .sort(compareSelectors);
-          if(el.length > 0) this.viewer.innerHTML = 'Method <tt>' +
-              e.selector + '</tt> applies to ' +
-              pluralS(el.length, 'prefixed entity group').toLowerCase() +
-              ':<ul><li>' + el.join('</li><li>') + '</li></ul>';
+          if(el.length > 0) this.viewer.innerHTML = [
+              'Method <tt>', e.selector, '</tt> applies to ',
+              pluralS(el.length, 'prefixed entity group'),
+              ':<ul><li>', el.join('</li><li>'), '</li></ul>'].join('');
         }
       }
     }
   }
   
   rewrite(str) {
-    // Apply all the rewriting rules to `str`
+    // Apply all the rewriting rules to `str`.
     str = '\n' + str + '\n';
     this.rules.forEach(
         (rule) => { str = str.replace(rule.pattern, rule.rewrite); });
@@ -365,28 +365,29 @@ class DocumentationManager {
   }
   
   makeList(par, isp, type) {
-    // Split on the *global multi-line* item separator pattern
+    // Split on the *global multi-line* item separator pattern.
     const splitter = new RegExp(isp, 'gm'),
           list = par.split(splitter);
     if(list.length < 2) return false;
-    // Now we know that the paragraph contains at least one list item line
+    // Now we know that the paragraph contains at least one list item line.
     let start = 0;
-    // Paragraph may start with plain text, so check using the original pattern
+    // Paragraph may start with plain text, so check using the original
+    // pattern.
     if(!par.match(isp)) {
       // If so, retain this first part as a separate paragraph...
       start = 1;
-      // NOTE: add it only if it contains text
+      // NOTE: Add it only if it contains text.
       par = (list[0].trim() ? `<p>${this.rewrite(list[0])}</p>` : '');
-      // ... and clear it as list item
+      // ... and clear it as list item.
       list[0] = '';
     } else {
       par = '';
     }
-    // Rewrite each list item fragment that contains text 
+    // Rewrite each list item fragment that contains text.
     for(let j = start; j < list.length; j++) {
       list[j] = (list[j].trim() ? `<li>${this.rewrite(list[j])}</li>` : '');
     }
-    // Return assembled parts
+    // Return assembled parts.
     return [par, '<', type, 'l>', list.join(''), '</', type, 'l>'].join('');
   }
   
@@ -395,16 +396,16 @@ class DocumentationManager {
     const html = this.markup.split(/\n{2,}/);
     let list;
     for(let i = 0; i < html.length; i++) {
-      // Paragraph with only dashes and spaces becomes a horizontal rule 
+      // Paragraph with only dashes and spaces becomes a horizontal rule.
       if(html[i].match(/^( *-)+$/)) {
         html[i] = '<hr>';
-      // Paragraph may contain a bulleted list 
+      // Paragraph may contain a bulleted list.
       } else if ((list = this.makeList(html[i], /^ *- +/, 'u')) !== false) {
         html[i] = list;
-      // Paragraph may contain a numbered list 
+      // Paragraph may contain a numbered list.
       } else if ((list = this.makeList(html[i], /^ *\d+. +/, 'o')) !== false) {
         html[i] = list;
-      // Otherwise: default HTML paragraph
+      // Otherwise: default HTML paragraph.
       } else {
         html[i] = `<p>${this.rewrite(html[i])}</p>`;
       }
@@ -431,7 +432,7 @@ class DocumentationManager {
   }
   
   insertSymbol(sym) {
-    // Insert symbol (clicked item in list below text area) into text area 
+    // Insert symbol (clicked item in list below text area) into text area.
     this.editor.focus();
     let p = this.editor.selectionStart;
     const
@@ -454,7 +455,7 @@ class DocumentationManager {
       } else if(this.entity instanceof Constraint) {
         UI.paper.drawConstraint(this.entity);
       } else if (typeof this.entity.draw === 'function') {
-        // Only draw if the entity responds to that method
+        // Only draw if the entity responds to that method.
         this.entity.draw();
       }
     }
@@ -501,14 +502,14 @@ class DocumentationManager {
   }
 
   addMessage(msg) {
-    // Append message to the info messages list
+    // Append message to the info messages list.
     if(msg) this.info_messages.push(msg);
-    // Update dialog only when it is showing
+    // Update dialog only when it is showing.
     if(!UI.hidden(this.dialog.id)) this.showInfoMessages(true);
   }
   
   showInfoMessages(shift) {
-    // Show all messages that have appeared on the status line
+    // Show all messages that have appeared on the status line.
     const 
         n = this.info_messages.length,
         title = pluralS(n, 'message') + ' since the current model was loaded';
@@ -524,21 +525,21 @@ class DocumentationManager {
             '<div class="', m.status, first, '-msg">', m.text, '</div></div>');
       }
       this.viewer.innerHTML = divs.join('');
-      // Set the dialog title
+      // Set the dialog title.
       this.title.innerHTML = title;
     }
   }
 
   showArrowLinks(arrow) {
-    // Show list of links represented by a composite arrow
+    // Show list of links represented by a composite arrow.
     const
         n = arrow.links.length,
         msg = 'Arrow represents ' + pluralS(n, 'link');
     UI.setMessage(msg);
     if(this.visible && !this.editing) {
-      // Set the dialog title
+      // Set the dialog title.
       this.title.innerHTML = msg;
-      // Show list
+      // Show list.
       const lis = [];
       let l, dn, c, af;
       for(let i = 0; i < n; i++) {
@@ -570,7 +571,8 @@ class DocumentationManager {
   }
 
   showHiddenIO(node, arrow) {
-    // Show list of products or processes linked to node by an invisible arrow
+    // Show list of products or processes linked to node by an invisible
+    // arrow (i.e., links represented by a block arrow).
     let msg, iol;
     if(arrow === UI.BLOCK_IN) {
       iol = node.hidden_inputs;
@@ -586,9 +588,9 @@ class DocumentationManager {
     UI.on_block_arrow = true;
     UI.setMessage(msg);
     if(this.visible && !this.editing) {
-      // Set the dialog title
+      // Set the dialog title.
       this.title.innerHTML = msg;
-      // Show list
+      // Show list.
       const lis = [];
       for(let i = 0; i < iol.length; i++) {
         lis.push(`<li>${iol[i].displayName}</li>`);
@@ -599,17 +601,19 @@ class DocumentationManager {
   }
 
   showAllDocumentation() {
+    // Show (as HTML) all model entities (categorized by type) with their
+    // associated comments (if added by the modeler).
     const
         html = [],
         sl = MODEL.listOfAllComments;
     for(let i = 0; i < sl.length; i++) {
       if(sl[i].startsWith('_____')) {
-        // 5-underscore leader indicates: start of new category
+        // 5-underscore leader indicates: start of new category.
         html.push('<h2>', sl[i].substring(5), '</h2>');
       } else {
         // Expect model element name...
         html.push('<p><tt>', sl[i], '</tt><br><small>');
-        // ... immediately followed by its associated marked-up comments
+        // ... immediately followed by its associated marked-up comments.
         i++;
         this.markup = sl[i];
         html.push(this.markdown, '</small></p>');
@@ -617,7 +621,7 @@ class DocumentationManager {
     }
     this.title.innerHTML = 'Complete model documentation';
     this.viewer.innerHTML = html.join('');
-    // Deselect entity and disable editing
+    // Deselect entity and disable editing.
     this.entity = null;
     this.edit_btn.classList.remove('enab');
     this.edit_btn.classList.add('disab');

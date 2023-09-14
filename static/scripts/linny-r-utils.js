@@ -743,17 +743,28 @@ function xmlDecoded(str) {
 }
 
 function customizeXML(str) {
-  // NOTE: this function can be customized to pre-process a model file,
+  // NOTE: This function can be customized to pre-process a model file,
   // for example to rename entities in one go -- USE WITH CARE!
-  // First modify `str` -- by default, do nothing
-  
+  // To prevent unintended customization, check whether the model name
+  // ends with "!!CUSTOMIZE". This check ensures that the modeler must
+  // first save the model with this text as the (end of the) model name
+  // and then load it again for the customization to be performed.
+  if(str.indexOf('!!CUSTOMIZE</name><author>') >= 0) {
+    // Modify `str` -- by default, do nothing, but typical modifications
+    // will replace RexEx patterns by other strings.
+    
 /*
-  if(str.indexOf('<version>1.4.') >= 0) {
-    str = str.replace(/<url>NL\/(\w+)\.csv<\/url>/g, '<url></url>');
-  }
+    const
+        re = /xyz/gi,
+        r = 'abc';
 */
 
-  // Finally, return the modified string
+    // Trace the changes to the console.
+    console.log('Customizing:', re, r);
+    console.log('Matches:', str.match(re));
+    str = str.replace(re, r);
+  }
+  // Finally, return the modified string.
   return str;
 }
 

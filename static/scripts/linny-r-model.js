@@ -2186,8 +2186,8 @@ class LinnyRModel {
   }
   
   deleteSelection() {
-    // Removes all selected nodes (with their associated links and constraints)
-    // and selected links
+    // Remove all selected nodes (with their associated links and constraints)
+    // and selected links.
     // NOTE: This method implements the DELETE action, and hence should be
     // undoable. The UndoEdit is created by the calling routine; the methods
     // that actually delete model elements append their XML to the XML attribute
@@ -2195,7 +2195,7 @@ class LinnyRModel {
     let obj,
         fc = this.focal_cluster;
     // Update the documentation manager (GUI only) if selection contains the
-    // current entity
+    // current entity.
     if(DOCUMENTATION_MANAGER) DOCUMENTATION_MANAGER.clearEntity(this.selection);
     // First delete links and constraints.
     for(let i = this.selection.length - 1; i >= 0; i--) {
@@ -3220,6 +3220,29 @@ class LinnyRModel {
       if(this.datasets.hasOwnProperty(obj) && !obj.startsWith(UI.BLACK_BOX) &&
           obj !== UI.EQUATIONS_DATASET_ID) {
         sl.push(this.datasets[obj].displayName, this.datasets[obj].comments);
+      }
+    }
+    const keys = Object.keys(this.equations_dataset.modifiers); 
+    sl.push('_____Equations');
+    for(let i = 0; i < keys.length; i++) {
+      const m = this.equations_dataset.modifiers[keys[i]];
+      if(!m.selector.startsWith(':')) {
+        sl.push(m.displayName, '`' + m.expression.text + '`\n');
+      }
+    }
+    sl.push('_____Methods');
+    for(let i = 0; i < keys.length; i++) {
+      const m = this.equations_dataset.modifiers[keys[i]];
+      if(m.selector.startsWith(':')) {
+        let markup = '\n\nDoes not apply to any entity.';
+        if(m.expression.eligible_prefixes) {
+          const el = Object.keys(m.expression.eligible_prefixes)
+              .sort(compareSelectors);
+          if(el.length > 0) markup = '\n\nApplies to ' +
+              pluralS(el.length, 'prefixed entity group') +
+              ':\n- ' + el.join('\n- ');
+        }
+        sl.push(m.displayName, '`' + m.expression.text + '`' + markup);
       }
     }
     sl.push('_____Charts');
@@ -6139,8 +6162,8 @@ class Cluster extends NodeBox {
   }
 
   addProductPosition(p, x=null, y=null) {
-    // Add a product position for product `p` to this cluster unless such pp
-    // already exists; then return this (new) product position
+    // Add a product position for product `p` to this cluster unless such
+    // "pp" already exists, and then return this (new) product position.
     let pp = this.indexOfProduct(p);
     if(pp >= 0) {
       pp = this.product_positions[pp];
@@ -6158,7 +6181,8 @@ class Cluster extends NodeBox {
   }
 
   containsProduct(p) {
-    // Return the subcluster of this cluster that contains product `p`, or null
+    // Return the subcluster of this cluster that contains product `p`,
+    // or NULL if `p` does not occur in this cluster.
     if(this.indexOfProduct(p) >= 0) return this;
     for(let i = 0; i < this.sub_clusters.length; i++) {
       if(this.sub_clusters[i].containsProduct(p)) {
@@ -8712,8 +8736,8 @@ class Dataset {
     return d.join(';');
   }
   
-  // Returns a string denoting the properties of this dataset.
   get propertiesString() {
+    // Return a string denoting the properties of this dataset.
     if(this.data.length === 0) return '';
     let time_prop;
     if(this.array) {
@@ -8724,12 +8748,12 @@ class Dataset {
         DATASET_MANAGER.method_symbols[
             DATASET_MANAGER.methods.indexOf(this.method)]].join('');
     }
-    // Circular arrow symbolizes "repeating"
+    // Circular arrow symbolizes "repeating".
     return '&nbsp;(' + time_prop + (this.periodic ? '&nbsp;\u21BB' : '') + ')'; 
   }
   
   unpackDataString(str) {
-    // Converts semicolon-separated data to a numeric array.
+    // Convert semicolon-separated data to a numeric array.
     this.data.length = 0;
     if(str) {
       const numbers = str.split(';');
@@ -8742,12 +8766,12 @@ class Dataset {
   }
 
   computeVector() {
-    // Converts data to a vector on the model's time scale, i.e., 1 time step
-    // lasting one unit on the model time scale
+    // Convert data to a vector on the time scale of the model, i.e.,
+    // 1 time step lasting one unit on the model time scale.
     
-    // NOTE: since 9 October 2021, a dataset can also be defined as an "array",
-    // which differs from a time series in that the vector is filled with the
-    // data values "as is" to permit accessing a specific value at index # 
+    // NOTE: A dataset can also be defined as an "array", which differs
+    // from a time series in that the vector is filled with the data values
+    // "as is" to permit accessing a specific value at index #. 
     if(this.array) {
       this.vector = this.data.slice();
       return;
@@ -8755,16 +8779,16 @@ class Dataset {
     // Like all vectors, vector[0] corresponds to initial value, and vector[1]
     // to the model setting "Optimize from step t=..."
     // NOTES:
-    // (1) the first number of a datasets time series is ALWAYS assumed to
+    // (1) The first number of a datasets time series is ALWAYS assumed to
     //     correspond to t=1, whereas the simulation may be set to start later!
-    // (2) model run length includes 1 look-ahead period
+    // (2) Model run length includes 1 look-ahead period.
     VM.scaleDataToVector(this.data, this.vector, this.timeStepDuration,
         MODEL.timeStepDuration, MODEL.runLength, MODEL.start_period,
         this.defaultValue, this.periodic, this.method);
   }
 
   computeStatistics() {
-    // Computes descriptive statistics for data (NOT vector!).
+    // Compute descriptive statistics for data (NOT vector!).
     if(this.data.length === 0) {
       this.min = VM.UNDEFINED;
       this.max = VM.UNDEFINED;
@@ -8789,18 +8813,18 @@ class Dataset {
   }
   
   get statisticsAsString() {
-    // Returns descriptive statistics in human-readable form
+    // Return descriptive statistics in human-readable form.
     let s = 'N = ' + this.data.length;
     if(N > 0) {
-      s += ', range = [' + VM.sig4Dig(this.min) + ', ' + VM.sig4Dig(this.max) +
-          ', mean = ' + VM.sig4Dig(this.mean) + ', s.d. = ' +
-          VM.sig4Dig(this.standard_deviation);
+      s += [', range = [', VM.sig4Dig(this.min), ', ', VM.sig4Dig(this.max),
+          '], mean = ', VM.sig4Dig(this.mean), ', s.d. = ',
+          VM.sig4Dig(this.standard_deviation)].join('');
     }
     return s;
   }
   
   attributeValue(a) {
-    // Returns the computed result for attribute `a`.
+    // Return the computed result for attribute `a`.
     // NOTE: Datasets have ONE attribute (their vector) denoted by the empty
     // string; all other "attributes" should be modifier selectors, and
     // their value should be obtained using attributeExpression (see below).
@@ -8809,9 +8833,9 @@ class Dataset {
   }
 
   attributeExpression(a) {
-    // Returns expression for selector `a` (also considering wildcard
+    // Return the expression for selector `a` (also considering wildcard
     // modifiers), or NULL if no such selector exists.
-    // NOTE: selectors no longer are case-sensitive.
+    // NOTE: Selectors no longer are case-sensitive.
     if(a) {
       const mm = this.matchingModifiers([a]);
       if(mm.length > 0) return mm[0].expression;
@@ -8822,29 +8846,29 @@ class Dataset {
   get activeModifierExpression() { 
     if(MODEL.running_experiment) {
       // If an experiment is running, check if dataset modifiers match the
-      // combination of selectors for the active run
+      // combination of selectors for the active run.
       const mm = this.matchingModifiers(MODEL.running_experiment.activeCombination);
-      // If so, use the first match
+      // If so, use the first match.
       if(mm.length > 0) return mm[0].expression;
     }
     if(this.default_selector) {
-      // If no experiment (so "normal" run), use default selector if specified
+      // If no experiment (so "normal" run), use default selector if specified.
       const dm = this.modifiers[UI.nameToID(this.default_selector)];
       if(dm) return dm.expression;
-      // Exception should never occur, but check anyway and log it 
+      // Exception should never occur, but check anyway and log it.
       console.log('WARNING: Dataset "' + this.name +
           `" has no default selector "${this.default_selector}"`, this.modifiers);
     }
-    // Fall-through: return vector instead of expression
+    // Fall-through: return vector instead of expression.
     return this.vector;
   }
   
   addModifier(selector, node=null, ioc=null) {
     let s = selector;
-    // Firstly, sanitize the selector
+    // First sanitize the selector.
     if(this === MODEL.equations_dataset) {
       // Equation identifiers cannot contain characters that have special
-      // meaning in a variable identifier
+      // meaning in a variable identifier.
       s = s.replace(/[\*\|\[\]\{\}\@\#]/g, '');
       if(s !== selector) {
         UI.warn('Equation name cannot contain [, ], {, }, |, @, # or *');
@@ -8868,26 +8892,26 @@ class Dataset {
           return null;
         }
       } else {
-        // Prefix it when the IO context argument is defined 
+        // Prefix it when the IO context argument is defined.
         if(ioc) s = ioc.actualName(s);
       }
-      // If equation already exists, return its modifier
+      // If equation already exists, return its modifier.
       const id = UI.nameToID(s);
       if(this.modifiers.hasOwnProperty(id)) return this.modifiers[id];
-      // New equation identifier must not equal some entity ID
+      // New equation identifier must not equal some entity ID.
       const obj = MODEL.objectByName(s);
       if(obj) {
-        // NOTE: also pass selector, or warning will display dataset name
+        // NOTE: Also pass selector, or warning will display dataset name.
         UI.warningEntityExists(obj);
         return null;
       }
     } else {
       // Standard dataset modifier selectors are much more restricted, but
-      // to be user-friendly, special chars are removed automatically
+      // to be user-friendly, special chars are removed automatically.
       s = s.replace(/[^a-zA-Z0-9\+\-\%\_\*\?]/g, '');
       let msg = '';
       if(s !== selector) msg = UI.WARNING.SELECTOR_SYNTAX;
-      // A selector can only contain 1 star
+      // A selector can only contain 1 star.
       if(s.indexOf('*') !== s.lastIndexOf('*')) msg = UI.WARNING.SINGLE_WILDCARD;
       if(msg) {
         UI.warn(msg);
@@ -8898,12 +8922,12 @@ class Dataset {
       UI.warn(UI.WARNING.INVALID_SELECTOR);
       return null;
     }
-    // Then add a dataset modifier to this dataset
+    // Then add a dataset modifier to this dataset.
     const id = UI.nameToID(s);
     if(!this.modifiers.hasOwnProperty(id)) {
       this.modifiers[id] = new DatasetModifier(this, s);
     }
-    // Finally, initialize it when the XML node argument is defined
+    // Finally, initialize it when the XML node argument is defined.
     if(node) this.modifiers[id].initFromXML(node);
     return this.modifiers[id];
   }
@@ -8927,7 +8951,7 @@ class Dataset {
     for(let i = 0; i < sl.length; i++) {
       ml.push(this.modifiers[sl[i]].asXML);
     }
-    // NOTE: "black-boxed" datasets are stored anonymously without comments
+    // NOTE: "black-boxed" datasets are stored anonymously without comments.
     const id = UI.nameToID(n);
     if(MODEL.black_box_entities.hasOwnProperty(id)) {
       n = MODEL.black_box_entities[id];
@@ -8959,7 +8983,7 @@ class Dataset {
     this.periodic = nodeParameterValue(node, 'periodic') === '1';
     this.array = nodeParameterValue(node, 'array') === '1';
     this.black_box = nodeParameterValue(node, 'black-box') === '1';
-    // NOTE: array-type datasets are by definition input => not an outcome
+    // NOTE: Array-type datasets are by definition input => not an outcome.
     if(!this.array) this.outcome = nodeParameterValue(node, 'outcome') === '1';
     this.url = xmlDecoded(nodeContentByTag(node, 'url'));
     if(this.url) {
@@ -8985,10 +9009,10 @@ class Dataset {
   }
   
   rename(name, notify=true) {
-    // Change the name of this dataset
+    // Change the name of this dataset.
     // When `notify` is FALSE, notifications are suppressed while the
-    // number of affected datasets and expressions are counted
-    // NOTE: prevent renaming the equations dataset (just in case...)
+    // number of affected datasets and expressions are counted.
+    // NOTE: Prevent renaming the equations dataset (just in case).
     if(this === MODEL.equations_dataset) return;
     name = UI.cleanName(name);
     if(!UI.validName(name)) {
@@ -9012,31 +9036,31 @@ class Dataset {
   }
   
   resetExpressions() {
-    // Recalculate vector to adjust to model time scale and run length
+    // Recalculate vector to adjust to model time scale and run length.
     this.computeVector();
-    // Reset all modifier expressions
+    // Reset all modifier expressions.
     for(let m in this.modifiers) if(this.modifiers.hasOwnProperty(m)) {
-      // NOTE: "empty" expressions for modifiers default to dataset default
+      // NOTE: "empty" expressions for modifiers default to dataset default.
       this.modifiers[m].expression.reset(this.defaultValue);
       this.modifiers[m].expression_cache = {};
     }
   }
 
   compileExpressions() {
-    // Recompile all modifier expressions
+    // Recompile all modifier expressions.
     for(let m in this.modifiers) if(this.modifiers.hasOwnProperty(m)) {
       this.modifiers[m].expression.compile();
     }
   }
 
   differences(ds) {
-    // Return "dictionary" of differences, or NULL if none
+    // Return "dictionary" of differences, or NULL if none.
     const d = differences(this, ds, UI.MC.DATASET_PROPS);
-    // Check for differences in data
+    // Check for differences in data.
     if(this.dataString !== ds.dataString) {
       d.data = {A: this.statisticsAsString, B: ds.statisticsAsString};
     }
-    // Check for differences in modifiers
+    // Check for differences in modifiers.
     const mdiff = {};
     for(let m in this.modifiers) if(this.modifiers.hasOwnProperty(m)) {
       const
@@ -9055,7 +9079,7 @@ class Dataset {
         mdiff[m] = [UI.MC.DELETED, dsm.selector, dsm.expression.text];
       }
     }
-    // Only add modifiers property if differences were detected
+    // Only add modifiers property if differences were detected.
     if(Object.keys(mdiff).length > 0) d.modifiers = mdiff; 
     if(Object.keys(d).length > 0) return d;
     return null;
@@ -9064,7 +9088,7 @@ class Dataset {
 } // END of class Dataset
 
 
-// CLASS ChartVariable defines properties of chart time series
+// CLASS ChartVariable defines properties of chart time series.
 class ChartVariable {
   constructor(c) {
     this.chart = c;

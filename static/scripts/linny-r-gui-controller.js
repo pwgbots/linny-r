@@ -2935,8 +2935,8 @@ class GUIController extends Controller {
       }
       const err = MODEL.cloneSelection(prefix, actor_name, renumber);
       if(err) {
-        // Something went wrong, so do not hide the modal, but focus on the
-        // DOM element returned by the model's cloning method
+        // Something went wrong, so do not hide the modal, but focus on
+        // the DOM element returned by the model's cloning method.
         const el = md.element(err);
         if(el) {
           el.focus();
@@ -2956,7 +2956,7 @@ class GUIController extends Controller {
   }
   
   copySelection() {
-    // Save selection as XML in local storage of the browser
+    // Save selection as XML in local storage of the browser.
     const xml = MODEL.selectionAsXML;
     if(xml) {
       window.localStorage.setItem('Linny-R-selection-XML', xml);
@@ -2967,20 +2967,22 @@ class GUIController extends Controller {
   }
   
   get canPaste() {
+    // Return TRUE if the browser has a recent selection-as-XML object
+    // in its local storage.
     const xml = window.localStorage.getItem('Linny-R-selection-XML');
     if(xml) {
       const timestamp = xml.match(/<copy timestamp="(\d+)"/);
       if(timestamp) { 
         if(Date.now() - parseInt(timestamp[1]) < 8*3600000) return true;
       }
-      // Remove XML from local storage if older than 8 hours
+      // Remove XML from local storage if older than 8 hours.
       window.localStorage.removeItem('Linny-R-selection-XML');
     }
     return false;
   }
   
   promptForMapping(mapping) {
-    // Prompt user to specify name conflict resolution strategy
+    // Prompt user to specify name conflict resolution strategy.
     const md = this.paste_modal;
     md.mapping = mapping;
     md.element('from-prefix').innerText = mapping.from_prefix || '';
@@ -3000,7 +3002,8 @@ class GUIController extends Controller {
     if(tc.length) {
       sl.push('<div style="font-weight: bold; margin:4px 2px 2px 2px">',
         'Names for top-level clusters:</div>');
-      // Add text inputs for selected cluster nodes
+      const sll = sl.length;
+      // Add text inputs for selected cluster nodes.
       for(let i = 0; i < tc.length; i++) {
         const
             ti = mapping.top_clusters[tc[i]],
@@ -3012,11 +3015,14 @@ class GUIController extends Controller {
             '" type="text" style="', state, 'font-size: 12px" value="',
             ti, '"></div></div>');
       }
+      // Remove header when no items were added.
+      if(sl.length === sll) sl.pop();
     }
     if(ft.length) {
       sl.push('<div style="font-weight: bold; margin:4px 2px 2px 2px">',
         'Mapping of nodes to link from/to:</div>');
-      // Add selectors for unresolved FROM/TO nodes
+      const sll = sl.length;
+      // Add selectors for unresolved FROM/TO nodes.
       for(let i = 0; i < ft.length; i++) {
         const ti = mapping.from_to[ft[i]];
         if(ft[i] === ti) {
@@ -3036,15 +3042,17 @@ class GUIController extends Controller {
           sl.push('</div>');
         }
       }
+      // Remove header when no items were added.
+      if(sl.length === sll) sl.pop();
     }
     md.element('scroll-area').innerHTML = sl.join('');
-    // Open dialog, which will call pasteSelection(...) on OK
+    // Open dialog, which will call pasteSelection(...) on OK.
     this.paste_modal.show();
   }
   
   setPasteMapping() {
-    // Updates the paste mapping as specified by the modeler and then
-    // proceeds to paste
+    // Update the paste mapping as specified by the modeler and then
+    // proceed to paste.
     const
         md = this.paste_modal,
         mapping = Object.assign(md.mapping, {}),
@@ -3071,7 +3079,7 @@ class GUIController extends Controller {
   pasteSelection(mapping={}) {
     // If selection has been saved as XML in local storage, test to
     // see whether PASTE would result in name conflicts, and if so,
-    // open the name conflict resolution window
+    // open the name conflict resolution window.
     let xml = window.localStorage.getItem('Linny-R-selection-XML');
     try {
       xml = parseXML(xml);
@@ -3095,7 +3103,7 @@ class GUIController extends Controller {
     // AUXILIARY FUNCTIONS
     
     function fullName(node) {
-      // Returns full entity name inferred from XML node data
+      // Return full entity name inferred from XML node data.
       if(node.nodeName === 'from-to' || node.nodeName === 'selc') {
         const
             n = xmlDecoded(nodeParameterValue(node, 'name')),
@@ -3134,12 +3142,12 @@ class GUIController extends Controller {
     }
     
     function nameAndActor(name) {
-      // Returns tuple [entity name, actor name] if `name` ends with
-      // a parenthesized string that identifies an actor in the selection
+      // Return tuple [entity name, actor name] if `name` ends with a
+      // parenthesized string that identifies an actor in the selection.
       const ai = name.lastIndexOf(' (');
       if(ai < 0) return [name, ''];
       let actor = name.slice(ai + 2, -1);
-      // Test whether parenthesized string denotes an actor
+      // Test whether parenthesized string denotes an actor.
       if(actor_names.indexOf(actor) >= 0 || actor === mapping.actor ||
           actor === mapping.from_actor || actor === mapping.to_actor) {
         name = name.substring(0, ai);
@@ -3150,8 +3158,8 @@ class GUIController extends Controller {
     }
 
     function mappedName(n) {
-      // Returns full name `n` modified according to the mapping
-      // NOTE: links and constraints require two mappings (recursion!)
+      // Returns full name `n` modified according to the mapping.
+      // NOTE: Links and constraints require two mappings (recursion!).
       if(n.indexOf(UI.LINK_ARROW) > 0) {
         const ft = n.split(UI.LINK_ARROW);
         return mappedName(ft[0]) + UI.LINK_ARROW + mappedName(ft[1]);
@@ -3174,7 +3182,7 @@ class GUIController extends Controller {
         const ai = n.lastIndexOf(mapping.from_actor);
         if(ai > 0) return n.substring(0, ai) + mapping.to_actor;
       }
-      // NOTE: specified actor cannot override existing actor
+      // NOTE: specified actor cannot override existing actor.
       if(mapping.actor && !nameAndActor(n)[1]) {
         return `${n} (${mapping.actor})`;
       }
@@ -3191,23 +3199,28 @@ class GUIController extends Controller {
       if(mapping.from_to && mapping.from_to[n]) {
         return mapping.from_to[n];
       }
-      // No mapping => return original name
+      // No mapping => return original name.
       return n;
     }
 
     function nameConflicts(node) {
       // Maps names of entities defined by the child nodes of `node`
-      // while detecting name conflicts
+      // while detecting name conflicts.
       for(let i = 0; i < node.childNodes.length; i++) {
         const c = node.childNodes[i];
         if(c.nodeName !== 'link' && c.nodeName !== 'constraint') {
           const
               fn = fullName(c),
-              mn = mappedName(fn);
+              mn = mappedName(fn),
+              obj = MODEL.objectByName(mn),
+              // Existing product can be added as a product position if
+              // it is not already within target cluster. 
+              add_pp = (obj instanceof Product &&
+                  !MODEL.focal_cluster.containsProduct(obj));
           // Name conflict occurs when the mapped name is already in use
           // in the target model, or when the original name is mapped onto
-          // different names (this might occur due to modeler input)
-          if(MODEL.objectByName(mn) || (name_map[fn] && name_map[fn] !== mn)) {
+          // different names (this might occur due to modeler input).
+          if((obj && !add_pp) || (name_map[fn] && name_map[fn] !== mn)) {
             addDistinct(fn, name_conflicts);
           } else {
             name_map[fn] = mn;
@@ -3217,10 +3230,10 @@ class GUIController extends Controller {
     }
     
     function addEntityFromNode(node) {
-      // Adds entity to model based on XML node data and mapping
-      // NOTE: do not add if an entity having this type and mapped name
+      // Adds entity to model based on XML node data and mapping.
+      // NOTE: Do not add if an entity having this type and mapped name
       // already exists; name conflicts accross entity types may occur
-      // and result in error messages
+      // and result in error messages.
       const
           et = node.nodeName,
           fn = fullName(node),
@@ -3282,17 +3295,17 @@ class GUIController extends Controller {
         sp = this.sharedPrefix(cn, fcn),
         fpn = (cn === UI.TOP_CLUSTER_NAME ? '' : cn.replace(sp, '')),
         tpn = (fcn === UI.TOP_CLUSTER_NAME ? '' : fcn.replace(sp, ''));
-    // Infer mapping from XML data and focal cluster name & actor name 
+    // Infer mapping from XML data and focal cluster name & actor name.
     mapping.shared_prefix = sp;
     mapping.from_prefix = (fpn ? sp + fpn + UI.PREFIXER : sp);
     mapping.to_prefix = (tpn ? sp + tpn + UI.PREFIXER : sp);
     mapping.from_actor = (ca === UI.NO_ACTOR ? '' : ca);
     mapping.to_actor = (fca === UI.NO_ACTOR ? '' : fca);
-    // Prompt for mapping when pasting to the same model and cluster
+    // Prompt for mapping when pasting to the same model and cluster.
     if(parseInt(mts) === MODEL.time_created.getTime() &&
         ca === fca && mapping.from_prefix === mapping.to_prefix &&
         !(mapping.prefix || mapping.actor || mapping.increment)) {
-      // Prompt for names of selected cluster nodes
+      // Prompt for names of selected cluster nodes.
       if(selc_node.childNodes.length && !mapping.prefix) {
         mapping.top_clusters = {};
         for(let i = 0; i < selc_node.childNodes.length; i++) {
@@ -3307,7 +3320,7 @@ class GUIController extends Controller {
       return;
     }
     // Also prompt if FROM and/or TO nodes are not selected, and map to
-    // existing entities
+    // existing entities.
     if(from_tos_node.childNodes.length && !mapping.from_to) {
       const
           ft_map = {},
@@ -3323,7 +3336,7 @@ class GUIController extends Controller {
               'Data' : nodeParameterValue(c, 'type'));
         }
       }
-      // Prompt only for FROM/TO nodes that map to existing nodes
+      // Prompt only for FROM/TO nodes that map to existing nodes.
       if(Object.keys(ft_map).length) {
         mapping.from_to = ft_map;
         mapping.from_to_type = ft_type;
@@ -3334,7 +3347,7 @@ class GUIController extends Controller {
 
     // Only check for selected entities; from-to's and extra's should be
     // used if they exist, or should be created when copying to a different
-    // model
+    // model.
     name_map.length = 0;
     nameConflicts(entities_node);
     if(name_conflicts.length) {
@@ -3353,20 +3366,20 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     for(let i = 0; i < entities_node.childNodes.length; i++) {
       addEntityFromNode(entities_node.childNodes[i]);
     }
-    // Update diagram, showing newly added nodes as selection
+    // Update diagram, showing newly added nodes as selection.
     MODEL.clearSelection();
     for(let i = 0; i < selection_node.childNodes.length; i++) {
       const
           n = xmlDecoded(nodeContent(selection_node.childNodes[i])),
           obj = MODEL.objectByName(mappedName(n));
       if(obj) {
-        // NOTE: selected products must be positioned
+        // NOTE: Selected products must be positioned.
         if(obj instanceof Product) MODEL.focal_cluster.addProductPosition(obj);
         MODEL.select(obj);
       }
     }
     // Force redrawing the selection to ensure that links to positioned
-    // products are displayed as arrows instead of block arrows
+    // products are displayed as arrows instead of block arrows.
     fc.clearAllProcesses();
     UI.drawDiagram(MODEL);
     this.paste_modal.hide();
