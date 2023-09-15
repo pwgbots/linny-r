@@ -3213,10 +3213,9 @@ class GUIController extends Controller {
               fn = fullName(c),
               mn = mappedName(fn),
               obj = MODEL.objectByName(mn),
-              // Existing product can be added as a product position if
-              // it is not already within target cluster. 
-              add_pp = (obj instanceof Product &&
-                  !MODEL.focal_cluster.containsProduct(obj));
+              // Assume that existing products can be added as product
+              // positions if they are not prefixed.
+              add_pp = (obj instanceof Product && mn.indexOf(UI.PREFIXER) < 0);
           // Name conflict occurs when the mapped name is already in use
           // in the target model, or when the original name is mapped onto
           // different names (this might occur due to modeler input).
