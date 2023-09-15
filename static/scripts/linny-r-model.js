@@ -1561,13 +1561,21 @@ class LinnyRModel {
   //
 
   alignToGrid() {
-    // Move all positioned model elements to the nearest grid point
+    // Move all positioned model elements to the nearest grid point.
     if(!this.align_to_grid) return;
     let move = false;
     const fc = this.focal_cluster;
     // NOTE: Do not align notes to the grid. This will permit more
     // precise positioning, while aligning will not improve the layout
     // of the diagram because notes are not connected to arrows.
+    // However, when notes relate to nearby nodes, preserve their relative
+    // position to this node.
+    for(let i = 0; i < fc.notes.length; i++) {
+      const
+          note = fc.notes[i],
+          nbn = note.nearbyNode;
+      note.nearby_pos = (nbn ? {node: nbn, oldx: x, oldy: y} : null);
+    }
     for(let i = 0; i < fc.processes.length; i++) {
       move = fc.processes[i].alignToGrid() || move;
     }
@@ -1577,11 +1585,25 @@ class LinnyRModel {
     for(let i = 0; i < fc.sub_clusters.length; i++) {
       move = fc.sub_clusters[i].alignToGrid() || move;
     }
-    if(move) UI.drawDiagram(this);
+    if(move) {
+      // Reposition "associated" notes.
+      for(let i = 0; i < fc.notes.length; i++) {
+        const
+            note = fc.notes[i],
+            nbp = note.nearby_pos;
+        if(nbp) {
+          // Adjust (x, y) so as to retain the relative position.
+          note.x += nbp.node.x - npb.oldx;
+          note.y += nbp.node.y - npb.oldy;
+          note.nearby_pos = null;
+        }
+      }
+      UI.drawDiagram(this);
+    }
   }
   
   translateGraph(dx, dy) {
-    // Move all entities in the focal cluster by (dx, dy) pixels
+    // Move all entities in the focal cluster by (dx, dy) pixels.
     if(!dx && !dy) return;
     const fc = this.focal_cluster;
     for(let i = 0; i < fc.processes.length; i++) {
@@ -1600,9 +1622,9 @@ class LinnyRModel {
       fc.notes[i].x += dx;
       fc.notes[i].y += dy;
     }
-    // NOTE: force drawing, because SVG must immediately be downloadable
+    // NOTE: force drawing, because SVG must immediately be downloadable.
     UI.drawDiagram(this);
-    // If dragging, add (dx, dy) to the properties of the top "move" UndoEdit
+    // If dragging, add (dx, dy) to the properties of the top "move" UndoEdit.
     if(UI.dragged_node) UNDO_STACK.addOffset(dx, dy);
   }
 
@@ -1748,8 +1770,8 @@ class LinnyRModel {
         miny = Math.min(miny, obj.y - obj.height / 2);
       }
     }
-    // Translate entire graph if some elements are above and/or left of the
-    // paper edge
+    // Translate entire graph if some elements are above and/or left of
+    // the paper edge.
     if(minx < 0 || miny < 0) {
       // NOTE: limit translation to 5 pixels to prevent "run-away effect"
       this.translateGraph(Math.min(5, -minx), Math.min(5, -miny));
@@ -4840,7 +4862,7 @@ class ObjectWithXYWH {
 
   alignToGrid() {
     // Align this object to the grid, and return TRUE if this involved
-    // a move
+    // a move.
     const
         ox = this.x,
         oy = this.y,

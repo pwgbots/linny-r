@@ -51,8 +51,8 @@ module.exports = class MILPSolver {
     // Each external MILP solver application has its own interface
     // NOTE: the list may be extended to accommodate more MILP solvers
     if(this.id === 'gurobi') {
-      this.ext = '.mps';
-      this.user_model = path.join(workspace.solver_output, 'usr_model.mps');
+      this.ext = '.lp';
+      this.user_model = path.join(workspace.solver_output, 'usr_model.lp');
       this.solver_model = path.join(workspace.solver_output, 'solver_model.lp');
       this.solution = path.join(workspace.solver_output, 'model.json');
       this.log = path.join(workspace.solver_output, 'model.log');
@@ -283,17 +283,17 @@ module.exports = class MILPSolver {
         x_dict = {},
         getValuesFromDict = () => {
           // Returns a result vector for as many real numbers (as strings!)
-          // as there are columns (0 if not reported by the solver)
-          // (1) Sort on variable name
+          // as there are columns (0 if not reported by the solver).
+          // First sort on variable name
           const vlist = Object.keys(x_dict).sort();
-          // Start with column 1
+          // Start with column 1.
           let col = 1;
           for(let i = 0; i < vlist.length; i++) {
             const
                 v = vlist[i],
-                // Variable names have zero-padded column numbers, e.g. "X001"
+                // Variable names have zero-padded column numbers, e.g. "X001".
                 vnr = parseInt(v.substring(1));
-            // Add zeros for unreported variables until column number matches
+            // Add zeros for unreported variables until column number matches.
             while(col < vnr) {
               x_values.push('0');
               col++;
@@ -301,23 +301,23 @@ module.exports = class MILPSolver {
             x_values.push(x_dict[v]);
             col++;
           }
-          // Add zeros to vector for remaining columns
+          // Add zeros to vector for remaining columns.
           while(col <= result.columns) {
             x_values.push('0');
             col++;
           }
-          // No return value; function operates on x_values
+          // No return value; function operates on x_values.
         };
 
     if(this.id === 'gurobi') {
-      // `messages` must be an array of strings
+      // `messages` must be an array of strings.
       result.messages = fs.readFileSync(this.log, 'utf8').split(os.EOL);
       if(result.status !== 0) {
-        // Non-zero solver exit code may indicate expired license
+        // Non-zero solver exit code may indicate expired license.
         result.error = 'Your Gurobi license may have expired';
       } else {
         try {
-          // Read JSON string from solution file
+          // Read JSON string from solution file.
           const
               json = fs.readFileSync(this.solution, 'utf8').trim(),
               sol = JSON.parse(json);
@@ -329,13 +329,16 @@ module.exports = class MILPSolver {
             if(!result.error) result.error = 'Unknown solver error';
             console.log(`Solver status: ${result.status} - ${result.error}`);
           }
-          // Objective value
+          // Objective value.
           result.obj = sol.SolutionInfo.ObjVal;
-          // Values of solution vector
+          // Values of solution vector.
           if(sol.Vars) {
+            // Fill dictionary with variable name: value entries.
             for(let i = 0; i < sol.Vars.length; i++) {
-              x_values.push(sol.Vars[i].X);
+              x_dict[sol.Vars[i].VarName] = sol.Vars[i].X;
             }
+            // Fill the solution vector, adding 0 for missing columns.
+            getValuesFromDict();
           }
         } catch(err) {
           console.log('WARNING: Could not read solution file');
