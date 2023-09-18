@@ -1574,7 +1574,7 @@ class LinnyRModel {
       const
           note = fc.notes[i],
           nbn = note.nearbyNode;
-      note.nearby_pos = (nbn ? {node: nbn, oldx: x, oldy: y} : null);
+      note.nearby_pos = (nbn ? {node: nbn, oldx: nbn.x, oldy: nbn.y} : null);
     }
     for(let i = 0; i < fc.processes.length; i++) {
       move = fc.processes[i].alignToGrid() || move;

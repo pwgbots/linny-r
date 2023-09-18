@@ -1394,9 +1394,13 @@ class ExpressionParser {
                   '-- number is:', this.context_number,
                   '\nTRACE: Expression:', obj.expression.text);
               // Use the context number as "selector" parameter of the VMI.
-              return [
-                  {d: obj.dataset, s: this.context_number, x: obj.expression},
-                  anchor1, offset1, anchor2, offset2];
+              const arg0 = (by_reference ?
+                  // If equation is "by reference", use VMI_push_entity
+                  // while passing the context number as extra parameter.
+                  {r: obj.dataset, a: obj.selector, cn: this.context_number} :
+                  // Otherwise, use VMI_push_dataset_modifier.
+                  {d: obj.dataset, s: this.context_number, x: obj.expression});
+              return [arg0, anchor1, offset1, anchor2, offset2];
             }
           }
         }
@@ -4767,7 +4771,7 @@ class VirtualMachine {
     // is calibrated for 1000 VMI instructions.
     this.tsl = Math.ceil(CONFIGURATION.progress_needle_interval *
         1000 / this.code.length);
-    if(true||abl > this.tsl * 5) {
+    if(abl > this.tsl * 5) {
       UI.setMessage('Constructing the Simplex tableau');
       UI.setProgressNeedle(0);
       this.show_progress = true;
@@ -6281,7 +6285,8 @@ function VMI_push_wildcard_entity(x, args) {
   // called with the appropriate parameters.
   const attr = args[0].a || obj.defaultAttribute;
   if(args[0].br) {
-    VMI_push_entity(x, {r: obj, a: attr});
+    VMI_push_entity(x, [{r: obj, a: attr},
+        args[1], args[2], args[3], args[4]]);
     return;
   }
   // Otherwise, if the entity is a dataset modifier, this must be an
@@ -7182,18 +7187,6 @@ function VMI_pop_false(x) {
   if(DEBUGGING) console.log(`POP-FALSE (${r})`);
 }
 
-function VMI_if_then(x) {
-  // NO operation -- as of version 1.0.14, this function only serves as
-  // operator symbol, and its executions would indicate an error
-  console.log('WARNING: this IF-THEN instruction is obsolete!');
-}
-
-function VMI_if_else(x) {
-  // NO operation -- as of version 1.0.14, this function only serves as
-  // operator symbol, and its executions would indicate an error
-  console.log('WARNING: this IF-THEN instruction is obsolete!');
-}
-
 //
 // Functions that implement random numbers from specific distribution
 //
@@ -7424,7 +7417,7 @@ function VMI_set_bounds(args) {
   }
 }
 
-function VMI_clear_coefficients(empty) {
+function VMI_clear_coefficients() {
   if(DEBUGGING) console.log('clear_coefficients');
   VM.coefficients = {};
   VM.cash_in_coefficients = {};
@@ -7555,7 +7548,7 @@ function VMI_add_var_to_weighted_sum_coefficients(args) {
         VM.sig4Dig(w) + ' * ' + v.variableName + ' (t = ' + t + ')');
   }
   for(let i = 0; i <= d; i++) {
-    const r = v.result(t);
+    let r = v.result(t);
     if(args.length > 3) r /= (d + 1);
     if(k <= 0) {
       // See NOTE in VMI_add_const_to_coefficient instruction
@@ -7779,7 +7772,7 @@ function VMI_add_throughput_to_coefficient(args) {
   }
 }
 
-function VMI_set_objective(empty) {
+function VMI_set_objective() {
   // Copies the coefficients to the vector for the objective function
   if(DEBUGGING) console.log('set_objective');
   for(let i in VM.coefficients) if(Number(i)) {
@@ -7843,7 +7836,7 @@ function VMI_set_add_constraints_flag(args) {
       (VM.add_constraints_flag ? 'TRUE' : 'FALSE') + ')');
 }
 
-function VMI_toggle_add_constraints_flag(empty) {
+function VMI_toggle_add_constraints_flag() {
   // Toggles the VM's "add constraints" flag
   VM.add_constraints_flag = !VM.add_constraints_flag;
   if(DEBUGGING) console.log('toggle_add_constraints_flag (now ' +
@@ -7956,7 +7949,7 @@ function VMI_add_bound_line_constraint(args) {
     VM.coefficients[w[i]] = 1;
   }
   VM.rhs = 1;
-  VMI_add_constraint(VM.EQ)  
+  VMI_add_constraint(VM.EQ);
   // Add constraint (2):
   VMI_clear_coefficients();
   VM.coefficients[VM.offset + vix] = 1;
@@ -7964,7 +7957,7 @@ function VMI_add_bound_line_constraint(args) {
     VM.coefficients[w[i]] = -x[i];
   }
   // No need to set RHS as it is already reset to 0
-  VMI_add_constraint(VM.EQ)  
+  VMI_add_constraint(VM.EQ);
   // Add constraint (3):
   VMI_clear_coefficients();
   VM.coefficients[VM.offset + viy] = 1;
@@ -8105,23 +8098,24 @@ const
 // *** API section for custom operators ***
 //
 
-// Custom operators are typically used to implement computations on model results
-// that cannot be coded (efficiently) using standard expressions.
-// The first custom operator in this section demonstrates by example how custom
-// operators can be added.
+// Custom operators are typically used to implement computations on model
+// results that cannot be coded (efficiently) using standard expressions.
+// The first custom operator in this section demonstrates by example how
+// custom operators can be added.
 
 // Custom operators should preferably have a short alphanumeric string as
-// their identifying symbol. Custom operators are monadic and reducing, i.e.,
-// they must have a grouping as operand. The number of required arguments must
-// be checked at run time by the VM instruction for this operator.
+// their identifying symbol. Custom operators are monadic and reducing,
+// i.e., they must have a grouping as operand. The number of required
+// arguments must be checked at run time by the VM instruction for this
+// operator.
 
 // Each custom operator must have its own Virtual Machine instruction
   
 function VMI_profitable_units(x) {
-  // Replaces the argument list that should be at the top of the stack by the
-  // number of profitable units having a standard capacity (number), given the
-  // level (vector) of the process that represents multiple such units, the
-  // marginal cost (constant) and the market price (vector)
+  // Replace the argument list that should be at the top of the stack by
+  // the number of profitable units having a standard capacity (number),
+  // given the level (vector) of the process that represents multiple such
+  // units, the marginal cost (constant) and the market price (vector).
   const d = x.top();
   // Check whether the top stack element is a grouping of the correct size
   // that contains arguments of the correct type
@@ -8390,6 +8384,167 @@ DYNAMIC_SYMBOLS.push('hccd');
 // Add to this list only if operation makes an expression level-based
 // LEVEL_BASED_CODES.push(VMI_...);
 
+function correlation_or_slope(x, c_or_s) {
+  // Replaces the argument list that should be at the top of the stack by
+  // either Spearman's correlation (r) or the slope (b) of the regression
+  // line y = a + bx for the two vectors X and Y that are passed as the
+  // two arguments of this function. Reason to combine these two statistics
+  // in one function is because the required operations are very similar.
+  // NOTES:
+  // (1) This function codes for two different operators and therefore
+  //     is a helper function. The two operators must each have their
+  //     own VM instruction -- see immediately after this function.
+  // (2) String `c_or_s` must be either 'correl' or 'slope'. 
+  // (3) The operands for this function must be vectors, not numbers,
+  //     so in the Linny-R expression they must be passed "by reference".
+  const
+      d = x.top(),
+      vmi = c_or_s;
+console.log('HERE d vmi', d, vmi);
+  // Check whether the top stack element is a grouping of two variables.
+  if(d instanceof Array && d.length === 2 &&
+      typeof d[0] === 'object' && d[0].hasOwnProperty('entity') &&
+      typeof d[1] === 'object' && d[1].hasOwnProperty('entity')) {
+    // Convert the two variables to vectors.
+    const vector = {x: {}, y: {}};
+    for(let k in vector) if(vector.hasOwnProperty(k)) {
+      const
+          i = ['x', 'y'].indexOf(k),
+          e = d[i].entity,
+          a = d[i].attribute;
+      vector[k].e = e;
+      vector[k].a = a;
+      vector[k].v = e.attributeValue(a);
+      vector[k].name = e.displayName + (a ? '|' + a : '');
+      vector[k].id = e.identifier;
+      // NOTE: Equations can also be passed by reference.
+      if(e === MODEL.equations_dataset) {
+        const x = e.modifiers[a].expression;
+        // NOTE: An expression may not have been (fully) computed yet.
+        x.compute();
+        if(!x.isStatic) {
+          const nt = MODEL.end_period - MODEL.start_period + 1;
+          for(let t = 1; t <= nt; t++) x.result(t);
+        }
+        vector[xy[i]].v = x.vector;
+      }
+    }
+console.log('HERE vector', vector);
+    if(Array.isArray(vector.x.v) && Array.isArray(vector.y.v)) {
+      // Valid parameters => compute the terms used in the formulas
+      // for correlation (r) and regression (slope and intercept)
+      // NOTE: Statistics are not time-dependent, so the result is stored
+      // in the expression's cache. As expressions may contain several
+      // correl and slope operators, create a unique key based on the
+      // operator name and its two operands.
+      const cache_key = [vmi, vector.x.id, vector.x.a,
+          vector.y.id, vector.y.a].join('_');
+      if(x.cache[cache_key]) {
+        x.retop(x.cache[cache_key]);
+        return;
+      }
+      if(DEBUGGING) {
+        console.log(`-- ${vmi}(${vector.x.name}, ${vector.y.name})`);
+      }
+      // NOTE: Vectors should have equal length.
+      const N = Math.min(vector.x.v.length, vector.x.v.length);
+      if(!N) {
+        // No data => result should be "division by zero"
+        x.retop(VM.DIV_ZERO);
+        return;
+      }
+      // Calculate dsq = N*variance for X and Y. 
+      for(let k in vector) if(vector.hasOwnProperty(k)) {
+        let sum = 0;
+        for(let i = 0; i < N; i++) {
+          const v = vector[k].v[i];
+          // Handle exceptional values in vector.
+          if(v <= VM.BEYOND_MINUS_INFINITY || v >= VM.BEYOND_PLUS_INFINITY) {
+            x.retop(v);
+            return;
+          }
+          sum += v;
+        }
+        vector[k].sum = sum;
+        const mean = sum / N;
+        vector[k].mean = mean;
+        let dsq = 0;
+        for(let i = 0; i < N; i++) {
+          const d = vector[k].v[i] - mean;
+          dsq += d * d;
+        }
+        vector[k].dsq = dsq;
+      }
+      // Divisor is sqrt(dsqX * dsqY). If zero, return #DIV0
+      const divisor = Math.sqrt(vector.x.dsq * vector.y.dsq);
+      if(divisor < VM.NEAR_ZERO) {
+        x.retop(VM.DIV_ZERO);
+        return;
+      }
+      // Calculate N*covariance of X and Y.
+      let covar = 0;
+      for(let i = 0; i < N; i++) {
+        covar += (vector.x.v[i] - vector.x.mean) * (vector.y.v[i] - vector.y.mean);
+      }
+      // Correlation = covarXY / sqrt(dsqX * dsqY), slope = covarXY / dsqX.
+      // NOTE: dsqX will be non-zero (or divisor would have been zero).
+      const result = covar / (vmi === 'correl' ? divisor : vector.x.dsq);
+      // Store the result in the expression's cache.
+      x.cache[cache_key] = result;
+      // Push the result onto the stack.
+      x.retop(result);
+      return;
+    }
+  }
+  // Fall-trough indicates error
+  if(DEBUGGING) console.log(vmi + ': invalid parameter(s)\n', d);
+  x.retop(VM.PARAMS);
+}
+
+// NOTE: Separate function for each operator: VMI_correl and VMI_slope.
+
+function VMI_correlation(x) {
+  correlation_or_slope(x, 'correl');
+}
+
+// Add the custom operator instruction to the global lists
+// NOTE: All custom operators are monadic (priority 9) and reducing
+OPERATORS.push('correl');
+MONADIC_OPERATORS.push('correl');
+ACTUAL_SYMBOLS.push('correl');
+OPERATOR_CODES.push(VMI_correlation);
+MONADIC_CODES.push(VMI_correlation);
+REDUCING_CODES.push(VMI_correlation);
+SYMBOL_CODES.push(VMI_correlation);
+PRIORITIES.push(9);
+// Add to this list only if operation makes an expression dynamic
+// DYNAMIC_SYMBOLS.push('...');
+// Add to this list only if operation makes an expression random
+// RANDOM_CODES.push(VMI_...);
+// Add to this list only if operation makes an expression level-based
+// LEVEL_BASED_CODES.push(VMI_...);
+
+function VMI_slope(x) {
+  correlation_or_slope(x, 'slope');
+}
+
+// Add the custom operator instruction to the global lists
+// NOTE: All custom operators are monadic (priority 9) and reducing
+OPERATORS.push('slope');
+MONADIC_OPERATORS.push('slope');
+ACTUAL_SYMBOLS.push('slope');
+OPERATOR_CODES.push(VMI_slope);
+MONADIC_CODES.push(VMI_slope);
+REDUCING_CODES.push(VMI_slope);
+SYMBOL_CODES.push(VMI_slope);
+PRIORITIES.push(9);
+// Add to this list only if operation makes an expression dynamic
+// DYNAMIC_SYMBOLS.push('...');
+// Add to this list only if operation makes an expression random
+// RANDOM_CODES.push(VMI_...);
+// Add to this list only if operation makes an expression level-based
+// LEVEL_BASED_CODES.push(VMI_...);
+
 /*** END of custom operator API section ***/
 
 ///////////////////////////////////////////////////////////////////////
@@ -8399,4 +8554,4 @@ if(NODE) module.exports = {
   Expression: Expression,
   ExpressionParser: ExpressionParser,
   VirtualMachine: VirtualMachine
-}
+};
