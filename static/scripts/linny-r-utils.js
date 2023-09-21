@@ -491,7 +491,9 @@ function matchingNumber(m, s) {
   // Returns an integer value if string `m` matches selector pattern `s`
   // (where asterisks match 0 or more characters, and question marks 1
   // character) and the matching parts jointly denote an integer.
-  let raw = s.replace(/\*/g, '(.*)').replace(/\?/g, '(.)'),
+  // NOTE: A "+" must be escaped, "*" and "?" must become groups.
+  let raw = s.replaceAll('+', '\+')
+          .replace(/\*/g, '(.*)').replace(/\?/g, '(.)'),
       match = m.match(new RegExp(`^${raw}$`)),
       n = '';
   if(match) {
@@ -598,6 +600,18 @@ function compareSelectors(s1, s2) {
   // Now compare the two "normalized" selectors
   if(s_1 < s_2) return -1;
   if(s_1 > s_2) return 1;
+  return 0;
+}
+
+function compareCombinations(c1, c2) {
+  // Compare two selector lists.
+  const n = Math.min(c1.length, c2.length);
+  for(let i = 0; i < n; i++) {
+    const cs = compareSelectors(c1[i], c2[i]);
+    if(cs) return cs;
+  }
+  if(c1.length > l) return 1;
+  if(c2.length > l) return -1;
   return 0;
 }
 

@@ -5158,7 +5158,7 @@ class Note extends ObjectWithXYWH {
           // If attribute omitted, use default attribute of entity type.
           const attr = (ena.length > 1 ? ena[1].trim() : obj.defaultAttribute);
           let val = null;
-          // NOTE: for datasets, use the active modifier if no attribute.
+          // NOTE: For datasets, use the active modifier if no attribute.
           if(!attr && obj instanceof Dataset) {
             val = obj.activeModifierExpression;
           } else {
@@ -7894,13 +7894,11 @@ class Product extends Node {
   }
   
   get isConstant() {
-    // Return TRUE if this product is data, has no links to processes,
-    // is not an actor cash flow, and has set LB = UB
+    // Return TRUE if this product is data, is not an actor cash flow,
+    // has no ingoing links, has outgoing links ONLY to data objects,
+    // and has set LB = UB.
     if(!this.is_data || this.name.startsWith('$') ||
-        !this.allOutputsAreData) return false;
-    for(let i = 0; i < this.inputs.length; i++) {
-      if(this.inputs[i].from_node instanceof Process) return false;
-    }
+        this.inputs.length || !this.allOutputsAreData) return false;
     return (this.equal_bounds && this.lower_bound.defined);
   }
 
@@ -8847,11 +8845,30 @@ class Dataset {
   
   attributeValue(a) {
     // Return the computed result for attribute `a`.
-    // NOTE: Datasets have ONE attribute (their vector) denoted by the empty
-    // string; all other "attributes" should be modifier selectors, and
-    // their value should be obtained using attributeExpression (see below).
-    if(a === '') return this.vector;
-    return null;
+    // NOTE: Datasets have ONE attribute (their vector) denoted by the
+    // dot ".". All other "attributes" should be modifier selectors,
+    // and their value should be obtained using `attributeExpression(a)`.
+    // The empty string denotes "use default", which may have been set
+    // by the modeler, or may follow from the active combination of a
+    // running experiment.
+    if(a === '') {
+      const x = this.activeModifierExpression;
+      if(x instanceof Expression) {
+        x.compute(0);
+        // Ensure that for dynamic modifier expressions the vector is
+        // fully computed.
+        if(!x.isStatic) {
+          const nt = MODEL.end_period - MODEL.start_period + 1;
+          for(let t = 1; t <= nt; t++) x.result(t);
+        }
+        return x.vector;
+      }
+      // No modifier expression? Then return the dataset vector.
+      return this.vector;
+    }
+    if(a === '.') return this.vector;
+    // Fall-through: return the default value of this dataset.
+    return this.defaultValue;
   }
 
   attributeExpression(a) {
@@ -8881,7 +8898,7 @@ class Dataset {
       console.log('WARNING: Dataset "' + this.name +
           `" has no default selector "${this.default_selector}"`, this.modifiers);
     }
-    // Fall-through: return vector instead of expression.
+    // Fall-through: return the dataset vector.
     return this.vector;
   }
   
@@ -9290,23 +9307,11 @@ class ChartVariable {
       t_end = tsteps;
     } else {
       // Get the variable's own value (number, vector or expression)
-      // Special case: when an experiment is running, variables that
-      // depict a dataset with no explicit modifier must recompute the
-      // vector using the current experiment run combination.
-      if(MODEL.running_experiment &&
-          this.object instanceof Dataset && !this.attribute) {
-        // Check if dataset modifiers match the combination of selectors
-        // for the active run.
-        const mm = this.object.matchingModifiers(
-            MODEL.running_experiment.activeCombination);
-        // If so, use the first (the list should contain at most 1 selector)
-        // to select the modifier expression; otherwise, use the unmodified
-        // vector of the dataset
-        if(mm.length > 0) {
-          av = mm[0].expression;
-        } else {
-          av = this.object.vector;
-        }
+      if(this.object instanceof Dataset && !this.attribute) {
+        // Special case: Variables that depict a dataset with no explicit
+        // modifier selector must recompute the vector using the current
+        // experiment run combination or the default selector.
+        av = this.object.activeModifierExpression;
       } else if(this.object instanceof DatasetModifier) {
         av = this.object.expression;
       } else {
@@ -11075,7 +11080,8 @@ class ExperimentRun {
       bm.messages = VM.messages[i];
       this.block_messages.push(bm);
       this.warning_count += bm.warningCount;
-      this.solver_seconds += bm.solver_secs;
+      // NOTE: When set by the VM, `solver_secs` is a string.
+      this.solver_seconds += parseFloat(bm.solver_secs);
     }
   }
   

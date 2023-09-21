@@ -2312,17 +2312,18 @@ class Paper {
     }
     if(prod.hasBounds) {
       font_color = 'black';
-      // By default, "plain" factors having bounds are filled in silver
+      // By default, "plain" factors having bounds are filled in silver.
       fill_color = this.palette.has_bounds;
       // Use relative distance to bounds so that 100000.1 is not shown
-      // as overflow, but 100.1 is
+      // as overflow, but 100.1 is.
       let udif = this.relDif(l, ub),
           ldif = this.relDif(lb, l);
-      // Special case: for LB = 0, use the ON/OFF threshold
+      // Special case: for LB = 0, use the ON/OFF threshold.
       if(Math.abs(lb) <= VM.SIG_DIF_LIMIT &&
           Math.abs(l) <= VM.ON_OFF_THRESHOLD) ldif = 0;
       if(MODEL.solved) {
-        // NOTE: use bright red and blue colors in case of "stock level out of bounds"
+        // NOTE: Use bright red and blue colors in case of "stock level
+        // out of bounds".
         if(ub < VM.PLUS_INFINITY && l < VM.UNDEFINED && udif > VM.SIG_DIF_LIMIT) {
           fill_color = this.palette.above_upper_bound;
           font_color = 'blue';
@@ -2332,51 +2333,52 @@ class Paper {
         } else if(l < VM.ERROR || l > VM.EXCEPTION) {
           font_color = this.palette.VM_error;
         } else if(l < VM.UNDEFINED) {
-          // Shades of green reflect whether level within bounds, where
+          // Shades of green reflect whether level is within bounds, where
           // "sources" (negative level) and "sinks" (positive level) are
-          // shown as more reddish / bluish shades of green
+          // shown as more reddish / bluish shades of green.
           if(l < -VM.ON_OFF_THRESHOLD) {
             fill_color = this.palette.neg_within_bounds;
           } else if(l > VM.ON_OFF_THRESHOLD) {
             fill_color = this.palette.pos_within_bounds;
           } else {
-              fill_color = this.palette.zero_within_bounds;
+            fill_color = this.palette.zero_within_bounds;
           }
           if(ub - lb < VM.NEAR_ZERO) {
+            // When LB = UB, fill completely in the color, but ...
             if(prod.isConstant && Math.abs(l) > VM.NEAR_ZERO) {
-              // Non-zero constants have less saturated shades
+              // ... non-zero constants have less saturated shades.
               fill_color = (l < 0 ? this.palette.neg_constant :
                   this.palette.pos_constant);  
             }
           } else if(ub - l < VM.SIG_DIF_LIMIT) {
-            // Black font and darker fill color indicate "at upper bound"
+            // Black font and darker fill color indicate "at upper bound".
             font_color = 'black';
             fill_color = (ub > 0 ? this.palette.at_pos_ub_fill :
                 (ub < 0 ? this.palette.at_neg_ub_fill :
                     this.palette.at_zero_ub_fill));
             at_bound = true;
           } else if (l - lb < VM.SIG_DIF_LIMIT) {
-            // Font and rim color indicate "at upper bound"
+            // Font and rim color indicate "at lower bound".
             font_color = 'black';
             fill_color = (lb > 0 ? this.palette.at_pos_lb_fill :
                 (lb < 0 ? this.palette.at_neg_lb_fill :
                     this.palette.at_zero_lb_fill));
             at_bound = true;
           } else {
-            // set "partial fill" flag if not at lower bound and UB < INF
+            // Set "partial fill" flag if not at lower bound and UB < INF.
             pf = ub < VM.PLUS_INFINITY;
             font_color = this.palette.within_bounds_font;
           }
         }
       } else if(ub - lb < VM.NEAR_ZERO) {
-        // Not solved but equal bounds => probably constants
+        // Not solved but equal bounds => probably constants.
         if(prod.isConstant && Math.abs(ub) > VM.NEAR_ZERO) {
-          // Non-zero constants have less saturated shades
+          // Non-zero constants have less saturated shades.
           fill_color = (ub < 0 ? this.palette.neg_constant :
               this.palette.pos_constant);  
         }
       } else if(l < VM.UNDEFINED) {
-        // Different bounds and initial level set => partial fill
+        // Different bounds and initial level set => partial fill.
         fill_color = this.palette.src_snk;
         pf = true;
         if(ub - l < VM.SIG_DIF_LIMIT || l - lb < VM.SIG_DIF_LIMIT) {
@@ -2418,8 +2420,8 @@ class Paper {
       let npfbg = 'white';
       if(fill_color === this.palette.above_upper_bound ||
           fill_color === this.palette.below_lower_bound ||
-          // NOTE: empty buffers (at level 0) should be entirely white
-          (at_bound && l > VM.ON_OFF_THRESHOLD)) {
+          // NOTE: Empty buffers should be entirely white.
+          (at_bound && l > lb + VM.ON_OFF_THRESHOLD)) {
         npfbg = fill_color;
         pf = false;
       }
@@ -2434,26 +2436,26 @@ class Paper {
           {fill: fill_color, stroke: stroke_color, 'stroke-width': stroke_width,
               'stroke-dasharray': sda, 'stroke-linecap': 'round',
               'rx': hh, 'ry': hh});
-      // NOTE: set fill color to darker shade for partial fill
+      // NOTE: Set fill color to darker shade for partial fill.
       fill_color = (!MODEL.solved ? this.palette.src_snk :
           (l > VM.NEAR_ZERO ? this.palette.above_zero_fill :
               (l < -VM.NEAR_ZERO ? this.palette.below_zero_fill :
                   this.palette.at_zero_fill)));
     }
-    // Add partial fill if appropriate
+    // Add partial fill if appropriate.
     if(pf && l > lb && l < VM.UNDEFINED) {
       // Calculate used part of range (1 = 100%)
       let part,
           range = ub - lb;
       if(l >= VM.PLUS_INFINITY) {
-        // Show exceptions and +INF as "overflow"
+        // Show exceptions and +INF as "overflow".
         part = 1;
         fill_color = this.palette.above_upper_bound;
       } else {
         part = (range > 0 ? (l - lb) / range : 1);
       }
       if(part > 0 && l >= lb) {
-        // Only fill the portion of used range with the fill color
+        // Only fill the portion of used range with the fill color.
         const rad = Math.asin(1 - 2*part);
         prod.shape.addPath(['m', x + hw - hh + (hh - 1.5) * Math.cos(rad),
             ',', y + (hh - 1.5) * Math.sin(rad),
@@ -2467,7 +2469,7 @@ class Paper {
     stroke_color = 'none';
     stroke_width = 0;
     // Sources have a triangle pointing up from the bottom
-    // (in outline if *implicit* source)
+    // (in outline if *implicit* source).
     if(prod.isSourceNode) {
       if(!prod.is_source) {
         fill_color = 'none';
@@ -2479,7 +2481,7 @@ class Paper {
           'stroke-width': stroke_width});
     }
     // Sinks have a triangle pointing down from the top
-    // (in outline if implicit sink)
+    // (in outline if implicit sink).
     if(prod.isSinkNode) {
       if(!prod.is_sink) {
         fill_color = 'none';
@@ -2491,7 +2493,7 @@ class Paper {
           'stroke-width': stroke_width});  
     }
     // Integer level is denoted by enclosing name in large [ and ]
-    // to denote "floor" as well as "ceiling"
+    // to denote "floor" as well as "ceiling".
     if(prod.integer_level) {
       const
           brh = prod.name_lines.split('\n').length * this.font_heights[8] + 4,

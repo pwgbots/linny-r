@@ -2456,7 +2456,7 @@ class VirtualMachine {
     if(n <= this.BAD_REF) return [true, '#REF?'];
     if(n <= this.ARRAY_INDEX) return [true, '#INDEX!'];
     if(n <= this.BAD_CALC) return [true, '#VALUE!'];
-    if(n <= this.DIV_ZERO) return [true, '#DIV0!'];
+    if(n <= this.DIV_ZERO) return [true, '#DIV/0!'];
     if(n <= this.CYCLIC) return [true, '#CYCLE!'];
     // Any other number less than or equal to 10^30 is considered as
     // minus infinity.
@@ -5549,7 +5549,7 @@ Solver status = ${json.status}`);
       this.round_times.length = 0;
       this.solver_times[bnr - 1] = time;
       const ssecs = this.round_secs.reduce((a, b) => a + b, 0);
-      this.solver_secs[bnr - 1] = (ssecs ? VM.sig4Dig(ssecs) : '');
+      this.solver_secs[bnr - 1] = (ssecs ? VM.sig4Dig(ssecs) : '0');
       this.round_secs.length = 0;
       MONITOR.addProgressBlock(bnr, issue, time);
     }
@@ -6269,13 +6269,19 @@ function VMI_push_wildcard_entity(x, args) {
   } else {
     // Select the first entity in `ee` that matches the wildcard vector
     // index of the expression `x` being executed.
+    if(x.wildcard_vector_index === false && x.isWildcardExpression &&
+        MODEL.running_experiment) {
+      // If no wildcard vector index, try to infer it.
+      x.wildcard_vector_index = matchingNumberInList(
+          MODEL.running_experiment.activeCombination, x.attribute);
+    }
     nn = nn.replace('#', x.wildcard_vector_index);
     for(let i = 0; !obj && i < el.length; i++) {
       if(el[i].name === nn) obj = el[i];
     }
     // If no match, then this indicates a bad reference.
     if(!obj) {
-      console.log(`ERROR: no match for "${nn}" in eligible entity list`, el);
+      console.log(`ERROR: no match for "${nn}" in eligible entity list`, el, x);
       x.push(VM.BAD_REF);
       return;
     }
@@ -6829,7 +6835,7 @@ function VMI_mul(x) {
 
 function VMI_div(x) {
   // Pops the top number on the stack and divides the new top number
-  // by it. In case of division by zero, the top is replaced by #DIV0!
+  // by it. In case of division by zero, the top is replaced by #DIV/0!
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('DIV (' + d.join(', ') + ')');
@@ -6843,7 +6849,7 @@ function VMI_div(x) {
 
 function VMI_mod(x) {
   // Pops the top number on the stack, divides the new top number by it
-  // (if non-zero, or it pushes error code #DIV0!), takes the fraction
+  // (if non-zero, or it pushes error code #DIV/0!), takes the fraction
   // part, and multiplies this with the divider; in other words, it
   // performs a "floating point MOD operation"
   const d = x.pop();
@@ -7164,27 +7170,41 @@ function VMI_jump(x, index) {
 }
 
 function VMI_jump_if_false(x, index) {
-  // Tests the top number A of the stack, and if A is FALSE (zero or
-  // VM.UNDEFINED) sets the program counter of the VM to `index` minus 1,
-  // as the counter is ALWAYS increased by 1 after calling a VMI function
+  // Test the top number A on the stack, and if A is FALSE (zero or
+  // VM.UNDEFINED) set the program counter of the VM to `index` minus 1,
+  // as the counter is ALWAYS increased by 1 after calling a VMI function.
   const r = x.top(true);
   if(DEBUGGING) console.log(`JUMP-IF-FALSE (${r}, ${index})`);
   if(r === 0 || r === VM.UNDEFINED || r === false) {
     // Only jump on FALSE, leaving the stack "as is", so that in case
-    // of no THEN the expression result equals the IF condition value
+    // of no THEN, the expression result equals the IF condition value.
     // NOTE: Also do this on a stack error (r === false)
     x.program_counter = index - 1;
   } else {
-    // Remove the value from the stack
+    // Remove the value from the stack.
     x.stack.pop();
   }
 }
 
 function VMI_pop_false(x) {
-  // Removes the top value from the stack, which should be 0 or
-  // VM.UNDEFINED (but this is not checked)
+  // Remove the top value from the stack, which should be 0 or
+  // VM.UNDEFINED (but this is not checked).
   const r = x.stack.pop();
   if(DEBUGGING) console.log(`POP-FALSE (${r})`);
+}
+
+function VMI_if_then(x) {
+  // NO operation -- as of version 1.0.14, this function only serves as
+  // placeholder in operator symbol arrays. The parser should no longer
+  // code this, so its execution would indicate an error.
+  console.log('WARNING: IF-THEN instruction is obsolete', x);
+}
+
+function VMI_if_else(x) {
+  // NO operation -- as of version 1.0.14, this function only serves as
+  // placeholder in operator symbol arrays. The parser should no longer
+  // code this, so its execution would indicate an error.
+  console.log('WARNING: IF-ELSE instruction is obsolete', x);
 }
 
 //
@@ -8128,7 +8148,7 @@ function VMI_profitable_units(x) {
           d[3].entity.attributeExpression(d[3].attribute)) &&
       (d.length === 4 || (typeof d[4] === 'number' &&
           (d.length === 5 || typeof d[5] === 'number')))) {
-    // Valid parameters => get the data required for computation
+    // Valid parameters => get the data required for computation.
     const
         mup = d[0].entity, // the multi-unit process
         ub = mup.upper_bound.result(0), // NOTE: UB is assumed to be static 
@@ -8139,7 +8159,7 @@ function VMI_profitable_units(x) {
         pt = (d.length > 4 ? d[4] : 0), // the profit threshold (0 by default)
         // the time horizon (by default the length of the simulation period)
         nt = (d.length > 5 ? d[5] : MODEL.end_period - MODEL.start_period + 1); 
-    // Handle exceptional values of `uc` and `mc`
+    // Handle exceptional values of `uc` and `mc`.
     if(uc <= VM.BEYOND_MINUS_INFINITY || mc <= VM.BEYOND_MINUS_INFINITY) {
       x.retop(Math.min(uc, mc));
       return;
@@ -8149,16 +8169,16 @@ function VMI_profitable_units(x) {
       return;
     }
     
-    // NOTE: NPU is not time-dependent => result is stored in cache
-    // As expressions may contain several NPU operators, create a unique key
-    // based on its parameters
+    // NOTE: NPU is not time-dependent => result is stored in cache.
+    // As expressions may contain several NPU operators, create a unique
+    // key based on its parameters.
     const cache_key = ['npu', mup.code, ub, uc, mc, mpe.code, mpa, pt].join('_');
     if(x.cache[cache_key]) {
       x.retop(x.cache[cache_key]);
       return;
     }
     
-    // mp can be a single value, a vector, or an expression
+    // `mp` can be a single value, a vector, or an expression.
     let mp = mpe.attributeValue(mpa);
     if(mp === null) {
       mp = mpe.attributeExpression(mpa);
@@ -8173,8 +8193,8 @@ function VMI_profitable_units(x) {
         nu = Math.ceil(ub / uc), // Number of units
         r = [];
     if(mp && mp instanceof Expression) {
-      // NOTE: an expression may not have been (fully) computed yet
-      mp.compute();
+      // NOTE: An expression may not have been (fully) computed yet.
+      mp.compute(0);
       if(mp.isStatic) {
         mp = mp.result(0);
       } else {
@@ -8270,11 +8290,11 @@ function VMI_highest_cumulative_consecutive_deviation(x) {
         e = d[0].entity,
         a = d[0].attribute;
     let vector = e.attributeValue(a);
-    // NOTE: equations can also be passed by reference
+    // NOTE: Equations can also be passed by reference.
     if(e === MODEL.equations_dataset) {
       const x = e.modifiers[a].expression;
-      // NOTE: an expression may not have been (fully) computed yet
-      x.compute();
+      // NOTE: an expression may not have been (fully) computed yet.
+      x.compute(0);
       if(!x.isStatic) {
         const nt = MODEL.end_period - MODEL.start_period + 1;
         for(let t = 1; t <= nt; t++) x.result(t);
@@ -8400,7 +8420,6 @@ function correlation_or_slope(x, c_or_s) {
   const
       d = x.top(),
       vmi = c_or_s;
-console.log('HERE d vmi', d, vmi);
   // Check whether the top stack element is a grouping of two variables.
   if(d instanceof Array && d.length === 2 &&
       typeof d[0] === 'object' && d[0].hasOwnProperty('entity') &&
@@ -8419,17 +8438,29 @@ console.log('HERE d vmi', d, vmi);
       vector[k].id = e.identifier;
       // NOTE: Equations can also be passed by reference.
       if(e === MODEL.equations_dataset) {
-        const x = e.modifiers[a].expression;
-        // NOTE: An expression may not have been (fully) computed yet.
-        x.compute();
-        if(!x.isStatic) {
-          const nt = MODEL.end_period - MODEL.start_period + 1;
-          for(let t = 1; t <= nt; t++) x.result(t);
+        const eq = e.modifiers[UI.nameToID(a)].expression;
+        // Level-based equations require that the model has run.
+        if(eq.is_level_based && !MODEL.solved) {
+          x.retop(VM.NOT_COMPUTED);
+          return;
         }
-        vector[xy[i]].v = x.vector;
+        // NOTE: An equation may not have been (fully) computed yet.
+        eq.compute(0, x.wildcard_vector_index);
+        if(!eq.isStatic) {
+          const nt = MODEL.end_period - MODEL.start_period + 1;
+          for(let t = 1; t <= nt; t++) eq.result(t, x.wildcard_vector_index);
+        }
+        vector[k].v = eq.vector;
       }
     }
-console.log('HERE vector', vector);
+    // If either operand is level-based, return "not computed" if the
+    // model has not been run yet.
+    if((VM.level_based_attr.indexOf(vector.x.a) >= 0 ||
+        VM.level_based_attr.indexOf(vector.y.a) >= 0) &&
+            !MODEL.solved) {
+      x.retop(VM.NOT_COMPUTED);
+      return;
+    }
     if(Array.isArray(vector.x.v) && Array.isArray(vector.y.v)) {
       // Valid parameters => compute the terms used in the formulas
       // for correlation (r) and regression (slope and intercept)
@@ -8443,11 +8474,11 @@ console.log('HERE vector', vector);
         x.retop(x.cache[cache_key]);
         return;
       }
-      if(DEBUGGING) {
+      if(true||DEBUGGING) {
         console.log(`-- ${vmi}(${vector.x.name}, ${vector.y.name})`);
       }
       // NOTE: Vectors should have equal length.
-      const N = Math.min(vector.x.v.length, vector.x.v.length);
+      const N = Math.min(vector.x.v.length, vector.y.v.length);
       if(!N) {
         // No data => result should be "division by zero"
         x.retop(VM.DIV_ZERO);
@@ -8456,7 +8487,8 @@ console.log('HERE vector', vector);
       // Calculate dsq = N*variance for X and Y. 
       for(let k in vector) if(vector.hasOwnProperty(k)) {
         let sum = 0;
-        for(let i = 0; i < N; i++) {
+        // NOTE: Ignore first element of vector (t=0).
+        for(let i = 1; i < N; i++) {
           const v = vector[k].v[i];
           // Handle exceptional values in vector.
           if(v <= VM.BEYOND_MINUS_INFINITY || v >= VM.BEYOND_PLUS_INFINITY) {
@@ -8469,13 +8501,14 @@ console.log('HERE vector', vector);
         const mean = sum / N;
         vector[k].mean = mean;
         let dsq = 0;
-        for(let i = 0; i < N; i++) {
+        // NOTE: Ignore first element of vector (t=0).
+        for(let i = 1; i < N; i++) {
           const d = vector[k].v[i] - mean;
           dsq += d * d;
         }
         vector[k].dsq = dsq;
       }
-      // Divisor is sqrt(dsqX * dsqY). If zero, return #DIV0
+      // Divisor is sqrt(dsqX * dsqY). If zero, return #DIV/0
       const divisor = Math.sqrt(vector.x.dsq * vector.y.dsq);
       if(divisor < VM.NEAR_ZERO) {
         x.retop(VM.DIV_ZERO);
@@ -8483,7 +8516,8 @@ console.log('HERE vector', vector);
       }
       // Calculate N*covariance of X and Y.
       let covar = 0;
-      for(let i = 0; i < N; i++) {
+      // NOTE: Ignore first element of vector (t=0).
+      for(let i = 1; i < N; i++) {
         covar += (vector.x.v[i] - vector.x.mean) * (vector.y.v[i] - vector.y.mean);
       }
       // Correlation = covarXY / sqrt(dsqX * dsqY), slope = covarXY / dsqX.

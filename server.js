@@ -1521,7 +1521,7 @@ function connectionErrorText(msg) {
 //
 
 function commandLineSettings() {
-  // Sets default settings, and then checks the command line arguments
+  // Sets default settings, and then checks the command line arguments.
   const settings = {
       cli_name: (PLATFORM.startsWith('win') ? 'Command Prompt' : 'Terminal'),
       inkscape: '',
@@ -1533,6 +1533,22 @@ function commandLineSettings() {
       solver_path: '',
       user_dir: path.join(WORKING_DIRECTORY, 'user')
     };
+  const
+      cmd = process.argv[0],
+      app = (cmd.endsWith('node.exe') ? 'node' : 'linny-r'),
+      usage = `Usage:  ${app} server [options]
+
+Possible options are:
+  dpi=[number]       will make InkScape render SVGs in the specified resolution
+  help               will display these command line options
+  launch             will open the Linny-R GUI in a browser window
+  port=[number]      will listen at the specified port number
+                     (default is 5050; number must be unique for each server)
+  solver=[name]      will select solver [name], or warn if not found
+                     (name choices: Gurobi, CPLEX, SCIP or LP_solve)
+  verbose            will output solver messages to the console
+  workspace=[path]   will create workspace in [path] instead of (Linny-R)/user
+`;
   for(let i = 2; i < process.argv.length; i++) {
     const lca = process.argv[i].toLowerCase();
     if(lca === 'launch') {
@@ -1541,7 +1557,7 @@ function commandLineSettings() {
       const av = lca.split('=');
       if(av.length === 1) av.push('');
       if(av[0] === 'port') {
-        // Accept any number greater than or equal to 1024
+        // Accept any number greater than or equal to 1024.
         const n = parseInt(av[1]);
         if(isNaN(n) || n < 1024) {
           console.log(`WARNING: Invalid port number ${av[1]}`);
@@ -1555,7 +1571,7 @@ function commandLineSettings() {
           settings.preferred_solver = av[1];
         }
       } else if(av[0] === 'dpi') {
-        // Accept any number greater than or equal to 1024
+        // Accept any number greater than or equal to 1024.
         const n = parseInt(av[1]);
         if(isNaN(n) || n > 1200) {
           console.log(`WARNING: Invalid resolution ${av[1]} (max. 1200 dpi)`);
@@ -1563,7 +1579,7 @@ function commandLineSettings() {
           settings.dpi = n;
         }
       } else if(av[0] === 'workspace') {
-        // User directory must be READ/WRITE-accessible
+        // User directory must be READ/WRITE-accessible.
         try {
           fs.accessSync(av[1], fs.constants.R_OK | fs.constants.W_O);
         } catch(err) {
@@ -1571,10 +1587,15 @@ function commandLineSettings() {
           process.exit();
         }
         settings.user_dir = av[1];
+      } else if(av[0] === 'help') {
+        // Print command line options.
+        console.log(usage);
+        process.exit();
       } else {
-        // Terminate script
+        // Terminate script.
         console.log(
-            `ERROR: Invalid command line argument "${process.argv[i]}"`);
+            `ERROR: Invalid command line argument "${process.argv[i]}"\n`);
+        console.log(usage);
         process.exit();
       }
     }

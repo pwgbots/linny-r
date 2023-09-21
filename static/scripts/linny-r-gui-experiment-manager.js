@@ -356,7 +356,11 @@ class GUIExperimentManager extends ExperimentManager {
     dim_count.innerHTML = pluralS(x.available_dimensions.length,
         'more dimension');
     x.inferActualDimensions();
+    for(let i = 0; i < x.actual_dimensions.length; i++) {
+      x.actual_dimensions[i].sort(compareSelectors);
+    }
     x.inferCombinations();
+    //x.combinations.sort(compareCombinations);
     combi_count.innerHTML = pluralS(x.combinations.length, 'combination');
     if(x.combinations.length === 0) canview = false;
     header.innerHTML = x.title;
@@ -850,6 +854,9 @@ class GUIExperimentManager extends ExperimentManager {
       }
       // Get the selected statistic for each run so as to get an array of numbers
       const data = [];
+      // Set reference column indices so that values for the reference|
+      // configuration can be displayed in orange.
+      const ref_conf_indices = [];
       for(let i = 0; i < x.runs.length; i++) {
         const
             r = x.runs[i],
@@ -878,7 +885,7 @@ class GUIExperimentManager extends ExperimentManager {
           data.push(rr.last);
         }
       }
-      // Scale data as selected
+      // Scale data as selected.
       const scaled = data.slice();
       // NOTE: scale only after the experiment has been completed AND
       // configurations have been defined (otherwise comparison is pointless)
@@ -896,7 +903,9 @@ class GUIExperimentManager extends ExperimentManager {
           }
           // Set difference for reference configuration itself to 0
           for(let i = 0; i < n; i++) {
-            scaled[rc * n + i] = 0;
+            const index = rc * n + i;
+            scaled[index] = 0;
+            ref_conf_indices.push(index);
           }
         } else if(x.selected_scale === 'reg') {
           // Compute regret: current config - high value config in same scenario
@@ -934,13 +943,15 @@ class GUIExperimentManager extends ExperimentManager {
         formatted.push(VM.sig4Dig(scaled[i]));
       }
       uniformDecimals(formatted);
-      // Display formatted data in cells
+      // Display formatted data in cells.
       for(let i = 0; i < x.combinations.length; i++) {
         const cell = document.getElementById('xr' + i);
         if(i < x.runs.length) {
           cell.innerHTML = formatted[i];
           cell.classList.remove('not-run');
           cell.style.backgroundColor = this.color_scale.rgb(normalized[i]);
+          cell.style.color = (ref_conf_indices.indexOf(i) >= 0 ?
+              'orange' : 'black');
           const
               r = x.runs[i],
               rr = r.results[rri],
