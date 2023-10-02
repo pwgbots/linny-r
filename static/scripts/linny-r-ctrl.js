@@ -834,10 +834,17 @@ class ChartManager {
   }
   
   resetChartVectors() {
-    // Reset vectors of all charts
+    // Reset vectors of all charts.
     for(let i = 0; i < MODEL.charts.length; i++) {
       MODEL.charts[i].resetVectors();
     }
+  }
+
+  promptForWildcardIndices(chart, dsm) {
+    // No GUI dialog, so add *all* vectors for wildcard dataset modifier
+    // `dsm` as variables to `chart`.
+    const indices = Object.keys(dsm.expression.wildcard_vectors);
+    chart.addWildcardVariables(dsm, indices);
   }
 
   setRunsChart(show) {

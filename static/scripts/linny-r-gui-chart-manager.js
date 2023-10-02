@@ -131,7 +131,7 @@ class GUIChartManager extends ChartManager {
     document.getElementById('chart-narrow-btn').addEventListener(
         'click', () => CHART_MANAGER.stretchChart(-1));
 
-    // The Add variable modal
+    // The Add variable modal.
     this.add_variable_modal = new ModalDialog('add-variable');
     this.add_variable_modal.ok.addEventListener(
         'click', () => CHART_MANAGER.addVariable());
@@ -143,7 +143,7 @@ class GUIChartManager extends ChartManager {
     this.add_variable_modal.element('name').addEventListener(
         'change', () => X_EDIT.updateAttributeSelector('add-'));
 
-    // The Edit variable modal
+    // The Edit variable modal.
     this.variable_modal = new ModalDialog('variable');
     this.variable_modal.ok.addEventListener(
         'click', () => CHART_MANAGER.modifyVariable());
@@ -160,7 +160,7 @@ class GUIChartManager extends ChartManager {
         'mouseleave', () => CHART_MANAGER.hidePasteColor());
     document.getElementById('variable-color').addEventListener(
         'click', (event) => CHART_MANAGER.copyPasteColor(event));
-    // NOTE: uses the color picker developed by James Daniel
+    // NOTE: Uses the color picker developed by James Daniel.
     this.color_picker = new iro.ColorPicker("#color-picker", {
         width: 92,
         height: 92,
@@ -179,12 +179,19 @@ class GUIChartManager extends ChartManager {
             CHART_MANAGER.color_picker.color.hexString;
       });
 
-    // The Rename chart modal
+    // The Rename chart modal.
     this.rename_chart_modal = new ModalDialog('rename-chart');
     this.rename_chart_modal.ok.addEventListener(
         'click', () => CHART_MANAGER.renameChart());
     this.rename_chart_modal.cancel.addEventListener(
         'click', () => CHART_MANAGER.rename_chart_modal.hide());
+    
+    // The Add wildcard variables modal.
+    this.add_wildcard_modal = new ModalDialog('add-wildcard-variables');
+    this.add_wildcard_modal.ok.addEventListener(
+        'click', () => CHART_MANAGER.addSelectedWildcardVariables());
+    this.add_wildcard_modal.cancel.addEventListener(
+        'click', () => CHART_MANAGER.add_wildcard_modal.hide());
     
     // Do not display the time step until cursor moves over chart
     this.time_step.style.display = 'none';
@@ -326,16 +333,25 @@ class GUIChartManager extends ChartManager {
   }
   
   updateSelector() {
-    // Adds one option to the selector for each chart defined for the model
-    // NOTE: add the "new chart" option if still absent
+    // Adds one option to the selector for each chart defined for the model.
+    // NOTE: Add the "new chart" option if it is not in the list.
     MODEL.addChart(this.new_chart_title);
     if(this.chart_index < 0) this.chart_index = 0;
     const ol = [];
     for(let i = 0; i < MODEL.charts.length; i++) {
-      ol.push('<option value="', i,
-        (i == this.chart_index ? '"selected="selected' : ''),
-        '">', MODEL.charts[i].title , '</option>');
+      const t = MODEL.charts[i].title;
+      ol.push(['<option value="', i,
+          (i == this.chart_index ? '" selected="selected' : ''),
+          '">', t , '</option>'].join(''));
     }
+    // Sort option list by chart title.
+    ol.sort((a, b) => {
+        const
+            re = /<option value="\d+"( selected="selected")?>(.+)<\/option>/,
+            ta = a.replace(re, '$2'),
+            tb = b.replace(re, '$2');
+        return UI.compareFullNames(ta, tb);
+      });
     this.chart_selector.innerHTML = ol.join('');
   }
   
@@ -379,6 +395,11 @@ class GUIChartManager extends ChartManager {
     } else {
       this.variable_index = -1;
     }
+    // Just in case variable index has not been adjusted after some
+    // variables have been deleted
+    if(this.variable_index >= c.variables.length) {
+      this.variable_index = -1;
+    }
     // Set the image of the sort type button.
     if(this.variable_index >= 0) {
       const
@@ -392,11 +413,6 @@ class GUIChartManager extends ChartManager {
         u_btn = 'chart-variable-up ',
         d_btn = 'chart-variable-down ',
         ed_btns = 'chart-edit-variable chart-sort-variable chart-delete-variable ';
-    // Just in case variable index has not been adjusted after some
-    // variables have been deleted
-    if(this.variable_index >= c.variables.length) {
-      this.variable_index = -1;
-    }
     if(this.variable_index < 0) {
       UI.disableButtons(ed_btns + u_btn + d_btn);
     } else {
@@ -713,15 +729,63 @@ class GUIChartManager extends ChartManager {
     }
   }
   
+  promptForWildcardIndices(chart, dsm) {
+    // Prompt modeler with list of vectors for wildcard dataset modifier
+    // `dsm` as variables to `chart`.
+    const
+        md = this.add_wildcard_modal,
+        indices = Object.keys(dsm.expression.wildcard_vectors);
+    // First hide the "Add variable" modal.
+    this.add_variable_modal.hide();
+    // Do not prompt for selection if there is only 1 match.
+    if(indices.length < 2) chart.addWildcardVariables(dsm, indices);
+    md.chart = chart;
+    md.modifier = dsm;
+    md.indices = indices;
+    const
+        tr = [],
+        dn = dsm.displayName,
+        tbl = md.element('table');
+    for(let i = 0; i < indices.length; i++) {
+      tr.push('<tr><td class="v-box"><div id="wcv-box-', indices[i],
+          '" class="box clear" onclick="UI.toggleBox(event);"></td>',
+          '<td class="vname">', dn.replace('??', indices[i]),
+          '</td></tr>');
+      tbl.innerHTML = tr.join('');
+    }
+    md.dialog.style.height = (22 + indices.length * 16) + 'px';
+    md.show();
+  }
+  
+  addSelectedWildcardVariables() {
+    // Let the chart add selected wildcard matches (if any) as chart
+    // variables.
+    const
+        md = this.add_wildcard_modal,
+        c = md.chart,
+        dsm = md.modifier,
+        il = md.indices,
+        indices = [];
+    if(c && dsm && il) {
+      for(let i = 0; i < il.length; i++) {
+        if(UI.boxChecked('wcv-box-'+ il[i])) indices.push(il[i]);
+      }
+    }
+    if(indices.length) c.addWildcardVariables(dsm, indices);
+    // Always hide the dialog.
+    md.hide();
+    this.updateDialog();
+  }
+  
   selectVariable(vi) {
-    // Select variable, and edit it when double-clicked
+    // Select variable, and edit it when double-clicked.
     const
         now = Date.now(),
         dt = now - this.last_time_selected;
     if(vi >= 0 && this.chart_index >= 0) {
       this.last_time_selected = now;
       if(vi === this.variable_index) {
-        // Consider click to be "double" if it occurred less than 300 ms ago
+        // Consider click to be "double" if it occurred less than 300 ms ago.
         if(dt < 300) {
           this.last_time_selected = 0;
           this.editVariable();

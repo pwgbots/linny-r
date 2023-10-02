@@ -1765,6 +1765,8 @@ NOTE: * and ? will be interpreted as wildcards"
       <img id="eq-delete-btn" class="btn disab" src="images/delete.png"
            title="Delete selected equation">
     </div>
+    <img id="equation-outcome" class="not-selected" src="images/outcome.png"
+         title="Click to consider/ignore selected equation as experiment outcome">
     <div id="equation-scroll-area">
       <table id="equation-table">
       </table>
@@ -2008,6 +2010,22 @@ NOTE: * and ? will be interpreted as wildcards"
       </select>
       <select id="add-variable-name"></select>
       <select id="add-variable-attr"></select>
+    </div>
+  </div>
+  
+  <!-- the ADD WILDCARD VARIABLES dialog allows selecting wildcard
+       variables from a list to be added to the current chart -->
+  <div id="add-wildcard-variables-modal" class="modal">
+    <div id="add-wildcard-variables-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Add wildcard matches
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div id="add-wildcard-variables-scroll-area">
+        <table id="add-wildcard-variables-table">
+        </table>
+      </div>
     </div>
   </div>
   

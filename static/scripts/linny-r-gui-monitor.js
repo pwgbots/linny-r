@@ -280,6 +280,7 @@ class GUIMonitor {
 
   hideCallStack() {
     document.getElementById('call-stack-modal').style.display = 'none';
+    this.call_stack_shown = false;    
   }
 
   logMessage(block, msg) {

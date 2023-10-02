@@ -170,11 +170,11 @@ class LinnyRModel {
         olist.push(ds.displayName);
       }
     }
-    // ALL equation results are stored, so add all equation selectors...
+    // Also add all outcome equation selectors.
     const dsm = this.equations_dataset.modifiers;
-    // ... except selectors starting with a colon (methods).
+    // Exclude selectors starting with a colon (methods) -- just in case.
     for(let k in dsm) if(dsm.hasOwnProperty(k) && !k.startsWith(':')) {
-      olist.push(dsm[k].selector);
+      if(dsm[k].outcome_equation) olist.push(dsm[k].selector);
     }
     return olist;
   }
@@ -1593,8 +1593,8 @@ class LinnyRModel {
             nbp = note.nearby_pos;
         if(nbp) {
           // Adjust (x, y) so as to retain the relative position.
-          note.x += nbp.node.x - npb.oldx;
-          note.y += nbp.node.y - npb.oldy;
+          note.x += nbp.node.x - nbp.oldx;
+          note.y += nbp.node.y - nbp.oldy;
           note.nearby_pos = null;
         }
       }
@@ -3155,8 +3155,8 @@ class LinnyRModel {
           const
               dm = ds.modifiers[ms],
               n = dm.displayName;
-          // Do not add if already in the list.
-          if(names.indexOf(n) < 0) {
+          // Do not add if already in the list, or equation is not outcome.
+          if(names.indexOf(n) < 0 && (!eq || dm.outcome_equation)) {
             // Here, too, NULL can be used as "owner chart". 
             const cv = new ChartVariable(null);
             // NOTE: For equations, the object is the dataset modifier.
@@ -3169,10 +3169,17 @@ class LinnyRModel {
     // Sort variables by their name.
     vbls.sort((a, b) => UI.compareFullNames(a.displayName, b.displayName));
     // Create a new chart as dummy, so without adding it to this model.
-    const c = new Chart();
+    const
+        c = new Chart(),
+        wcdm = [];
     for(let i = 0; i < vbls.length; i++) {
       const v = vbls[i];
-      c.addVariable(v.object.displayName, v.attribute);
+      // NOTE: Prevent adding wildcard dataset modifiers more than once.
+      if(wcdm.indexOf(v.object) < 0) {
+        if(v.object instanceof DatasetModifier &&
+            v.object.selector.indexOf('??') >= 0) wcdm.push(v.object);
+        c.addVariable(v.object.displayName, v.attribute);
+      }
     }
     // NOTE: Call `draw` with FALSE to prevent display in the chart manager.
     c.draw(false);
@@ -8477,7 +8484,7 @@ class DatasetModifier {
     this.dataset = dataset;
     this.selector = selector;
     this.expression = new Expression(dataset, selector, '');
-    this.expression_cache = {};
+    this.outcome_equation = false;
   }
   
   get type() {
@@ -8507,12 +8514,21 @@ class DatasetModifier {
     // NOTE: For some reason, selector may become empty string, so prevent
     // saving such unidentified modifiers.
     if(this.selector.trim().length === 0) return '';
-    return ['<modifier><selector>', xmlEncoded(this.selector),
+    const oe = (this.outcome_equation ? ' outcome="1"' : '');
+    return ['<modifier', oe, '><selector>', xmlEncoded(this.selector),
       '</selector><expression>', xmlEncoded(this.expression.text),
       '</expression></modifier>'].join('');
   }
 
   initFromXML(node) {
+    // NOTE: Up to version 1.6.2, all equations were considered as
+    // outcomes. To maintain upward compatibility, check for the model
+    // version number.
+    if(earlierVersion(MODEL.version, '1.6.3')) {
+      this.outcome_equation = true;
+    } else {
+      this.outcome_equation = nodeParameterValue(node, 'outcome') === '1';
+    }
     this.expression.text = xmlDecoded(nodeContentByTag(node, 'expression'));
     if(IO_CONTEXT) {
       // Contextualize the included expression.
@@ -8824,12 +8840,19 @@ class Dataset {
       this.max = Math.max(this.max, this.data[i]);
       sum += this.data[i];
     }
-    this.mean = sum / this.data.length;
-    let sumsq = 0;
-    for(let i = 0; i < this.data.length; i++) {
-      sumsq += Math.pow(this.data[i] -  this.mean, 2);
+    // NOTE: Avoid small differences due to numerical imprecision.
+    if(this.max - this.min < VM.NEAR_ZERO) {
+      this.max = this.min;
+      this.mean = this.min;
+      this.standard_deviation = 0;
+    } else {
+      this.mean = sum / this.data.length;
+      let sumsq = 0;
+      for(let i = 0; i < this.data.length; i++) {
+        sumsq += Math.pow(this.data[i] -  this.mean, 2);
+      }
+      this.standard_deviation = Math.sqrt(sumsq / this.data.length);
     }
-    this.standard_deviation = Math.sqrt(sumsq / this.data.length);
   }
   
   get statisticsAsString() {
@@ -9081,7 +9104,6 @@ class Dataset {
     for(let m in this.modifiers) if(this.modifiers.hasOwnProperty(m)) {
       // NOTE: "empty" expressions for modifiers default to dataset default.
       this.modifiers[m].expression.reset(this.defaultValue);
-      this.modifiers[m].expression_cache = {};
     }
   }
 
@@ -9141,6 +9163,8 @@ class ChartVariable {
     this.non_zero_tally = 0;
     this.exceptions = 0;
     this.bin_tallies = [];
+    // The actual wildcard index is set for each variable that is added
+    // during this "expansion".
     this.wildcard_index = false;
   }
   
@@ -9210,6 +9234,8 @@ class ChartVariable {
     }
     const xml = ['<chart-variable', (this.stacked ? ' stacked="1"' : ''),
         (this.visible ? ' visible="1"' : ''),
+        (this.wildcard_index !== false ?
+            ` wildcard-index="${this.wildcard_index}"` : ''),
         ` sorted="${this.sorted}"`,
         '><object-id>', xmlEncoded(id),
         '</object-id><attribute>', this.attribute,
@@ -9255,6 +9281,9 @@ class ChartVariable {
       UI.warn(`No chart variable entity with ID "${id}"`);
       return false;
     }
+    // For wildcard variables, a subset of wildcard indices may be specified.
+    const wci = nodeParameterValue(node, 'wildcard-index');
+    this.wildcard_index = (wci ? parseInt(wci) : false);
     this.setProperties(
         obj,
         nodeContentByTag(node, 'attribute'),
@@ -9327,7 +9356,7 @@ class ChartVariable {
     for(let t = 0; t <= t_end; t++) {
       // Get the result, store it, and incorporate it in statistics.
       if(!av) {
-        // Undefined attribute => zero (no error)
+        // Undefined attribute => zero (no error).
         v = 0;
       } else if(Array.isArray(av)) {
         // Attribute value is a vector.
@@ -9339,19 +9368,19 @@ class ChartVariable {
         // this index as context number.
         v = av.result(t, this.wildcard_index);
       } else {
-        // Attribute value must be a number
+        // Attribute value must be a number.
         v = av;
       }
-      // Map undefined values and all errors to 0
+      // Map undefined values and all errors to 0.
       if(v < VM.MINUS_INFINITY || v > VM.PLUS_INFINITY) {
-        // Do not include values for t = 0 in statistics
+        // Do not include values for t = 0 in statistics.
         if(t > 0) this.exceptions++;
         v = 0;
       }
-      // Scale the value unless run result (these are already scaled!)
+      // Scale the value unless run result (these are already scaled!).
       if(!rr) v *= this.scale_factor;
       this.vector.push(v);
-      // Do not include values for t = 0 in statistics
+      // Do not include values for t = 0 in statistics.
       if(t > 0) {
         if(Math.abs(v) > VM.NEAR_ZERO) {
           this.sum += v;
@@ -9361,17 +9390,24 @@ class ChartVariable {
         this.maximum = Math.max(this.maximum, v);
       }
     }
-    // Compute the mean
-    this.mean = this.sum / t_end;
-    // Compute the variance for t=1, ..., N
-    let sumsq = 0;
-    for(let t = 1; t <= t_end; t++) {
-      v = this.vector[t];
-      // Here, too, ignore exceptional values, and use 0 instead
-      if(v < VM.MINUS_INFINITY || v > VM.PLUS_INFINITY) v = 0;
-      sumsq += Math.pow(v - this.mean, 2);
+    if(this.maximum - this.minimum < VM.NEAR_ZERO) {
+      // Ignore minute differences.
+      this.maximum = this.minimum;
+      this.mean = this.minimum;
+      this.variance = 0;
+    } else {
+      // Compute the mean.
+      this.mean = this.sum / t_end;
+      // Compute the variance for t=1, ..., N.
+      let sumsq = 0;
+      for(let t = 1; t <= t_end; t++) {
+        v = this.vector[t];
+        // Here, too, ignore exceptional values, and use 0 instead.
+        if(v < VM.MINUS_INFINITY || v > VM.PLUS_INFINITY) v = 0;
+        sumsq += Math.pow(v - this.mean, 2);
+      }
+      this.variance = sumsq / t_end;
     }
-    this.variance = sumsq / t_end;
   }
   
   tallyVector() {
@@ -9540,16 +9576,16 @@ class Chart {
   }
 
   addVariable(n, a) {
-    // Adds variable [entity name `n`|attribute `a`] to the chart unless it
-    // is already in the variable list.
+    // Add variable [entity name `n`|attribute `a`] to the chart unless
+    // it is already in the variable list.
     let dn = n + UI.OA_SEPARATOR + a;
-    // Adapt display name for special cases
+    // Adapt display name for special cases.
     if(n === UI.EQUATIONS_DATASET_NAME) {
-      // For equations only the attribute (modifier selector)
+      // For equations only the attribute (modifier selector).
       dn = a;
       n = a;
     } else if(!a) {
-      // If no attribute specified (=> dataset) only the entity name
+      // If no attribute specified (=> dataset) only the entity name.
       dn = n;
     }
     let vi = this.variableIndexByName(dn);
@@ -9564,17 +9600,14 @@ class Chart {
     // No equation and no attribute specified? Then assume default.
     if(!eq && a === '') a = obj.defaultAttribute;
     if(eq && (n.indexOf('??') >= 0 || obj.expression.isMethod)) {
-      // Special case: for wildcard equations and methods, add dummy
-      // variables for each vector in the wildcard vector set of the
-      // expression.
-      const
-          clr = this.nextAvailableDefaultColor,
-          indices = Object.keys(obj.expression.wildcard_vectors);
-      for(let i = 0; i < indices.length; i++) {
-        const v = new ChartVariable(this);
-        v.setProperties(obj, dn, false, clr);
-        v.wildcard_index = parseInt(indices[i]);
-        this.variables.push(v);
+      // Special case: for wildcard equations and methods, prompt the
+      // modeler which wildcard possibilities to add UNLESS this is an
+      // untitled "dummy" chart used to report outcomes.
+      if(this.title) {
+        CHART_MANAGER.promptForWildcardIndices(this, obj);
+      } else {
+        this.addWildcardVariables(obj,
+            Object.keys(obj.expression.wildcard_vectors));
       }
     } else {
       const v = new ChartVariable(this);
@@ -9582,6 +9615,19 @@ class Chart {
       this.variables.push(v);
     }
     return this.variables.length - 1;
+  }
+  
+  addWildcardVariables(dsm, indices) {
+    // For dataset modifier `dsm`, add dummy variables for those vectors
+    // in the wildcard vector set of the expression that are indicated
+    // by the list `indices`.
+    const dn = dsm.displayName;
+    for(let i = 0; i < indices.length; i++) {
+      const v = new ChartVariable(this);
+      v.setProperties(dsm,  dn, false, this.nextAvailableDefaultColor);
+      v.wildcard_index = parseInt(indices[i]);
+      this.variables.push(v);
+    }    
   }
 
   addSVG(lines) {
@@ -10401,7 +10447,7 @@ class Chart {
     if(CHART_MANAGER.drawing_chart) {
       return '(chart statistics not calculated yet)';
     }
-    // NOTE: unlike statistics, series data is output in columns
+    // NOTE: Unlike statistics, series data is output in columns.
     const data = [], vbl = [], line = ['t'];
     // First line: column labels (variable names, but time step in first column)
     for(let i = 0; i < this.variables.length; i++) {

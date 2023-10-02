@@ -109,7 +109,7 @@ class GroupPropertiesDialog extends ModalDialog {
     // input fields this means `onkeydown` events.
     const fnc = (event) => {
         const id = event.target.id.split('-').shift();
-        // NOTE: add a short delay to permit checkboxes to update their
+        // NOTE: Add a short delay to permit checkboxes to update their
         // status first, before checking for change.
         setTimeout(() => UI.modals[id].highlightModifiedFields(), 100);
       };
@@ -819,8 +819,8 @@ class GUIController extends Controller {
 
     // Add all draggable stay-on-top dialogs as controller properties.
     
-    // Make checkboxes respond to click
-    // NOTE: checkbox-specific events must be bound AFTER this general setting
+    // Make checkboxes respond to click.
+    // NOTE: Checkbox-specific events must be bound AFTER this general setting.
     const
         cbs = document.getElementsByClassName('box'),
         cbf = (event) => UI.toggleBox(event);

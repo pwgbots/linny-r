@@ -394,11 +394,12 @@ class Expression {
       vmi[0](this, vmi[1]);
       this.program_counter++;
     }
-    // Stack should now have length 1.
+    // Stack should now have length 1. If not, report error unless the
+    // length is due to some other error.
     if(this.stack.length > 1) {
-      v[t] = VM.OVERFLOW;
+      if(v[t] > VM.ERROR) v[t] = VM.OVERFLOW;
     } else if(this.stack.length < 1) {
-      v[t] = VM.UNDERFLOW;
+      if(v[t] > VM.ERROR) v[t] = VM.UNDERFLOW;
     } else {
       v[t] = this.stack.pop();
     }
@@ -2476,7 +2477,7 @@ class VirtualMachine {
     // Return number `n` formatted so as to show 2-3 significant digits
     // NOTE: as `n` should be a number, a warning sign will typically
     // indicate a bug in the software.
-    if(n === undefined) return '\u26A0'; // Warning sign
+    if(n === undefined || isNaN(n)) return '\u26A0'; // Warning sign
     const sv = this.specialValue(n);
     // If `n` has a special value, return its representation.
     if(sv[0]) return sv[1];
@@ -2972,10 +2973,10 @@ class VirtualMachine {
     if(vcnt == 0) return '(no variables)';
     let l = '';
     for(let i = 0; i < vcnt; i++) {
-      const obj = this.variables[i][1];
-      let v = 'X' + (i+1).toString().padStart(z, '0');
-      v += '     '.slice(v.length) + obj.displayName;
-      const p = (obj instanceof Process && obj.pace > 1 ? ' 1/' + obj.pace : '');
+      const
+          obj = this.variables[i][1],
+          v = 'X' + (i+1).toString().padStart(z, '0') + ' ' + obj.displayName,
+          p = (obj instanceof Process && obj.pace > 1 ? ' 1/' + obj.pace : '');
       l += v + ' [' + this.variables[i][0] + p + ']\n';
     }
     if(this.chunk_variables.length > 0) {

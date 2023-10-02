@@ -54,6 +54,9 @@ class EquationManager {
         'click', () => EQUATION_MANAGER.editEquation());
     document.getElementById('eq-delete-btn').addEventListener(
         'click', () => EQUATION_MANAGER.deleteEquation());
+    this.outcome_btn = document.getElementById('equation-outcome');
+    this.outcome_btn.addEventListener(
+        'click', () => EQUATION_MANAGER.toggleOutcome());
     
     // Create modal dialogs
     this.new_modal = new ModalDialog('new-equation');
@@ -134,6 +137,11 @@ class EquationManager {
         ml = [],
         msl = ed.selectorList,
         sm = this.selected_modifier;
+    if(sm && sm.outcome_equation) {
+      this.outcome_btn.classList.remove('not-selected'); 
+    } else {
+      this.outcome_btn.classList.add('not-selected'); 
+    }
     let smid = 'eqmtr';
     for(let i = 0; i < msl.length; i++) {
       const
@@ -155,6 +163,7 @@ class EquationManager {
           (m.expression.noMethodObject ? ' no-object' : ''),
           (m.expression.isStatic ? '' : ' it'), issue,
           (wild ? ' wildcard' : ''), clk, ', false);"', mover, '>',
+          (m.outcome_equation ? '<span class="outcome"></span>' : ''),
           (wild ? wildcardFormat(m.selector) : m.selector),
           '</td><td class="equation-expression', issue,
           (issue ? '"title="' +
@@ -199,6 +208,16 @@ class EquationManager {
       this.selected_modifier = null;
     }
     this.updateDialog();
+  }
+  
+  toggleOutcome() {
+    const m = this.selected_modifier;
+    // NOTE: Methods cannot be outcomes.
+    if(m && !m.selector.startsWith(':')) {
+      m.outcome_equation = !m.outcome_equation;
+      this.updateDialog();
+      if(!UI.hidden('experiment-dlg')) EXPERIMENT_MANAGER.updateDialog();
+    }
   }
   
   promptForEquation(add=false) {
