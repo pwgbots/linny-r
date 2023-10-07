@@ -56,7 +56,7 @@ class ConstraintEditor {
     this.container.addEventListener('mousemove',
         (event) => CONSTRAINT_EDITOR.mouseMove(event));
     this.container.addEventListener('mousedown',
-        () => CONSTRAINT_EDITOR.mouseDown());
+        () => CONSTRAINT_EDITOR.mouseDown(event));
     this.container.addEventListener('mouseup',
         () => CONSTRAINT_EDITOR.mouseUp());
     // NOTE: interpret leaving the area as a mouse-up so that dragging ceases
@@ -84,6 +84,11 @@ class ConstraintEditor {
     this.delete_bl_btn = document.getElementById('del-bl-btn');
     this.delete_bl_btn.addEventListener('click',
         () => CONSTRAINT_EDITOR.deleteBoundLine());
+    this.point_modal = new ModalDialog('boundline-point');
+    this.point_modal.ok.addEventListener(
+        'click', () => CONSTRAINT_EDITOR.setPointPosition());
+    this.point_modal.cancel.addEventListener(
+        'click', () => CONSTRAINT_EDITOR.point_modal.hide());
     // The chart is stored as an SVG string
     this.svg = '';
     // Scale, origin X and Y assume a 300x300 px square chart area
@@ -93,7 +98,7 @@ class ConstraintEditor {
     // 0 => silver, LE => orange/red, GE => cyan/blue, EQ => purple
     this.line_color = ['#a0a0a0', '#c04000', '#0040c0', '#9000a0'];
     // Use brighter shades if selected (darker for gray) 
-    this.selected_color = ['#808080', '#ff8040', '#00ffff', '#a800ff'];
+    this.selected_color = ['#808080', '#ff8040', '#00b0d0', '#a800ff'];
     // The selected bound line object (NULL => no line selected)
     this.selected = null;
     // Cursor position in chart coordinates (100 x 100 grid)
@@ -105,6 +110,7 @@ class ConstraintEditor {
     this.on_point = -1;
     this.dragged_point = -1;
     this.selected_point = -1;
+    this.last_time_clicked = 0;
     this.cursor = 'default';
     // Properties for tracking which constraint is being edited.
     this.edited_constraint = null;
@@ -116,6 +122,21 @@ class ConstraintEditor {
     // List of constraints when multiple constraints are edited.
     this.group = [];
     // NOTE: All edits will be ignored unless the modeler clicks OK.
+  }
+  
+  get doubleClicked() {
+    const
+        now = Date.now(),
+        dt = now - this.last_time_clicked;
+    this.last_time_clicked = now;
+    if(this.on_point === this.selected_point) {
+      // Consider click to be "double" if it occurred less than 300 ms ago
+      if(dt < 300) {
+        this.last_time_clicked = 0;
+        return true;
+      }
+    }
+    return false;
   }
   
   mouseMove(e) {
@@ -132,16 +153,18 @@ class ConstraintEditor {
     this.pos_y = Math.min(100, Math.max(0, y));
     this.updateStatus();
     if(this.dragged_point >= 0) {
-      this.movePoint();
+      this.movePoint(this.pos_x, this.pos_y);
     } else {
       this.checkLines();
     }
   }
   
-  mouseDown() {
-    // The onMouseDown response of the constraint editor's graph area
+  mouseDown(e) {
+    // The onMouseDown response of the constraint editor's graph area.
     if(this.adding_point) {
       this.doAddPointToLine();
+    } else if((e.altKey || this.doubleClicked) && this.on_point >= 0) {
+      this.positionPoint();
     } else if(this.on_line) {
       this.selectBoundLine(this.on_line);
       this.dragged_point = this.on_point;
@@ -155,7 +178,7 @@ class ConstraintEditor {
   }
   
   mouseUp() {
-    // The onMouseUp response of the constraint editor's graph area
+    // The onMouseUp response of the constraint editor's graph area.
     this.dragged_point = -1;
     this.container.style.cursor = this.cursor;
     this.updateStatus();
@@ -179,36 +202,85 @@ class ConstraintEditor {
     this.container.style.cursor = this.cursor;
   }
   
-  arrowKey(k) {
+  arrowKey(e) {
+    // Move point by 1 grid unit (1/3 pixel), or more precisely when
+    // Shift, Ctrl and/or Alt are pressed. Shift resolution is 1/10,
+    // Ctrl resolution = 1/100, combined => 1/1000. Just Alt resolution
+    // is 1/10000, and with Shift + Ctrl becomes 1e-7.
     if(this.selected && this.selected_point >= 0) {
+      const custom = e.shiftKey || e.ctrlKey || e.altKey;
+      let divisor = 3;
+      if(e.shiftKey) {
+        divisor = 10;
+        if(e.ctrlKey) divisor = 1000;
+      } else if(e.ctrlKey) {
+        divisor = 100;
+      }
+      if(e.altKey) {
+        if(divisor === 3) {
+          divisor = 10000;
+        } else {
+          divisor *= 10000;
+        }
+      }
       const
+          k = e.keyCode,
           i = this.selected_point,
           pts = this.selected.points,
           li = pts.length - 1,
           p = pts[this.selected_point],
           minx = (i === 0 ? 0 : (i === li ? 100 : pts[i - 1][0])),
           maxx = (i === 0 ? 0 : (i === li ? 100 : pts[i + 1][0]));
+      let cx = false,
+          cy = false;
       if(k === 37) {
-        p[0] = Math.max(minx, p[0] - 1/3);
-      } else if (k === 38 && p[1] <= 299/3) {
-        p[1] += 1/3;
+        p[0] = Math.max(minx, p[0] - 1 / divisor);
+        cx = true;
+      } else if (k === 38 && p[1] <= 100 - 1 / divisor) {
+        p[1] += 1 / divisor;
+        cy = true;
       } else if (k === 39) {
-        p[0] = Math.min(maxx, p[0] + 1/3);
-      } else if (k === 40 && p[1] >= 1/3) {
-        p[1] -= 1/3;
+        p[0] = Math.min(maxx, p[0] + 1 / divisor);
+        cx = true;
+      } else if (k === 40 && p[1] >= 1 / divisor) {
+        p[1] -= 1 / divisor;
+        cy = true;
       }
-      // NOTE: compensate for small numerical errors
-      p[0] = Math.round(3 * p[0]) / 3; 
-      p[1] = Math.round(3 * p[1]) / 3; 
+      // NOTE: Compensate for small numerical errors
+      const cp = this.customPoint(p[0], p[1]);
+      if(cx) {
+        if(cp & 1 && custom) {
+          p[0] = Math.round(divisor * p[0]) / divisor;
+        } else {
+          p[0] = Math.round(3 * p[0]) / 3;
+        }
+      }
+      if(cy) {
+        if(cp & 2 && custom) {
+          p[1] = Math.round(divisor * p[1]) / divisor;
+        } else {
+          p[1] = Math.round(3 * p[1]) / 3;
+        }
+      }
       this.draw();
       this.updateEquation();
     }
   }
   
+  customPoint(x, y) {
+    // Return 0 if `x` and `y` both are "regular" points on the pixel
+    // grid. For these regular points, X and Y are multiples of 1/3,
+    // so 3*X and 3*Y should both be integer (apart from numerical
+    // imprecision). If only X is custom, return 1, if only Y is custom,
+    // return 2, and if both are custom, return 3.
+    return (Math.abs(3*x - Math.round(3*x)) > VM.NEAR_ZERO ? 1 : 0) +
+        (Math.abs(3*y - Math.round(3*y)) > VM.NEAR_ZERO ? 2 : 0);
+  }
+  
   point(x, y) {
-    // Returns a string denoting the point (x, y) in SVG notation, assuming
+    // Return a string denoting the point (x, y) in SVG notation, assuming
     // that x and y are mathematical coordinates (y-axis pointing UP) and
-    // scaled to the constraint editor chart area, cf. global constants
+    // scaled to the constraint editor chart area, cf. global constants.
     // defined for the constraint editor.
     return (this.oX + x * this.scale) + ',' + (this.oY - y * this.scale);
   }
@@ -396,10 +468,52 @@ class ConstraintEditor {
     }
     this.equation_div.innerHTML = segeq;
   }
+  
+  positionPoint() {
+    // Prompt modeler for precise point coordinates.
+    if(this.selected_point < 0) return;
+    const
+        md = this.point_modal,
+        pc = this.point_div.innerHTML.split(', ');
+    md.element('x').value = pc[0].substring(1);
+    md.element('y').value = pc[1].substring(0, pc[1].length - 1);
+    md.show('x');
+  }
+  
+  validPointCoordinate(c) {
+    // Return floating point for coordinate `c` (= 'x' or 'y') or FALSE
+    // if input is invalid.
+    const
+        md = this.point_modal,
+        e = md.element(c),
+        v = safeStrToFloat(e.value, false);
+    if(v === false || v < 0 || v > 100) {
+      UI.warn('Invalid boundline point coordinate');
+      e.select();
+      e.focus();
+      return false;
+    }
+    return v;
+  }
 
-  movePoint() {
-    // Moves the dragged point of the selected bound line
-    // Use l as shorthand for the selected line
+  setPointPosition() {
+    // Check coordinates, and if valid update those of the selected point.
+    // Otherwise, warn user and select offending input field.
+    if(this.selected_point < 0) return;
+    const
+        x = this.validPointCoordinate('x'),
+        y = this.validPointCoordinate('y');
+    if(x !== false && y !== false) {
+      this.dragged_point = this.selected_point;
+      this.movePoint(x, y);
+      this.dragged_point = -1;
+      this.point_modal.hide();
+    }
+  }
+
+  movePoint(x, y) {
+    // Move the dragged point of the selected bound line.
+    // Use `l` as shorthand for the selected line.
     const
         l = this.selected,
         pi = this.dragged_point,
@@ -411,8 +525,8 @@ class ConstraintEditor {
         py = p[1],
         minx = (pi === 0 ? 0 : (pi === lpi ? 100 : l.points[pi - 1][0])),
         maxx = (pi === 0 ? 0 : (pi === lpi ? 100 : l.points[pi + 1][0])),
-        newx = Math.min(maxx, Math.max(minx, this.pos_x)),
-        newy = Math.min(100, Math.max(0, this.pos_y));
+        newx = Math.min(maxx, Math.max(minx, x)),
+        newy = Math.min(100, Math.max(0, y));
     // No action needed unless point has been moved 
     if(newx !== px || newy !== py) {
       p[0] = newx;
@@ -424,17 +538,22 @@ class ConstraintEditor {
 
   updateStatus() {    
     // Displays cursor position as X and Y (in chart coordinates), and updates
-    // controls
+    // controls.
     this.pos_x_div.innerHTML = 'X = ' + this.pos_x.toPrecision(3);
     this.pos_y_div.innerHTML = 'Y = ' + this.pos_y.toPrecision(3);
+    this.point_div.innerHTML = '';
     const blbtns = 'add-point del-bl';
     if(this.selected) {
       if(this.selected_point >= 0) {
         const p = this.selected.points[this.selected_point];
-        this.point_div.innerHTML =
-            `(${p[0].toPrecision(3)}, ${p[1].toPrecision(3)})`;
-      } else {
-        this.point_div.innerHTML = '';
+        let px = p[0].toPrecision(3),
+            py = p[1].toPrecision(3),
+            cp = this.customPoint(p[0], p[1]);
+        if(cp & 1) px = p[0].toPrecision(10).replace(/[0]+$/, '')
+            .replace(/\.$/, '');
+        if(cp & 2) py = p[1].toPrecision(10).replace(/[0]+$/, '')
+            .replace(/\.$/, '');
+        this.point_div.innerHTML = `(${px}, ${py})`;
       }
       // Check whether selected point is an end point
       const ep = this.selected_point === 0 ||
@@ -591,13 +710,19 @@ class ConstraintEditor {
       width = 1.5;
       color = this.line_color[l.type];
     }
-    const cfs = `fill="${color}" stroke="${color}" stroke-width="${width}"`;
+    const
+        cfs = `fill="${color}" stroke="${color}" stroke-width="${width}"`,
+        icfs = 'fill="white" stroke="white" stroke-width="1"';
     for(let i = 0; i < l.points.length; i++) {
       const
           px = l.points[i][0],
           py = l.points[i][1];
       pp.push(this.point(px, py));
       dots += `<circle ${this.circleCenter(px, py)} r="3" ${cfs}></circle>`;
+      // Draw "custom points" with a white inner circle.
+      if(this.customPoint(px, py)) {
+        dots += `<circle ${this.circleCenter(px, py)} r="1.5" ${icfs}></circle>`;      
+      }
     }
     const cp = 'M' + pp.join('L');
     // For EQ bound lines, the line path is the contour; this will be

@@ -1922,8 +1922,8 @@ div.menu-item:hover {
 #constraint-point {
   position: absolute;
   top: 393px;
-  left: 160px;
-  width: 75px;  
+  left: 100px;
+  width: 175px;  
   text-align: center;
 }
 
@@ -2007,6 +2007,50 @@ div.menu-item:hover {
 #constraint-soc {
   position: absolute;
   right: 0px;
+}
+
+/* the BOUNDLINE POINT DIALOG allows entering precise coordinates */
+#boundline-point-dlg {
+  width: 200px;
+  height: 67px;
+}
+
+#boundline-point-x-lbl {
+  position: absolute;
+  top: 25px;
+  left: 2px;
+}
+
+#boundline-point-x {
+  position: absolute;
+  top: 23px;
+  left: 24px;
+  width: 160px;
+}
+
+#boundline-point-x-percent {
+  position: absolute;
+  top: 25px;
+  left: 188px;
+}
+
+#boundline-point-y-lbl {
+  position: absolute;
+  top: 47px;
+  left: 2px;
+}
+
+#boundline-point-y {
+  position: absolute;
+  top: 45px;
+  left: 24px;
+  width: 160px;
+}
+
+#boundline-point-y-percent {
+  position: absolute;
+  top: 47px;
+  left: 188px;
 }
 
 /* NOTE: The following dialogs are not modal, but "stay-on-top",

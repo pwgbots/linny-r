@@ -2154,7 +2154,7 @@ class GUIController extends Controller {
       if(topmod && topmod.id === 'constraint-modal') {
         if([37, 38, 39, 40].indexOf(e.keyCode) >= 0) {
           e.preventDefault();
-          CONSTRAINT_EDITOR.arrowKey(e.keyCode);
+          CONSTRAINT_EDITOR.arrowKey(e);
           return;
         }
       }

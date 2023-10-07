@@ -6954,7 +6954,7 @@ function VMI_log(x) {
   if(d !== false) {
     if(DEBUGGING) console.log('LOG (' + d.join(', ') + ')');
     try {
-      d = Math.exp(Math.log(d[1]) / Math.log(d[0]));
+      d = Math.log(d[1]) / Math.log(d[0]);
     } catch(err) {
       d = VM.BAD_CALC;
     }
@@ -8093,9 +8093,9 @@ const
       '%', '^', 'log', '|'],
   DYADIC_CODES = [
       VMI_concat, VMI_if_then, VMI_if_else, VMI_or, VMI_and,
-      VMI_eq, VMI_ne, VMI_ne,
-      VMI_gt, VMI_lt, VMI_ge, VMI_le, VMI_add, VMI_sub, VMI_mul, VMI_div,
-      VMI_mod, VMI_power, VMI_log, VMI_replace_undefined],
+      VMI_eq, VMI_ne, VMI_ne, VMI_gt, VMI_lt, VMI_ge, VMI_le,
+      VMI_add, VMI_sub, VMI_mul, VMI_div, VMI_mod,
+      VMI_power, VMI_log, VMI_replace_undefined],
 
   // Compiler checks for random codes as they make an expression dynamic
   RANDOM_CODES = [VMI_binomial, VMI_exponential, VMI_normal, VMI_poisson,
