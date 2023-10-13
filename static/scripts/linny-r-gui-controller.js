@@ -549,9 +549,9 @@ class GUIController extends Controller {
     this.buttons.actors.addEventListener('click',
         () => ACTOR_MANAGER.showDialog());
     this.buttons.diagram.addEventListener('click',
-        () => FILE_MANAGER.renderDiagramAsPNG());
+        () => FILE_MANAGER.renderDiagramAsPNG(event.shiftKey));
     this.buttons.savediagram.addEventListener('click',
-        () => FILE_MANAGER.saveDiagramAsSVG());
+        () => FILE_MANAGER.saveDiagramAsSVG(event.shiftKey));
     this.buttons.receiver.addEventListener('click',
         () => RECEIVER.toggle());
     // NOTE: All draggable & resizable dialogs "toggle" show/hide.

@@ -132,7 +132,11 @@ class Shape {
       const ts = UI.paper.newSVGElement('tspan');
       ts.setAttribute('x', x);
       ts.setAttribute('dy', fh);
-      ts.textContent = lines[i];
+      // NOTE: Non-breaking space must now (inside a TSPAN) be converted
+      // to normal spaces, or they will be rendered as '&nbsp;' and this
+      // will cause the SVG to break when it is inserted as picture into
+      // an MS Word document.
+      ts.textContent = lines[i].replaceAll('\u00A0', ' ');
       el.appendChild(ts);
     }
     this.element.appendChild(el);
@@ -348,6 +352,13 @@ class Paper {
     this.clear();
   }
   
+  get opaqueSVG() {
+    // Return SVG as string with nodes and arrows 100% opaque.
+    // NOTE: The semi-transparent ovals behind rates on links have
+    // opacity 0.8 and hence are not affected.
+    return this.svg.outerHTML.replaceAll(' opacity="0.9"', ' opacity="1"');
+  }
+  
   clear() {
     // First, clear the entire SVG
     this.clearSVGElement(this.svg);
@@ -471,12 +482,12 @@ class Paper {
   }
   
   clearSVGElement(el) {
-    // Clears all sub-nodes of the specified SVG node
+    // Clear all sub-nodes of the specified SVG node.
     if(el) while(el.lastChild) el.removeChild(el.lastChild);
   }
   
   addSVGAttributes(el, obj) {
-    // Adds attributes specified by `obj` to (SVG) element `el`
+    // Add attributes specified by `obj` to (SVG) element `el`.
     for(let prop in obj) {
       if(obj.hasOwnProperty(prop)) el.setAttribute(prop, obj[prop]);
     }
@@ -686,35 +697,35 @@ class Paper {
     return el;
   }
 
-  fitToSize() {
+  fitToSize(margin=30) {
     // Adjust the dimensions of the main SVG to fit the graph plus 15px margin
     // all around
     this.removeInvisibleSVG();
     const
         bb = this.svg.getBBox(),
-        w = bb.width + 30,
-        h = bb.height + 30;
+        w = bb.width + margin,
+        h = bb.height + margin;
     if(w !== this.width || h !== this.height) {
-      MODEL.translateGraph(-bb.x + 15, -bb.y + 25);
+      MODEL.translateGraph(-bb.x + margin / 2, -bb.y + margin);
       this.width = w;
       this.height = h;
       this.svg.setAttribute('width', this.width);
       this.svg.setAttribute('height', this.height);
       this.zoom_factor = 1;
       this.zoom_label.innerHTML = Math.round(100 / this.zoom_factor) + '%';
-      this.extend();
+      this.extend(margin);
     }
   }
 
-  extend() {
+  extend(margin=30) {
     // Adjust the paper size to fit all objects WITHOUT changing the origin (0, 0)
     // NOTE: keep a minimum page size to keep the scrolling more "natural"
     this.removeInvisibleSVG();
     const
         bb = this.svg.getBBox(),
         // Let `w` and `h` be the actual width and height in pixels
-        w = bb.x + bb.width + 30,
-        h = bb.y + bb.height + 30,
+        w = bb.x + bb.width + margin,
+        h = bb.y + bb.height + margin,
         // Let `ccw` and `cch` be the size of the scrollable area
         ccw = w / this.zoom_factor,
         cch = h / this.zoom_factor;
@@ -1391,7 +1402,7 @@ class Paper {
           // Add 2px margin
           shift = 2;
       const lfd = (luc.actualDelay(MODEL.t));
-      if(lfd > 0) {
+      if(lfd != 0) {
         // If delay, draw it in a circle behind arrow head
         s = lfd;
         bb = this.numberSize(s, 7);
@@ -1419,6 +1430,7 @@ class Paper {
             {stroke:stroke_color, 'stroke-width': 0.5, fill: 'white'});
         // MU symbol does not center prettily => raise by 1 px
         const raise = (luc.multiplier === VM.LM_MEAN ||
+            luc.multiplier === VM.LM_STARTUP ||
             luc.multiplier === VM.LM_THROUGHPUT ? 1 :
                 (luc.multiplier === VM.LM_PEAK_INC ? 1.5 : 0));
         arrw.shape.addText(epx, epy - raise, VM.LM_SYMBOLS[luc.multiplier],
@@ -1462,12 +1474,13 @@ class Paper {
         epy = arrw.from_y + (shift + bi) * dy / l;
         font_color = this.palette.produced;
       }
-      // Draw the rate in a semi-transparent white ellipse
-      arrw.shape.addEllipse(epx, epy, tw/2, th/2, {fill: 'white', opacity: 0.8});
+      // Draw the rate in a semi-transparent white roundbox.
+      arrw.shape.addRect(epx, epy, tw, th,
+          {fill: 'white', opacity: 0.8, rx: 2, ry: 2});
       arrw.shape.addNumber(epx, epy, s, {fill: font_color, 'font-style': rrfs});
 
       // Draw the share of cost (only if relevant and > 0) behind the rate
-      // in a pale yellow filled box
+      // in a pale yellow filled box.
       if(MODEL.infer_cost_prices && luc.share_of_cost > 0) {
         // Keep the right distance from the rate: the midpoint should
         // increase by a varying length: number lengths / 2 when arrow is

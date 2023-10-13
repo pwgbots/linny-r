@@ -342,11 +342,18 @@ class GUIFileManager {
         });
   }
 
-  renderDiagramAsPNG() {
+  renderDiagramAsPNG(tight) {
+    // When `tight` is TRUE, add no whitespace around the diagram.
     window.localStorage.removeItem('png-url');
-    UI.paper.fitToSize();
-    MODEL.alignToGrid();
-    this.renderSVGAsPNG(UI.paper.svg.outerHTML);
+    if(tight) {
+      // First align to grid and then fit to size.
+      MODEL.alignToGrid();      
+      UI.paper.fitToSize(1);
+    } else {
+      UI.paper.fitToSize();
+      MODEL.alignToGrid();      
+    }
+    this.renderSVGAsPNG(UI.paper.opaqueSVG);
   }
   
   renderSVGAsPNG(svg) {
@@ -374,10 +381,17 @@ class GUIFileManager {
       .catch((err) => UI.warn(UI.WARNING.NO_CONNECTION, err));
   }
   
-  saveDiagramAsSVG() {
-    UI.paper.fitToSize();
-    MODEL.alignToGrid();
-    this.pushOutSVG(UI.paper.outerHTML);
+  saveDiagramAsSVG(tight) {
+    // Output SVG as string with nodes and arrows 100% opaque.
+    if(tight) {
+      // First align to grid and then fit to size.
+      MODEL.alignToGrid();      
+      UI.paper.fitToSize(1);
+    } else {
+      UI.paper.fitToSize();
+      MODEL.alignToGrid();      
+    }
+    this.pushOutSVG(UI.paper.opaqueSVG);
   }
   
   pushOutSVG(svg) {

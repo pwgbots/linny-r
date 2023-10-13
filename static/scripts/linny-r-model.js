@@ -8437,8 +8437,8 @@ class Link {
     // Scales delay expression value to number of time steps on model
     // time scale
     let d = Math.floor(VM.SIG_DIF_FROM_ZERO + this.flow_delay.result(t));
-    // NOTE: negative values are interpreted as 0 (no warning)
-    if(d <= 0) return 0;
+    // NOTE: Negative values are permitted. This might invalidate cost
+    // price calculation -- to be checked!!
     return d;
   }
   
