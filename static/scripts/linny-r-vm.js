@@ -4295,7 +4295,7 @@ class VirtualMachine {
           cv = this.chunk_variables[ci - this.chunk_offset];
         }
         // NOTE: Do not scale the coefficient of the cash variable.
-        if(!cv[0].startsWith('C')) cc[ci] *= m;
+        if(cv && !cv[0].startsWith('C')) cc[ci] *= m;
       }
     }
   }

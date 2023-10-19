@@ -332,6 +332,9 @@ class GUIExperimentManager extends ExperimentManager {
       document.getElementById('xp-reset-btn').classList.add('off');
     }
     this.updateParameters();
+    // NOTE: When UpdateDialog is called after an entity has been renamed,
+    // its variable list should be updated.
+    this.updateViewerVariable();
   }
 
   updateParameters() {
@@ -515,6 +518,10 @@ class GUIExperimentManager extends ExperimentManager {
         addDistinct(vn, vl); 
       }
       vl.sort((a, b) => UI.compareFullNames(a, b));
+      // NOTE: When the selected variable entity has been renamed, its
+      // name will not be in the list (and its old name cannot be inferred)
+      // so then clear it.
+      if(vl.indexOf(x.selected_variable) < 0) x.selected_variable = '';
       for(let i = 0; i < vl.length; i++) {
         const vn = vl[i];
         // NOTE: FireFox selector dropdown areas have a pale gray
