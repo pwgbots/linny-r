@@ -3199,25 +3199,25 @@ class VirtualMachine {
     }
     
     // Now all variables that get a tableau column in each time step have
-    // been defined; next step is to add "chunk variables"
+    // been defined; next step is to add "chunk variables".
     let cvi = 0;
-    // Add *two* chunk variables for processes having a peak increase link
+    // Add *two* chunk variables for processes having a peak increase link.
     for(i = 0; i < process_keys.length; i++) {
       k = process_keys[i];
       p = MODEL.processes[k];
       if(!MODEL.ignored_entities[k] && p.needsMaximumData) {
-        // "peak increase" for block
+        // First variable: "peak increase" for block.
         p.peak_inc_var_index = cvi;
         this.chunk_variables.push(['b-peak', p]);
         cvi++;
-        // additional "peak increase" for the look-ahead period
-        // NOTE: no need to record the second index as it wil allways be
-        // equal to block peak index + 1
+        // Additional "peak increase" for the look-ahead period.
+        // NOTE: No need to record the second index as it wil allways be
+        // equal to block peak index + 1.
         this.chunk_variables.push(['la-peak', p]);
         cvi++;
       }
     }
-    // Do likewise for such products
+    // Do likewise for such products.
     for(i = 0; i < product_keys.length; i++) {
       k = product_keys[i];
       p = MODEL.products[k];
@@ -3230,12 +3230,13 @@ class VirtualMachine {
       }
     }
 
-    // Now *all* variables have been defined; next step is to set their bounds
+    // Now *all* variables have been defined. The next step is to set
+    // their bounds.
 
-    // NOTE: chunk variables of node `p` have LB = 0 and UB = UB of `p`;
-    // this is effectuated by the VM "set bounds" instructions at run time
+    // NOTE: Chunk variables of node `p` have LB = 0 and UB = UB of `p`.
+    // This is effectuated by the VM "set bounds" instructions at run time.
 
-    // NOTE: under normal assumptions (all processes having LB >= 0), bounds on
+    // NOTE: Under normal assumptions (all processes having LB >= 0), bounds on
     // actor cash flow variables need NOT be set because cash IN and cash OUT
     // will then always be >= 0 (solver's default bounds).
     // However, Linny-R does not prohibit negative bounds on processes, nor
@@ -3243,10 +3244,10 @@ class VirtualMachine {
     // cash OUT of all actors are both allowed to become negative.
     for(i = 0; i < actor_keys.length; i++) {
       const a = MODEL.actors[actor_keys[i]];
-      // NOTE: add fourth parameter TRUE to signal that the SOLVER's
+      // NOTE: Add fourth parameter TRUE to signal that the SOLVER's
       // infinity constants should be used, as this is likely to be more
       // efficient, while cash flows are inferred properties and will not
-      // result in an "unbounded problem" error message from the solver
+      // result in an "unbounded problem" error message from the solver.
       this.code.push(
           [VMI_set_bounds, [a.cash_in_var_index,
               VM.MINUS_INFINITY, VM.PLUS_INFINITY, true]],
@@ -3255,9 +3256,9 @@ class VirtualMachine {
       );
     }
 
-    // NEXT: Define the bounds for all production level variables
-    // NOTE: the VM instructions check dynamically whether the variable index
-    // is listed as "fixed" for the round that is being solved
+    // NEXT: Define the bounds for all production level variables.
+    // NOTE: The VM instructions check dynamically whether the variable
+    // index is listed as "fixed" for the round that is being solved.
     for(i = 0; i < process_keys.length; i++) {
       k = process_keys[i];
       if(!MODEL.ignored_entities[k]) {
@@ -3411,13 +3412,13 @@ class VirtualMachine {
                 } else if(l.multiplier === VM.LM_ZERO) {
                   vi = p.is_zero_var_index;
                 }
-                // NOTE: "throughput", "spinning reserve" and "peak increase" are
-                // special cases that send a different parameter list
+                // NOTE: "throughput", "spinning reserve" and "peak increase"
+                // are special cases that send a different parameter list.
                 if(l.multiplier === VM.LM_THROUGHPUT) {
                   // When throughput is read from process Y, calculation
                   // is simple: no delays, so the flow over link `l`
                   // equals the (sum of all Ri) times the level of Y
-                  // times the rate of `l`
+                  // times the rate of `l`.
                   for(k = 0; k < l.from_node.inputs.length; j++) {
                     ll = l.from_node.inputs[k];
                     // NOTE: no attempt for efficiency -- assume that
@@ -3441,7 +3442,7 @@ class VirtualMachine {
                   // of the block being optimized, and in the first step of the
                   // look-ahead period (if peak rises in that period), and will
                   // be 0 in all other time steps; the VM instruction handles this
-                  // NOTE: delay is always 0 for this link flow
+                  // NOTE: Delay is always 0 for this link flow.
                   this.code.push([VMI_update_cash_coefficient, [
                       VM.PRODUCE, VM.PEAK_INC, p.peak_inc_var_index, 0,
                       tnpx, l.relative_rate]]);
@@ -4399,22 +4400,22 @@ class VirtualMachine {
           has_OO = (p.on_off_var_index >= 0),
           has_SU = (p.start_up_var_index >= 0),
           has_SD = (p.shut_down_var_index >= 0);
-      // Clear all start-ups and shut-downs at t >= bb
+      // Clear all start-ups and shut-downs at t >= bb.
       if(has_SU) p.resetStartUps(bb);
       if(has_SD) p.resetShutDowns(bb);
-      // NOTE: `b` is the index to be used for the vectors
+      // NOTE: `b` is the index to be used for the vectors.
       let b = bb;
-      // Iterate over all time steps in this block
-      // NOTE: -1 because indices start at 1, but list is zero-based
+      // Iterate over all time steps in this block.
+      // NOTE: -1 because indices start at 1, but list is zero-based.
       let j = -1; 
       for(let i = 0; i < abl; i++) {
         p.level[b] = this.checkForInfinity(x[p.level_var_index + j]);
         // @@TO DO: If ON/OFF is relevant, check whether it is correctly inferred
         if(has_OO) {
           if(has_SU) {
-            // NOTE: some solvers (Gurobi!) may return real numbers instead of
+            // NOTE: Some solvers (Gurobi!) may return real numbers instead of
             // integers, typically near-zero or near-one, so only consider
-            // values near 1 to indicate start-up
+            // values near 1 to indicate start-up.
             if(x[p.start_up_var_index + j] > 0.999) {
               p.start_ups.push(b);
             }
@@ -4425,13 +4426,13 @@ class VirtualMachine {
             }
           }
         }
-        // Advance column offset in tableau by the # cols per time step
+        // Advance column offset in tableau by the # cols per time step.
         j += this.cols;
-        // Advance to the next time step in this block
+        // Advance to the next time step in this block.
         b++;
       }
     }
-    // Set stock levels for all products
+    // Set stock levels for all products.
     for(let o in MODEL.products) if(MODEL.products.hasOwnProperty(o) &&
         !MODEL.ignored_entities[o]) {
       const
@@ -4439,23 +4440,23 @@ class VirtualMachine {
           has_OO = (p.on_off_var_index >= 0),
           has_SU = (p.start_up_var_index >= 0),
           has_SD = (p.shut_down_var_index >= 0);
-      // Clear all start-ups and shut-downs at t >= bb
+      // Clear all start-ups and shut-downs at t >= bb.
       if(has_SU) p.resetStartUps(bb);
       if(has_SD) p.resetShutDowns(bb);
       let b = bb;
-      // Iterate over all time steps in this block
+      // Iterate over all time steps in this block.
       let j = -1;
       for(let i = 0; i < abl; i++) {
         p.level[b] = this.checkForInfinity(x[p.level_var_index + j]);
         // @@TO DO: If ON/OFF is relevant, check whether it is correctly inferred
         if(has_OO) {
-          // Check if start-up variable is set (see NOTE above)
+          // Check if start-up variable is set (see NOTE above).
           if(has_SU) {
             if(x[p.start_up_var_index + j] > 0.999) {
               p.start_ups.push(b);
             }
           }
-          // Same for shut-down variable
+          // Same for shut-down variable.
           if(has_SD) {
             if(x[p.shut_down_var_index + j] > 0.999) {
               p.shut_downs.push(b);
@@ -4475,11 +4476,11 @@ class VirtualMachine {
       p.b_peak_inc[block] = x[offset + i];
       i++;
       p.la_peak_inc[block] = x[offset + i];
-      // Compute the peak from the peak increase
+      // Compute the peak from the peak increase.
       p.b_peak[block] = p.b_peak[block - 1] + p.b_peak_inc[block];
     }
-    // Add warning to messages if slack has been used
-    // NOTE: only check after the last round has been evaluated
+    // Add warning to messages if slack has been used.
+    // NOTE: Only check after the last round has been evaluated.
     if(round === this.lastRound) {
       let b = bb;
       // Iterate over all time steps in this block
@@ -4533,25 +4534,27 @@ class VirtualMachine {
     // optimization period, hence start by calculating the offset `bb`
     // being the first time step of this block.
     // Blocks are numbered 1, 2, ...
-    const bb = (block - 1) * MODEL.block_length + 1;
+    const
+        bb = (block - 1) * MODEL.block_length + 1,
+        cbl = this.actualBlockLength(block);
 
     // FIRST: Calculate the actual flows on links.
     let b, bt, p, pl, ld;
     for(let l in MODEL.links) if(MODEL.links.hasOwnProperty(l) &&
         !MODEL.ignored_entities[l]) {
       l = MODEL.links[l];
-      // NOTE: flow is determined by the process node, or in case
-      // of a P -> P data link by the FROM product node
+      // NOTE: Flow is determined by the process node, or in case
+      // of a P -> P data link by the FROM product node.
       p = (l.to_node instanceof Process ? l.to_node : l.from_node);
       b = bb;
-      // Iterate over all time steps in this chunk
-      for(let i = 0; i < this.chunk_length; i++) {
-        // NOTE: flows may have a delay!
+      // Iterate over all time steps in this chunk.
+      for(let i = 0; i < cbl; i++) {
+        // NOTE: Flows may have a delay!
         ld = l.actualDelay(b);
         bt = b - ld;
-        // NOTE: use non-zero level here to ignore non-zero values that
+        // NOTE: Use non-zero level here to ignore non-zero values that
         // are very small relative to the bounds on the process
-        // (typically values below the non-zero tolerance of the solver)
+        // (typically values below the non-zero tolerance of the solver).
         pl = p.nonZeroLevel(bt);
         if(l.multiplier === VM.LM_SPINNING_RESERVE) {
           pl = (pl > VM.NEAR_ZERO ? p.upper_bound.result(bt) - pl : 0);
@@ -4560,30 +4563,56 @@ class VirtualMachine {
         } else if(l.multiplier === VM.LM_ZERO) {
           pl = (Math.abs(pl) < VM.NEAR_ZERO ? 1 : 0);
         } else if(l.multiplier === VM.LM_STARTUP) {
-          // NOTE: ignore level; only check whether the start-up variable is set
+          // NOTE: For start-up, first commit and shut-down, the level
+          // can be ignored, as it suffices to check whether time step
+          // `bt` occurs in the list of start-up time steps.
           pl = (p.start_ups.indexOf(bt) < 0 ? 0 : 1);
         } else if(l.multiplier === VM.LM_FIRST_COMMIT) {
-          // NOTE: ignore level; only check whether FIRST start-up occurred at bt
+          // NOTE: Here, check whether FIRST start-up occurred at `bt`.
+          // This means that `bt` must be the *first* value in the list.
           pl = (p.start_ups.indexOf(bt) === 0 ? 1 : 0);
         } else if(l.multiplier === VM.LM_SHUTDOWN) {
-          // NOTE: ignore level; only check whether the shut_down variable is set
+          // Similar to STARTUP, but now look in the shut-down list.
           pl = (p.shut_downs.indexOf(bt) < 0 ? 0 : 1);
         } else if(l.multiplier === VM.LM_INCREASE) {
-          pl -= p.actualLevel(bt - 1);
+          pl = VM.keepException(pl, pl - p.actualLevel(bt - 1));
         } else if(l.multiplier === VM.LM_SUM || l.multiplier === VM.LM_MEAN) {
-          for(let j = 0; j < ld; j++) {
-            pl += p.actualLevel(b - j);
+          // Level for `bt` counts as first value.
+          let count = 1;
+          // NOTE: Link delay may be < 0!
+          if(ld < 0) {
+            // NOTE: Actual levels beyond end of period are undefined,
+            // and should be ignored while summing / averaging.
+            if(bt >= p.level.length) pl = 0;
+            // If so, take sum over t, t+1, ..., t+(d-1).
+            for(let j = ld + 1; j <= 0; j++) {
+              // Again: ignore levels beyond end of period.
+              if(b - j < p.level.length) {
+                pl = VM.keepException(pl, pl + p.actualLevel(b - j));
+                count++;
+              }
+            }
+          } else {
+            // If d > 0, take sum over t, t-1, ..., t-(d-1).
+            for(let j = 0; j < ld; j++) {
+              // NOTE: Actual levels before t=0 are considered equal to
+              // the initial level, and hence should NOT be ignored.
+              pl = VM.keepException(pl, pl + p.actualLevel(b - j));
+              count++;
+            }
           }
-          if(l.multiplier === VM.LM_MEAN && ld > 0) {
-            pl /= (ld + 1);
+          if(l.multiplier === VM.LM_MEAN && count > 1) {
+            // Average if more than 1 values have been summed.
+            pl = VM.keepException(pl, pl / count);
           }
         } else if(l.multiplier === VM.LM_THROUGHPUT) {
           // NOTE: calculate throughput on basis of levels and rates,
           // as not all actual flows may have been computed yet
           pl = 0;
           for(let j = 0; j < p.inputs.length; j++) {
-            pl += (p.inputs[j].from_node.actualLevel(bt) *
-                   p.inputs[j].relative_rate.result(bt));
+            pl = VM.keepException(pl,
+                pl + (p.inputs[j].from_node.actualLevel(bt) *
+                    p.inputs[j].relative_rate.result(bt)));
           }
         } else if(l.multiplier === VM.LM_PEAK_INC) {
           // Actual flow over "peak increase" link is zero unless...
@@ -4591,27 +4620,32 @@ class VirtualMachine {
             // first time step, then "block peak increase"...
             pl = p.b_peak_inc[block];
           } else if(i === MODEL.block_length) {
-            // or first step of look-ahead, then "additional increase"
+            // ... or first step of look-ahead, then "additional increase".
             pl = p.la_peak_inc[block];
           } else {
             pl = 0;
           }
         }
-        // Preserve special values such as INF, UNDEFINED and VM error codes
+        // Preserve special values such as INF, UNDEFINED and VM error codes.
         if(pl <= VM.MINUS_INFINITY || pl > VM.PLUS_INFINITY) {
           l.actual_flow[b] = pl;
         } else {
-          const af = pl * l.relative_rate.result(bt);
-          l.actual_flow[b] = (Math.abs(af) > VM.NEAR_ZERO ? af : 0);
+          const rr = l.relative_rate.result(bt);
+          if(rr <= VM.MINUS_INFINITY || rr > VM.PLUS_INFINITY) {
+            l.actual_flow[b] = rr;
+          } else {
+            const af = rr * pl;
+            l.actual_flow[b] = (Math.abs(af) > VM.NEAR_ZERO ? af : 0);
+          }
         }
         b++;
       }
     }
 
-    // THEN: calculate cash flows one step at a time because of delays
+    // THEN: Calculate cash flows one step at a time because of delays.
     b = bb;
-    for(let i = 0; i < this.chunk_length; i++) {
-      // Initialize cumulative cash flows for clusters
+    for(let i = 0; i < cbl; i++) {
+      // Initialize cumulative cash flows for clusters.
       for(let o in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(o) &&
           !MODEL.ignored_entities[o]) {
         const c = MODEL.clusters[o];
@@ -4619,14 +4653,14 @@ class VirtualMachine {
         c.cash_out[b] = 0;
         c.cash_flow[b] = 0;
       }
-      // NOTE: cash flows ONLY result from processes
+      // NOTE: Cash flows ONLY result from processes.
       for(let o in MODEL.processes) if(MODEL.processes.hasOwnProperty(o) &&
           !MODEL.ignored_entities[o]) {
         const p = MODEL.processes[o];
         let ci = 0, co = 0;
         // INPUT links from priced products generate cash OUT...
         for(let j = 0; j < p.inputs.length; j++) {
-          // NOTE: input links do NOT have a delay
+          // NOTE: Input links do NOT have a delay.
           const l = p.inputs[j],
                 af = l.actual_flow[b],
                 fnp = l.from_node.price;
@@ -4634,7 +4668,7 @@ class VirtualMachine {
             const pp = fnp.result(b);
             if(pp > 0 && pp < VM.PLUS_INFINITY) {
               co += pp * af;
-            // ... unless the product price is negative; then cash IN
+            // ... unless the product price is negative; then cash IN.
             } else if(pp < 0 && pp > VM.MINUS_INFINITY) {
               ci -= pp * af;
             }
@@ -4642,27 +4676,27 @@ class VirtualMachine {
         }
         // OUTPUT links to priced products generate cash IN ...
         for(let j = 0; j < p.outputs.length; j++) {
-          // NOTE: actual flows already consider delay
+          // NOTE: Actual flows already consider delay!
           const l = p.outputs[j],
                 ld = l.actualDelay(b),
                 af = l.actual_flow[b],
                 tnp = l.to_node.price;
           if(af > VM.NEAR_ZERO && tnp.defined) {
-            // NOTE: to get the correct price, again consider delays
+            // NOTE: To get the correct price, again consider delays.
             const pp = tnp.result(b - ld);
             if(pp > 0 && pp < VM.PLUS_INFINITY) {
               ci += pp * af;
-            // ... unless the product price is negative; then cash OUT
+            // ... unless the product price is negative; then cash OUT.
             } else if(pp < 0 && pp > VM.MINUS_INFINITY) {
               co -= pp * af;
             }
           }
         }
-        // Cash flows of process p are now known
+        // Cash flows of process p are now known.
         p.cash_in[b] = ci;
         p.cash_out[b] = co;
         p.cash_flow[b] = ci - co;
-        // Also add these flows to all parent clusters of the process
+        // Also add these flows to all parent clusters of the process.
         let c = p.cluster;
         while(c) {
           c.cash_in[b] += ci;
@@ -4674,50 +4708,51 @@ class VirtualMachine {
       b++;
     }
     
-    // THEN: if cost prices should be inferred, calculate them one step at a
-    // time because of delays, and also because expressions may refer to values
-    // for earlier time steps
+    // THEN: If cost prices should be inferred, calculate them one step
+    // at a time because of delays, and also because expressions may refer
+    // to values for earlier time steps.
     if(MODEL.infer_cost_prices) {
       b = bb;
-      for(let i = 0; i < this.chunk_length; i++) {
+      for(let i = 0; i < cbl; i++) {
         if(!MODEL.calculateCostPrices(b)) {
           this.logMessage(block, `${this.WARNING}(t=${b}) ` +
               'Invalid cost prices due to negative flow(s)');
         }
-        // move to the next time step of the block
+        // Move on to the next time step of the block.
         b++;
       }
     }
 
-    // THEN: reset all datasets that serve as "formulas"
+    // THEN: Reset all datasets that are outcomes or serve as "formulas".
     for(let o in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(o)) {
       const ds = MODEL.datasets[o];
-      // NOTE: assume that datasets having modifiers but no data serve as
-      // "formulas", i.e., expressions to be calculated AFTER a model run
-      if(ds.data.length === 0) {
+      // NOTE: Assume that datasets having modifiers but no data serve as
+      // "formulas", i.e., expressions to be calculated AFTER a model run.
+      // This will automatically include the equations dataset.
+      if(ds.outcome || ds.data.length === 0) {
         for(let m in ds.modifiers) if(ds.modifiers.hasOwnProperty(m)) {
           ds.modifiers[m].expression.reset();
         }
       }
     }
 
-    // THEN: reset the vectors of all chart variables
+    // THEN: Reset the vectors of all chart variables.
     for(let i = 0; i < MODEL.charts.length; i++) {
       MODEL.charts[i].resetVectors();
     }
     
-    // Update the chart dialog if it is visible
-    // NOTE: do NOT do this while an experiment is running, as this may
-    // interfere with storing the run results
+    // Update the chart dialog if it is visible.
+    // NOTE: Do NOT do this while an experiment is running, as this may
+    // interfere with storing the run results.
     if(!MODEL.running_experiment) {
       if(CHART_MANAGER.visible) CHART_MANAGER.updateDialog();
     }
     
-    // NOTE: add a blank line to separate from next round (if any)
+    // NOTE: Add a blank line to separate from next round (if any).
     this.logMessage(block,
         `Calculating dependent variables took ${this.elapsedTime} seconds.\n`);
 
-    // FINALLY: reset the vectors of all note colors
+    // FINALLY: Reset the vectors of all note colors.
     for(let o in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(o)) {
       const c = MODEL.clusters[o];
       for(let i = 0; i < c.notes.length; i++) {
@@ -4871,7 +4906,8 @@ class VirtualMachine {
       this.stopSolving();
       return;
     }
-    // NOTE: save an additional call when less than 20% of a segment would remain
+    // NOTE: Save an additional call when less than 20% of a segment would
+    // remain.
     var l;
     const next_start = (start + this.tsl * 1.2 < abl ? start + this.tsl : abl);
     for(let i = start; i < next_start; i++) {
@@ -4879,16 +4915,16 @@ class VirtualMachine {
       l = this.code.length;
       for(let j = 0; j < l; j++) {
         this.IP = j;
-        // Execute the instruction, which has form [function, argument list]
+        // Execute the instruction, which has form [function, argument list].
         const instr = this.code[j];
         instr[0](instr[1]);
-        // Trace the result when debugging
+        // Trace the result when debugging.
         this.logTrace([('    ' + j).slice(-5), ': coeff = ',
             JSON.stringify(this.coefficients), ';  rhs = ', this.rhs].join(''));
       }
       this.logTrace('STOP executing block code');
-      // Add constraints for paced process variables
-      // NOTE: this is effectuated by *executing* VM instructions
+      // Add constraints for paced process variables.
+      // NOTE: This is effectuated by *executing* VM instructions.
       for(let j in this.paced_var_indices) if(Number(j)) {
         const
             // p is the pace (number of time steps)
@@ -5011,13 +5047,13 @@ class VirtualMachine {
     // the simulation period.
     const
         abl = this.actualBlockLength(this.block_count),
-        // Get the number digits for variable names
+        // Get the number digits for variable names.
         z = this.columnsInBlock.toString().length,
-        // LP_solve uses semicolon as separator between equations
+        // LP_solve uses semicolon as separator between equations.
         EOL = (cplex ? '\n' : ';\n'),
         // Local function that returns variable symbol (e.g. X001) with
         // its coefficient if specified (e.g., -0.123 X001) in the
-        // most compact notation
+        // most compact notation.
         vbl = (index, c=false) => {
             const v = 'X' + index.toString().padStart(z, '0');
             if(c === false) return v; // Only the symbol
@@ -5025,11 +5061,11 @@ class VirtualMachine {
             if(c < 0) return ` ${c} ${v}`; // Number had minus sign
             if(c === 1) return ` +${v}`; // No coefficient needed
             return ` +${c} ${v}`; // Prefix coefficient with +
-            // NOTE: this may return  +0 X001
+            // NOTE: This may return  +0 X001.
           };
 
     this.numeric_issue = '';
-    // First add the objective (always MAXimize)
+    // First add the objective (always MAXimize).
     if(cplex) {
       this.lines = 'Maximize\n';
     } else {
@@ -5038,19 +5074,19 @@ class VirtualMachine {
     let c,
         p,
         line = '';
-    // NOTE: iterate over ALL columns to maintain variable order
+    // NOTE: Iterate over ALL columns to maintain variable order.
     let n = abl * this.cols + this.chunk_variables.length;
     for(p = 1; p <= n; p++) {
       if(this.objective.hasOwnProperty(p)) {
         c = this.objective[p];
-        // Check for numeric issues 
+        // Check for numeric issues.
         if (c < VM.MINUS_INFINITY || c > VM.PLUS_INFINITY) {
           this.setNumericIssue(c, p, 'objective function coefficient');
           break;
         }
         line += vbl(p, c);
       }
-      // Keep lines under approx. 110 chars
+      // Keep lines under approx. 110 chars.
       if(line.length >= 100) {
         this.lines += line + '\n';
         line = '';
@@ -5058,7 +5094,7 @@ class VirtualMachine {
     }
     this.lines += line + EOL;
     line = '';
-    // Add the row constraints
+    // Add the row constraints.
     if(cplex) {
       this.lines += '\nSubject To\n';
     } else {
@@ -5074,7 +5110,7 @@ class VirtualMachine {
           break;
         }
         line += vbl(p, c);
-        // Keep lines under approx. 110 chars
+        // Keep lines under approx. 110 chars.
         if(line.length >= 100) {
           this.lines += line + '\n';
           line = '';
@@ -5085,7 +5121,7 @@ class VirtualMachine {
           this.constraint_symbols[this.constraint_types[r]] + ' ' + c + EOL;
       line = '';
     }
-    // Add the variable bounds
+    // Add the variable bounds.
     if(cplex) {
       this.lines += '\nBounds\n';
     } else {
@@ -5097,7 +5133,7 @@ class VirtualMachine {
           ub = null;
       if(this.lower_bounds.hasOwnProperty(p)) {
         lb = this.lower_bounds[p];
-        // NOTE: for bounds, use the SOLVER values for +/- Infinity
+        // NOTE: For bounds, use the SOLVER values for +/- Infinity.
         if (lb < VM.SOLVER_MINUS_INFINITY || lb > VM.SOLVER_PLUS_INFINITY) {
           this.setNumericIssue(lb, p, 'lower bound');
           break;
@@ -5114,56 +5150,71 @@ class VirtualMachine {
       if(lb === ub) {
         if(lb !== null) line = ` ${vbl(p)} = ${lb}`;
       } else {
-        // NOTE: by default, lower bound of variables is 0
+        // NOTE: By default, lower bound of variables is 0.
         line = ` ${vbl(p)}`;
         if(cplex) {
-          // Explicitly denote free variables
+          // Explicitly denote free variables.
           if(lb === null && ub === null && !this.is_binary[p]) {
             line += ' free';
           } else {
-            // Separate lines for LB and UB if specified
+            // Separate lines for LB and UB if specified.
             if(ub !== null) line += ' <= ' + ub;
             if(lb !== null && lb !== 0) line += `\n ${vbl(p)} >= ${lb}`;
           }
         } else {
-          // Bounds can be specified on a single line: lb <= X001 <= ub
+          // Bounds can be specified on a single line: lb <= X001 <= ub.
           if(lb !== null && lb !== 0) line = lb + ' <= ' + line;
           if(ub !== null) line += ' <= ' + ub;
         }
       }
       if(line) this.lines += line + EOL;
     }
-    // Add the special variable types
+    // Add the special variable types.
     if(cplex) {
       line = '';
-      let scv = 0;
+      let scv = 0,
+          vcnt = 0;
       for(let i in this.is_binary) if(Number(i)) {
         line += ' ' + vbl(i);
         scv++;
-        // Max. 10 variables per line
-        if(scv >= 10) line += '\n';
+        vcnt++;
+        // Max. 10 variables per line.
+        if(vcnt >= 10) {
+          line += '\n';
+          vcnt = 0;
+        }
       }
       if(scv) {
         this.lines += `Binary\n${line}\n`;
         line = '';
         scv = 0;
+        vcnt = 0;
       }
       for(let i in this.is_integer) if(Number(i)) {
         line += ' ' + vbl(i);
         scv++;
-        // Max. 10 variables per line
-        if(scv >= 10) line += '\n';
+        vcnt++;
+        // Max. 10 variables per line.
+        if(vcnt >= 10) {
+          line += '\n';
+          vcnt = 0;
+        }
       }
       if(scv) {
         this.lines += `General\n${line}\n`;
         line = '';
         scv = 0;
+        vcnt = 0;
       }
       for(let i in this.is_semi_continuous) if(Number(i)) {
         line += ' '+ vbl(i);
         scv++;
-        // Max. 10 variables per line
-        if(scv >= 10) line += '\n';
+        vcnt++;
+        // Max. 10 variables per line.
+        if(vcnt >= 10) {
+          line += '\n';
+          vcnt = 0;
+        }
       }
       if(scv) {
         this.lines += `Semi-continuous\n${line}\n`;
@@ -5191,7 +5242,7 @@ class VirtualMachine {
       this.lines += 'End';
     } else {
       // NOTE: LP_solve does not differentiate between binary and integer,
-      // so for binary variables, the constraint <= 1 must be added
+      // so for binary variables, the constraint <= 1 must be added.
       const v_set = [];
       for(let i in this.is_binary) if(Number(i)) {
         const v = vbl(i);
@@ -5200,12 +5251,12 @@ class VirtualMachine {
       }
       for(let i in this.is_integer) if(Number(i)) v_set.push(vbl(i));
       if(v_set.length > 0) this.lines += 'int ' + v_set.join(', ') + ';\n';
-      // Clear the INT variable list
+      // Clear the INT variable list.
       v_set.length = 0;
-      // Add the semi-continuous variables
+      // Add the semi-continuous variables.
       for(let i in this.is_semi_continuous) if(Number(i)) v_set.push(vbl(i));
       if(v_set.length > 0) this.lines += 'sec ' + v_set.join(', ') + ';\n';
-      // Add the SOS section
+      // Add the SOS section.
       if(this.sos_var_indices.length > 0) {
         this.lines += 'sos\n';
         let sos = 1;
@@ -5258,7 +5309,7 @@ class VirtualMachine {
     for(c = 1; c <= ncol; c++) cols.push([]);
     this.decimals = Math.max(nrow, ncol).toString().length;
     this.lines += 'NAME block-' + this.blockWithRound + '\nROWS\n';
-    // Start with the "free" row that will be the objective function
+    // Start with the "free" row that will be the objective function.
     this.lines += ' N  OBJ\n';
     for(r = 0; r < nrow; r++) {
       const
@@ -5268,7 +5319,7 @@ class VirtualMachine {
           '  ' + row_lbl + '\n';
       for(p in row) if (row.hasOwnProperty(p)) {
         c = row[p];
-        // Check for numeric issues 
+        // Check for numeric issues.
         if(c === undefined || c < VM.SOLVER_MINUS_INFINITY ||
             c > VM.SOLVER_PLUS_INFINITY) {
           this.setNumericIssue(c, p, 'constraint');
@@ -5287,47 +5338,47 @@ class VirtualMachine {
         rhs.push('    B ' + row_lbl + ' ' + c);
       }
     }
-    // The objective function is a row like those for the constraints
+    // The objective function is a row like those for the constraints.
     for(p in this.objective) if(this.objective.hasOwnProperty(p)) {
       c = this.objective[p];
       if(c === null || c < VM.MINUS_INFINITY || c > VM.PLUS_INFINITY) {
         this.setNumericIssue(c, p, 'objective function coefficient');
         break;
       }
-      // NOTE: MPS assumes MINimization, hence negate all coefficients
-      // NOTE: JavaScript differentiates between 0 and -0, so add 0 to prevent
-      // creating the special numeric value -0
+      // NOTE: MPS assumes MINimization, hence negate all coefficients.
+      // NOTE: JavaScript differentiates between 0 and -0, so add 0 to
+      // prevent creating the special numeric value -0.
       cols[p].push('OBJ ' + (-c + 0));
     }
-    // Abort if any invalid coefficient was detected
+    // Abort if any invalid coefficient was detected.
     if(this.numeric_issue) {
       this.hideSetUpOrWriteProgress();
       this.stopSolving();
       return;
     }
-    // Add the columns section
+    // Add the columns section.
     this.lines += 'COLUMNS\n';
     for(c = 1; c <= ncol; c++) {
       const col_lbl = '    X' + c.toString().padStart(this.decimals, '0') + '  ';
-      // NOTE: if processes have no in- or outgoing links their decision
+      // NOTE: If processes have no in- or outgoing links their decision
       // variable does not occur in any constraint, and this may cause
       // problems for solvers that cannot handle columns having a blank
       // row name (e.g., CPLEX). To prevent errors, these columns are
-      // given coefficient 0 in the OBJ row
+      // given coefficient 0 in the OBJ row.
       if(cols[c].length) {
         this.lines += col_lbl + cols[c].join('\n' + col_lbl) + '\n';
       } else {
         this.lines += col_lbl + ' OBJ 0\n';
       }
     }
-    // Free up memory
+    // Free up memory.
     cols.length = 0;
-    // Add the RHS section
+    // Add the RHS section.
     this.lines += 'RHS\n' + rhs.join('\n') + '\n';
     rhs.length = 0;
-    // Add the BOUNDS section
+    // Add the BOUNDS section.
     this.lines += 'BOUNDS\n';
-    // NOTE: start at column number 1 (not 0)
+    // NOTE: Start at column number 1, not 0.
     setTimeout((c, n) => VM.showMPSProgress(c, n), 0, 1, ncol);
   }
   
@@ -5338,7 +5389,7 @@ class VirtualMachine {
       return;
     }
     if(this.show_progress) {
-      // NOTE: display 1 block more progress, or the bar never reaches 100%
+      // NOTE: Display 1 block more progress, or the bar never reaches 100%.
       UI.setProgressNeedle((next_col + this.cbl) / ncol);
     }
     setTimeout((c, n) => VM.writeMPSColumns(c, n), 0, next_col, ncol);
@@ -5356,7 +5407,7 @@ class VirtualMachine {
           ub = null;
       if(this.lower_bounds.hasOwnProperty(p)) {
         lb = this.lower_bounds[p];
-        // NOTE: for bounds, use the SOLVER values for +/- Infinity
+        // NOTE: For bounds, use the SOLVER values for +/- Infinity.
         if(lb < VM.SOLVER_MINUS_INFINITY || lb > VM.PLUS_INFINITY) {
           this.setNumericIssue(lb, p, 'lower bound');
           break;
@@ -5392,7 +5443,7 @@ class VirtualMachine {
       } else if(lb !== null && lb === ub && !semic) {
         this.lines += ' FX' + bnd + lb + '\n';
       } else {
-        // Assume "standard" bounds
+        // Assume "standard" bounds.
         lbc = ' LO';
         ubc = ' UP';
         if(p in this.is_integer) {
@@ -5403,7 +5454,7 @@ class VirtualMachine {
         } else if(semic) {
           ubc = ' SC';
         }
-        // NOTE: by default, lower bound of variables is 0
+        // NOTE: by default, lower bound of variables is 0.
         if(lb !== null && lb !== 0 || lbc !== ' LO') {
           this.lines += lbc + bnd + lb + '\n';
         }
@@ -5412,7 +5463,7 @@ class VirtualMachine {
         }
       }
     }
-    // Abort if any invalid coefficient was detected
+    // Abort if any invalid coefficient was detected.
     if(this.numeric_issue) this.submitFile();
     if(next_col <= ncol) {
       setTimeout((c, n) => VM.showMPSProgress(c, n), 0, next_col, ncol);
@@ -5631,7 +5682,6 @@ Solver status = ${json.status}`);
     }
     // Generate lines of code in format that should be accepted by solver.
     if(this.solver_name === 'gurobi') {
-      //this.writeMPSFormat();
       this.writeLpFormat(true);
     } else if(this.solver_name === 'scip' || this.solver_name === 'cplex') {
       // NOTE: The CPLEX LP format that is also used by SCIP differs from
@@ -5697,8 +5747,8 @@ Solver status = ${json.status}`);
   }
   
   solveModel() {
-    // Starts the sequence of data loading, model translation, solving
-    // consecutive blocks, and finally calculating dependent variables
+    // Start the sequence of data loading, model translation, solving
+    // consecutive blocks, and finally calculating dependent variables.
     const n = MODEL.loading_datasets.length;
     if(n > 0) {
       // Still within reasonable time? (3 seconds per dataset)
@@ -5711,7 +5761,7 @@ Solver status = ${json.status}`);
         setTimeout(() => VM.solveModel(), 500);
         return;
       } else {
-        // Wait no longer, but warn user that data may be incomplete
+        // Wait no longer, but warn user that data may be incomplete.
         const dsl = [];
         for(let i = 0; i < MODEL.loading_datasets.length; i++) {
           dsl.push(MODEL.loading_datasets[i].displayName);
@@ -5729,7 +5779,7 @@ Solver status = ${json.status}`);
   }
   
   halt() {
-    // Aborts solving process (prevents submitting next block)
+    // Abort solving process. This prevents submitting the next block.
     UI.waitToStop();
     this.halted = true;
   }
@@ -6701,20 +6751,21 @@ function VMI_push_statistic(x, args) {
 }
 
 function VMI_replace_undefined(x) {
-  // Replaces one of the two top numbers on the stack by the other if the one
-  // is undefined
-  const d = x.pop(true); // TRUE denotes that "undefined" should be ignored as issue
+  // Replace one of the two top numbers on the stack by the other if the
+  // one is undefined.
+  // NOTE: pop(TRUE) denotes that "undefined" should be ignored as issue.
+  const d = x.pop(true);
   if(d !== false) {
     if(DEBUGGING) console.log('REPLACE UNDEFINED (' + d.join(', ') + ')');
     x.retop(d[0] === VM.UNDEFINED ? d[1] : d[0]);
   }
 }
 
-// NOTE: when the VM computes logical OR, AND and NOT, any non-zero number
-// is interpreted as TRUE
+// NOTE: When the VM computes logical OR, AND and NOT, any non-zero number
+// is interpreted as TRUE.
 
 function VMI_or(x) {
-  // Performs a logical OR on the two top numbers on the stack
+  // Perform a logical OR on the two top numbers on the stack.
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('OR (' + d.join(', ') + ')');
@@ -6723,7 +6774,7 @@ function VMI_or(x) {
 }
 
 function VMI_and(x) {
-  // Performs a logical AND on the two top numbers on the stack
+  // Perform a logical AND on the two top numbers on the stack.
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('AND (' + d.join(', ') + ')');
@@ -6732,7 +6783,7 @@ function VMI_and(x) {
 }
 
 function VMI_not(x) {
-  // Performs a logical NOT on the top number of the stack
+  // Perform a logical NOT on the top number of the stack.
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('NOT ' + d);
@@ -6741,7 +6792,7 @@ function VMI_not(x) {
 }
 
 function VMI_abs(x) {
-  // Replaces the top number of the stack by its absolute value
+  // Replace the top number of the stack by its absolute value.
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('ABS ' + d);
@@ -6750,7 +6801,7 @@ function VMI_abs(x) {
 }
 
 function VMI_eq(x) {
-  // Tests equality of the two top numbers on the stack
+  // Test equality of the two top numbers on the stack.
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('EQ (' + d.join(', ') + ')');
@@ -6759,7 +6810,7 @@ function VMI_eq(x) {
 }
 
 function VMI_ne(x) {
-  // Tests inequality of the two top numbers on the stack
+  // Test inequality of the two top numbers on the stack.
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('NE (' + d.join(', ') + ')');
@@ -6768,7 +6819,7 @@ function VMI_ne(x) {
 }
 
 function VMI_lt(x) {
-  // Tests whether second number on the stack is less than the top number
+  // Test whether second number on the stack is less than the top number.
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('LT (' + d.join(', ') + ')');
@@ -6777,7 +6828,7 @@ function VMI_lt(x) {
 }
 
 function VMI_gt(x) {
-  // Tests whether second number on the stack is greater than the top number
+  // Test whether second number on the stack is greater than the top number.
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('GT (' + d.join(', ') + ')');
@@ -6786,8 +6837,8 @@ function VMI_gt(x) {
 }
 
 function VMI_le(x) {
-  // Tests whether second number on the stack is less than, or equal to,
-  // the top number
+  // Test whether second number on the stack is less than, or equal to,
+  // the top number.
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('LE (' + d.join(', ') + ')');
@@ -6796,8 +6847,8 @@ function VMI_le(x) {
 }
 
 function VMI_ge(x) {
-  // Tests whether second number on the stack is greater than, or equal to,
-  // the top number
+  // Test whether second number on the stack is greater than, or equal to,
+  // the top number.
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('LE (' + d.join(', ') + ')');
@@ -6806,7 +6857,7 @@ function VMI_ge(x) {
 }
 
 function VMI_add(x) {
-  // Pops the top number on the stack and adds it to the new top number
+  // Pop the top number on the stack, and add it to the new top number.
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('ADD (' + d.join(', ') + ')');
@@ -6815,8 +6866,8 @@ function VMI_add(x) {
 }
 
 function VMI_sub(x) {
-  // Pops the top number on the stack and subtracts it from the new
-  // top number
+  // Pop the top number on the stack, and subtract it from the new
+  // top number.
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('SUB (' + d.join(', ') + ')');
@@ -6825,7 +6876,7 @@ function VMI_sub(x) {
 }
 
 function VMI_mul(x) {
-  // Pops the top number on the stack and multiplies it with the new
+  // Pop the top number on the stack, and multiply it with the new
   // top number
   const d = x.pop();
   if(d !== false) {
@@ -6835,8 +6886,8 @@ function VMI_mul(x) {
 }
 
 function VMI_div(x) {
-  // Pops the top number on the stack and divides the new top number
-  // by it. In case of division by zero, the top is replaced by #DIV/0!
+  // Pop the top number on the stack, and divide the new top number
+  // by it. In case of division by zero, replace the top by #DIV/0!
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('DIV (' + d.join(', ') + ')');
@@ -6849,23 +6900,23 @@ function VMI_div(x) {
 }
 
 function VMI_mod(x) {
-  // Pops the top number on the stack, divides the new top number by it
-  // (if non-zero, or it pushes error code #DIV/0!), takes the fraction
-  // part, and multiplies this with the divider; in other words, it
-  // performs a "floating point MOD operation"
+  // Perform a "floating point MOD operation" as explained below.
+  // Pop the top number on the stack. If zero, push error code #DIV/0!.
+  // Otherwise, proceed: divide the new top number by the divisor, take
+  // the fraction part, and multiply this with the divisor.
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('DIV (' + d.join(', ') + ')');
     if(Math.abs(d[1]) <= VM.NEAR_ZERO) {
       x.retop(VM.DIV_ZERO);
     } else {
-      x.retop(d[0] % d[1]);  // % is the modulo operator in JavaScript
+      x.retop(d[0] % d[1]);  // % is the modulo operator in JavaScript.
     }
   }
 }
 
 function VMI_negate(x) {
-  // Performs a negation on the top number of the stack
+  // Perform a negation on the top number of the stack.
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('NEG ' + d);
@@ -6874,8 +6925,8 @@ function VMI_negate(x) {
 }
 
 function VMI_power(x) {
-  // Pops the top number on the stack and raises the new top number
-  // to its power
+  // Pop the top number on the stack, and raise the new top number
+  // to its power.
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('POWER (' + d.join(', ') + ')');
@@ -6884,8 +6935,8 @@ function VMI_power(x) {
 }
 
 function VMI_sqrt(x) {
-  // Replaces the top number of the stack by its square root, or by
-  // error code #VALUE! if the top number is negative
+  // Replace the top number of the stack by its square root, or by
+  // error code #VALUE! if the top number is negative.
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('SQRT ' + d);
@@ -6898,7 +6949,7 @@ function VMI_sqrt(x) {
 }
 
 function VMI_sin(x) {
-  // Replaces the top number X of the stack by sin(X)
+  // Replace the top number X of the stack by sin(X).
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('SIN ' + d);
@@ -6907,7 +6958,7 @@ function VMI_sin(x) {
 }
 
 function VMI_cos(x) {
-  // Replaces the top number X of the stack by cos(X)
+  // Replace the top number X of the stack by cos(X).
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('COS ' + d);
@@ -6916,7 +6967,7 @@ function VMI_cos(x) {
 }
 
 function VMI_atan(x) {
-  // Replaces the top number X of the stack by atan(X)
+  // Replace the top number X of the stack by atan(X).
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('ATAN ' + d);
@@ -6925,8 +6976,8 @@ function VMI_atan(x) {
 }
 
 function VMI_ln(x) {
-  // Replaces the top number X of the stack by ln(X), or by error
-  // code #VALUE! if X is negative
+  // Replace the top number X of the stack by ln(X), or by error
+  // code #VALUE! if X is negative.
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('LN ' + d);
@@ -6939,7 +6990,7 @@ function VMI_ln(x) {
 }
 
 function VMI_exp(x) {
-  // Replaces the top number X of the stack by exp(X)
+  // Replace the top number X of the stack by exp(X).
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('EXP ' + d);
@@ -6948,7 +6999,7 @@ function VMI_exp(x) {
 }
 
 function VMI_log(x) {
-  // Pops the top number B from the stack and replaces the new top
+  // Pop the top number B from the stack, and replace the new top
   // number A by A log B. NOTE: x = A log B  <=>  x = ln(B) / ln(A)
   let d = x.pop();
   if(d !== false) {
@@ -6963,7 +7014,7 @@ function VMI_log(x) {
 }
 
 function VMI_round(x) {
-  // Replaces the top number X of the stack by round(X)
+  // Replace the top number X of the stack by round(X).
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('ROUND ' + d);
@@ -6972,7 +7023,7 @@ function VMI_round(x) {
 }
 
 function VMI_int(x) {
-  // Replaces the top number X of the stack by its integer part
+  // Replace the top number X of the stack by its integer part.
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('INT ' + d);
@@ -6981,7 +7032,7 @@ function VMI_int(x) {
 }
 
 function VMI_fract(x) {
-  // Replaces the top number X of the stack by its fraction part
+  // Replace the top number X of the stack by its fraction part.
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('FRACT ' + d);
@@ -6990,9 +7041,9 @@ function VMI_fract(x) {
 }
 
 function VMI_exponential(x) {
-  // Replaces the top number X of the stack by a random number from the
+  // Replace the top number X of the stack by a random number from the
   // negative exponential distribution with parameter X (so X is the lambda,
-  // and the mean will be 1/X)
+  // and the mean will be 1/X).
   const d = x.top();
   if(d !== false) {
     const a = randomExponential(d);
@@ -7002,8 +7053,8 @@ function VMI_exponential(x) {
 }
 
 function VMI_poisson(x) {
-  // Replaces the top number X of the stack by a random number from the
-  // poisson distribution with parameter X (so X is the mean value lambda)
+  // Replace the top number X of the stack by a random number from the
+  // poisson distribution with parameter X (so X is the mean value lambda).
   const d = x.top();
   if(d !== false) {
     const a = randomPoisson(d);
@@ -7013,8 +7064,9 @@ function VMI_poisson(x) {
 }
 
 function VMI_binomial(x) {
-  // Replaces the top list (!) A of the stack by Bin(A[0], A[1]), i.e., a random
-  // number from the binomial distribution with n = A[0] and p = A[1]
+  // Replace the top list (!) A of the stack by Bin(A[0], A[1]), i.e.,
+  // a random number from the binomial distribution with n = A[0] and
+  // p = A[1].
   const d = x.top();
   if(d !== false) {
     if(d instanceof Array && d.length === 2) {
@@ -7029,8 +7081,9 @@ function VMI_binomial(x) {
 }
 
 function VMI_normal(x) {
-  // Replaces the top list (!) A of the stack by N(A[0], A[1]), i.e., a random
-  // number from the normal distribution with mu = A[0] and sigma = A[1]
+  // Replace the top list (!) A of the stack by N(A[0], A[1]), i.e.,
+  // a random number from the normal distribution with mu = A[0] and
+  // sigma = A[1].
   const d = x.top();
   if(d !== false) {
     if(d instanceof Array && d.length === 2) {
@@ -7045,8 +7098,9 @@ function VMI_normal(x) {
 }
 
 function VMI_weibull(x) {
-  // Replaces the top list (!) A of the stack by Weibull(A[0], A[1]), i.e., a
-  // random number from the Weibull distribution with lambda = A[0] and k = A[1]
+  // Replace the top list (!) A of the stack by Weibull(A[0], A[1]), i.e.,
+  // a random number from the Weibull distribution with lambda = A[0]
+  // and k = A[1].
   const d = x.top();
   if(d !== false) {
     if(d instanceof Array && d.length === 2) {
@@ -7061,10 +7115,10 @@ function VMI_weibull(x) {
 }
 
 function VMI_triangular(x) {
-  // Replaces the top list (!) A of the stack by Tri(A[0], A[1]), A[2]), i.e.,
-  // a random number from the triangular distribution with a = A[0], b = A[1],
-  // and c = A[2]. NOTE: if only 2 parameters are passed, c is assumed to equal
-  // (a + b) / 2 
+  // Replaces the top list (!) A of the stack by Tri(A[0], A[1]), A[2]),
+  // i.e., a random number from the triangular distribution with a = A[0],
+  // b = A[1], and c = A[2]. NOTE: if only 2 parameters are passed, c is
+  // assumed to equal (a + b) / 2.
   const d = x.top();
   if(d !== false) {
     if(d instanceof Array && (d.length === 2 || d.length === 3)) {
@@ -7079,14 +7133,15 @@ function VMI_triangular(x) {
 }
 
 function VMI_npv(x) {
-  // Replaces the top list (!) A of the stack by the net present value (NPV)
-  // of the arguments in A. A[0] is the interest rate r, A[1] is the number of
-  // time periods n. If A has only 1 or 2 elements, the NPV is 0. If A has 3
-  // elements, A[2] is the constant cash flow C, and the NPV is the sum
-  // (for t = 0 to n-1) of C/(1+r)^t. If A has N>2 elements, A[2] through A[N]  
-  // are considered as a cash flow time series C0, C1, ..., CN-2 that is then
-  // NOTE: if A is not a list, A considered to be the single argument, and is
-  // hence replaced by 0
+  // Replace the top list (!) A of the stack by the net present value (NPV)
+  // of the arguments in A. A[0] is the interest rate r, A[1] is the number
+  // of time periods n. If A has only 1 or 2 elements, the NPV is 0.
+  // If A has 3 elements, A[2] is the constant cash flow C, and the NPV is
+  // the sum (for t = 0 to n-1) of C/(1+r)^t. If A has N>2 elements, A[2]
+  // through A[N] are considered as a cash flow time series C0, C1, ..., CN-2
+  // that is then discounted.
+  // NOTE: If A is not a list, A considered to be the single argument, and
+  // is hence replaced by 0.
   const d = x.top();
   if(d !== false) {
     if(d instanceof Array && d.length > 2) {
@@ -7119,8 +7174,8 @@ function VMI_npv(x) {
 }
 
 function VMI_min(x) {
-  // Replaces the top list (!) A of the stack by the lowest value in this list
-  // NOTE: if A is not a list, A is left on the stack
+  // Replace the top list (!) A of the stack by the lowest value in this
+  // list. If A is not a list, A is left on the stack.
   const d = x.top();
   if(d !== false && d instanceof Array) {
     if(DEBUGGING) console.log('MIN (' + d.join(', ') + ')');
@@ -7131,8 +7186,8 @@ function VMI_min(x) {
 }
 
 function VMI_max(x) {
-  // Replaces the top list (!) A of the stack by the highest value in this list
-  // NOTE: if A is not a list, A is left on the stack
+  // Replace the top list (!) A of the stack by the highest value in this
+  // list. If A is not a list, A is left on the stack.
   const d = x.top();
   if(d !== false && d instanceof Array) {
     if(DEBUGGING) console.log('MAX (' + d.join(', ') + ')');
@@ -7143,9 +7198,9 @@ function VMI_max(x) {
 }
 
 function VMI_concat(x) {
-  // Pops the top number B from the stack, and then replaces the new top
-  // element A by [A, B] if A is a number, or adds B to A is A is a list
-  // of numbers (!) or
+  // Pop the top number B from the stack, and then replace the new top
+  // element A by [A, B] if A is a number, or add B to A if A is a list
+  // of numbers (!), or concatenate if A and B both are lists.
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('CONCAT (' + d.join(', ') + ')');
@@ -7164,8 +7219,8 @@ function VMI_concat(x) {
 }
 
 function VMI_jump(x, index) {
-  // Sets the program counter of the VM to `index` minus 1, as the
-  // counter is ALWAYS increased by 1 after calling a VMI function
+  // Set the program counter of the VM to `index` minus 1, as the
+  // counter is ALWAYS increased by 1 after calling a VMI function.
   if(DEBUGGING) console.log('JUMP ' + index);
   x.program_counter = index - 1;
 }
@@ -7179,7 +7234,7 @@ function VMI_jump_if_false(x, index) {
   if(r === 0 || r === VM.UNDEFINED || r === false) {
     // Only jump on FALSE, leaving the stack "as is", so that in case
     // of no THEN, the expression result equals the IF condition value.
-    // NOTE: Also do this on a stack error (r === false)
+    // NOTE: Also do this on a stack error (r === false).
     x.program_counter = index - 1;
   } else {
     // Remove the value from the stack.
@@ -7209,22 +7264,22 @@ function VMI_if_else(x) {
 }
 
 //
-// Functions that implement random numbers from specific distribution
+// Functions that implement random numbers from specific distribution.
 //
 
 function randomExponential(lambda) {
-  // Returns a random number drawn from a Exp(lambda) distribution
+  // Return a random number drawn from a Exp(lambda) distribution.
   return -Math.log(Math.random()) / lambda;
 }
 
 function randomWeibull(lambda, k) {
-  // Returns a random number drawn from a Weibull(lambda, k) distribution
+  // Return a random number drawn from a Weibull(lambda, k) distribution.
   if(Math.abs(k) < VM.NEAR_ZERO) return VM.DIV_ZERO;
   return lambda * Math.pow(-Math.log(Math.random()), 1.0 / k);
 }
 
 function randomTriangular(a, b, c=0.5*(a + b)) {
-  // Returns a random number drawn from a Triangular(a, b, c) distribution
+  // Return a random number drawn from a Triangular(a, b, c) distribution.
   const u = Math.random(), b_a = b - a, c_a = c - a;
   if(u < c_a / b_a) {
     return a + Math.sqrt(u * b_a * c_a);
@@ -7234,8 +7289,8 @@ function randomTriangular(a, b, c=0.5*(a + b)) {
 }
 
 function randomNormal(mean, std) {
-  // Returns a random number drawn from a N(mean, standard deviation)
-  // distribution
+  // Return a random number drawn from a N(mean, standard deviation)
+  // distribution.
   const
     a1 = -39.6968302866538, a2 = 220.946098424521, a3 = -275.928510446969,
     a4 = 138.357751867269, a5 = -30.6647980661472, a6 = 2.50662827745924,
@@ -7273,11 +7328,11 @@ function randomBinomial(n, p) {
   }
 }
 
-// Global array as cache for computation of factorial numbers  
+// Global array as cache for computation of factorial numbers.
 const FACTORIALS = [0, 1];
 
 function factorial(n) {
-  // Fast factorial function using pre-calculated values up to n = 100
+  // Fast factorial function using pre-calculated values up to n = 100.
   const l = FACTORIALS.length;
   if(n < l) return FACTORIALS[n];
   let f = FACTORIALS[l - 1];
@@ -7290,7 +7345,7 @@ function factorial(n) {
 
 function randomPoisson(lambda) {
   if(lambda < 30) {
-    // Use Knuth's algorithm
+    // Use Knuth's algorithm.
     const L = Math.exp(-lambda);
     let k = 0, p = 1;
     do {
@@ -7299,8 +7354,8 @@ function randomPoisson(lambda) {
     } while(p > L);
     return k - 1;
   } else {
-    // Use "method PA" from Atkinson, A.C. (1979). The Computer Generation of
-    // Poisson Random Variables, Journal of the Royal Statistical Society
+    // Use "method PA" from Atkinson, A.C. (1979). The Computer Generation
+    // of Poisson Random Variables, Journal of the Royal Statistical Society
     // Series C (Applied Statistics), 28(1): 29-35.
     const c = 0.767 - 3.36 / lambda,
           beta = Math.PI / Math.sqrt(3.0 * lambda),
@@ -7467,14 +7522,18 @@ function VMI_add_const_to_coefficient(args) {
   if(DEBUGGING) {
     console.log(`add_const_to_coefficient [${k}]: ${VM.sig4Dig(n)}`);
   }
+  // A negative delay may result in a variable index beyond the tableau
+  // column range. Such "future variables" should be ignored.
+  if(d < 0 && k > VM.chunk_offset) return;
   if(k <= 0) {
-    // NOTE: if `k` falls PRIOR to the start of the block being solved, this
-    // means that the value of the decision variable X for which the coefficient
-    // C is to be set by this instruction has been calculated while solving a
-    // previous block. Since the value of X is known, adding n to C is
-    // implemented as subtracting n*X from the right hand side of the
-    // constraint.
-    // NOTE: subtract 1 from index vi because VM.variables is a 0-based array
+    // NOTE: If `k` falls PRIOR to the start of the block being solved,
+    // this means that the value of the decision variable X for which the
+    // coefficient C is to be set by this instruction has been calculated
+    // while solving a previous block. Since the value of X is known,
+    // adding n to C is implemented as subtracting n*X from the right hand
+    // side of the constraint.
+    // NOTE: Subtract 1 from index `vi` because VM.variables is a 0-based
+    // array.
     const
         vbl = VM.variables[vi - 1],
         pv = VM.priorValue(vbl, t);
@@ -7493,10 +7552,9 @@ function VMI_add_const_to_coefficient(args) {
 function VMI_add_const_to_sum_coefficients(args) {
   // NOTE: used to implement data links with SUM multiplier
   // `args`: [var_index, number, delay (, 1)]
-  const
-      vi = args[0],
-      d = args[2].object.actualDelay(VM.t);
-  let k = VM.offset + vi - d * VM.cols,
+  const vi = args[0];
+  let d = args[2].object.actualDelay(VM.t),
+      k = VM.offset + vi - d * VM.cols,
       t = VM.t - d,
       n = args[1];
   if(args.length > 3) n /= (d + 1);
@@ -7504,7 +7562,16 @@ function VMI_add_const_to_sum_coefficients(args) {
     console.log('add_const_to_sum_coefficients [' + k + ']: ' +
       VM.sig4Dig(n) + '; delay = ' + d);
   }
+  // NOTE: When delay is negative, start at time t, not t - d.
+  if(d < 0) {
+    k = VM.offset + vi;
+    t = VM.t;
+    d = -d;
+  }
   for(let i = 0; i <= d; i++) {
+    // A negative delay may result in a variable index beyond the tableau
+    // column range. Such "future variables" should be ignored.
+    if(k > VM.chunk_offset) return;
     if(k <= 0) {
       // See NOTE in VMI_add_const_to_coefficient instruction
       const vbl = VM.variables[vi - 1];
@@ -7541,6 +7608,9 @@ function VMI_add_var_to_coefficient(args) {
     console.log('add_var_to_coefficient [' + k + ']: ' +
         args[1].variableName + ' (t = ' + t + ')');
   }
+  // A negative delay may result in a variable index beyond the tableau
+  // column range. Such "future variables" should be ignored.
+  if(k > VM.chunk_offset) return;
   if(k <= 0) {
     // See NOTE in VMI_add_const_to_coefficient instruction
     const vbl = VM.variables[vi - 1];
@@ -7560,15 +7630,24 @@ function VMI_add_var_to_weighted_sum_coefficients(args) {
   // `args`: [var_index, number, delay (, 1)]
   const
       vi = args[0],
-      v = args[1],
-      d = args[2].object.actualDelay(VM.t);
-  let k = VM.offset + vi - d * VM.cols,
+      v = args[1];
+  let d = args[2].object.actualDelay(VM.t),
+      k = VM.offset + vi - d * VM.cols,
       t = VM.t - d;
   if(DEBUGGING) {
     console.log('add_var_to_weighted_sum_coefficients [' + k + ']: ' +
         VM.sig4Dig(w) + ' * ' + v.variableName + ' (t = ' + t + ')');
   }
+  // NOTE: When delay is negative, start at time t, not t - d.
+  if(d < 0) {
+    k = VM.offset + vi;
+    t = VM.t;
+    d = -d;
+  }
   for(let i = 0; i <= d; i++) {
+    // A negative delay may result in a variable index beyond the tableau
+    // column range. Such "future variables" should be ignored.
+    if(k > VM.chunk_offset) return;
     let r = v.result(t);
     if(args.length > 3) r /= (d + 1);
     if(k <= 0) {
@@ -7605,6 +7684,9 @@ function VMI_subtract_const_from_coefficient(args) {
   if(DEBUGGING) {
     console.log('subtract_const_from_coefficient [' + k + ']: ' + VM.sig4Dig(n));
   }
+  // A negative delay may result in a variable index beyond the tableau
+  // column range. Such "future variables" should be ignored.
+  if(k > VM.chunk_offset) return;
   if(k <= 0) {
     // See NOTE in VMI_add_const_to_coefficient instruction
     const vbl = VM.variables[vi - 1];
@@ -7645,6 +7727,9 @@ function VMI_subtract_var_from_coefficient(args) {
     console.log('subtract_var_from_coefficient [' + k + ']: ' +
         args[1].variableName + ' (t = ' + t + ')');
   }
+  // A negative delay may result in a variable index beyond the tableau
+  // column range. Such "future variables" should be ignored.
+  if(k > VM.chunk_offset) return;
   if(k <= 0) {
     // See NOTE in VMI_add_const_to_coefficient instruction
     const vbl = VM.variables[vi - 1];
@@ -7683,8 +7768,9 @@ function VMI_update_cash_coefficient(args) {
   // not the expressions for rates or prices!
   const t = VM.t - d;
   // NOTE: this instruction is used only for objective function
-  // coefficients; previously computed decision variables can be ignored
-  if(k <= 0) return;
+  // coefficients; previously computed decision variables and variables
+  // beyond the tableau column range (when delay < 0) can be ignored.
+  if(k <= 0 || k > VM.chunk_offset) return;
   // NOTE: peak increase can generate cash only at the first time
   // step of a block (when VM.offset = 0) and at the first time step
   // of the look-ahead period (when VM.offset = block length)
@@ -7778,6 +7864,9 @@ function VMI_add_throughput_to_coefficient(args) {
         args[1].variableName + ' * ' + args[3].variableName +
         ' (t = ' + VM.t + ')');
   }
+  // A negative delay may result in a variable index beyond the tableau
+  // column range. Such "future variables" should be ignored.
+  if(k > VM.chunk_offset) return;
   if(k <= 0) {
     const vbl = VM.variables[vi - 1];
     if(DEBUGGING) {
@@ -7866,13 +7955,13 @@ function VMI_toggle_add_constraints_flag() {
 
 function VMI_add_constraint(ct) {
   // Appends the current coefficients as a row to the matrix, the current
-  // RHS to the RHS vector, and `ct` to the constraint type vector
-  // NOTE: constraint is NOT added when the "add constraints flag" is FALSE
+  // RHS to the RHS vector, and `ct` to the constraint type vector.
+  // NOTE: Constraint is NOT added when the "add constraints flag" is FALSE.
   if(DEBUGGING) console.log('add_constraint: ' + VM.constraint_codes[ct]);
   if(VM.add_constraints_flag) {
     const row = {};
     for(let i in VM.coefficients) if(Number(i)) {
-      // Do not add (near)zero coefficients to the matrix
+      // Do not add (near)zero coefficients to the matrix.
       const c = VM.coefficients[i];
       if(Math.abs(c) >= VM.NEAR_ZERO) {
         row[i] = c;

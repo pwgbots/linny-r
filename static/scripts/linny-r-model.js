@@ -5,8 +5,8 @@ The Linny-R language and tool have been developed by Pieter Bots at Delft
 University of Technology, starting in 2009. The project to develop a browser-
 based version started in 2017. See https://linny-r.org for more information.
 
-This JavaScript file (linny-r-classes.js) defines the object classes used in the
-Linny-R project.
+This JavaScript file (linny-r-classes.js) defines the object classes used in
+the Linny-R project.
 */
 
 /*
@@ -7468,7 +7468,8 @@ class Node extends NodeBox {
   }
 
   actualLevel(t) {
-    // Returns the production level c.q. stock level for this node in time step t
+    // Returns the production level c.q. stock level for this node in
+    // time step t.
     if(t < 0) return this.initial_level.result(1);
     if(t < this.level.length) return this.level[t];
     return VM.UNDEFINED;
@@ -7476,7 +7477,7 @@ class Node extends NodeBox {
   
   nonZeroLevel(t) {
     // Returns the level or 0 when level is negligible relative to the
-    // bounds on the node
+    // bounds on the node.
     if(t < 0) return this.initial_level.result(1);
     if(t < this.level.length) {
       const l = this.level[t];

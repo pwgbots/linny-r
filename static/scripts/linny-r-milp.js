@@ -295,7 +295,7 @@ module.exports = class MILPSolver {
                 vnr = parseInt(v.substring(1));
             // Add zeros for unreported variables until column number matches.
             while(col < vnr) {
-              x_values.push('0');
+              x_values.push(0);
               col++;
             }
             x_values.push(x_dict[v]);
@@ -397,7 +397,7 @@ module.exports = class MILPSolver {
         // Fill dictionary with variable name: value entries 
         while(i < output.length) {
           const m = output[i].match(/^.*name="(X[^"]+)".*value="([^"]+)"/);
-          if(m !== null)  x_dict[m[1]] = m[2];
+          if(m !== null)  x_dict[m[1]] = parseFloat(m[2]);
           i++;
         }
         // Fill the solution vector, adding 0 for missing columns
@@ -453,7 +453,7 @@ module.exports = class MILPSolver {
         // Fill dictionary with variable name: value entries 
         while(i < output.length) {
           const v = output[i].split(/\s+/);
-          x_dict[v[0]] = v[1];
+          x_dict[v[0]] = parseFloat(v[1]);
           i++;
         }
         // Fill the solution vector, adding 0 for missing columns
@@ -485,7 +485,7 @@ module.exports = class MILPSolver {
         // Fill dictionary with variable name: value entries 
         while(i < output.length) {
           const v = output[i].split(/\s+/);
-          x_dict[v[0]] = v[1];
+          x_dict[v[0]] = parseFloat(v[1]);
           i++;
         }
         // Fill the solution vector, adding 0 for missing columns
