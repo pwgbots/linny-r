@@ -4526,6 +4526,21 @@ class VirtualMachine {
     }
   }
   
+  severestIssue(list, result) {
+    // Returns severest exception code or +/- INFINITY in `list`, or the
+    // result of the computation that involves the elements of `list`.
+    let issue = 0;
+    for(let i = 0; i < list.length; i++) {
+      if(list[i] <= VM.MINUS_INFINITY) {
+        issue = Math.min(list[i], issue);
+      } else if(list[i] >= VM.PLUS_INFINITY) {
+        issue = Math.max(list[i], issue);
+      }
+    }
+    if(issue) return issue;
+    return result;
+  }
+  
   calculateDependentVariables(block) {
     // Calculate the values of all model variables that depend on the
     // values of the decision variables output by the solver.
@@ -4539,7 +4554,7 @@ class VirtualMachine {
         cbl = this.actualBlockLength(block);
 
     // FIRST: Calculate the actual flows on links.
-    let b, bt, p, pl, ld;
+    let b, bt, p, pl, ld, ci;
     for(let l in MODEL.links) if(MODEL.links.hasOwnProperty(l) &&
         !MODEL.ignored_entities[l]) {
       l = MODEL.links[l];
@@ -4552,6 +4567,8 @@ class VirtualMachine {
         // NOTE: Flows may have a delay!
         ld = l.actualDelay(b);
         bt = b - ld;
+        // NOTE: Block index may fall beyond actual chunk length.
+        ci = i - ld;
         // NOTE: Use non-zero level here to ignore non-zero values that
         // are very small relative to the bounds on the process
         // (typically values below the non-zero tolerance of the solver).
@@ -4575,20 +4592,22 @@ class VirtualMachine {
           // Similar to STARTUP, but now look in the shut-down list.
           pl = (p.shut_downs.indexOf(bt) < 0 ? 0 : 1);
         } else if(l.multiplier === VM.LM_INCREASE) {
-          pl = VM.keepException(pl, pl - p.actualLevel(bt - 1));
+          const ppl = p.actualLevel(bt - 1);
+          pl = this.severestIssue([pl, ppl], pl - ppl);
         } else if(l.multiplier === VM.LM_SUM || l.multiplier === VM.LM_MEAN) {
           // Level for `bt` counts as first value.
           let count = 1;
           // NOTE: Link delay may be < 0!
           if(ld < 0) {
-            // NOTE: Actual levels beyond end of period are undefined,
+            // NOTE: Actual levels beyond the chunk length are undefined,
             // and should be ignored while summing / averaging.
-            if(bt >= p.level.length) pl = 0;
+            if(ci >= cbl) pl = 0;
             // If so, take sum over t, t+1, ..., t+(d-1).
             for(let j = ld + 1; j <= 0; j++) {
-              // Again: ignore levels beyond end of period.
-              if(b - j < p.level.length) {
-                pl = VM.keepException(pl, pl + p.actualLevel(b - j));
+              // Again: only consider levels up to the end of the chunk.
+              if(ci - j < cbl) {
+                const spl = p.actualLevel(b - j);
+                pl = this.severestIssue([pl, spl], pl + spl);
                 count++;
               }
             }
@@ -4597,22 +4616,24 @@ class VirtualMachine {
             for(let j = 0; j < ld; j++) {
               // NOTE: Actual levels before t=0 are considered equal to
               // the initial level, and hence should NOT be ignored.
-              pl = VM.keepException(pl, pl + p.actualLevel(b - j));
+              const spl = p.actualLevel(b - j);
+              pl = this.severestIssue([pl, spl], pl + spl);
               count++;
             }
           }
           if(l.multiplier === VM.LM_MEAN && count > 1) {
             // Average if more than 1 values have been summed.
-            pl = VM.keepException(pl, pl / count);
+            pl = this.keepException(pl, pl / count);
           }
         } else if(l.multiplier === VM.LM_THROUGHPUT) {
           // NOTE: calculate throughput on basis of levels and rates,
           // as not all actual flows may have been computed yet
           pl = 0;
           for(let j = 0; j < p.inputs.length; j++) {
-            pl = VM.keepException(pl,
-                pl + (p.inputs[j].from_node.actualLevel(bt) *
-                    p.inputs[j].relative_rate.result(bt)));
+            const
+                ipl = p.inputs[j].from_node.actualLevel(bt),
+                rr =  p.inputs[j].relative_rate.result(bt); 
+            pl = this.severestIssue([pl, ipl, rr], pl + ipl * rr);
           }
         } else if(l.multiplier === VM.LM_PEAK_INC) {
           // Actual flow over "peak increase" link is zero unless...
@@ -4627,17 +4648,10 @@ class VirtualMachine {
           }
         }
         // Preserve special values such as INF, UNDEFINED and VM error codes.
-        if(pl <= VM.MINUS_INFINITY || pl > VM.PLUS_INFINITY) {
-          l.actual_flow[b] = pl;
-        } else {
-          const rr = l.relative_rate.result(bt);
-          if(rr <= VM.MINUS_INFINITY || rr > VM.PLUS_INFINITY) {
-            l.actual_flow[b] = rr;
-          } else {
-            const af = rr * pl;
-            l.actual_flow[b] = (Math.abs(af) > VM.NEAR_ZERO ? af : 0);
-          }
-        }
+        const
+            rr = l.relative_rate.result(bt),
+            af = this.severestIssue([pl, rr], rr * pl);
+        l.actual_flow[b] = (Math.abs(af) > VM.NEAR_ZERO ? af : 0);
         b++;
       }
     }
@@ -5586,24 +5600,33 @@ Solver status = ${json.status}`);
     // levels and stock level), but do NOT overwrite "look-ahead" levels
     // if this block was not solved (indicated by the 4th parameter that
     // tests the status).
-    // NOTE: Appropriate status codes are solver-dependent.
-    this.setLevels(bnr, rl, json.data.x,
-      this.noSolutionStatus.indexOf(json.status) >= 0);
-    // NOTE: Post-process levels only AFTER the last round!
-    if(rl === this.lastRound) {
-      // Calculate data for all other dependent variables.
-      this.calculateDependentVariables(bnr);    
-      // Add progress bar segment only now, knowing status AND slack use.
-      const issue = json.status !== 0 || this.error_count > 0;
-      if(issue) this.block_issues++;
-      // NOTE: in case of multiple rounds, use the sum of the round times.
-      const time = this.round_times.reduce((a, b) => a + b, 0);
-      this.round_times.length = 0;
-      this.solver_times[bnr - 1] = time;
-      const ssecs = this.round_secs.reduce((a, b) => a + b, 0);
-      this.solver_secs[bnr - 1] = (ssecs ? VM.sig4Dig(ssecs) : '0');
-      this.round_secs.length = 0;
-      MONITOR.addProgressBlock(bnr, issue, time);
+    try {
+      this.setLevels(bnr, rl, json.data.x,
+        // NOTE: Appropriate status codes are solver-dependent.
+        this.noSolutionStatus.indexOf(json.status) >= 0);
+      // NOTE: Post-process levels only AFTER the last round!
+      if(rl === this.lastRound) {
+        // Calculate data for all other dependent variables.
+        this.calculateDependentVariables(bnr);    
+        // Add progress bar segment only now, knowing status AND slack use.
+        const issue = json.status !== 0 || this.error_count > 0;
+        if(issue) this.block_issues++;
+        // NOTE: in case of multiple rounds, use the sum of the round times.
+        const time = this.round_times.reduce((a, b) => a + b, 0);
+        this.round_times.length = 0;
+        this.solver_times[bnr - 1] = time;
+        const ssecs = this.round_secs.reduce((a, b) => a + b, 0);
+        this.solver_secs[bnr - 1] = (ssecs ? VM.sig4Dig(ssecs) : '0');
+        this.round_secs.length = 0;
+        MONITOR.addProgressBlock(bnr, issue, time);
+      }
+    } catch(err) {
+      const msg = `ERROR while processing solver data for block ${bnr}: ${err}`;
+      console.log(msg);      
+      MONITOR.logMessage(bnr, msg);
+      UI.alert(msg);
+      this.stopSolving();
+      this.halted = true;
     }
     // Free up memory.
     json = null;

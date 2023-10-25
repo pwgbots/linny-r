@@ -443,6 +443,7 @@ class GUIController extends Controller {
     // Keep track of time since last message displayed on the infoline.
     this.time_last_message = new Date('01 Jan 2001 00:00:00 GMT');
     this.message_display_time = 3000;
+    this.last_message_type = '';
 
     // Initialize "main" modals, i.e., those that relate to the controller,
     // not to other dialog objects.
@@ -2572,28 +2573,32 @@ class GUIController extends Controller {
     // Displays message on infoline unless no type (= plain text) and some
     // info, warning or error message is already displayed
     super.setMessage(msg, type);
+    const types = ['notification', 'warning', 'error'];
     let d = new Date(),
         t = d.getTime(),
-        dt = t - this.time_last_message;
+        dt = t - this.time_last_message,
+        mti = types.indexOf(type),
+        lmti = types.indexOf(this.last_message_type);
     if(type) {
-      // Update global variable (and force display) only for "real" messages
-      this.time_last_message = t;
-      dt = this.message_display_time;
-      SOUNDS[type].play().catch(() => {
-          console.log('NOTICE: Sounds will only play after first user action');
-        });
+      // Only log "real" messages.
       const
           now = [d.getHours(), d.getMinutes().toString().padStart(2, '0'),
               d.getSeconds().toString().padStart(2, '0')].join(':'),
           im = {time: now, text: msg, status: type};
       DOCUMENTATION_MANAGER.addMessage(im);
-      // When receiver is active, add message to its log
+      // When receiver is active, add message to its log.
       if(RECEIVER.active) RECEIVER.log(`[${now}] ${msg}`);
     }
-    // Display text only if previous message has "timed out" or was plain text
-    if(dt >= this.message_display_time) {
+    // Display text only if previous message has "timed out" or was less
+    // urgent than this one.
+    if(mti > lmti || dt >= this.message_display_time) {
+      this.time_last_message = t;
+      this.last_message_type = type;
+      if(type) SOUNDS[type].play().catch(() => {
+          console.log('NOTICE: Sounds will only play after first user action');
+        });
       const il = document.getElementById('info-line');
-      il.classList.remove('error', 'warning', 'notification');
+      il.classList.remove(...types);
       il.classList.add(type);
       il.innerHTML = msg;
     }
