@@ -137,13 +137,13 @@ const MILPSolver = require('./static/scripts/linny-r-milp.js');
 //  - workspace=[path]  will create workspace in [path] instead of (main)/user
 const SETTINGS = commandLineSettings();
     
-// The workspace defines the paths to directories where Linny-R can write files
+// The workspace defines the paths to directories where Linny-R can write files.
 const WORKSPACE = createWorkspace();
     
-// Initialize the solver
-const SOLVER = new MILPSolver(SETTINGS, WORKSPACE);
+// Initialize the solver.
+const SOLVER = new MILPSolver(SETTINGS.preferred_solver, WORKSPACE);
 
-// Create launch script
+// Create launch script.
 createLaunchScript();
 
 // Create the HTTP server.
@@ -1262,11 +1262,24 @@ function processRequest(req, res, cmd, data) {
     // NOTE: On remote servers, solver actions require authentication.
     if(action === 'logon') {
       // No authentication -- simply return the passed token, "local host"
-      // as server name, and the identifier of the solver.
-      serveJSON(res,
-          {token: 'local host', server: 'local host', solver: SOLVER.id});
+      // as server name, the name of the solver, the list of installed
+      // solvers, and the Linny-R directory.
+      serveJSON(res, {
+          token: 'local host',
+          server: 'local host',
+          solver: SOLVER.id,
+          solver_list: Object.keys(SOLVER.solver_list),
+          path: WORKING_DIRECTORY
+        });
     } else if(action === 'png') {
       convertSVGtoPNG(req, res, sp);
+    } else if(action === 'change') {
+      const sid = sp.get('solver');
+      if(SOLVER.changeDefault(sid)) {
+        servePlainText(res, 'Default solver set to ' + SOLVER.name);
+      } else {
+        servePlainText(res, 'WARNING: Failed to change solver to ' + sid);
+      }
     } else if(action === 'solve') {
       serveJSON(res, SOLVER.solveBlock(sp));
     } else {
@@ -1282,7 +1295,6 @@ function processRequest(req, res, cmd, data) {
     serveHTML(res, SHUTDOWN_MESSAGE);
     SERVER.close();
   } else if(cmd === 'version') {
-    logAction('HERE version = ' + VERSION_INFO.current);
     servePlainText(res, 'Current version is ' + VERSION_INFO.current);
   } else if(cmd === 'update') {
     // Shut down this server silently. When the server was started from
@@ -1529,8 +1541,6 @@ function commandLineSettings() {
       launch: false,
       port: 5050,
       preferred_solver: '',
-      solver: '',
-      solver_path: '',
       user_dir: path.join(WORKING_DIRECTORY, 'user')
     };
   const
@@ -1600,142 +1610,36 @@ Possible options are:
       }
     }
   }
-  // Check whether MILP solver(s) and Inkscape have been installed
+  // Check whether Inkscape has been installed.
   const path_list = process.env.PATH.split(path.delimiter);
-  let gurobi_path = '',
-      scip_path = '',
-      cplex_path = '',
-      match,
-      max_v = -1;
   for(let i = 0; i < path_list.length; i++) {
-    match = path_list[i].match(/gurobi(\d+)/i);
-    if(match && parseInt(match[1]) > max_v) {
-      gurobi_path = path_list[i];
-      max_v = parseInt(match[1]);
-    }
-    match = path_list[i].match(/[\/\\]cplex[\/\\]bin/i);
-    if(match) {
-      cplex_path = path_list[i];
-    } else {
-      // NOTE: CPLEX may create its own environment variable for its paths
-      match = path_list[i].match(/%(.*cplex.*)%/i);
-      if(match) {
-        const cpl = process.env[match[1]].split(path.delimiter);
-        for(let i = 0; i < cpl.length; i++) {
-          match = cpl[i].match(/[\/\\]cplex[\/\\]bin/i);
-          if(match) {
-            cplex_path = cpl[i];
-            break;
-          }
-        }
-      }
-    }
-    match = path_list[i].match(/[\/\\]scip[^\/\\]+[\/\\]bin/i);
-    if(match) scip_path = path_list[i];
+    // Check whether it is an Inkscape path.
     match = path_list[i].match(/inkscape/i);
+    // If so, use it (so the *last* matching path will be used).
     if(match) settings.inkscape = path_list[i];
   }
-  if(!gurobi_path && !PLATFORM.startsWith('win')) {
-    console.log('Looking for Gurobi in /usr/local/bin');
-    try {
-      // On macOS and Unix, Gurobi is in the user's local binaries
-      const gp = '/usr/local/bin';
-      fs.accessSync(gp + '/gurobi_cl');
-      gurobi_path = gp;
-    } catch(err) {
-      // No real error, so no action needed
-    }
-  }
-  if(gurobi_path) {
-    console.log('Path to Gurobi:', gurobi_path);
-    // Check if command line version is executable
-    const sp = path.join(gurobi_path,
-        'gurobi_cl' + (PLATFORM.startsWith('win') ? '.exe' : ''));
-    try {
-      fs.accessSync(sp, fs.constants.X_OK);
-      if(settings.solver !== 'gurobi') 
-      settings.solver = 'gurobi';
-      settings.solver_path = sp;
-    } catch(err) {
-      console.log(err.message);
-      console.log(
-          'WARNING: Failed to access the Gurobi command line application');
-    }
-  }
-  // Check if cplex(.exe) exists in its directory
-  let sp = path.join(cplex_path, 'cplex' + (PLATFORM.startsWith('win') ? '.exe' : ''));
-  const need_cplex = !settings.solver || settings.preferred_solver === 'cplex';
-  try {
-    fs.accessSync(sp, fs.constants.X_OK);
-    console.log('Path to CPLEX:', sp);
-    if(need_cplex) {
-      settings.solver = 'cplex';
-      settings.solver_path = sp;
-    }
-  } catch(err) {
-    // Only report error if CPLEX is needed
-    if(need_cplex) {
-      console.log(err.message);
-      console.log('WARNING: CPLEX application not found in', sp);
-    }
-  }
-  // Check if scip(.exe) exists in its directory
-  sp = path.join(scip_path, 'scip' + (PLATFORM.startsWith('win') ? '.exe' : ''));
-  const need_scip = !settings.solver || settings.preferred_solver === 'scip';
-  try {
-    fs.accessSync(sp, fs.constants.X_OK);
-    console.log('Path to SCIP:', sp);
-    if(need_scip) {
-      settings.solver = 'scip';
-      settings.solver_path = sp;
-    }
-  } catch(err) {
-    // Only report error if SCIP is needed
-    if(need_scip) {
-      console.log(err.message);
-      console.log('WARNING: SCIP application not found in', sp);
-    }
-  }
-  // Check if lp_solve(.exe) exists in working directory
-  sp = path.join(WORKING_DIRECTORY,
-          'lp_solve' + (PLATFORM.startsWith('win') ? '.exe' : '')); 
-  const need_lps = !settings.solver || settings.preferred_solver === 'lp_solve';
-  try {
-    fs.accessSync(sp, fs.constants.X_OK);
-    console.log('Path to LP_solve:', sp);
-    if(need_lps) {
-      settings.solver = 'lp_solve';
-      settings.solver_path = sp;
-    }
-  } catch(err) {
-    // Only report error if LP_solve is needed
-    if(need_lps) {
-      console.log(err.message);
-      console.log('WARNING: LP_solve application not found in', sp);
-    }
-  }
-  // On macOS, Inkscape is not added to the PATH environment variable 
+  // NOTE: On macOS, Inkscape is not added to the PATH environment variable. 
   if(!settings.inkscape && PLATFORM === 'darwin') {
     console.log('Looking for Inkscape in Applications...');
     try {
-      // Look in the default directory
+      // Look in the default directory.
       const ip = '/Applications/Inkscape.app/Contents/MacOS';
       fs.accessSync(ip);
       settings.inkscape = ip;
     } catch(err) {
-      // No real error, so no action needed
+      // No real error, so no action needed.
     }
   }
-  // Verify that Inkscape is installed
+  // Verify that Inkscape is installed.
   if(settings.inkscape) {
-    // NOTE: On Windows, the command line version is a .com file
+    // NOTE: On Windows, the command line version is a .com file.
     let ip = path.join(settings.inkscape,
         'inkscape' + (PLATFORM.startsWith('win') ? '.com' : ''));
     try {
       fs.accessSync(ip, fs.constants.X_OK);
     } catch(err) {
       // NOTE: As of Inkscape version 1.3, the command line executable
-      // is called inkscapecom(.com)
+      // is called inkscapecom(.com).
       ip = path.join(settings.inkscape,
           'inkscapecom' + (PLATFORM.startsWith('win') ? '.com' : ''));
     }
@@ -1759,14 +1663,14 @@ Possible options are:
 }
 
 function createWorkspace() {
-  // Verifies that Linny-R has write access to the user workspace, defines
-  // paths to sub-directories, and creates them if necessary
+  // Verify that Linny-R has write access to the user workspace, define
+  // paths to sub-directories, and create them if necessary.
   try {
-    // See whether the user directory already exists
+    // See whether the user directory already exists.
     try {
       fs.accessSync(SETTINGS.user_dir, fs.constants.R_OK | fs.constants.W_O);
     } catch(err) {
-      // If not, try to create it
+      // If not, try to create it.
       fs.mkdirSync(SETTINGS.user_dir);
       console.log('Created user directory:', SETTINGS.user_dir);
     }
@@ -1776,7 +1680,7 @@ function createWorkspace() {
         SETTINGS.user_dir);
     process.exit();
   }
-  // Define the sub-directory paths
+  // Define the sub-directory paths.
   const ws = {
       autosave: path.join(SETTINGS.user_dir, 'autosave'),
       channel: path.join(SETTINGS.user_dir, 'channel'),
@@ -1787,7 +1691,7 @@ function createWorkspace() {
       reports: path.join(SETTINGS.user_dir, 'reports'),
       solver_output: path.join(SETTINGS.user_dir, 'solver')
     };
-  // Create these sub-directories if not aready there
+  // Create these sub-directories if not aready there.
   try {
     for(let p in ws) if(ws.hasOwnProperty(p)) {
       try {
@@ -1801,9 +1705,11 @@ function createWorkspace() {
     console.log(err.message);
     console.log('WARNING: No access to workspace directory');
   }
-  // The file containing name, URL and access token for remote repositories
+  // The file containing name, URL and access token for remote repositories.
   ws.repositories = path.join(SETTINGS.user_dir, 'repositories.cfg');
-  // Return the updated workspace object
+  // For completeness, add path to Linny-R directory.
+  ws.working_directory = WORKING_DIRECTORY;
+  // Return the updated workspace object.
   return ws;
 }
 

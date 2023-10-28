@@ -944,6 +944,7 @@ img.inline-cancel-btn {
   height: min-content;
 }
 
+#settings-solver-prefs-btn,
 #settings-scale-units-btn {
   margin-left: 0px;
   margin-right: 7px;
@@ -952,6 +953,7 @@ img.inline-cancel-btn {
   filter: brightness(85%);
 }
 
+#settings-solver-prefs-btn:hover, 
 #settings-scale-units-btn:hover {
   filter: brightness(200%);
 }
@@ -992,6 +994,16 @@ input.pws-4 {
 input.pws-5 {
   color: #00c000;
   background-color: #c0ffc0;
+}
+
+/* styles for the SOLVER PREFERENCES dialog */
+#solver-modal {
+  z-index: 110; /* on top of the SETTINGS dialog */
+}
+
+#solver-dlg {
+  width: 212px;
+  height: min-content;
 }
 
 /* styles for the ACTOR DIALOG
@@ -1188,6 +1200,47 @@ td.import {
 
 td.export {
   color: #0000b0;
+}
+
+/* styles for the SERVER dialog */
+#server-dlg {
+  width: 200px;
+  height: min-content;
+}
+#server-host-div,
+#server-solver-div {
+  margin: 2px;
+}
+
+#server-no-solver-div {
+  margin: 2px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  font-style: italic;
+  margin-bottom: 2px;
+}
+
+#server-cfg {
+  margin-bottom: 8px;
+}
+
+#server-settings {
+  width: 100%;
+  height: 100px;
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+
+#server-solver,
+#server-restore {
+  font-size: 12px;
+}
+
+#server-update,
+#server-shut-down {
+  margin: 2px;
+  margin-top: 6px;
+  font-size: 12px;
 }
 
 /* styles for the MODEL dialog */

@@ -449,7 +449,7 @@ class GUIController extends Controller {
     // not to other dialog objects.
     const main_modals = ['logon', 'model', 'load', 'password', 'settings',
         'actors', 'add-process', 'add-product', 'move', 'note', 'clone', 
-        'replace', 'expression'];
+        'replace', 'expression', 'server', 'solver'];
     for(let i = 0; i < main_modals.length; i++) {
       this.modals[main_modals[i]] = new ModalDialog(main_modals[i]);
     }
@@ -581,8 +581,10 @@ class GUIController extends Controller {
       // NOTE: When user name is specified, solver is not on local host.
       const hl = document.getElementById('host-logo');
       hl.classList.add('local-server');
-      hl.addEventListener('click', () => UI.shutDownServer());
+      hl.addEventListener('click', () => UI.showServerModal());
     }
+    this.server_modal = new ModalDialog('server');
+    
 
     // Vertical tool bar buttons:
     this.buttons.clone.addEventListener('click',
@@ -704,10 +706,27 @@ class GUIController extends Controller {
             // Ensure that model documentation can no longer be edited.
             DOCUMENTATION_MANAGER.clearEntity([MODEL]);
           });
-    // Make the scale units button of the settings dialog responsive.
+    // Make the scale units and solver preferences buttons of the settings
+    // dialog responsive. Clicking will open these dialogs on top of the
+    // settings modal dialog.
     this.modals.settings.element('scale-units-btn').addEventListener('click',
-        // Open the scale units modal dialog on top of the settings dialog.
         () => SCALE_UNIT_MANAGER.show());
+    this.modals.settings.element('solver-prefs-btn').addEventListener('click',
+        () => UI.showSolverPreferencesDialog());
+    // Make solver modal elements responsive.
+    this.modals.solver.ok.addEventListener('click',
+        () => UI.updateSolverPreferences());
+    this.modals.solver.cancel.addEventListener('click',
+        () => UI.modals.solver.hide());
+    // Make server modal elements responsive.
+    this.modals.server.ok.addEventListener('click',
+        () => UI.changeSolver());
+    this.modals.server.cancel.addEventListener('click',
+        () => UI.modals.server.hide());
+    this.modals.server.element('update').addEventListener('click',
+        () => UI.shutDownToUpdate());
+    this.modals.server.element('shut-down').addEventListener('click',
+        () => UI.shutDownServer());
 
     // Modals related to vertical toolbar buttons.
     this.modals['add-process'].ok.addEventListener('click',
@@ -796,7 +815,7 @@ class GUIController extends Controller {
     
     // The REPLACE dialog appears when a product is Ctrl-clicked.
     this.modals.replace.ok.addEventListener('click',
-        () => UI.replaceProduct());
+        () => UI.replaceProduct()); 
     this.modals.replace.cancel.addEventListener('click',
         () => UI.modals.replace.hide());
     
@@ -953,19 +972,72 @@ class GUIController extends Controller {
       if(a.links.indexOf(link) >= 0) this.paper.drawArrow(a);
     }    
   }
+  
+  showServerModal() {
+    // Prepare and show the server modal dialog.
+    const
+        md = this.modals.server,
+        host = md.element('host-div'),
+        sd = md.element('solver-div'),
+        nsd = md.element('no-solver-div'),
+        html = [];
+    host.innerText = 'Server on ' + VM.server;
+    if(VM.server === 'local host') host.title = VM.working_directory;
+    for(let i = 0; i < VM.solver_list.length; i++) {
+      const s = VM.solver_list[i];
+      html.push(['<option value="', s,
+          (s === VM.solver_name ? '"selected="selected' : ''),
+          '">', VM.solver_names[s], '</option>'].join(''));
+    }
+    md.element('solver').innerHTML = html.join('');
+    if(html.length) {
+      sd.style.display = 'block';
+      nsd.style.display = 'none';
+    } else {
+      sd.style.display = 'none';
+      nsd.style.display = 'block';
+    }
+    md.show();
+  }
+  
+  changeSolver() {
+    // Change solver configuration.
+    const md = this.modals.server;
+    md.hide();
+    if(SOLVER.user_id) return;
+    const pd = postData({action: 'change', solver: md.element('solver').value});
+    fetch('solver/', pd)
+      .then((response) => {
+          if(!response.ok) {
+            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
+          }
+          return response.text();
+        })
+      .then((data) => {
+          if(UI.postResponseOK(data, true)) {
+            VM.solver_name = UI.modals.server.element('solver').value;
+            UI.modals.server.hide();
+          }
+        })
+      .catch((err) => {
+          UI.warn(UI.WARNING.NO_CONNECTION, err);
+        });
+  }
 
   shutDownServer() {
     // This terminates the local host server script and display a plain
     // HTML message in the browser with a restart button.
+    this.modals.server.hide();
     if(!SOLVER.user_id) window.open('./shutdown', '_self');
   }
 
   shutDownToUpdate() {
-    // Sisgnal server that an update is required. This will close the
+    // Signal server that an update is required. This will close the
     // local host Linny-R server. If this server was started by the
     // standard OS batch script, this script will proceed to update
     // Linny-R via npm and then restart the server again. If not, the
     // fetch request will time out, anf the user will be warned.
+    this.modals.server.hide();
     if(SOLVER.user_id) return;
     fetch('update/')
       .then((response) => {
@@ -1023,6 +1095,8 @@ class GUIController extends Controller {
                 `Linny-R version ${m[1]} has been installed.`,
                 'To continue, you must reload this page, and',
                 'confirm when prompted by your browser.');
+              // Hide "update" button in server dialog.
+              UI.modals.server.element('update').style.display = 'none';
             } else {
               // Inform user that install appears to have failed.
               msg.push(
@@ -1047,6 +1121,10 @@ class GUIController extends Controller {
   preventUpdate() {
     // Signal server that no update is required. 
     if(SOLVER.user_id) return;
+    // Show "update" button in server dialog to permit updating later.
+    const btn = this.modals.server.element('update');
+    btn.innerText = 'Update Linny-R to version ' + this.newer_version;
+    btn.style.display = 'block';
     fetch('no-update/')
       .then((response) => {
           if(!response.ok) {
@@ -3519,6 +3597,47 @@ console.log('HERE name conflicts', name_conflicts, mapping);
       redraw = true;
     }
     if(redraw) this.drawDiagram(model);
+  }
+  
+  // Solver preferences modal
+  
+  showSolverPreferencesDialog() {
+    const
+        md = this.modals.solver,
+        html = [];
+    for(let i = 0; i < VM.solver_list.length; i++) {
+      const s = VM.solver_list[i];
+      html.push(['<option value="', s,
+          (s === MODEL.preferred_solver ? '"selected="selected' : ''),
+          '">', VM.solver_names[s], '</option>'].join(''));
+    }
+    md.element('preference').innerHTML = html.join('');
+    md.element('int-feasibility').value = MODEL.integer_tolerance;
+    md.element('mip-gap').value = MODEL.MIP_gap;
+    md.show();
+  }
+  
+  updateSolverPreferences() {
+    // Set values for solver preferences.
+    const
+        md = this.modals.solver,
+        it = md.element('int-feasibility'),
+        mg = md.element('mip-gap');
+    let itol = 5e-7,
+        mgap = 1e-4;
+    // Validate input, assuming default values for empty fields.
+    if(it.value.trim()) itol = UI.validNumericInput('solver-int-feasibility',
+        'integer feasibility tolerance');
+    if(itol === false) return false;
+    if(mg.value.trim()) mgap = UI.validNumericInput('solver-mip-gap',
+        'relative MIP gap');
+    if(mgap === false) return false;
+    // Modify solver preferences for the current model.
+    MODEL.preferred_solver = md.element('preference').value;
+    MODEL.integer_tolerance = Math.max(1e-9, Math.min(0.1, itol));
+    MODEL.MIP_gap = Math.max(0, Math.min(0.5, mgap));
+    // Close the dialog.
+    md.hide();
   }
   
   // Note modal

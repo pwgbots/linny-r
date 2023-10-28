@@ -162,16 +162,17 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             if(info.length > 1) {
               LINNY_R_VERSION = info[0];
               const v = 'Version ' + LINNY_R_VERSION;
-              // Update the "home page" of the documentation manager
+              // Update the "home page" of the documentation manager.
               DOCUMENTATION_MANAGER.about_linny_r =
                   DOCUMENTATION_MANAGER.about_linny_r.replace(
                       '[LINNY_R_VERSION]', v);
-              // Update the version number in the browser's upper left corner
+              // Update the version number in the browser's upper left corner.
               document.getElementById('linny-r-version-number').innerHTML = v;
-              // NOTE: server detects "version 0" when npmjs website was
-              // not reached; if so, do not suggest a new version exists
+              // NOTE: Server detects "version 0" when npmjs website was
+              // not reached; if so, do not suggest a new version exists.
               if(info[1] !== 'up-to-date' && info[1] !== '0') {
-                // Inform user that newer version exists
+                // Inform user that newer version exists.
+                UI.newer_version = info[1];
                 UI.check_update_modal.element('msg').innerHTML = [
                     '<a href="', GITHUB_REPOSITORY,
                     '/releases/tag/v', info[1], '" ',
@@ -423,6 +424,28 @@ and move the cursor over the status bar">
     </div>
   </div>
 
+  <!-- the SERVER dialog permits solver selection, update and shut-down -->
+  <div id="server-modal" class="modal">
+    <div id="server-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Server and solver
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div id="server-host-div" title="Linny-R directory">Server on local host</div>
+      <div id="server-no-solver-div">No solver detected</div>
+      <div id="server-solver-div" hidden="hidden">
+        <div id="server-sel">
+          <label>Solver:</label>
+          <select id="server-solver">
+          </select>
+        </div>
+      </div>
+      <button id="server-update" hidden="hidden">Update Linny-R to new version</button>
+      <button id="server-shut-down">Shut down server</button>
+    </div>
+  </div>
+  
   <!-- the MODEL dialog prompts for (optional) model name and author name -->
   <div id="model-modal" class="modal">
     <div id="model-dlg" class="inp-dlg">
@@ -605,6 +628,8 @@ and move the cursor over the status bar">
           <td colspan="2">Solver time limit:&nbsp;
             <input id="settings-time-limit" type="text" autocomplete="off"
                    style="width:35px;text-align:center"> seconds per block
+            <img id="settings-solver-prefs-btn" class="sbtn" src="images/settings.png"
+                 title="Set solver preferences">
           </td>
         </tr>
         <tr>
@@ -682,6 +707,40 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
           </td>
           <td title="Base unit (optional)">
             <input id="new-scale-unit-base" type="text" list="units-data" autocomplete="off">
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- the SOLVER dialog permits specifying solver preference and tolerances -->
+  <div id="solver-modal" class="modal">
+    <div id="solver-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Solver preferences
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table style="width: 100%">
+        <tr title="This solver will be used if it is installed">
+          <td>
+            <label>Preferred solver:</label>
+            <select id="solver-preference">
+            </select>
+          </td>
+        </tr>
+        <tr title="Tolerance may range from 1e-9 to 0.1">
+          <td>
+            <label>Integer feasibility tolerance:</label>
+            <input id="solver-int-feasibility" style="width: 55px"
+                   placeholder="5e-7" type="text" autocomplete="off">
+          </td>
+        </tr>
+        <tr title="Relative gap may range from 0 to 0.5">
+          <td>
+            <label>Relative MIP gap:</label>
+            <input id="solver-mip-gap" style="width: 55px"
+                   placeholder="1e-4" type="text" autocomplete="off">
           </td>
         </tr>
       </table>

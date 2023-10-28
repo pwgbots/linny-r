@@ -363,8 +363,11 @@ class GUIMonitor {
               const
                   jsr = JSON.parse(data),
                   svr = `Solver on ${jsr.server} is ${jsr.solver}`;
-              if(jsr.solver !== VM.solver_name) UI.notify(svr);              
+              if(jsr.solver !== VM.solver_name) UI.notify(svr);
+              VM.server = jsr.server;
+              VM.working_directory = jsr.path;
               VM.solver_name = jsr.solver;
+              VM.solver_list = jsr.solver_list;
               document.getElementById('host-logo').title  = svr;
             } catch(err) {
               console.log(err, data);

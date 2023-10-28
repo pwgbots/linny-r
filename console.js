@@ -540,7 +540,7 @@ class ConsoleReceiver {
       }
       if(msg) {
         this.setError(msg);
-        rcvrReport();
+        rcvrReport(this.channel, this.file_name);
         // Keep listening, so check again after the time interval
         setTimeout(() => RECEIVER.listen(), this.interval);
       } else {
@@ -559,19 +559,29 @@ class ConsoleReceiver {
 
   report() {
     // Saves the run results in the channel, or signals an error
-    let run = '';
+    let run = '',
+        rpath = this.channel,
+        file = this.file_name;
     // NOTE: Always set `solving` to FALSE
     this.solving = false;
-    if(this.experiment){
+    // NOTE: When reporting receiver while is not active, report the
+    // results of the running experiment.
+    if(this.experiment || !this.active) {
       if(MODEL.running_experiment) {
         run = MODEL.running_experiment.active_combination_index;
-        this.log(`Reporting: ${this.file_name} (run #${run})`);
+        this.log(`Reporting: ${file} (run #${run})`);
       }
+    }
+    // NOTE: If receiver is not active, path and file must be set.
+    if(!this.active) {
+      rpath = 'user/reports';
+      file = REPOSITORY_BROWSER.asFileName(MODEL.name || 'model') +
+          run + '-' + compactClockTime();
     }
     if(MODEL.solved && !VM.halted) {
       // Normal execution termination => report results
       const data = MODEL.outputData;
-      rcvrReport(run, data[0], data[1]);
+      rcvrReport(rpath, file, run, data[0], data[1]);
       // If execution completed, perform the call-back action
       // NOTE: for experiments, call-back is performed upon completion by
       // the Experiment Manager
@@ -588,34 +598,7 @@ class ConsoleReceiver {
   callBack() {
     // Deletes the file in the channel directory (to prevent executing it again)
     // and activates the call-back script on the local server
-    fetch('receiver/', postData({
-          path: this.channel,
-          file: this.file_name,
-          action: 'call-back',
-          script: this.call_back_script
-        }))
-      .then((response) => {
-          if(!response.ok) {
-            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
-          }
-          return response.text();
-        })
-      .then((data) => {
-          // Call-back completed => resume listening unless running experiment
-          if(RECEIVER.experiment) {
-            // For experiments, only display server response if warning or error
-            UI.postResponseOK(data);
-          } else {
-            // Always show server response for single runs
-            if(UI.postResponseOK(data, true)) {
-              // NOTE: resume listening only if no error
-              setTimeout(() => RECEIVER.listen(), RECEIVER.interval);
-            } else {
-              RECEIVER.deactivate();
-            }
-          }
-        })
-      .catch(() => UI.warn(UI.WARNING.NO_CONNECTION, err));
+    rcvrCallBack(this.call_back_script);
   }
 
 } // END of class ConsoleReceiver
@@ -700,8 +683,8 @@ function rcvrListen(rpath) {
 }
 
 function rcvrAbort() {
-  const log_path = path.join(this.channel, this.file_name + '-log.txt');
-  fs.writeFile(log_path, this.logReport, (err) => {
+  const log_path = path.join(RECEIVER.channel, RECEIVER.file_name + '-log.txt');
+  fs.writeFile(log_path, RECEIVER.logReport, (err) => {
       if(err) {
         console.log(err);
         console.log('ERROR: Failed to write event log to file', log_path);
@@ -711,9 +694,9 @@ function rcvrAbort() {
     });
 }
 
-function rcvrReport(run='', data='no data', stats='no statistics') {
+function rcvrReport(rpath, file, run='', data='no data', stats='no statistics') {
   try {
-    let fp = path.join(this.channel, this.file_name + run + '-data.txt');
+    let fp = path.join(rpath, file + run + '-data.txt');
     fs.writeFileSync(fp, data);
   } catch(err) {
     console.log(err);
@@ -721,7 +704,7 @@ function rcvrReport(run='', data='no data', stats='no statistics') {
     return;
   }
   try {
-    fp = path.join(this.channel, this.file_name + run + '-stats.txt');
+    fp = path.join(rpath, file + run + '-stats.txt');
     fs.writeFileSync(fp, stats);
   } catch(err) {
     console.log(err);
@@ -729,23 +712,23 @@ function rcvrReport(run='', data='no data', stats='no statistics') {
     return;
   }
   try {
-    fp = path.join(this.channel, this.file_name + run + '-log.txt');
-    fs.writeFileSync(fp, this.logReport);
+    fp = path.join(rpath, file + run + '-log.txt');
+    fs.writeFileSync(fp, RECEIVER.logReport);
   } catch(err) {
     console.log(err);
     console.log('ERROR: Failed to write event log to file',  fp);
   }
-  console.log('Data and statistics reported for', this.file_name);
+  console.log('Data and statistics reported for', file);
 }
 
 function rcvrCallBack(script) {
   let file_type = '',
-      cpath = path.join(this.channel, this.file_name + '.lnr');
+      cpath = path.join(RECEIVER.channel, RECEIVER.file_name + '.lnr');
   try {
     fs.accessSync(cpath);
     file_type = 'model';
   } catch(err) {
-    cpath = path.join(this.channel, this.file_name + '.lnrc');
+    cpath = path.join(RECEIVER.channel, RECEIVER.file_name + '.lnrc');
     try {
       fs.accessSync(cpath);
       file_type = 'command';
@@ -1175,7 +1158,7 @@ if(SETTINGS.model_path) {
               // Output statistics
               FILE_MANAGER.writeStringToFile(od[1],
                   SETTINGS.report + '-stats.txt');
-            } else {
+            } else if(!MODEL.report_results) {
               // Output strings to console
               console.log(od[0]);
               console.log(od[1]);

@@ -88,7 +88,6 @@ class LinnyRModel {
     this.selected_round = 0;
     
     // Model settings
-    this.timeout_period = 30; // max. solver time in seconds
     this.block_length = 1;
     this.start_period = 1; // defines starting point in datasets
     this.end_period = 1;
@@ -99,6 +98,13 @@ class LinnyRModel {
     this.report_results = false;
     this.show_block_arrows = true;
     this.last_zoom_factor = 1;
+    
+    // Default solver settings
+    this.timeout_period = 30; // max. solver time in seconds
+    // NOTE: Preference does not require that this solver is available.
+    this.preferred_solver = 'gurobi'; 
+    this.integer_tolerance = 5e-7; // integer feasibility tolerance
+    this.MIP_gap = 1e-4; // relative MIP gap
 
     // Sensitivity-related properties
     this.base_case_selectors = '';
@@ -2631,17 +2637,17 @@ class LinnyRModel {
   }
 
   initFromXML(node) {
-    // Initialize a model from the XML tree with `node` as root
-    // NOTE: do NOT reset and initialize basic model properties when *including*
-    // a module into the current model
-    // NOTE: obsolete XML nodes indicate: legacy Linny-R model
+    // Initialize a model from the XML tree with `node` as root.
+    // NOTE: do NOT reset and initialize basic model properties when
+    // *including* a module into the current model.
+    // NOTE: Obsolete XML nodes indicate: legacy Linny-R model.
     const legacy_model = (nodeParameterValue(node, 'view-options') +
         nodeParameterValue(node, 'autosave') +
         nodeParameterValue(node, 'look-ahead') +
         nodeParameterValue(node, 'save-series') +
         nodeParameterValue(node, 'show-lp') +
         nodeParameterValue(node, 'optional-slack')).length > 0;
-    // Flag to set when legacy time series data are added 
+    // Flag to set when legacy time series data are added.
     this.legacy_datasets = false;
     if(!IO_CONTEXT) {
       this.reset();
@@ -2668,7 +2674,12 @@ class LinnyRModel {
       this.version = xmlDecoded(nodeContentByTag(node, 'version'));
       this.timeout_period = Math.max(0,
           safeStrToInt(nodeContentByTag(node, 'timeout-period')));
-      // Legacy models have tag "optimization-period" instead of "block-length"
+      this.preferred_solver = xmlDecoded(
+          nodeContentByTag(node, 'preferred-solver')) || 'gurobi'; 
+      this.integer_tolerance = safeStrToFloat(
+          nodeContentByTag(node, 'integer-tolerance'), 5e-7);
+      this.MIP_gap = safeStrToFloat(nodeContentByTag(node, 'mip-gap'), 1e-4);
+      // Legacy models have tag "optimization-period" instead of "block-length".
       const bl_str = nodeContentByTag(node, 'block-length') ||
           nodeContentByTag(node, 'optimization-period'); 
       this.block_length = Math.max(1, safeStrToInt(node, bl_str));
@@ -2693,7 +2704,7 @@ class LinnyRModel {
       if(!this.default_unit) this.default_unit = CONFIGURATION.default_scale_unit;
     } // END IF *not* including a model
 
-    // Declare some local variables that will be used a lot
+    // Declare some local variables that will be used a lot.
     let i,
         c,
         name,
@@ -3014,7 +3025,10 @@ class LinnyRModel {
         '</default-scale-unit><currency-unit>', xmlEncoded(this.currency_unit),
         '</currency-unit><grid-pixels>', this.grid_pixels,
         '</grid-pixels><timeout-period>', this.timeout_period,
-        '</timeout-period><block-length>', this.block_length,
+        '</timeout-period><preferred-solver>', xmlEncoded(this.preferred_solver), 
+        '</preferred-solver><integer-tolerance>', this.integer_tolerance,
+        '</integer-tolerance><mip-gap>', this.MIP_gap,
+        '</mip-gap><block-length>', this.block_length,
         '</block-length><start-period>', this.start_period,
         '</start-period><end-period>', this.end_period,
         '</end-period><look-ahead-period>', this.look_ahead,

@@ -2328,7 +2328,13 @@ class VirtualMachine {
     // Statistics that can be calculated for outcomes and experiment run results
     this.outcome_statistics =
       ['LAST', 'MAX', 'MEAN', 'MIN', 'N', 'NZ', 'SD', 'SUM', 'VAR'];
-    }
+    this.solver_names = {
+      gurobi: 'Gurobi',
+      cplex: 'CPLEX',
+      scip: 'SCIP',
+      lp_solve: 'LP_solve'
+    };
+  }
 
   reset() {
     // Reset the virtual machine so that it can execute the model again.
@@ -2945,6 +2951,7 @@ class VirtualMachine {
       return obj.la_peak_inc[c];
     }
     const prior_level = obj.actualLevel(t);
+console.log('HERE obj prilev t', obj.displayName, prior_level, t, obj.level);
     if(type === 'OO') return prior_level > 0 ? 1 : 0;
     if(type === 'IZ') return prior_level === 0 ? 1 : 0;
     // Start-up at time t entails that t is in the list of start-up
@@ -5719,7 +5726,7 @@ Solver status = ${json.status}`);
   }  
 
   submitFile() {
-    // Prepares to POST the model file (LP or MPS) to the Linny-R server.
+    // Prepare to POST the model file (LP or MPS) to the Linny-R server.
     // NOTE: The tableau is no longer needed, so free up its memory.
     this.resetTableau();
     if(this.numeric_issue) {

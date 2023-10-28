@@ -547,8 +547,8 @@ class Controller {
   }
   
   postResponseOK(text, notify=false) {
-    // Checks whether server reponse text is warning or error, and notifies
-    // the modeler if second argument is TRUE
+    // Check whether server reponse text is warning or error, and notify
+    // the modeler if second argument is TRUE.
     let mtype = 'notification';
     if(text.startsWith('ERROR:')) {
       mtype = 'error';
