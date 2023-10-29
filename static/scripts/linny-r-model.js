@@ -101,8 +101,7 @@ class LinnyRModel {
     
     // Default solver settings
     this.timeout_period = 30; // max. solver time in seconds
-    // NOTE: Preference does not require that this solver is available.
-    this.preferred_solver = 'gurobi'; 
+    this.preferred_solver = ''; // empty string denotes "use default"
     this.integer_tolerance = 5e-7; // integer feasibility tolerance
     this.MIP_gap = 1e-4; // relative MIP gap
 
@@ -146,17 +145,18 @@ class LinnyRModel {
   /* METHODS THAT LOOKUP ENTITIES, OR INFER PROPERTIES */
 
   get simulationTimeStep() {
-    // Returns actual model time step, rather than `t`, which is relative to the
-    // start of the simulation period
+    // Return actual model time step, rather than `t`, which is relative
+    // to the start of the simulation period.
     return this.t + this.start_period - 1;
   }
   
   get timeStepDuration() {
-    // Returns duration of 1 time step in hours
+    // Return duration of 1 time step in hours.
     return this.time_scale * VM.time_unit_values[this.time_unit];
   }
   
   get outcomes() {
+    // Return the list of outcome datasets.
     const olist = [];
     for(let k in this.datasets) if(this.datasets.hasOwnProperty(k)) {
       if(this.datasets[k].outcome) olist.push(this.datasets[k]);
@@ -2675,7 +2675,7 @@ class LinnyRModel {
       this.timeout_period = Math.max(0,
           safeStrToInt(nodeContentByTag(node, 'timeout-period')));
       this.preferred_solver = xmlDecoded(
-          nodeContentByTag(node, 'preferred-solver')) || 'gurobi'; 
+          nodeContentByTag(node, 'preferred-solver')); 
       this.integer_tolerance = safeStrToFloat(
           nodeContentByTag(node, 'integer-tolerance'), 5e-7);
       this.MIP_gap = safeStrToFloat(nodeContentByTag(node, 'mip-gap'), 1e-4);

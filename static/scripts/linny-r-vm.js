@@ -5779,6 +5779,13 @@ Solver status = ${json.status}`);
   solveModel() {
     // Start the sequence of data loading, model translation, solving
     // consecutive blocks, and finally calculating dependent variables.
+    // NOTE: Do this only if the model defines a MILP problem, i.e.,
+    // contains at least one process or product.
+    if(!(Object.keys(MODEL.processes).length ||
+        Object.keys(MODEL.products).length)) {
+      UI.notify('Nothing to solve');
+      return;
+    }
     const n = MODEL.loading_datasets.length;
     if(n > 0) {
       // Still within reasonable time? (3 seconds per dataset)
@@ -5787,7 +5794,7 @@ Solver status = ${json.status}`);
         UI.setMessage(`Waiting for ${pluralS(n, 'dataset')} to load`);
         // Decrease the remaining time to wait (half second units)
         MODEL.max_time_to_load--;
-        // Try again after half a second
+        // Try again after half a second.
         setTimeout(() => VM.solveModel(), 500);
         return;
       } else {

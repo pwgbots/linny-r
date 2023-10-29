@@ -37,26 +37,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// Set global flag to indicate that this is a Node.js application
-// (this will make the "module" files linny-r-xxx.js export their properties)
+// Set global flag to indicate that this is a Node.js application.
+// This will make the "module" files linny-r-xxx.js export their properties.
 global.NODE = true;
 
 const
     WORKING_DIRECTORY = process.cwd(),
     path = require('path'),
     MODULE_DIRECTORY = path.join(WORKING_DIRECTORY, 'node_modules', 'linny-r'),
-    // Load the required Node.js modules
+    // Load the required Node.js modules.
     child_process = require('child_process'),
     fs = require('fs'),
     os = require('os'),
     readline = require('readline'),
-    // Get the platform name (win32, macOS, linux) of the user's computer
+    // Get the platform name (win32, macOS, linux) of the user's computer.
     PLATFORM = os.platform(),
-    // Get version of the installed Linny-R package 
+    // Get version of the installed Linny-R package.
     VERSION_INFO = getVersionInfo();
     
 function getVersionInfo() {
-  // Reads version info from `package.json`
+  // Read version info from `package.json`.
   const info = {
       current: 0,
       current_time: 0,
@@ -72,10 +72,10 @@ function getVersionInfo() {
     console.log('This indicates that Linny-R is not installed properly.');
     process.exit();    
   }
-  // NOTE: unlike the Linny-R server, the console does not routinely
+  // NOTE: Unlike the Linny-R server, the console does not routinely
   // check whether version is up-to-date is optional because this is
   // a time-consuming action that would reduce multi-run performance.
-  // See command line options (much further down)
+  // See command line options (much further down).
   console.log('\nLinny-R Console version', info.current);
   return info;
 }
@@ -99,16 +99,16 @@ const
     model = require('./static/scripts/linny-r-model.js'),
     ctrl = require('./static/scripts/linny-r-ctrl.js');
     
-// NOTE: the variables, functions and classes defined in these scripts
-// must still be "imported" into the global scope of this Node.js script
+// NOTE: The variables, functions and classes defined in these scripts
+// must still be "imported" into the global scope of this Node.js script.
 for(let k in config) if(config.hasOwnProperty(k)) global[k] = config[k];
 for(let k in utils) if(utils.hasOwnProperty(k)) global[k] = utils[k];
 for(let k in vm) if(vm.hasOwnProperty(k)) global[k] = vm[k];
 for(let k in model) if(model.hasOwnProperty(k)) global[k] = model[k];
 for(let k in ctrl) if(ctrl.hasOwnProperty(k)) global[k] = ctrl[k];
 
-// Default settings are used unless these are overruled by arguments on the
-// command line
+// Default settings are used unless these are overruled by arguments on
+// the command .
 const usage = `
 Usage:  node console [options]
 
@@ -141,8 +141,8 @@ const SETTINGS = commandLineSettings();
 const WORKSPACE = createWorkspace();
     
 // Only then require the Node.js modules that are not "built-in"
-// NOTE: the function serves to catch the error in case the module has not
-// been installed with `npm`
+// NOTE: the function serves to catch the error in case the module has
+// not been installed with `npm`.
 const { DOMParser } = checkNodeModule('@xmldom/xmldom');
 
 function checkNodeModule(name) {
@@ -156,10 +156,10 @@ function checkNodeModule(name) {
 }
 
 // Add the XML parser to the global scope so it can be referenced by the
-// XML-related functions defined in `linny-r-utils.js`
+// XML-related functions defined in `linny-r-utils.js`.
 global.XML_PARSER = new DOMParser();
 
-// Set the current version number 
+// Set the current version number.
 global.LINNY_R_VERSION = VERSION_INFO.current;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -173,17 +173,17 @@ class ConsoleMonitor {
   constructor() {
     this.console = true;
     this.visible = false;
-    // The "show log" flag indicates whether log messages should be output to
-    // the console (will be ignored by the GraphicalMonitor)
+    // The "show log" flag indicates whether log messages should be output
+    // to the console (will be ignored by the GUIMonitor).
     this.show_log = false;
     this.block_number = 0;
   }
   
   logMessage(block, msg) {
-    // Outputs a solver message to the console if logging is activated
+    // Output a solver message to the console if logging is activated.
     if(this.show_log) {
       if(block > this.block_number) {
-        // Mark advance to nex block with a blank line
+        // Mark advance to nex block with a blank line.
         console.log('\nBlock #', block);
         this.block_number = block;
       }
@@ -194,11 +194,11 @@ class ConsoleMonitor {
   logOnToServer() {
     VM.solver_user = '';
     VM.solver_token = 'local host';
-    VM.solver_name = SOLVER.name;
+    VM.solver_name = SOLVER.id;
   }
 
   connectToServer() {
-    // Console always uses local server => no logon prompt
+    // Console always uses local server => no logon prompt.
     this.logOnToServer();
     return true;
   }
@@ -219,16 +219,19 @@ class ConsoleMonitor {
             block: VM.block_count,
             round: VM.round_sequence[VM.current_round],
             data: VM.lines,
-            timeout: top
+            solver: MODEL.preferred_solver,
+            timeout: top,
+            inttol: MODEL.integer_tolerance,
+            mipgap: MODEL.MIP_gap
           }));
       VM.processServerResponse(data);
       const msg =
           `Solving block #${VM.blockWithRound} took ${VM.elapsedTime} seconds.`;
       VM.logMessage(VM.block_count, msg);
       console.log(msg);
-      // solve next block (if any)
-      // NOTE: use setTimeout so that this calling function returns
-      // and hence frees its local variables
+      // Solve next block (if any).
+      // NOTE: Use setTimeout so that this calling function returns
+      // and hence frees its local variables.
       setTimeout(() => VM.solveBlocks(), 1);
     } catch(err) {
       console.log(err);
@@ -260,7 +263,7 @@ class ConsoleRepositoryBrowser {
     this.repositories = [];
     this.repository_index = -1; 
     this.module_index = -1;
-    // Get the repository list from the modules
+    // Get the repository list from the modules.
     this.getRepositories();
     this.reset();
   }
@@ -270,19 +273,19 @@ class ConsoleRepositoryBrowser {
   }
 
   get isLocalHost() {
-    // Returns TRUE if first repository on the list is 'local host'
+    // Return TRUE if first repository on the list is 'local host'.
     return this.repositories.length > 0 &&
       this.repositories[0].name === 'local host';
   }
 
   getRepositories() {
-    // Gets the list of repository names from the server
+    // Gets the list of repository names from the server.
     this.repositories.length = 0;
     // @@TO DO!!
   }
   
   repositoryByName(n) {
-    // Returns the repository having name `n` if already known, otherwise NULL
+    // Return the repository having name `n` if already known, otherwise NULL.
     for(let i = 0; i < this.repositories.length; i++) {
       if(this.repositories[i].name === n) {
         return this.repositories[i];
@@ -293,15 +296,15 @@ class ConsoleRepositoryBrowser {
   
   asFileName(s) {
     // NOTE: asFileName is implemented as function (see below) to permit
-    // its use prior to instantiation of the RepositoryBrowser
+    // its use prior to instantiation of the RepositoryBrowser.
     return stringToFileName(s);
   }
   
 }
 
 function stringToFileName(s) {
-  // Returns string `s` with whitespace converted to a single dash, and
-  // special characters converted to underscores
+  // Return string `s` with whitespace converted to a single dash, and
+  // special characters converted to underscores.
   return s.normalize('NFKD').trim()
       .replace(/[\s\-]+/g, '-')
       .replace(/[^A-Za-z0-9_\-]/g, '_')
@@ -315,17 +318,17 @@ class ConsoleFileManager {
 
   anyOSpath(p) {
     // Helper function that converts any path notation to platform notation
-    // based on the predominant separator
+    // based on the predominant separator.
     const
        s_parts = p.split('/'),
        bs_parts = p.split('\\'),
        parts = (s_parts.length > bs_parts.length ? s_parts : bs_parts);
-    // On macOS machines, paths start with a slash, so first substring is empty
+    // On macOS machines, paths start with a slash, so first substring is empty.
     if(parts[0].endsWith(':') && path.sep === '\\') {
-      // On Windows machines, add a backslash after the disk (if specified)
+      // On Windows machines, add a backslash after the disk (if specified).
       parts[0] += path.sep;
     }
-    // Reassemble path for the OS of this machine
+    // Reassemble path for the OS of this machine.
     return path.join(...parts);
   }
   
@@ -334,18 +337,18 @@ class ConsoleFileManager {
     if(url === '') return;
     // NOTE: add this dataset to the "loading" list...
     addDistinct(dataset, MODEL.loading_datasets);
-    // ... and allow for 3 more seconds (6 times 500 ms) to complete
+    // ... and allow for 3 more seconds (6 times 500 ms) to complete.
     MODEL.max_time_to_load += 6;
-    // Passed parameter is the URL or full path
+    // Passed parameter is the URL or full path.
     console.log('Load data from', url);
     if(!url) {
       console.log('ERROR: No URL or path');
       return;
     }
     if(url.toLowerCase().startsWith('http')) {
-      // URL => validate it, and then try to download its content as text
+      // URL => validate it, and then try to download its content as text.
       try {
-        new URL(url); // Will throw an error if URL is not valid
+        new URL(url); // Will throw an error if URL is not .
         getTextFromURL(url,
             (data) => FILE_MANAGER.setData(dataset, data),
             (error) => {
@@ -361,7 +364,7 @@ class ConsoleFileManager {
       let fp = this.anyOSpath(url);
       if(!(fp.startsWith('/') || fp.startsWith('\\') || fp.indexOf(':\\') > 0)) {
         // Relative path => add path to specified data path or to the
-        // default location user/data
+        // default location user/data.
         fp = path.join(SETTINGS.data_path || WORKSPACE.data, fp);
         console.log('Full path: ', fp);
       }
@@ -379,44 +382,44 @@ class ConsoleFileManager {
   setData(dataset, data) {
     if(data !== '' && UI.postResponseOK(data)) {
       // Server must return either semicolon-separated or
-      // newline-separated string of numbers
+      // newline-separated string of numbers.
       if(data.indexOf(';') < 0) {
-        // If no semicolon found, replace newlines by semicolons
+        // If no semicolon found, replace newlines by semicolons.
         data = data.trim().split('\n').join(';');
       }
-      // Remove all white space
+      // Remove all white space.
       data = data.replace(/\s+/g, '');
       dataset.unpackDataString(data);
-      // NOTE: remove dataset from the "loading" list
+      // NOTE: Remove dataset from the "loading" list.
       const i = MODEL.loading_datasets.indexOf(dataset);
       if(i >= 0) MODEL.loading_datasets.splice(i, 1);
     }
   }
 
   decryptIfNeeded(data, callback) {
-    // Checks whether XML is encrypted; if not, processes data "as is",
-    // otherwise decrypt using password specified in command line
+    // Check whether XML is encrypted; if not, processes data "as is",
+    // otherwise decrypt using password specified in command line.
     if(data.indexOf('model latch="') < 0) {
       setTimeout(callback, 0, data);
       return;
     }
     const xml = XML_PARSER.parseFromString(data, 'text/xml');
     const de = xml.documentElement;
-    // Linny-R model must contain a model node
+    // Linny-R model must contain a model node.
     if(de.nodeName !== 'model') throw 'XML document has no model element';
     const encr_msg = {
           encryption: nodeContentByTag(de, 'content'),
           latch: nodeParameterValue(de, 'latch')
         };
     console.log('Decrypting...');
-    // NOTE: function `tryToDecrypt` is defined in linny-r-utils.js
+    // NOTE: Function `tryToDecrypt` is defined in linny-r-utils.js.
     setTimeout((msg, pwd, ok, err) => tryToDecrypt(msg, pwd, ok, err), 5,
         encr_msg, SETTINGS.password,
-        // The on_ok function
+        // The on_ok function.
         (data) => {
             if(data) callback(data);
           },
-        // The on_error function
+        // The on_error function.
         (err) => {
             console.log(err);
             console.log('Failed to load encrypted model');
@@ -424,8 +427,7 @@ class ConsoleFileManager {
   }
   
   loadModel(fp, callback) {
-    // Get the XML of the file specified via the command line
-    // NOTE: asynchronous method with callback because decryption is
+    // Get the XML of the file specified via the command line.
     fs.readFile(fp, 'utf8', (err, data) => {
         if(err) {
           console.log(err);
@@ -438,7 +440,7 @@ class ConsoleFileManager {
   }
 
   writeStringToFile(s, fp) {
-    // Write string `s` to path `fp`
+    // Write string `s` to path `fp`.
     try {
       fs.writeFileSync(fp, s);
       console.log(pluralS(s.length, 'character') + ' written to file ' + fp);
@@ -903,119 +905,6 @@ function commandLineSettings() {
   }
   // Perform version check only if asked for
   if(settings.check) checkForUpdates();
-  // Check whether MILP solver(s) and Inkscape have been installed
-  const path_list = process.env.PATH.split(path.delimiter);
-  let gurobi_path = '',
-      scip_path = '',
-      match,
-      max_v = -1;
-  for(let i = 0; i < path_list.length; i++) {
-    match = path_list[i].match(/gurobi(\d+)/i);
-    if(match && parseInt(match[1]) > max_v) {
-      gurobi_path = path_list[i];
-      max_v = parseInt(match[1]);
-    }
-    match = path_list[i].match(/[\/\\]cplex[\/\\]bin/i);
-    if(match) {
-      cplex_path = path_list[i];
-    } else {
-      // NOTE: CPLEX may create its own environment variable for its paths
-      match = path_list[i].match(/%(.*cplex.*)%/i);
-      if(match) {
-        const cpl = process.env[match[1]].split(path.delimiter);
-        for(let i = 0; i < cpl.length; i++) {
-          match = cpl[i].match(/[\/\\]cplex[\/\\]bin/i);
-          if(match) {
-            cplex_path = cpl[i];
-            break;
-          }
-        }
-      }
-    }
-    match = path_list[i].match(/[\/\\]scip[^\/\\]+[\/\\]bin/i);
-    if(match) scip_path = path_list[i];
-    match = path_list[i].match(/inkscape/i);
-    if(match) settings.inkscape = path_list[i];
-  }
-  if(!gurobi_path && !PLATFORM.startsWith('win')) {
-    console.log('Looking for Gurobi in /usr/local/bin');
-    try {
-      // On macOS and Unix, Gurobi is in the user's local binaries
-      const gp = '/usr/local/bin';
-      fs.accessSync(gp + '/gurobi_cl');
-      gurobi_path = gp;
-    } catch(err) {
-      // No real error, so no action needed
-    }
-  }
-  if(gurobi_path) {
-    console.log('Path to Gurobi:', gurobi_path);
-    // Check if command line version is executable
-    const sp = path.join(gurobi_path,
-        'gurobi_cl' + (PLATFORM.startsWith('win') ? '.exe' : ''));
-    try {
-      fs.accessSync(sp, fs.constants.X_OK);
-      if(settings.solver !== 'gurobi') 
-      settings.solver = 'gurobi';
-      settings.solver_path = sp;
-    } catch(err) {
-      console.log(err.message);
-      console.log(
-          'WARNING: Failed to access the Gurobi command line application');
-    }
-  }
-  // Check if cplex(.exe) exists in its directory
-  let sp = path.join(cplex_path, 'cplex' + (PLATFORM.startsWith('win') ? '.exe' : ''));
-  const need_cplex = !settings.solver || settings.preferred_solver === 'cplex';
-  try {
-    fs.accessSync(sp, fs.constants.X_OK);
-    console.log('Path to CPLEX:', sp);
-    if(need_cplex) {
-      settings.solver = 'cplex';
-      settings.solver_path = sp;
-    }
-  } catch(err) {
-    // Only report error if CPLEX is needed
-    if(need_cplex) {
-      console.log(err.message);
-      console.log('WARNING: CPLEX application not found in', sp);
-    }
-  }
-  // Check if scip(.exe) exists in its directory
-  sp = path.join(scip_path, 'scip' + (PLATFORM.startsWith('win') ? '.exe' : ''));
-  const need_scip = !settings.solver || settings.preferred_solver === 'scip';
-  try {
-    fs.accessSync(sp, fs.constants.X_OK);
-    console.log('Path to SCIP:', sp);
-    if(need_scip) {
-      settings.solver = 'scip';
-      settings.solver_path = sp;
-    }
-  } catch(err) {
-    // Only report error if SCIP is needed
-    if(need_scip) {
-      console.log(err.message);
-      console.log('WARNING: SCIP application not found in', sp);
-    }
-  }
-  // Check if lp_solve(.exe) exists in main directory
-  sp = path.join(WORKING_DIRECTORY,
-      'lp_solve' + (PLATFORM.startsWith('win') ? '.exe' : ''));
-  const need_lps = !settings.solver || settings.preferred_solver === 'lp_solve';
-  try {
-    fs.accessSync(sp, fs.constants.X_OK);
-    console.log('Path to LP_solve:', sp);
-    if(need_lps) {
-      settings.solver = 'lp_solve';
-      settings.solver_path = sp;
-    }
-  } catch(err) {
-    // Only report error if LP_solve is needed
-    if(need_lps) {
-      console.log(err.message);
-      console.log('WARNING: LP_solve application not found in', sp);
-    }
-  }
   return settings;
 }
 
@@ -1064,6 +953,8 @@ function createWorkspace() {
   }
   // The file containing name, URL and access token for remote repositories
   ws.repositories = path.join(SETTINGS.user_dir, 'repositories.cfg');
+  // For completeness, add path to Linny-R directory.
+  ws.working_directory = WORKING_DIRECTORY;
   // Return the updated workspace object
   return ws;
 }
@@ -1098,7 +989,7 @@ function checkForUpdates() {
 }
 
 // Initialize the solver
-const SOLVER = new MILPSolver(SETTINGS, WORKSPACE);
+const SOLVER = new MILPSolver(SETTINGS.preferred_solver, WORKSPACE);
 /*
 // Initialize the dialog for interaction with the user
 const PROMPTER = readline.createInterface(

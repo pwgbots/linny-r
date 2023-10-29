@@ -76,7 +76,7 @@ module.exports = class MILPSolver {
     if(this.solver_list.hasOwnProperty(id)) {
       this.id = id;
       this.default_solver = this.id;
-      console.log('Default solver changed to', this.name);
+      console.log('Default solver now is', this.name);
       return true;
     }
     console.log(`WARNING: Unknown solver ID "${id}"`);
@@ -350,7 +350,7 @@ module.exports = class MILPSolver {
       return result;
     }
     const s = this.solver_list[this.id];
-    console.log('Solve block', result.block, result.round);
+    console.log('Solve block', result.block, result.round, 'with', s.name);
     // Write the POSTed MILP model to a file.
     fs.writeFileSync(s.user_model, sp.get('data').trim());
     // Delete previous log file (if any).
@@ -678,9 +678,10 @@ module.exports = class MILPSolver {
     try {
       result.model = fs.readFileSync(s.solver_model, 'utf8');
     } catch(err) {
-      console.log(err);
+      console.log(err.toString());
       result.model = 'ERROR reading solver model file: ' + err;
     }
+    if(result.error) console.log('Solver error:', result.error);
     return result;
   }
 

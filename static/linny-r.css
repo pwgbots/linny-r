@@ -1209,37 +1209,25 @@ td.export {
 }
 #server-host-div,
 #server-solver-div {
-  margin: 2px;
+  margin: 3px;
 }
 
 #server-no-solver-div {
-  margin: 2px;
+  margin: 3px;
   padding-top: 2px;
   padding-bottom: 2px;
   font-style: italic;
   margin-bottom: 2px;
 }
 
-#server-cfg {
-  margin-bottom: 8px;
-}
-
-#server-settings {
-  width: 100%;
-  height: 100px;
-  margin-top: 2px;
-  margin-bottom: 2px;
-}
-
-#server-solver,
-#server-restore {
+#server-solver {
   font-size: 12px;
+  margin-bottom: 3px;
 }
 
 #server-update,
 #server-shut-down {
-  margin: 2px;
-  margin-top: 6px;
+  margin: 3px;
   font-size: 12px;
 }
 

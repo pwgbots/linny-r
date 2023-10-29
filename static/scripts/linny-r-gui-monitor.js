@@ -326,13 +326,13 @@ class GUIMonitor {
           } else if(jsr.server) {
             VM.solver_token = jsr.token;
             VM.solver_name = jsr.solver;
-            // Remote solver may indicate user-specific solver time limit
+            // Remote solver may indicate user-specific solver time limit.
             let utl = '';
             if(jsr.time_limit) {
               VM.max_solver_time = jsr.time_limit;
               utl = ` -- ${VM.solver_name} solver: ` +
                   `max. ${VM.max_solver_time} seconds per block`;
-              // If user has a set time limit, no restrictions on tableau size
+              // If user has a set time limit, no restrictions on tableau size.
               VM.max_tableau_size = 0;
             }
             UI.notify('Logged on to ' + jsr.server + utl);
@@ -346,12 +346,15 @@ class GUIMonitor {
   }
 
   connectToServer() {
-    // Prompts for credentials if not connected yet
-    // NOTE: no authentication prompt if SOLVER.user_id in `linny-r-config.js`
-    // is left blank
+    // Prompts for credentials if not connected yet.
+    // NOTE: No authentication prompt if SOLVER.user_id in `linny-r-config.js`
+    // is left blank.
     if(!VM.solver_user) {
+      VM.connected = false;
       VM.solver_token = 'local host';
-      fetch('solver/', postData({action: 'logon'}))
+      fetch('solver/', postData({
+            action: 'logon',
+            solver: MODEL.preferred_solver || VM.solver_name}))
         .then((response) => {
             if(!response.ok) {
               UI.alert(`ERROR ${response.status}: ${response.statusText}`);
@@ -369,6 +372,7 @@ class GUIMonitor {
               VM.solver_name = jsr.solver;
               VM.solver_list = jsr.solver_list;
               document.getElementById('host-logo').title  = svr;
+              VM.connected = true;
             } catch(err) {
               console.log(err, data);
               UI.alert('ERROR: Unexpected data from server: ' +
@@ -384,6 +388,7 @@ class GUIMonitor {
   }
 
   submitBlockToSolver() {
+    // Post MILP model plus relevant metadata to the server.
     let top = MODEL.timeout_period;
     if(VM.max_solver_time && top > VM.max_solver_time) {
       top = VM.max_solver_time;
@@ -401,7 +406,10 @@ UI.logHeapSize(`BEFORE creating post data`);
             round: VM.round_sequence[VM.current_round],
             columns: VM.columnsInBlock,
             data: VM.lines,
-            timeout: top
+            solver: MODEL.preferred_solver,
+            timeout: top,
+            inttol: MODEL.integer_tolerance,
+            mipgap: MODEL.MIP_gap
           });
 UI.logHeapSize(`AFTER creating post data`);
     // Immediately free the memory taken up by VM.lines

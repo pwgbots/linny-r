@@ -720,7 +720,7 @@ class GUIController extends Controller {
         () => UI.modals.solver.hide());
     // Make server modal elements responsive.
     this.modals.server.ok.addEventListener('click',
-        () => UI.changeSolver());
+        () => UI.changeSolver(UI.modals.server.element('solver').value));
     this.modals.server.cancel.addEventListener('click',
         () => UI.modals.server.hide());
     this.modals.server.element('update').addEventListener('click',
@@ -890,21 +890,25 @@ class GUIController extends Controller {
   }
 
   loadModelFromXML(xml) {
-    // Parses `xml` and updates the GUI 
+    // Parse `xml` and update the GUI.
     const loaded = MODEL.parseXML(xml);
-    // If not a valid Linny-R model, ensure that the current model is clean 
+    // If not a valid Linny-R model, ensure that the current model is clean.
     if(!loaded) MODEL = new LinnyRModel();
+    // If model specifies a preferred solver, immediately try to switch.
+    if(MODEL.preferred_solver !== VM.solver_name) {
+      UI.changeSolver(MODEL.preferred_solver);
+    }
     this.updateScaleUnitList();
     this.drawDiagram(MODEL);
-    // Cursor may have been set to `waiting` when decrypting
+    // Cursor may have been set to `waiting` when decrypting.
     this.normalCursor();
     this.setMessage('');
     this.updateButtons();
     // Undoable operations no longer apply!
     UNDO_STACK.clear();
-    // Autosaving should start anew
+    // Autosaving should start anew.
     AUTO_SAVE.setAutoSaveInterval();
-    // Signal success or failure
+    // Signal success or failure.
     return loaded;
   }
   
@@ -918,15 +922,15 @@ class GUIController extends Controller {
     MODEL.clearSelection();
     this.paper.drawModel(MODEL);
     this.updateButtons();
-    // NOTE: when "moving up" in the cluster hierarchy, bring the former focal
-    // cluster into view
+    // NOTE: When "moving up" in the cluster hierarchy, bring the former
+    // focal cluster into view.
     if(fc.cluster == MODEL.focal_cluster) {
       this.scrollIntoView(fc.shape.element.childNodes[0]);
     }
   }
   
   drawDiagram(mdl) {
-    // "Queue" a draw request (to avoid redrawing too often)
+    // "Queue" a draw request (to avoid redrawing too often).
     if(this.busy_drawing) {
       this.draw_requests += 1;
     } else {
@@ -982,7 +986,9 @@ class GUIController extends Controller {
         nsd = md.element('no-solver-div'),
         html = [];
     host.innerText = 'Server on ' + VM.server;
-    if(VM.server === 'local host') host.title = VM.working_directory;
+    if(VM.server === 'local host') {
+      host.title = 'Linny-R directory is ' + VM.working_directory;
+    }
     for(let i = 0; i < VM.solver_list.length; i++) {
       const s = VM.solver_list[i];
       html.push(['<option value="', s,
@@ -1000,12 +1006,19 @@ class GUIController extends Controller {
     md.show();
   }
   
-  changeSolver() {
-    // Change solver configuration.
-    const md = this.modals.server;
+  changeSolver(sid) {
+    // Change preferred solver to `sid` if specified.
+    if(!sid) return;
+    const
+        md = this.modals.server,
+        mps = MODEL.preferred_solver;
     md.hide();
-    if(SOLVER.user_id) return;
-    const pd = postData({action: 'change', solver: md.element('solver').value});
+    if(mps && mps !== sid) {
+      UI.warn('Model setttings designate ' + VM.solver_names[mps] +
+          ' as preferred solver');
+      return;
+    }
+    const pd = postData({action: 'change', solver: sid});
     fetch('solver/', pd)
       .then((response) => {
           if(!response.ok) {
@@ -1015,7 +1028,7 @@ class GUIController extends Controller {
         })
       .then((data) => {
           if(UI.postResponseOK(data, true)) {
-            VM.solver_name = UI.modals.server.element('solver').value;
+            VM.solver_name = sid;
             UI.modals.server.hide();
           }
         })
@@ -3604,7 +3617,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
   showSolverPreferencesDialog() {
     const
         md = this.modals.solver,
-        html = [];
+        html = ['<option value="">(default)</option>'];
     for(let i = 0; i < VM.solver_list.length; i++) {
       const s = VM.solver_list[i];
       html.push(['<option value="', s,
@@ -3633,7 +3646,13 @@ console.log('HERE name conflicts', name_conflicts, mapping);
         'relative MIP gap');
     if(mgap === false) return false;
     // Modify solver preferences for the current model.
-    MODEL.preferred_solver = md.element('preference').value;
+    const ps = md.element('preference').value;
+    if(ps !== MODEL.preferred_solver) {
+      MODEL.preferred_solver = ps;
+      // Immediately try to change to the preferred solver, as this is
+      // an asynchronous call that may take time to complete.
+      UI.changeSolver(ps);
+    }
     MODEL.integer_tolerance = Math.max(1e-9, Math.min(0.1, itol));
     MODEL.MIP_gap = Math.max(0, Math.min(0.5, mgap));
     // Close the dialog.
