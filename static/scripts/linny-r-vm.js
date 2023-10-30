@@ -2951,7 +2951,7 @@ class VirtualMachine {
       return obj.la_peak_inc[c];
     }
     const prior_level = obj.actualLevel(t);
-console.log('HERE obj prilev t', obj.displayName, prior_level, t, obj.level);
+//console.log('HERE obj prilev t', obj.displayName, prior_level, t, obj.level);
     if(type === 'OO') return prior_level > 0 ? 1 : 0;
     if(type === 'IZ') return prior_level === 0 ? 1 : 0;
     // Start-up at time t entails that t is in the list of start-up
@@ -4312,7 +4312,7 @@ console.log('HERE obj prilev t', obj.displayName, prior_level, t, obj.level);
     // Return floating point number `n`, or +INF or -INF if the absolute
     // value of `n` is relatively (!) close to the VM infinity constants
     // (since the solver may return imprecise values of such magnitude).
-    if(n > 0.5 * VM.PLUS_INFINITY && n < VM.BEYOND_PLUS_INFINITY) {
+      if(n > 0.5 * VM.PLUS_INFINITY && n < VM.BEYOND_PLUS_INFINITY) {
       return VM.PLUS_INFINITY;
     } 
     if(n < 0.5 * VM.MINUS_INFINITY && n > VM.BEYOND_MINUS_INFINITY) {

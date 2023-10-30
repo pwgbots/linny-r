@@ -218,6 +218,7 @@ class ConsoleMonitor {
             token: VM.solver_token,
             block: VM.block_count,
             round: VM.round_sequence[VM.current_round],
+            columns: VM.columnsInBlock,
             data: VM.lines,
             solver: MODEL.preferred_solver,
             timeout: top,
@@ -1030,32 +1031,41 @@ global.RECEIVER = new ConsoleReceiver();
 global.IO_CONTEXT = null;
 global.MODEL = new LinnyRModel();
 
-// Connect the virtual machine (may prompt for password)
+// Connect the virtual machine (may prompt for password).
 MONITOR.connectToServer();
 
-// Load the model if specified
+// Load the model if specified.
 if(SETTINGS.model_path) {
   FILE_MANAGER.loadModel(SETTINGS.model_path, (model) => {
-      // Command `run` takes precedence over `xrun`
+      // Command `run` takes precedence over `xrun`.
       if(SETTINGS.run) {
         MONITOR.show_log = SETTINGS.verbose;
+        // Callback hook "tells" VM where to return after solving.
         VM.callback = () => {
             const od = model.outputData;
-            // Output data is two-string list [time series, statistics]
+            // Output data is two-string list [time series, statistics].
             if(SETTINGS.report) {
-              // Output time series
+              // Output time series.
               FILE_MANAGER.writeStringToFile(od[0],
                   SETTINGS.report + '-series.txt');
-              // Output statistics
+              // Output statistics.
               FILE_MANAGER.writeStringToFile(od[1],
                   SETTINGS.report + '-stats.txt');
             } else if(!MODEL.report_results) {
-              // Output strings to console
+              // Output strings to console.
               console.log(od[0]);
               console.log(od[1]);
             }
+            // Clear callback hook (to be neat).
             VM.callback = null;
         };
+        // NOTE: Solver preference in model overrides default solver.
+        const mps = MODEL.preferred_solver;
+        if(mps && SOLVER.solver_list.hasOwnProperty(mps)) {
+          VM.solver_name = mps;
+          SOLVER.id = mps;
+          console.log(`Using solver ${SOLVER.name} (model preference)`);
+        }
         VM.solveModel();
       } else if(SETTINGS.x_title) {
         const xi = MODEL.indexOfExperiment(SETTINGS.x_title);

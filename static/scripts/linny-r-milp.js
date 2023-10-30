@@ -444,7 +444,7 @@ module.exports = class MILPSolver {
   }
 
   processSolverOutput(result) {
-    // Read solver output files and return solution (or error)
+    // Read solver output files and return solution (or error).
     const
         x_values = [],
         x_dict = {},

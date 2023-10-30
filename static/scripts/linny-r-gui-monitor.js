@@ -365,7 +365,8 @@ class GUIMonitor {
             try {
               const
                   jsr = JSON.parse(data),
-                  svr = `Solver on ${jsr.server} is ${jsr.solver}`;
+                  sname = VM.solver_names[jsr.solver] || 'unknown',
+                  svr = `Solver on ${jsr.server} is ${sname}`;
               if(jsr.solver !== VM.solver_name) UI.notify(svr);
               VM.server = jsr.server;
               VM.working_directory = jsr.path;

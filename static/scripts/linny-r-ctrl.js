@@ -260,7 +260,7 @@ class Controller {
     return VM.sig2Dig(n) + ' ' + 'kMGTP'.charAt(m) + 'B';
   }
   
-  // Shapes are only used to draw model diagrams
+  // Shapes are only used to draw model diagrams.
   
   createShape(mdl) {
     if(this.paper) return new Shape(mdl);
@@ -275,7 +275,7 @@ class Controller {
     if(shape) shape.removeFromDOM();
   }
 
-  // Methods to ensure proper naming of entities
+  // Methods to ensure proper naming of entities.
 
   cleanName(name) {
     // Returns `name` without the object-attribute separator |, backslashes,
@@ -429,7 +429,7 @@ class Controller {
 
   
   nameToID(name) {
-    // Returns a name in lower case with link arrow replaced by three
+    // Return a name in lower case with link arrow replaced by three
     // underscores, constraint link arrow by four underscores, and spaces
     // converted to underscores; in this way, IDs will always be valid
     // JavaScript object properties.
@@ -442,7 +442,7 @@ class Controller {
       // Empty string signals failure.
       return '';
     }
-    // NOTE: replace single quotes by Unicode apostrophe so that they
+    // NOTE: Replace single quotes by Unicode apostrophe so that they
     // cannot interfere with JavaScript strings delimited by single quotes.
     return name.toLowerCase().replace(/\s/g, '_').replace("'", '\u2019');
   }
@@ -485,8 +485,8 @@ class Controller {
   // Methods to notify modeler
   
   setMessage(msg, type, cause=null) {
-    // Only log errors and warnings on the browser console
-    // NOTE: optionally, the JavaScript error can be passed via `cause`
+    // Only log errors and warnings on the browser console.
+    // NOTE: Optionally, the JavaScript error can be passed via `cause`.
     if(type === 'error' || type === 'warning') {
       // Add type unless message already starts with it
       type = type.toUpperCase() + ':';
@@ -563,20 +563,20 @@ class Controller {
   }
   
   loginPrompt() {
-    // The VM needs credentials - his should only occur for the GUI
+    // The VM needs credentials - his should only occur for the GUI.
     console.log('WARNING: VM needs credentials, but GUI not active');
   }
 
   resetModel() {
-    // Resets the Virtual Machine (clears solution) 
+    // Reset the Virtual Machine (clears solution). 
     VM.reset();
-    // Redraw model in the browser (GUI only)
+    // Redraw model in the browser (GUI only).
     MODEL.clearSelection();
     this.drawDiagram(MODEL);
   }
   
   stopSolving() {
-    // Notify user only if VM was halted
+    // Notify user only if VM was halted.
     if(VM.halted) {
       this.notify('Solver HALTED');
     } else {
@@ -585,8 +585,9 @@ class Controller {
   }
   
   // NOTE: The following UI functions are implemented as "dummy" methods
-  // because they are called by the Virtual Machine and/or by other controllers
-  // while they can only be meaningfully performed by the GUI controller
+  // because they are called by the Virtual Machine and/or by other
+  // controllers while they can only be meaningfully performed by the
+  // GUI controller.
   addListeners() {}
   readyToReset() {}
   updateScaleUnitList() {}
@@ -616,27 +617,27 @@ class RepositoryBrowser {
     this.repositories = [];
     this.repository_index = -1; 
     this.module_index = -1;
-    // Get the repository list from the server
+    // Get the repository list from the server.
     this.getRepositories();
     this.reset();
   }
   
   reset() {
     this.visible = false;
-    // NOTE: do NOT reset repository list or module index, because:
-    // (1) they are properties of the local host, and hence model-independent
+    // NOTE: Do NOT reset repository list or module index, because:
+    // (1) they are properties of the local host, and hence model-independent;
     // (2) they must be known when loading a module as model, whereas the
-    //     loadingModel method hides and resets all stay-on-top dialogs
+    //     loadingModel method hides and resets all stay-on-top dialogs.
   }
 
   get isLocalHost() {
-    // Returns TRUE if first repository on the list is 'local host'
+    // Return TRUE if first repository on the list is 'local host'.
     return this.repositories.length > 0 &&
       this.repositories[0].name === 'local host';
   }
 
   getRepositories() {
-    // Gets the list of repository names from the server
+    // Get the list of repository names from the server.
     this.repositories.length = 0;
     fetch('repo/', postData({action: 'list'}))
       .then((response) => {
@@ -647,14 +648,14 @@ class RepositoryBrowser {
         })
       .then((data) => {
           if(UI.postResponseOK(data)) {
-            // NOTE: trim to prevent empty name strings
+            // NOTE: Trim to prevent empty name strings.
             const rl = data.trim().split('\n');
             for(let i = 0; i < rl.length; i++) {
               this.addRepository(rl[i].trim());
             }
           }
-          // NOTE: set index to first repository on list (typically local host)
-          // unless the list is empty
+          // NOTE: Set index to first repository on list (typically the
+          // local host repository) unless the list is empty.
           this.repository_index = Math.min(0, this.repositories.length - 1);
           this.updateDialog();
         })
@@ -662,7 +663,7 @@ class RepositoryBrowser {
   }
   
   repositoryByName(n) {
-    // Returns the repository having name `n` if already known, otherwise NULL
+    // Return the repository having name `n` if already known, or NULL.
     for(let i = 0; i < this.repositories.length; i++) {
       if(this.repositories[i].name === n) {
         return this.repositories[i];
@@ -672,8 +673,8 @@ class RepositoryBrowser {
   }
   
   asFileName(s) {
-    // Returns string `s` with whitespace converted to a single dash, and
-    // special characters converted to underscores
+    // Return string `s` with whitespace converted to a single dash, and
+    // special characters converted to underscores.
     return s.normalize('NFKD').trim()
         .replace(/[\s\-]+/g, '-')
         .replace(/[^A-Za-z0-9_\-]/g, '_')
@@ -681,12 +682,13 @@ class RepositoryBrowser {
   }
   
   loadModuleAsModel() {
-    // Loads selected module as model
+    // Load selected module as model.
     if(this.repository_index >= 0 && this.module_index >= 0) {
-      // NOTE: when loading new model, the stay-on-top dialogs must be reset
+      // NOTE: When loading new model, the stay-on-top dialogs must be
+      // reset (GUI only; for console this is a "dummy" method).
       UI.hideStayOnTopDialogs();
       const r = this.repositories[this.repository_index];
-      // NOTE: pass FALSE to indicate "no inclusion; load XML as model"
+      // NOTE: pass FALSE to indicate "no inclusion; load XML as model".
       r.loadModule(this.module_index, false);
     }
   }

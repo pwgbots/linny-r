@@ -2682,7 +2682,7 @@ class GUIController extends Controller {
     }
     // Display text only if previous message has "timed out" or was less
     // urgent than this one.
-    if(mti > lmti || dt >= this.message_display_time) {
+    if(lmti < 0 || mti > lmti || dt >= this.message_display_time) {
       this.time_last_message = t;
       this.last_message_type = type;
       if(type) SOUNDS[type].play().catch(() => {
