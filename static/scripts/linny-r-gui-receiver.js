@@ -199,7 +199,7 @@ class GUIReceiver {
                       // Keep listening, so check again after the time interval
                       setTimeout(() => RECEIVER.listen(), RECEIVER.interval);
                     })
-                  .catch(() => UI.warn(UI.WARNING.NO_CONNECTION, err));
+                  .catch((err) => UI.warn(UI.WARNING.NO_CONNECTION, err));
               } else {
                 RECEIVER.log('Executing: ' + RECEIVER.file_name);
                 // NOTE: Virtual Machine will trigger the receiver's reporting
@@ -216,7 +216,7 @@ class GUIReceiver {
             }
           }
         })
-      .catch(() => UI.warn(UI.WARNING.NO_CONNECTION, err));
+      .catch((err) => UI.warn(UI.WARNING.NO_CONNECTION, err));
   }
 
   report() {
@@ -232,7 +232,7 @@ class GUIReceiver {
     if(this.experiment || !this.active) {
       if(MODEL.running_experiment) {
         run = MODEL.running_experiment.active_combination_index;
-        this.log(`Reporting: ${this.file_name} (run #${run})`);
+        this.log(`Reporting: ${file} (run #${run})`);
       }
     }
     // NOTE: If receiver is not active, path and file must be set.
@@ -284,7 +284,7 @@ class GUIReceiver {
           // the Experiment Manager.
           if(RECEIVER.active && !RECEIVER.experiment) RECEIVER.callBack();
         })
-      .catch(() => UI.warn(UI.WARNING.NO_CONNECTION, err));
+      .catch((err) => UI.warn(UI.WARNING.NO_CONNECTION, err));
   }
 
   callBack() {
@@ -317,7 +317,7 @@ class GUIReceiver {
             }
           }
         })
-      .catch(() => UI.warn(UI.WARNING.NO_CONNECTION, err));
+      .catch((err) => UI.warn(UI.WARNING.NO_CONNECTION, err));
   }
 
 } // END of class GUIReceiver

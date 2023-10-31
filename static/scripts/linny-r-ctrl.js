@@ -1291,6 +1291,8 @@ class ExperimentManager {
       // Only now compute the simulation run time (number of time steps)
       xr.time_steps = MODEL.end_period - MODEL.start_period + 1;
       VM.callback = this.callback;
+      // NOTE: Asynchronous call. All follow-up actions must be performed
+      // by the callback function.
       VM.solveModel();
     }
   }
@@ -1317,11 +1319,11 @@ class ExperimentManager {
   }
 
   processRestOfRun() {   
-    // Performs post-processing after run results have been added.
+    // Perform post-processing after run results have been added.
     const x = MODEL.running_experiment;
     if(!x) return;
     const aci = x.active_combination_index;
-    // Always add solver messages
+    // Always add solver messages.
     x.runs[aci].addMessages();
     const n = x.combinations.length;
     if(!VM.halted && aci < n - 1 && aci != x.single_run) {
@@ -1332,8 +1334,8 @@ class ExperimentManager {
       } else {
         x.active_combination_index++;
         let delay = 5;
-        // NOTE: when executing a remote command, wait for 1 second to
-        // allow enough time for report writing
+        // NOTE: When executing a remote command, wait for 1 second to
+        // allow enough time for report writing.
         if(RECEIVER.active && RECEIVER.experiment) {
           UI.setMessage('Reporting run #' + (x.active_combination_index - 1));
           delay = 1000;
@@ -1354,8 +1356,8 @@ class ExperimentManager {
             `Experiment <em>${x.title}</em> terminated during run #${aci}`);
         RECEIVER.deactivate();
       }
-      // No more runs => stop experiment, and perform call-back
-      // NOTE: if call-back is successful, the receiver will resume listening
+      // No more runs => stop experiment, and perform call-back.
+      // NOTE: If call-back is successful, the receiver will resume listening.
       if(RECEIVER.active) {
         RECEIVER.experiment = '';
         RECEIVER.callBack();
@@ -1365,34 +1367,35 @@ class ExperimentManager {
       MODEL.parseSettings(x.original_model_settings);
       MODEL.round_sequence = x.original_round_sequence;
       // Reset the Virtual Machine so t=0 at the status line,
-      // and ALL expressions are reset as well
+      // and ALL expressions are reset as well.
       VM.reset();
       this.readyButtons();
     }
     this.drawTable();
-    // Reset the model, as results of last run will be showing still
+    // Reset the model, as results of last run will be showing still.
     UI.resetModel();
     CHART_MANAGER.resetChartVectors();
-    // NOTE: clear chart only when done (charts do not update during experiment)
+    // NOTE: Clear chart only when done; charts do not update when an
+    // experiment is running.
     if(!MODEL.running_experiment) CHART_MANAGER.updateDialog();
   }
 
   stopExperiment() {
-    // Interrupt solver but retain data on server (and no resume)
+    // Interrupt solver but retain data on server (and no resume).
     VM.halt(); 
   }
   
   showProgress(ci, p, n) {
-    // Report progress on the console
+    // Report progress on the console.
     console.log('\nRun', ci, `(${p}% of ${n})`);
   }
 
   resumeButtons() {
-    // Console experiments cannot be paused, and hence not resumed
+    // Console experiments cannot be paused, and hence not resumed.
     return false;
   }
 
-  // Dummy methods: actions that are meaningful only for the graphical UI
+  // Dummy methods: actions that are meaningful only for the graphical UI.
   drawTable() {}
   readyButtons() {}
   pausedButtons() {}

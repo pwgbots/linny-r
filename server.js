@@ -979,7 +979,7 @@ function receiver(res, sp) {
     rcvrAbort(res, rpath, rfile, sp.get('log') || 'NO EVENT LOG');
   } else if(action === 'report') {
     let run = sp.get('run');
-    // Zero-pad run number to permit sorting run report file names in sequence
+    // Zero-pad run number to permit sorting run report file names in sequence.
     run = (run ? '-' + run.padStart(3, '0') : '');
     let data = sp.get('data') || '',
         stats = sp.get('stats') || '',

@@ -132,7 +132,6 @@ Possible options are:
   workspace=[path]      will create workspace in [path] instead of (main)/user
   xrun=[title#list]     will perform experiment runs in given range
                         (list is comma-separated sequence of run numbers)
-                        (FUTURE OPTION)
 `;
 
 const SETTINGS = commandLineSettings();
@@ -181,14 +180,19 @@ class ConsoleMonitor {
   
   logMessage(block, msg) {
     // Output a solver message to the console if logging is activated.
+    let new_block = false;
+    if(block > this.block_number) {
+      this.block_number = block;
+      new_block = true;
+    }
     if(this.show_log) {
-      if(block > this.block_number) {
-        // Mark advance to nex block with a blank line.
-        console.log('\nBlock #', block);
-        this.block_number = block;
-      }
+      // Mark advance to nex block with a blank line.
+      if(new_block) console.log('\nBlock #', block);
       console.log(msg);
     }
+    // Always log solver message to receiver report.
+    if(new_block) RECEIVER.log('Block #' + block, true);
+    RECEIVER.log(msg, true);
   }
 
   logOnToServer() {
@@ -453,18 +457,19 @@ class ConsoleFileManager {
 
 } // END of class ConsoleFileManager
 
-// CLASS ConsoleReceiver defines a listener/interpreter for channel commands
+// CLASS ConsoleReceiver defines a listener/interpreter for channel commands.
 class ConsoleReceiver {
   constructor() {
-    // NOTE: each receiver instance listens to a "channel", being the directory
-    // on the local host specified by the modeler
+    // NOTE: Each receiver instance listens to a "channel", being the
+    // directory on the local host specified by the modeler.
     this.channel = '';
-    // The file name is the name of the first Linny-R model file or command file
-    // that was found in the channel directory
+    // The file name is the name of the first Linny-R model file or
+    // command file that was found in the channel directory.
     this.file_name = '';
-    // The name of the experiment to be run can be specified in a command file
+    // The name of the experiment to be run can be specified in a
+    // command file.
     this.experiment = '';
-    // The call-back script is the path to file with a shell command
+    // The call-back script is the path to file with a shell command.
     this.call_back_script = '';
     this.active = false;
     this.solving = false;
@@ -474,16 +479,16 @@ class ConsoleReceiver {
   }
   
   setError(msg) {
-    // Record and display error message, and immediately stop listening
+    // Record and display error message, and immediately stop listening.
     this.error = msg;
     UI.warn(this.error);
     this.deactivate();
   }
   
-  log(msg) {
-    // Logs a UI message so it will appear in the log file
-    if(this.active) {
-      if(!msg.startsWith('[')) {
+  log(msg, running=false) {
+    // Log a UI message so it will appear in the log file.
+    if(this.active || running) {
+      if(!(msg.startsWith('[') || running)) {
         const
             d = new Date(),
             now = d.getHours() + ':' +
@@ -496,17 +501,17 @@ class ConsoleReceiver {
   }
   
   get logReport() {
-    // Returns log lines as a single string, and clears the log
+    // Return log lines as a single string, and clear the log.
     const report = this.log_lines.join('\n');
     this.log_lines.length = 0;
     return report;
   }
 
   activate() {
-    // Sets channel path and (optional) call-back script
+    // Set channel path and (optional) call-back script.
     this.channel = SETTINGS.channel;
     this.call_back_script = SETTINGS.callback;
-    // Clear experiment, error message and log
+    // Clear experiment, error message and log.
     this.experiment = '';
     this.error = '';
     this.log_lines.length = 0;
@@ -516,7 +521,8 @@ class ConsoleReceiver {
   }
 
   listen() {
-    // If active, checks with local server whether there is a new command
+    // If active, check whether there is a new command in the channel
+    // directory.
     if(!this.active) return;
     const jsr = rcvrListen(this.channel);
     if(jsr.error) {
@@ -525,10 +531,10 @@ class ConsoleReceiver {
       console.log('Receiver deactivated by script');
       this.deactivate();
     } else if(jsr.file === '') {
-      // Nothing to do => check again after the set time interval
+      // Nothing to do => check again after the set time interval.
       setTimeout(() => RECEIVER.listen(), this.interval);
     } else if(jsr.file && jsr.model) {
-      // NOTE: model will NOT be encrypted, so it can be parsed
+      // NOTE: Model will NOT be encrypted, so it can be parsed.
       this.file_name = jsr.file;
       let msg = '';
         if(!MODEL.parseXML(jsr.model)) {
@@ -544,12 +550,12 @@ class ConsoleReceiver {
       if(msg) {
         this.setError(msg);
         rcvrReport(this.channel, this.file_name);
-        // Keep listening, so check again after the time interval
+        // Keep listening, so check again after the time interval.
         setTimeout(() => RECEIVER.listen(), this.interval);
       } else {
         this.log('Executing: ' + this.file_name);
         // NOTE: Virtual Machine will trigger the receiver's reporting
-        // action each time the model has been solved
+        // action each time the model has been solved.
         if(this.experiment) {
           this.log('Starting experiment: ' + this.experiment);
           EXPERIMENT_MANAGER.startExperiment();
@@ -561,13 +567,13 @@ class ConsoleReceiver {
   }
 
   report() {
-    // Saves the run results in the channel, or signals an error
+    // Save the run results in the channel, or signal an error.
     let run = '',
         rpath = this.channel,
         file = this.file_name;
-    // NOTE: Always set `solving` to FALSE
+    // NOTE: Always set `solving` to FALSE.
     this.solving = false;
-    // NOTE: When reporting receiver while is not active, report the
+    // NOTE: When reporting while the receiver is not active, report the
     // results of the running experiment.
     if(this.experiment || !this.active) {
       if(MODEL.running_experiment) {
@@ -578,20 +584,22 @@ class ConsoleReceiver {
     // NOTE: If receiver is not active, path and file must be set.
     if(!this.active) {
       rpath = 'user/reports';
+      // Zero-pad the run number.
       file = REPOSITORY_BROWSER.asFileName(MODEL.name || 'model') +
-          run + '-' + compactClockTime();
+          (run === '' ? '' : '-' + run.toString().padStart(3, '0')) +
+          `-${compactClockTime()}`;
     }
     if(MODEL.solved && !VM.halted) {
-      // Normal execution termination => report results
+      // Normal execution termination => report results.
       const data = MODEL.outputData;
       rcvrReport(rpath, file, run, data[0], data[1]);
-      // If execution completed, perform the call-back action
-      // NOTE: for experiments, call-back is performed upon completion by
-      // the Experiment Manager
+      // If execution completed, perform the call-back action.
+      // NOTE: For experiments, call-back is performed upon completion by
+      // the Experiment Manager.
       if(!this.experiment) this.callBack();
     } else {
       if(!VM.halted && !this.error) {
-        // No apparent cause => log this irregularity
+        // No apparent cause => log this irregularity.
         this.setError('ERROR: Unknown solver problem');
         rcvrAbort();
       }
@@ -599,26 +607,26 @@ class ConsoleReceiver {
   }
 
   callBack() {
-    // Deletes the file in the channel directory (to prevent executing it again)
-    // and activates the call-back script on the local server
-    rcvrCallBack(this.call_back_script);
+    // Run the call-back script (if specified) only when the receiver is
+    // active (so not when its reporting function is called by the VM).
+    if(this.active) rcvrCallBack(this.call_back_script);
   }
 
 } // END of class ConsoleReceiver
 
-// Receiver helper functions
-// NOTE: these functions are adapted versions of those having the same
+// Receiver helper functions.
+// NOTE: These functions are adapted versions of those having the same
 // name in file `server.js`; the main difference is that those functions
-// respond to HTTP requests, whereas now they return objects
+// respond to HTTP requests, whereas now they return objects.
 
 function rcvrListen(rpath) {
-  // "Listens" at the channel, i.e., looks for work to do
+  // "Listen" at the channel, i.e., look for work to do.
   let mdl = '',
       cmd = '';
   try {
-    // Look for a model file and/or a command file in the channel directory
+    // Look for a model file and/or a command file in the channel directory.
     const flist = fs.readdirSync(rpath);
-    // NOTE: `flist` contains file names relative to the channel path
+    // NOTE: `flist` contains file names relative to the channel path.
     for(let i = 0; i < flist.length; i++) {
       const f = path.parse(flist[i]);
       if(f.ext === '.lnr' && !mdl) mdl = flist[i];
@@ -628,7 +636,7 @@ function rcvrListen(rpath) {
     console.log(err);
     return {error: `Failed to get file list from ${rpath}`};
   }
-  // Model files take precedence over command files
+  // Model files take precedence over command files.
   if(mdl) {
     try {
       const data = fs.readFileSync(path.join(rpath, mdl), 'utf8');
@@ -645,7 +653,7 @@ function rcvrListen(rpath) {
       console.log(err);
       return {error: `Failed to read command file ${cmd}`};
     }
-    // Special command to deactivate the receiver
+    // Special command to deactivate the receiver.
     if(cmd === 'STOP LISTENING') {
       return {stop: 1};
     } else {
@@ -655,24 +663,24 @@ function rcvrListen(rpath) {
           r = '',
           x = '';
       const m_r = cmd.split('@');
-      // Repository `r` is local host unless specified
+      // Repository `r` is local host unless specified.
       if(m_r.length === 2) {
         r = m_r[1];
       } else if(m_r.length === 1) {
         r = 'local host';
       } else {
-        // Multiple occurrences of @
+        // Multiple occurrences of @ are not allowed.
         return {error: `Invalid command "${cmd}"`};
       }
       m = m_r[0];
-      // Module `m` can be prefixed by an experiment title
+      // Module `m` can be prefixed by an experiment title.
       const x_m = m.split('|');
       if(x_m.length === 2) {
         x = x_m[0];
         m = x_m[1];
       }
       // Call the repository helper function `repoLoad` with its callback
-      // function to get the model XML
+      // function to get the model XML.
       return {
           file: path.parse(cmd).name,
           model: repoLoad(r.trim(), m.trim()),
@@ -680,12 +688,13 @@ function rcvrListen(rpath) {
         };
     }
   } else {
-    // Empty fields will be interpreted as "nothing to do"
+    // Empty fields will be interpreted as "nothing to do".
     return {file: '', model: '', experiment: ''};
   }
 }
 
 function rcvrAbort() {
+  // Log that receiver actions have been aborted.
   const log_path = path.join(RECEIVER.channel, RECEIVER.file_name + '-log.txt');
   fs.writeFile(log_path, RECEIVER.logReport, (err) => {
       if(err) {
@@ -698,6 +707,7 @@ function rcvrAbort() {
 }
 
 function rcvrReport(rpath, file, run='', data='no data', stats='no statistics') {
+  // Write series data, statistics and log to files.
   try {
     let fp = path.join(rpath, file + run + '-data.txt');
     fs.writeFileSync(fp, data);
@@ -725,6 +735,8 @@ function rcvrReport(rpath, file, run='', data='no data', stats='no statistics') 
 }
 
 function rcvrCallBack(script) {
+  // Delete the file in the channel directory (to prevent executing it
+  // again) and activate the call-back script on the local server.
   let file_type = '',
       cpath = path.join(RECEIVER.channel, RECEIVER.file_name + '.lnr');
   try {
@@ -778,7 +790,7 @@ function rcvrCallBack(script) {
 //
 
 function commandLineSettings() {
-  // Sets default settings, and then checks the command line arguments
+  // Set default settings, and then check the command line arguments.
   const settings = {
       cli_name: (PLATFORM.startsWith('win') ? 'Command Prompt' : 'Terminal'),
       check: false,
@@ -786,6 +798,8 @@ function commandLineSettings() {
       preferred_solver: '',
       report: '',
       run: false,
+      x_title: '',
+      x_list: false,
       solver: '',
       solver_path: '',
       user_dir: path.join(WORKING_DIRECTORY, 'user'),
@@ -872,24 +886,29 @@ function commandLineSettings() {
         // Check is repository exists, etc.
         // @@@TO DO!
       } else if(av[0] === 'xrun') {
-        // NOTE: use original argument to preserve upper/lower case
-        const x = process.argv[i].split('=')[1].split('#');
-        settings.x_title = x[0];
-        settings.x_runs = [];
-        x.splice(0, 1);
-        // In case of multiple #, interpret them as commas
-        const r = x.join(',').split(',');
-        for(let i = 0; i < r.length; i++) {
-          if(/^\d+$/.test(r[i])) {
-            settings.x_runs.push(parseInt(r[i]));
-          } else {
-            console.log(`WARNING: Invalid run number "${r[i]}"`);
+        if(!av[1].trim()) {
+          // NOTE: `x_title` = TRUE indicates: list available experiments.
+          settings.x_title = true;
+        } else {
+          // NOTE: use original argument to preserve upper/lower case
+          const x = process.argv[i].split('=')[1].split('#');
+          settings.x_title = x[0].trim();
+          if(!settings.x_title) settings.x_title = true;
+          settings.x_runs = [];
+          x.splice(0, 1);
+          // In case of multiple #, interpret them as commas.
+          const r = (x.length > 0 ? x.join(',').split(',') : []);
+          for(let i = 0; i < r.length; i++) {
+            if(/^\d+$/.test(r[i])) {
+              settings.x_runs.push(parseInt(r[i]));
+            } else {
+              console.log(`WARNING: Invalid run number "${r[i]}"`);
+            }
           }
-        }
-        // If only invalid numbers, do not run the experiment at all
-        if(r.length > 0 && settings.x_runs === 0) {
-          console.log(`Experiment "${settings.x_title}" will not be run`);
-          settings.x_title = '';
+          // If only invalid numbers, do not run the experiment at all.
+          if(r.length > 0 && settings.x_runs.length === 0) {
+            settings.x_runs = false;
+          }
         }
       } else {
         // Terminate script
@@ -899,12 +918,12 @@ function commandLineSettings() {
       }
     }
   }
-  // If help is asked for, or command is invalid, show usage and then quit
+  // If help is asked for, or command is invalid, show usage and then quit.
   if(show_usage) {
     console.log(usage);
     process.exit();
   }
-  // Perform version check only if asked for
+  // Perform version check only if asked for.
   if(settings.check) checkForUpdates();
   return settings;
 }
@@ -1068,26 +1087,68 @@ if(SETTINGS.model_path) {
         }
         VM.solveModel();
       } else if(SETTINGS.x_title) {
-        const xi = MODEL.indexOfExperiment(SETTINGS.x_title);
-        if(xi < 0) {
-          console.log(`WARNING: Unknown experiment "${SETTINGS.x_title}"`);
-        } else {
-          EXPERIMENT_MANAGER.selectExperiment(SETTINGS.x_title);
-          EXPERIMENT_MANAGER.callback = () => {
-              const od = model.outputData;
-              console.log(od[0]);
-              console.log(od[1]);
-              VM.callback = null;
-          };
-          if(SETTINGS.x_runs.length === 0) {
-            // Perform complete experiment
-            EXPERIMENT_MANAGER.startExperiment();
+        if(SETTINGS.x_title === true) {
+          // List titles of experiments in model.
+          if(MODEL.experiments.length === 0) {
+            console.log('NOTE: Model defines no experiments');
           } else {
-            // Announce, and then perform, only the selected runs
-            console.log('Experiment:', SETTINGS.x_title,
-                'Runs:', SETTINGS.x_runs);
-            for(let i = 0; i < SETTINGS.x_runs.length; i++) {
-              EXPERIMENT_MANAGER.startExperiment(SETTINGS.x_runs[i]);
+            console.log('No experiment specified. Options are:');
+            for(let i = 0; i < MODEL.experiments.length; i++) {
+              console.log(`${i+1}. ${MODEL.experiments[i].title}`);
+            }
+          }
+        } else {
+          // Check whether experiment exists.
+          let xi = MODEL.indexOfExperiment(SETTINGS.x_title);
+          // NOTE: Experiments can also be specified by their index number.
+          if(xi < 0) {
+            xi = safeStrToInt(SETTINGS.x_title, 0) - 1;
+            if(xi >= MODEL.experiments.length) xi = -1;
+            if(xi >= 0) SETTINGS.x_title = MODEL.experiments[xi].title;
+          }
+          if(xi < 0) {
+            console.log(`WARNING: Unknown experiment "${SETTINGS.x_title}"`);
+          } else {
+            console.log('Experiment:', SETTINGS.x_title);
+            EXPERIMENT_MANAGER.selectExperiment(SETTINGS.x_title);
+            const x = EXPERIMENT_MANAGER.selected_experiment;
+            if(!x) {
+              console.log('ERROR: Experiment not found');
+              return;
+            }
+            // NOTE: Only set callback when model does not auto-report runs.
+            if(!MODEL.report_results) EXPERIMENT_MANAGER.callback = () => {
+                const od = model.outputData;
+                console.log(od[0]);
+                console.log(od[1]);
+                VM.callback = null;
+              };
+            if(SETTINGS.x_runs.length === 0) {
+              // Perform complete experiment.
+              EXPERIMENT_MANAGER.startExperiment();
+            } else {
+              // Announce, and then perform, only the selected runs.
+              console.log('Runs:', SETTINGS.x_runs);
+              for(let i = SETTINGS.x_runs.length - 1; i >= 0; i--) {
+                const rc = x.combinations[SETTINGS.x_runs[i]];
+                if(!rc) {
+                  console.log(
+                      'WARNING: For this experiment, run number range is ' +
+                      `[0 - ${x.combinations.length - 1}]`);
+                  return;
+                }
+              }
+              SETTINGS.run_index = 0;
+              EXPERIMENT_MANAGER.callback = () => {
+                  SETTINGS.run_index++;
+                  if(SETTINGS.run_index < SETTINGS.x_runs.length) {
+                    EXPERIMENT_MANAGER.startExperiment(
+                        SETTINGS.x_runs[SETTINGS.run_index]);
+                  } else {
+                    VM.callback = null;
+                  }
+                };
+              EXPERIMENT_MANAGER.startExperiment(SETTINGS.x_runs[0]);
             }
           }
         }
