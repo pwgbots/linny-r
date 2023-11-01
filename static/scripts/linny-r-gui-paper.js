@@ -2107,16 +2107,16 @@ class Paper {
         const ubs = (ub >= VM.PLUS_INFINITY && !proc.upper_bound.defined ?
             '\u221E' : VM.sig4Dig(ub));
         if(Math.abs(lb) > VM.NEAR_ZERO) {
-          // If lb <> 0 then lb...ub (with ellipsis)
+          // If lb <> 0 then lb...ub (with ellipsis).
           s += '\u2026' + ubs;
         } else {
-          // If lb = 0 show only the upper bound
+          // If lb = 0 show only the upper bound.
           s = ubs;
           lbw = 0;
         }
       }
       // Keep track of the width of the boundary text, as later it may be
-      // followed by more text
+      // followed by more text.
       const
           bb = this.numberSize(s),
           btw = bb.width + 2,
@@ -2125,18 +2125,18 @@ class Paper {
           ty = y - hh + sh/2 + 1;
       proc.shape.addNumber(tx + btw/2, ty, s,
           {fill: 'black', 'font-style': bfs});
-      // Show start/stop-related status right of the process boundaries
-      // NOTE: lb must be > 0 for start/stop to work
+      // Show start/stop-related status right of the process boundaries.
+      // NOTE: lb must be > 0 for start/stop to work.
       if(proc.level_to_zero && lbw) {
         font_color = 'black';
-        // Underline the lower bound to indicate semi-continuity
+        // Underline the lower bound to indicate semi-continuity.
         proc.shape.addPath(
             ['M', tx + lbo, ',', ty + sh/2, 'L', tx + lbo + lbw, ',', ty + sh/2],
             {'fill': 'none', stroke: font_color, 'stroke-width': 0.4});
-        // By default, no ON/OFF indicator
+        // By default, no ON/OFF indicator.
         s = '';
         if(MODEL.solved && l !== VM.UNDEFINED) {
-          // Solver has been active
+          // Solver has been active.
           const
               pl = proc.actualLevel(MODEL.t - 1),
               su = proc.start_ups.indexOf(MODEL.t),
@@ -2145,36 +2145,36 @@ class Paper {
             // Process is ON
             if(Math.abs(pl) < VM.NEAR_ZERO && su >= 0) {
               font_color = this.palette.switch_on_off;
-              // Start-up arrow or first-commit asterisk
+              // Start-up arrow or first-commit asterisk.
               s = VM.LM_SYMBOLS[su ? VM.LM_STARTUP : VM.LM_FIRST_COMMIT];
             } else if(su >= 0) {
               font_color = 'black';
-              s = '\u25B3'; // Outline triangle up to indicate anomaly
+              s = '\u25B3'; // Outline triangle up to indicate anomaly.
             }
             if(sd >= 0) {
-              // Should not occur, as for shut-down, level should be 0
+              // Should not occur, as for shut-down, level should be 0.
               font_color = 'black';
-              s += '\u25BD'; // Add outline triangle down to indicate anomaly
+              s += '\u25BD'; // Add outline triangle down to indicate anomaly.
             }
           } else {
-            // Process is OFF => check previous level
+            // Process is OFF => check previous level.
            if(Math.abs(pl) > VM.NEAR_ZERO && sd >= 0) {
-              // Process was on, and is now switched OFF
+              // Process was on, and is now switched OFF.
               font_color = this.palette.switch_on_off;
               s = VM.LM_SYMBOLS[VM.LM_SHUTDOWN];
             } else if(sd >= 0) {
               font_color = 'black';
-              s = '\u25BD'; // Outline triangle down to indicate anomaly
+              s = '\u25BD'; // Outline triangle down to indicate anomaly.
             }
             if(su >= 0) {
-              // Should not occur, as for start-up, level should be > 0
+              // Should not occur, as for start-up, level should be > 0.
               font_color = 'black';
-              s += '\u25B3'; // Add outline triangle up to indicate anomaly
+              s += '\u25B3'; // Add outline triangle up to indicate anomaly.
             }
           }
         }
         if(s) {
-          // Special symbols are 5 pixels wide and 9 high
+          // Special symbols are 5 pixels wide and 9 high.
           proc.shape.addText(x - hw + btw + 5, y - hh + 4.5, s,
               {fill: font_color});
         }

@@ -7124,24 +7124,24 @@ class Cluster extends NodeBox {
 class Node extends NodeBox {
   constructor(cluster, name, actor) {
     super(cluster, name, actor);
-    // Nodes are assigned a unique code as "shorthand notation"
-    // NOTE: decimal numbers for processes, Excel-style letter codes for
+    // Nodes are assigned a unique code as "shorthand notation".
+    // NOTE: Decimal numbers for processes, Excel-style letter codes for
     // products, i.e., A, ..., Z, AA, AB, etc.
     this.code = null;
-    // By default, nodes are NOT data products (only products can become data!)
+    // By default, nodes are NOT data products (only products can become data).
     this.is_data = false;
-    // By default, node levels are continuous, but may be set to integer
+    // By default, node levels are continuous, but may be set to integer.
     this.integer_level = false;
-    // Processes and products both have input attributes LB, UB and IL, and
-    // result attributes L and CP
+    // Processes and products both have input attributes LB, UB and IL,
+    // and result attributes L and CP.
     this.lower_bound = new Expression(this, 'LB', '');
     this.upper_bound = new Expression(this, 'UB', '');
     this.initial_level = new Expression(this, 'IL', '0');
     this.cost_price = [];
-    // NOTE: for processes, level denotes the production level, for products
-    // the stock level
+    // NOTE: For processes, level denotes the production level, for products
+    // the stock level.
     this.level = [];
-    // `inputs` is array of incoming links, `outputs` is array of outgoing links
+    // `inputs` is array of incoming links, `outputs` is array of outgoing links.
     this.inputs = [];
     this.outputs = [];
     this.predecessors = [];
@@ -7162,13 +7162,13 @@ class Node extends NodeBox {
   }
   
   get hasBounds() {
-    // Returns TRUE if lower or upper bound is defined for this node
+    // Return TRUE if lower or upper bound is defined for this node.
     return this.upper_bound.defined || this.lower_bound.defined;
   }
   
   setConstraintOffsets() {
-    // Sets the offset properties of the constraints that relate to this
-    // node; these properties are used when drawing these constraints.
+    // Set the offset properties of the constraints that relate to this
+    // node. These properties are used when drawing these constraints.
     const tbc = {top: [], bottom: [], thumb: []};
     for(let k in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(k)) {
       const
@@ -7426,14 +7426,14 @@ class Node extends NodeBox {
   }
 
   canConstrain(node) {
-    // Returns TRUE if this node can constrain `node`
-    // NOTE: A node cannot constrain itself, and BOTH nodes must have upper bounds
+    // Return TRUE if this node can constrain `node`.
+    // NOTE: A node cannot constrain itself, and BOTH nodes must have upper bounds.
     return this !== node && this.upper_bound.defined && node.upper_bound.defined;
   }
 
   get costAddingConstraints() {
-    // Returns a (possibly empty) list of composite constraints that can
-    // transfer cost to this node 
+    // Return a (possibly empty) list of composite constraints that can
+    // transfer cost to this node.
     let cac = [];
     for(let k in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(k)) {
       const c = MODEL.constraints[k];
@@ -7448,7 +7448,7 @@ class Node extends NodeBox {
   
   convertLegacyBoundData(lb_data, ub_data) {
     // Convert time series data for LB and UB in legacy models to datasets,
-    // and replace attribute expressions by references to these datasets
+    // and replace attribute expressions by references to these datasets.
     if(!lb_data && !ub_data) return;
     const same = lb_data === ub_data;
     if(lb_data) {
