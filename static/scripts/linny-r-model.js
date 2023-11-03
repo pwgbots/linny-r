@@ -3442,17 +3442,17 @@ class LinnyRModel {
   /* SPECIAL MODEL CALCULATIONS */
   
   calculateCostPrices(t) {
-    // Calculates cost prices of products and processes for time step t
+    // Calculate cost prices of products and processes for time step t.
     let products = [],
         processes = [],
         links = [],
         constraints = [],
         can_calculate = true;
     const
-        // NOTE: define local functions as constants
+        // NOTE: Define local functions as constants.
         costAffectingConstraints = (p) => {
-            // Returns number of relevant contraints (see below) that
-            // can affect the cost price of product or process `p`
+            // Return number of relevant contraints (see below) that
+            // can affect the cost price of product or process `p`.
             let n = 0;
             for(let i = 0; i < constraints.length; i++) {
               const c = constraints[i];
@@ -3462,24 +3462,25 @@ class LinnyRModel {
             return n;
           },
         inputsFromProcesses = (p, t) => {
-            // Returns a tuple {n, nosoc, nz} where n is the number of input links
-            // from processes, nosoc the number of these that carry no cost,
-            // and nz the number of links having actual flow > 0
+            // Return a tuple {n, nosoc, nz} where n is the number of input
+            // links from processes, nosoc the number of these that carry
+            // no cost, and nz the number of links having actual flow > 0.
             let tuple = {n: 0, nosoc: 0, nz: 0};
             for(let i = 0; i < p.inputs.length; i++) {
               const l = p.inputs[i];
-              // NOTE: only process --> product links can carry cost
+              // NOTE: Only process --> product links can carry cost.
               if(l.from_node instanceof Process) {
                 tuple.n++;
                 if(l.share_of_cost === 0) tuple.nosoc++;
-                if(l.actualFlow(t) > VM.NEAR_ZERO) tuple.nz++;
+                const d = l.actualDelay(t);
+                if(l.actualFlow(t + d) > VM.NEAR_ZERO) tuple.nz++;
               }
             }
             return tuple;
           };
 
     // First scan constraints X --> Y: these must have SoC > 0 and moreover
-    // the level of both X and Y must be non-zero, or they transfer no cost
+    // the level of both X and Y must be non-zero, or they transfer no cost.
     for(let k in this.constraints) if(this.constraints.hasOwnProperty(k) &&
         !MODEL.ignored_entities[k]) {
       const
@@ -3490,7 +3491,7 @@ class LinnyRModel {
           Math.abs(fl) > VM.NEAR_ZERO && Math.abs(tl) > VM.NEAR_ZERO) {
         // Constraint can carry cost => compute the rate; the actual
         // cost to be transferred will be computed later, when CP of
-        // nodes have been calculated
+        // nodes have been calculated.
         if(c.soc_direction === VM.SOC_X_Y) {
           c.transfer_rate = c.share_of_cost * fl / tl;
         } else {
@@ -3499,27 +3500,27 @@ class LinnyRModel {
         constraints.push(c);
       }
     }
-    // Then scan the processes
+    // Then scan the processes.
     for(let k in this.processes) if(this.processes.hasOwnProperty(k) &&
         !MODEL.ignored_entities[k]) {
       const
           p = this.processes[k],
           pl = p.nonZeroLevel(t);
       if(pl < 0) {
-        // Negative levels invalidate the cost price calculation
+        // Negative levels invalidate the cost price calculation.
         p.cost_price[t] = VM.UNDEFINED;
         can_calculate = false;
         break;
       }
-      // Count constraints that affect CP of this process
+      // Count constraints that affect CP of this process.
       let n = costAffectingConstraints(p);
       if(n || p.inputs.length) {
-        // All inputs can affect the CP of a process
+        // All inputs can affect the CP of a process.
         p.cost_price[t] = VM.UNDEFINED;
         processes.push(p);
       } else {
         // No inputs or cost-transferring constraints, then CP = 0
-        // unless output products have price < 0
+        // unless output products have price < 0.
         let negpr = 0;
         for(let i = 0; i < p.outputs.length; i++) {
           const
@@ -3531,10 +3532,10 @@ class LinnyRModel {
           if(pr < 0) negpr -= pr * l.relative_rate.result(dt);
         }
         p.cost_price[t] = negpr;
-        // Done, so not add to `processes` list 
+        // Done, so not add to `processes` list.
       }
     }
-    // Then scan the products
+    // Then scan the products.
     for(let k in this.products) if(this.products.hasOwnProperty(k) &&
         !MODEL.ignored_entities[k]) {
       const p = this.products[k];
@@ -3542,9 +3543,9 @@ class LinnyRModel {
           nc = costAffectingConstraints(p);
       if(p.is_buffer && !ifp.nz) {
         // Stocks for which all INput links have flow = 0 have the same
-        // stock price as in t-1
-        // NOTE: it is not good to check for zero stock, as that may be
-        // the net result of in/outflows
+        // stock price as in t-1.
+        // NOTE: It is not good to check for zero stock, as that may be
+        // the net result of in/outflows.
         p.cost_price[t] = p.stockPrice(t - 1);
         p.stock_price[t] = p.cost_price[t];
       } else if(!nc && (ifp.n === ifp.nosoc || (!ifp.nz && ifp.n > ifp.nosoc + 1))) {
@@ -3552,17 +3553,17 @@ class LinnyRModel {
         // CP = 0 but coded as NO_COST so that this can propagate.
         // Furthermore, for products having no storage and *multiple*
         // cost-carrying input links that all are zero-flow, the cost
-        // price cannot be inferred unambiguously => set to 0
+        // price cannot be inferred unambiguously => set to 0.
         p.cost_price[t] = (ifp.n && ifp.n === ifp.nosoc ? VM.NO_COST : 0);
       } else {
-        // Cost price must be calculated
+        // Cost price must be calculated.
         p.cost_price[t] = VM.UNDEFINED;
         products.push(p);
       }
       p.cost_price[t] = p.cost_price[t];
     }
     // Finally, scan all links, and retain only those for which the CP
-    // can not already be inferred from their FROM node
+    // can not already be inferred from their FROM node.
     for(let k in this.links) if(this.links.hasOwnProperty(k) &&
         !MODEL.ignored_entities[k]) {
       const
@@ -3573,36 +3574,36 @@ class LinnyRModel {
           tn = l.to_node;
       if(fn instanceof Product && fn.price.defined) {
         // Links from products having a market price have this price
-        // multiplied by their relative rate as unit CP
+        // multiplied by their relative rate as unit CP.
         l.unit_cost_price = fn.price.result(t) * l.relative_rate.result(t);
       } else if((fn instanceof Process && l.share_of_cost === 0) ||
          (fn instanceof Product && tn instanceof Product)) {
         // Process output links that do not carry cost and product-to-
-        // product links have unit CP = 0
+        // product links have unit CP = 0.
         l.unit_cost_price = 0;
       } else if(fncp !== VM.UNDEFINED && fncp !== VM.NOT_COMPUTED) {
-        // Links that are output of a node having CP defined have UCP = CP
+        // Links that are output of a node having CP defined have UCP = CP.
         l.unit_cost_price = fncp * l.relative_rate.result(t);
       } else {
         l.unit_cost_price = VM.UNDEFINED;
-        // Do not push links related to processes having level < 0
+        // Do not push links related to processes having level < 0.
         if(!(fn instanceof Process && fn.actualLevel(t - ld) < 0) &&
             !(tn instanceof Process && tn.actualLevel(t) < 0)) {
           links.push(l);
         }
       }
     }
-    // Count entities that still need processing
+    // Count entities that still need processing.
     let count = processes.length + products.length + links.length +
             constraints.length,
         prev_count = VM.PLUS_INFINITY;
-    // Iterate until no more new CP have been calculated 
+    // Iterate until no more new CP have been calculated.
     while(count < prev_count) {
-      // (1) update the constraints
+      // (1) Update the constraints.
       for(let i = 0; i < constraints.length; i++) {
         const
             c = constraints[i],
-            // NOTE: constraints in list have levels greater than near-zero
+            // NOTE: Constraints in list have levels greater than near-zero.
             fl = c.from_node.actualLevel(t),
             tl = c.to_node.actualLevel(t);
         let tcp;
@@ -3613,7 +3614,7 @@ class LinnyRModel {
           c.transfer_rate = c.share_of_cost * tl / fl;
           tcp = c.to_node.cost_price[t];
         }
-        // Compute transferable cost price only when CP of X is known
+        // Compute transferable cost price only when CP of X is known.
         if(tcp < VM.PLUS_INFINITY) {
           c.transfer_cp = c.transfer_rate * tcp;
         } else {
@@ -3621,9 +3622,9 @@ class LinnyRModel {
         }
       }
       
-      // (2) set CP of processes if unit CP of all their inputs is known
-      // NOTE: iterate from last to first so that processes can be
-      // removed from the list
+      // (2) Set CP of processes if unit CP of all their inputs is known.
+      // NOTE: Iterate from last to first so that processes can be
+      // removed from the list.
       for(let i = processes.length - 1; i >= 0; i--) {
         const p = processes[i];
         let cp = 0;
@@ -3636,7 +3637,7 @@ class LinnyRModel {
             cp += ucp;
           }
         }
-        // NOTE: also check constraints that transfer cost to `p`
+        // NOTE: Also check constraints that transfer cost to `p`.
         for(let j = 0; j < constraints.length; j++) {
           const c = constraints[j];
           if(c.to_node === p && c.soc_direction === VM.SOC_X_Y ||
@@ -3650,42 +3651,44 @@ class LinnyRModel {
           }
         }
         if(cp !== VM.UNDEFINED) {
-          // Also consider negative prices of outputs
+          // Also consider negative prices of outputs.
           // NOTE: ignore SoC, as this affects the CP of the product, but
-          // NOT the CP of the process producing it
+          // NOT the CP of the process producing it.
           for(let j = 0; j < p.outputs.length; j++) {
             const
                 l = p.outputs[j],
-                // NOTE: *add* delay to consider *future* price!
-                dt = t + l.actualDelay(t),
+                // NOTE: For output links always use current price.
                 px = l.to_node.price,
-                pr = (px.defined ? px.result(dt) : 0);
+                pr = (px.defined ? px.result(t) : 0),
+                // For levels, consider delay: earlier if delay > 0.
+                dt = t - l.actualDelay(t);
             if(pr < 0) {
+              // Only consider negative prices.
               if(l.multiplier === VM.LM_LEVEL) {
                 // Treat links with level multiplier similar to input links,
-                // as this computes CP even when actual level = 0
-                // NOTE: subtract (!) so as to ADD the cost
+                // as this computes CP even when actual level = 0.
+                // NOTE: Subtract (!) so as to ADD the cost.
                 cp -= pr * l.relative_rate.result(dt);
               } else {
                 // For other types, multiply price by actual flow / level
-                // NOTE: actualFlow already considers delay => use t, not dt
+                // NOTE: actualFlow already considers delay => use t, not dt.
                 const af = l.actualFlow(t);
                 if(af > VM.NEAR_ZERO) {
-                  // Prevent division by zero
-                  // NOTE: level can be zero even if actual flow > 0!
-                  const al = p.nonZeroLevel(dt);
-                  // NOTE: scale to level only when level > 1, or fixed
-                  // costs for start-up or first commit will be amplified 
+                  // Prevent division by zero.
+                  // NOTE: Level can be zero even if actual flow > 0!
+                  let al = p.nonZeroLevel(dt, l.multiplier);
+                  // NOTE: Scale to level only when level > 1, or fixed
+                  // costs for start-up or first commit will be amplified.
                   if(al > VM.NEAR_ZERO) cp -= pr * af / Math.max(al, 1);
                 }
               }
             }
           }
-          // Set CP of process, and remove it from list
+          // Set CP of process, and remove it from list.
           p.cost_price[t] = cp;
           processes.splice(i, 1);
           // Set the CP of constraints that transfer cost of `p`, while
-          // removing the constraints that have contributed to its CP
+          // removing the constraints that have contributed to its CP.
           for(let j = constraints.length - 1; j >= 0; j--) {
             const c = constraints[j];
             if(c.from_node === p) {
@@ -3708,49 +3711,49 @@ class LinnyRModel {
                 l = p.outputs[j],
                 li = links.indexOf(l);
             if(li >= 0) {
-              // NOTE: if delay > 0, use earlier CP
+              // NOTE: If delay > 0, use earlier CP.
               const ld = l.actualDelay(t);
               l.unit_cost_price = l.share_of_cost *
                   p.costPrice(t - ld) *
                   l.relative_rate.result(t - ld);
-              // ... and remove these links from the list
+              // ... and remove these links from the list.
               links.splice(li, 1);
             }
           }
         }
       }
 
-      // (3) set CP of products if CP of all *cost-carrying* inputs from
-      // processes (!) and constraints is known
-      // NOTE: iterate from last to first so that products can be
-      // removed from the list
+      // (3) Set CP of products if CP of all *cost-carrying* inputs from
+      // processes (!) and constraints is known.
+      // NOTE: Iterate from last to first so that products can be
+      // removed from the list.
       for(let i = products.length - 1; i >= 0; i--) {
         const p = products[i];
         let cp = 0,
             cnp = 0, // cost of newly produced product
             qnp = 0, // quantity of newly produced product
-            // NOTE: treat products having only one cost-carrying
+            // NOTE: Treat products having only one cost-carrying
             // input link as a special case, as this allows to compute
             // their CP also when there is no actual flow over this
-            // link; `cp_sccp` (CP of single cost-carrying process)
-            // is used to track whether this condition applies
+            // link. `cp_sccp` (CP of single cost-carrying process)
+            // is used to track whether this condition applies.
             cp_sccp = VM.COMPUTING;
         for(let j = 0; j < p.inputs.length; j++) {
           const l = p.inputs[j];
           if(l.from_node instanceof Process) {
             cp = l.from_node.costPrice(t - l.actualDelay(t));
             if(cp === VM.UNDEFINED && l.share_of_cost > 0) {
-              // Contibuting CP still unknown => break from FOR loop
+              // Contributing CP still unknown => break from FOR loop.
               break;
             } else {
               if(cp_sccp === VM.COMPUTING) {
-                // First CC process having a defined CP => use this CP
+                // First CC process having a defined CP => use this CP.
                 cp_sccp = cp * l.share_of_cost;
               } else {
-                // Multiple CC processes => set CP to 0
+                // Multiple CC processes => set CP to 0.
                 cp_sccp = 0;
               }
-              // NOTE: actualFlow already considers delay => use t, not dt
+              // NOTE: actualFlow already considers delay => use t, not dt.
               const
                   af = l.actualFlow(t),
                   rr = l.relative_rate.result(t);
@@ -3760,23 +3763,23 @@ class LinnyRModel {
                       VM.PLUS_INFINITY : VM.MINUS_INFINITY);
                 } else {
                   qnp += af;
-                  // NOTE: only add the link's share of cost
+                  // NOTE: Only add the link's share of cost.
                   cnp += af * cp / rr * l.share_of_cost;
                 }
               }
             }
           }
         }
-        // CP unknown => proceed with next product
+        // CP unknown => proceed with next product.
         if(cp === VM.UNDEFINED) continue;
         // CP of product is 0 if no new production UNLESS it has only
         // one cost-carrying production input, as then its CP equals
-        // the CP of the producing process times the link SoC;
-        // if new production > 0 then CP = cost / quantity
+        // the CP of the producing process times the link SoC.
+        // If new production > 0 then CP = cost / quantity.
         if(cp_sccp !== VM.COMPUTING) {
           cp = (qnp > 0 ? cnp / qnp : cp_sccp);
         }
-        // NOTE: now also check constraints that transfer cost to `p`
+        // NOTE: Now also check constraints that transfer cost to `p`.
         for(let j = 0; j < constraints.length; j++) {
           const c = constraints[j];
           if(c.to_node === p && c.soc_direction === VM.SOC_X_Y ||
@@ -3789,11 +3792,11 @@ class LinnyRModel {
             }
           }
         }
-        // CP unknown => proceed with next product
+        // CP unknown => proceed with next product.
         if(cp === VM.UNDEFINED) continue;
-        // Otherwise, set the cost price
+        // Otherwise, set the cost price.
         p.cost_price[t] = cp;
-        // For stocks, the CP includes stock price on t-1
+        // For stocks, the CP includes stock price on t-1.
         if(p.is_buffer) {
           const prevl = p.nonZeroLevel(t-1);
           if(prevl > VM.NEAR_ZERO) {
@@ -3801,7 +3804,7 @@ class LinnyRModel {
           }
           p.stock_price[t] = cp;
         }
-        // Set CP for outgoing links, and remove them from list
+        // Set CP for outgoing links, and remove them from list.
         for(let j = 0; j < p.outputs.length; j++) {
           const l = p.outputs[j],
                 li = links.indexOf(l);
@@ -3812,7 +3815,7 @@ class LinnyRModel {
         }
         products.splice(i, 1);
         // Set the CP of constraints that transfer cost of `p`, while
-        // removing the constraints that have contributed to its CP
+        // removing the constraints that have contributed to its CP.
         for(let j = constraints.length - 1; j >= 0; j--) {
           const c = constraints[j];
           if(c.from_node === p) {
@@ -3830,13 +3833,13 @@ class LinnyRModel {
           }
         }
       }
-      // Count remaining entities without calculated CP
+      // Count remaining entities without calculated CP.
       prev_count = count;
       count = processes.length + products.length + links.length + constraints.length;
-      // No new CPs found? Then try some other things before exiting the loop
+      // No new CPs found? Then try some other things before exiting the loop.
       if(count >= prev_count) {
         // Still no avail? Then set CP=0 for links relating to processes
-        // having level 0
+        // having level 0.
         for(let i = processes.length-1; i >= 0; i--) {
           const p = processes[i];
           if(p.nonZeroLevel(t) < VM.NEAR_ZERO) {
@@ -3854,10 +3857,10 @@ class LinnyRModel {
         for(let i = links.length-1; i >= 0; i--) {
           const af = links[i].actualFlow(t);
           if(Math.abs(af) < VM.NEAR_ZERO) {
-            // ... and set their UCP to 0
+            // ... and set their UCP to 0.
             links[i].unit_cost_price = 0;
             links.splice(i, 1);
-            // And break, as this may be enough to calculate more "regular" CPs
+            // And break, as this may be enough to calculate more "regular" CPs.
             break;
           }
         }
@@ -3869,10 +3872,10 @@ class LinnyRModel {
                 l = links[i],
                 p = l.from_node;
             if(p.is_buffer) {
-              // ... and set their UCP to the previous stock price
+              // ... and set their UCP to the previous stock price.
               l.unit_cost_price = (p.nonZeroLevel(t-1) > 0 ? p.stockPrice(t-1) : 0);
               links.splice(i, 1);
-              // And break, as this may be enough to calculate more "regular" CPs
+              // And break, as this may be enough to calculate more "regular" CPs.
               break;
             }
           }
@@ -3882,7 +3885,7 @@ class LinnyRModel {
     }
     // For all products, calculate highest cost price, i.e., the unit cost
     // price of the most expensive process that provides input to this product
-    // in time step t
+    // in time step t.
     for(let k in this.products) if(this.products.hasOwnProperty(k) &&
         !MODEL.ignored_entities[k]) {
       const p = this.products[k];
@@ -3891,9 +3894,9 @@ class LinnyRModel {
         const l = p.inputs[i];
         if(l.from_node instanceof Process && l.actualFlow(t) > VM.NEAR_ZERO) {
           const ld = l.actualDelay(t);
-          // NOTE: only consider the allocated share of cost
+          // NOTE: Only consider the allocated share of cost.
           let cp = l.from_node.costPrice(t - ld) * l.share_of_cost;
-          // NOTE: ignore undefined cost prices
+          // NOTE: Ignore undefined cost prices.
           if(cp <= VM.PLUS_INFINITY) {
             const rr = l.relative_rate.result(t - ld);
             if(Math.abs(rr) < VM.NEAR_ZERO) {
@@ -3912,27 +3915,28 @@ class LinnyRModel {
   }
   
   flowBalance(cu, t) {
-    // Returns sum (for time t) of actual flows of output links minus sum of
-    // actual flows of output links, given the cluster and unit passed via `cu`
-    // NOTE: this implementation is not very efficient (it ALWAYS iterates over
-    // all processes and their links IN and OUT), but this way it is robust to
-    // changes in product units the modeler may make after cluster balance
-    // variables have been parsed. The alternative (reparsing all expressions
-    // and note fields) would be much more cumbersome.
+    // Return sum (for time t) of actual flows of output links minus sum
+    // of actual flows of output links, given the cluster and unit passed
+    // via `cu`.
+    // NOTE: This implementation is not very efficient (it ALWAYS iterates
+    // over all processes and their links IN and OUT), but this way it is
+    // robust to changes in product units the modeler may make after cluster
+    // balance variables have been parsed. The alternative (reparsing all
+    // expressions and note fields) would be much more cumbersome.
     let p,
         l,
         af,
         b = 0,
         su = cu.u,
         dataflows = false;
-    // NOTE: if unit ends with ! then data flows are considered as well
+    // NOTE: If unit ends with ! then data flows are considered as well.
     if(su.endsWith('!')) {
       dataflows = true;
       su = su.slice(0, -1).trim();
     }
-    // Get all processes in the cluster
+    // Get all processes in the cluster.
     const ap = cu.c.allProcesses;
-    // Sum over all processes MINUS the actual flows IN
+    // Sum over all processes MINUS the actual flows IN.
     for(let i = 0; i < ap.length; i++) {
       p = ap[i];
       if(!MODEL.ignored_entities[p.identifier]) {
@@ -3941,25 +3945,25 @@ class LinnyRModel {
           // Only consider links having the default multiplier (LM_LEVEL) ...
           if(l.multiplier === VM.LM_LEVEL &&
               // ... and at their tail a product having specified scale unit
-              // (or the balance unit is '' to indicate "any unit")
+              // (or the balance unit is '' to indicate "any unit").
               (l.from_node.scale_unit === su || su === '')) {
             af = l.actualFlow(t);
-            // Return infinite values or error codes as such
+            // Return infinite values or error codes as such.
             if(af <= VM.MINUS_INFINITY || af > VM.PLUS_INFINITY) return af;
-            // Subtract, as inflows are consumed
+            // Subtract, as inflows are consumed.
             b -= af;
           }
         }
-        // Apply the same procedure to process outflows
+        // Apply the same procedure to process outflows.
         for(let j = 0; j < p.outputs.length; j++) {
           l = p.outputs[j];
           if(l.multiplier === VM.LM_LEVEL &&
               (l.to_node.scale_unit === su || su === '') &&
-              // NOTE: for outflows, consider data only if told to!
+              // NOTE: For outflows, consider data only if told to!
               (dataflows || !l.to_node.is_data)) {
             af = l.actualFlow(t);
             if(af <= VM.MINUS_INFINITY || af > VM.PLUS_INFINITY) return af;
-            // Add, as outflows are produced
+            // Add, as outflows are produced.
             b += af;
           }
         }
@@ -7396,7 +7400,7 @@ class Node extends NodeBox {
   }
   
   resetStartUps(t) {
-    // Remove all time steps >= t from start-up list
+    // Remove all time steps >= t from start-up list.
     const su = [];
     for(let i = 0; i < this.start_ups.length; i++) {
       if(this.start_ups[i] < t) su.push(this.start_ups[i]);
@@ -7405,7 +7409,7 @@ class Node extends NodeBox {
   }
 
   resetShutDowns(t) {
-    // Remove all time steps >= t from shut-down list
+    // Remove all time steps >= t from shut-down list.
     const sd = [];
     for(let i = 0; i < this.shut_downs.length; i++) {
       if(this.shut_downs[i] < t) sd.push(this.shut_downs[i]);
@@ -7489,9 +7493,20 @@ class Node extends NodeBox {
     return VM.UNDEFINED;
   }
   
-  nonZeroLevel(t) {
-    // Returns the level or 0 when level is negligible relative to the
-    // bounds on the node.
+  nonZeroLevel(t, lm=VM.LM_LEVEL) {
+    // Return the level or 0 when level is negligible relative to the
+    // bounds on the node. If `lm` specifies a special link multiplier,
+    // then return the value of the associated binary variable.
+    if(lm !== VM.LM_LEVEL) {
+      if(lm === VM.LM_STARTUP) return (this.start_ups.indexOf(t) < 0 ? 0 : 1);
+      if(lm === VM.LM_SHUTDOWN) return (this.shut_downs.indexOf(t) < 0 ? 0 : 1);
+      if(lm === VM.LM_FIRST_COMMIT) return (this.start_ups.indexOf(t) === 0 ? 1 : 0);
+      let l = (t < 0 ? this.initial_level.result(1) : this.level[t]);
+      if(l === undefined) return VM.UNDEFINED;
+      l = (Math.abs(l) < VM.NEAR_ZERO ? 0 : 1);
+      if(lm === VM.LM_POSITIVE) return l;
+      if(lm === VM.LM_ZERO) return 1 - l;
+    }
     if(t < 0) return this.initial_level.result(1);
     if(t < this.level.length) {
       const l = this.level[t];
@@ -8449,8 +8464,8 @@ class Link {
   }
   
   actualDelay(t) {
-    // Scales delay expression value to number of time steps on model
-    // time scale
+    // Scale the delay expression value of this link to a discrete number
+    // of time steps on the model time scale.
     let d = Math.floor(VM.SIG_DIF_FROM_ZERO + this.flow_delay.result(t));
     // NOTE: Negative values are permitted. This might invalidate cost
     // price calculation -- to be checked!!

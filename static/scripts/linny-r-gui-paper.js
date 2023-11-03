@@ -1584,10 +1584,10 @@ class Paper {
       if(luc && MODEL.infer_cost_prices &&
          af > VM.MINUS_INFINITY && af < VM.PLUS_INFINITY
         ) {
-        // Assume no cost price to be displayed
+        // Assume no cost price to be displayed.
         s = '';
         let soc = 0;
-        // NOTE: flows INTO processes always carry cost
+        // NOTE: Flows INTO processes always carry cost.
         if(luc.to_node instanceof Process) {
           soc = 1;
           prod = luc.from_node;
@@ -1607,7 +1607,7 @@ class Paper {
             // ... unless it is a flow of a by-product having a market
             // value (+ or -)
             if(cp !== 0) {
-              //Just in case, check for error codes (if so, display them)
+              // Just in case, check for error codes (if so, display them).
               if(cp < VM.MINUS_INFINITY) {
                 s = VM.sig4Dig(cp);
               } else if(cp < 0) {
@@ -1616,53 +1616,57 @@ class Paper {
             }
           }
         } else {
+          const d = luc.actualDelay(MODEL.t);
           if(af > 0) {
-            // Positive flow => use cost price of FROM node
+            // Positive flow => use cost price of FROM node.
             if(luc.from_node instanceof Process) {
               // For processes, this is their cost price per level
-              // DIVIDED BY the relative rate of the link
+              // DIVIDED BY the relative rate of the link.
               const rr = luc.relative_rate.result(MODEL.t);
               if(Math.abs(rr) < VM.NEAR_ZERO) {
                 cp = (rr < 0 && cp < 0 || rr > 0 && cp > 0 ?
                     VM.PLUS_INFINITY : VM.MINUS_INFINITY);
               } else {
-                cp = proc.costPrice(MODEL.t) / rr;
+                cp = proc.costPrice(MODEL.t - d) / rr;
               }
             } else if(prod.price.defined) {
               // For products their market price if defined...
-              cp = prod.price.result(MODEL.t);
+              cp = prod.price.result(MODEL.t - d);
             } else {
-              // ... otherwise their cost price
-              cp = prod.costPrice(MODEL.t);
+              // ... otherwise their cost price.
+              cp = prod.costPrice(MODEL.t - d);
             }
           } else {
-            // Negative flow => use cost price of TO node
+            // Negative flow => use cost price of TO node.
             if(luc.to_node instanceof Process) {
+              // NOTE: Input links have no delay.
               cp = proc.costPrice(MODEL.t);
             } else if(prod.price.defined) {
-              cp = prod.price.result(MODEL.t);
+              cp = prod.price.result(MODEL.t - d);
             } else {
-              cp = prod.costPrice(MODEL.t);
+              cp = prod.costPrice(MODEL.t - d);
             }
           }
-          // NOTE: the first condition ensures that error codes will be displayed
+          // NOTE: The first condition ensures that error codes will be
+          // displayed.
           if(cp <= VM.MINUS_INFINITY || cp >= VM.PLUS_INFINITY) {
             s = VM.sig4Dig(cp);
           } else if(Math.abs(cp) <= VM.SIG_DIF_FROM_ZERO) {
-            // DO not display CP when it is "propagated" NO_COST
+            // DO not display CP when it is "propagated" NO_COST.
             s = (cp === VM.NO_COST ? '' : '0');
           } else {
-            // NOTE: use the absolute value of the flow, as cost is not affected by direction
+            // NOTE: Use the absolute value of the flow, as cost is not
+            // affected by direction.
             s = VM.sig4Dig(Math.abs(af) * soc * cp);
           }
         }
-        // Only display cost price if it is meaningful
+        // Only display cost price if it is meaningful.
         if(s) {
           font_color = 'gray';
           bb = this.numberSize(s, 8, font_weight);
           tw = bb.width;
           th = bb.height;
-          // NOTE: offset cost price label relative to actual flow label
+          // NOTE: Offset cost price label relative to actual flow label.
           epy += th + 1;
           arrw.shape.addRect(epx, epy, tw, th, {'fill': this.palette.cost_price});
           arrw.shape.addNumber(epx, epy, s, {'fill': font_color});
@@ -1671,15 +1675,16 @@ class Paper {
     } // end IF l > 0 and actual flow is defined and non-zero
 
     if(l > 0) {
-      // NOTE: make the arrow shape nearly transparant when it connects to a
-      // product that has the "hide links" option selected
+      // NOTE: Make the arrow shape nearly transparant when it connects
+      // to a product that has the "hide links" option selected.
       if(arrw.from_node.no_links || arrw.to_node.no_links) {
         arrw.shape.element.setAttribute('opacity', 0.08);
       }
       arrw.shape.appendToDOM();
       return true;
     }
-    // If nothing is drawn, return FALSE although this does NOT imply an error
+    // If nothing is drawn, return FALSE although this does NOT imply an
+    // error.
     return false;
   }
   

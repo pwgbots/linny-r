@@ -3247,9 +3247,9 @@ class VirtualMachine {
     // NOTE: Chunk variables of node `p` have LB = 0 and UB = UB of `p`.
     // This is effectuated by the VM "set bounds" instructions at run time.
 
-    // NOTE: Under normal assumptions (all processes having LB >= 0), bounds on
-    // actor cash flow variables need NOT be set because cash IN and cash OUT
-    // will then always be >= 0 (solver's default bounds).
+    // NOTE: Under normal assumptions (all processes having LB >= 0), bounds
+    // on actor cash flow variables need NOT be set because cash IN and
+    // cash OUT will then always be >= 0 (solver's default bounds).
     // However, Linny-R does not prohibit negative bounds on processes, nor
     // negative rates on links. To be consistently permissive, cash IN and
     // cash OUT of all actors are both allowed to become negative.
@@ -3337,9 +3337,9 @@ class VirtualMachine {
 
     // NOTE: Each process generates cash flow proportional to its production
     //       level if it produces and/or consumes a product having a price.
-    //       Cash flow is negative (cash OUT) if a product is consumed AND has
-    //       price > 0, but positive (cash IN) if a product is produced and has
-    //       price < 0. Likewise for the other two cases.
+    //       Cash flow is negative (cash OUT) if a product is consumed AND
+    //       has price > 0, but positive (cash IN) if a product is produced
+    //       and has price < 0. Likewise for the other two cases.
     //       To calculate the coefficient for the process variable, the
     //       multiplier rates of the links in and out must be calculated (at
     //       run time when dynamic expressions) such that they will add to the
@@ -3383,18 +3383,17 @@ class VirtualMachine {
                 if(l.from_node.price.isStatic && l.relative_rate.isStatic) {
                   k = l.from_node.price.result(0) * l.relative_rate.result(0);
                   // NOTE: VMI_update_cash_coefficient has at least 4 arguments:
-                  // flow (CONSUME or PRODUCE), type (specifies the number and type
-                  // of arguments), the level_var_index of the process, and the
-                  // delay.
+                  // flow (CONSUME or PRODUCE), type (specifies the number and
+                  // type of arguments), the level_var_index of the process,
+                  // and the delay.
+                  // NOTE: Input links cannot have delay, so then delay = 0.
                   if(Math.abs(k) > VM.NEAR_ZERO) {
-                    // Consumption rate & price are static: pass one constant
-                    // NOTE: input links cannot have delay, so delay = 0
+                    // Consumption rate & price are static: pass one constant.
                     this.code.push([VMI_update_cash_coefficient,
                       [VM.CONSUME, VM.ONE_C, p.level_var_index, 0, k]]);
                   }
                 } else {
-                  // No further optimization: assume two dynamic expressions
-                  // NOTE: input links cannot have delay, so delay = 0
+                  // No further optimization: assume two dynamic expressions.
                   this.code.push([VMI_update_cash_coefficient,
                     [VM.CONSUME, VM.TWO_X, p.level_var_index, 0,
                      l.from_node.price, l.relative_rate]]);
@@ -3403,15 +3402,16 @@ class VirtualMachine {
             } // END of FOR ALL input links
             
             // Iterate over links OUT, but only consider produced products
-            // having a (non-zero) market price
+            // having a (non-zero) market price.
             for(j = 0; j < p.outputs.length; j++) {
               l = p.outputs[j];
               const tnpx = l.to_node.price;
               if(!MODEL.ignored_entities[l.identifier] && tnpx.defined &&
                   !(tnpx.isStatic && Math.abs(tnpx.result(0)) < VM.NEAR_ZERO)) {
-                // By default, use the process level as multiplier
+                // By default, use the process level as multiplier.
                 vi = p.level_var_index;
-                // For "binary data links", use the correct binary variable instead
+                // For "binary data links", use the correct binary variable
+                // instead of the level.
                 if(l.multiplier === VM.LM_STARTUP) {
                   vi = p.start_up_var_index;
                 } else if(l.multiplier === VM.LM_FIRST_COMMIT) {
@@ -3432,57 +3432,63 @@ class VirtualMachine {
                   // times the rate of `l`.
                   for(k = 0; k < l.from_node.inputs.length; j++) {
                     ll = l.from_node.inputs[k];
-                    // NOTE: no attempt for efficiency -- assume that
-                    // price and both rates are dynamic
+                    // NOTE: No attempt for efficiency -- assume that
+                    // price and both rates are dynamic.
                     this.code.push([VMI_update_cash_coefficient, [
                         VM.PRODUCE, VM.THREE_X, vi, l.flow_delay, tnpx,
                         l.relative_rate, ll.relative_rate]]);
                   }
                 } else if(l.multiplier === VM.LM_SPINNING_RESERVE) {
-                  // "spinning reserve" equals UB - level if level > 0, or 0
-                  // The cash flow then equals ON/OFF * UB * price * rate MINUS
-                  // level * price * rate, hence a special instruction type
-                  // NOTE: only the ON/OFF variable determines whether there will
-                  // be any cash flow, hence it is passed as the primary variable,
-                  // and the process level as the secondary variable
+                  // "spinning reserve" equals UB - level if level > 0,
+                  // and otherwise 0. The cash flow then equals
+                  // ON/OFF * UB * price * rate MINUS level * price * rate,
+                  // hence a special instruction type.
+                  // NOTE: Only the ON/OFF variable determines whether
+                  // there will be any cash flow, hence it is passed as
+                  // the primary variable, and the process level as the
+                  // secondary variable.
                   this.code.push([VMI_update_cash_coefficient, [
-                      VM.PRODUCE, VM.SPIN_RES, p.on_off_var_index, l.flow_delay, vi,
-                      l.from_node.upper_bound, tnpx, l.relative_rate]]);
+                      VM.PRODUCE, VM.SPIN_RES, p.on_off_var_index,
+                      l.flow_delay, vi, l.from_node.upper_bound, tnpx,
+                      l.relative_rate]]);
                 } else if(l.multiplier === VM.LM_PEAK_INC) {
-                  // NOTE: "peak increase" may be > 0 only in the first time step
-                  // of the block being optimized, and in the first step of the
-                  // look-ahead period (if peak rises in that period), and will
-                  // be 0 in all other time steps; the VM instruction handles this
+                  // NOTE: "peak increase" may be > 0 only in the first
+                  // time step of the block being optimized, and in the
+                  // first step of the look-ahead period (if peak rises
+                  // in that period), and will be 0 in all other time steps.
+                  // The VM instruction handles this.
                   // NOTE: Delay is always 0 for this link flow.
                   this.code.push([VMI_update_cash_coefficient, [
                       VM.PRODUCE, VM.PEAK_INC, p.peak_inc_var_index, 0,
                       tnpx, l.relative_rate]]);
                 } else if(tnpx.isStatic && l.relative_rate.isStatic) {
-                  // If link rate and product price are static, only add the variable
-                  // if rate*price is non-zero (and th en use the static VM instruction)
+                  // If link rate and product price are static, only add
+                  // the variable if rate*price is non-zero (and then pass
+                  // the constant rate*price to the VM instruction.
                   k = tnpx.result(0) * l.relative_rate.result(0);
                   if(Math.abs(k) > VM.NEAR_ZERO) {
-                    // Production rate & price are static: pass one constant
+                    // Production rate & price are static: pass one constant.
                     this.code.push([VMI_update_cash_coefficient,
                         [VM.PRODUCE, VM.ONE_C, vi, l.flow_delay, k]]);
                     // When multiplier is Delta, subtract level in previous t
-                    // (so add 1 to flow delay, and consume, rather than produce)
+                    // (so add 1 to flow delay, and consume, rather than
+                    // produce).
                     if(l.multiplier === VM.LM_INCREASE) {
                       this.code.push([VMI_update_cash_coefficient,
-                          // NOTE: 6th argument = 1 indicates "delay + 1"
+                          // NOTE: 6th argument = 1 indicates "delay + 1".
                           [VM.CONSUME, VM.ONE_C, vi, l.flow_delay, k, 1]]);
                     }
                   }
                 } else {
-                  // Production rate or price are dynamic: pass two expressions
+                  // Production rate or price are dynamic: pass two expressions.
                   this.code.push([VMI_update_cash_coefficient, [
                       VM.PRODUCE, VM.TWO_X, vi, l.flow_delay,
                       tnpx, l.relative_rate]]);
-                  // When multiplier is Delta, consume level in previous t
+                  // When multiplier is Delta, consume level in previous t.
                   if(l.multiplier === VM.LM_INCREASE) {
                     this.code.push([VMI_update_cash_coefficient, [
                         VM.CONSUME, VM.TWO_X, vi, l.flow_delay,
-                        // NOTE: now 7th argument indicates "delay + 1"
+                        // NOTE: Now 7th argument indicates "delay + 1".
                         tnpx, l.relative_rate, 1]]);
                   }
                 }
@@ -4763,6 +4769,26 @@ class VirtualMachine {
         }
         // Move on to the next time step of the block.
         b++;
+      }
+      // NOTE: Links with negative delays will not have correct cost
+      // prices as these occur in the future. Having calculated (insofar
+      // as possibe) cost prices of processes, those on links with negative
+      // delays can now be set to these "future" cost prices.
+      for(let k in MODEL.links) if(MODEL.links.hasOwnProperty(k)) {
+        const l = MODEL.links[k];
+        b = bb;
+        // Iterate over all time steps in this chunk.
+        for(let i = 0; i < cbl; i++) {
+          ld = l.actualDelay(b);
+          if(ld < 0) {
+            // Get the *future* actual flow
+            const af = l.actualFlow(b - ld);
+            if(af > VM.NEAR_ZERO) {
+console.log('HERE b link delay', b, l.displayName, ld, af, l.from_node.costPrice(b));
+            }
+          }
+          b++;
+        }
       }
     }
 
@@ -7858,9 +7884,9 @@ function VMI_subtract_var_from_coefficient(args) {
 
 function VMI_update_cash_coefficient(args) {
   // `args`: [flow, type, level_var_index, delay, x1, x2, ...]
-  // NOTE: flow is either CONSUME or PRODUCE; type can be ONE_C (one
+  // NOTE: Flow is either CONSUME or PRODUCE; type can be ONE_C (one
   // constant parameter x1), TWO_X (two expressions x1 and x2), THREE_X
-  // (three expressions x1, x2 and x3) or SPIN_RES or PEAK_INC (see below)
+  // (three expressions x1, x2 and x3) or SPIN_RES or PEAK_INC (see below).
   let d = 0;
   const
       flow = args[0],
@@ -7869,16 +7895,13 @@ function VMI_update_cash_coefficient(args) {
       dx = args[3];
   if(dx instanceof Expression) {
     d = dx.object.actualDelay(VM.t);
-    // Extra argument indicates "delay + 1"
+    // Extra argument indicates "delay + 1".
     if((type === VM.ONE_C && args.length === 6) ||
         (type === VM.TWO_X && args.length === 7)) d++;
   }
   // `k` is the tableau column index of the variable that affects the CF
   let k = (type === VM.PEAK_INC ? VM.chunk_offset + vi :
       VM.offset + vi - d*VM.cols);
-  // NOTE: delay > 0 affects only which variable is to be used,
-  // not the expressions for rates or prices!
-  const t = VM.t - d;
   // NOTE: This instruction is used only for objective function
   // coefficients. Previously computed decision variables and variables
   // beyond the tableau column range (when delay < 0) can be ignored.
@@ -7888,15 +7911,20 @@ function VMI_update_cash_coefficient(args) {
   // of the look-ahead period (when VM.offset = block length).
   if(type === VM.PEAK_INC &&
       VM.offset > 0 && VM.offset !== MODEL.block_length) return;
+  // NOTE: delay > 0 affects not only which variable is to be used,
+  // but also for which time step the price must be computed.
+  const t_price = VM.t - d;
   // First compute the result to be processed.
   let r = 0;
   if(type === VM.ONE_C) {
     r = args[4];
   } else if(type === VM.TWO_X || type === VM.PEAK_INC) {
     // NOTE: "peak increase" always passes two expressions.
-    r = args[4].result(VM.t) * args[5].result(VM.t);
+    // The first expression determines the price.
+    r = args[4].result(t_price) * args[5].result(VM.t);
   } else if(type === VM.THREE_X) {
-    r = args[4].result(VM.t) * args[5].result(VM.t) * args[6].result(VM.t);
+    // NOTE: Here, too, the first expression determines the price. 
+    r = args[4].result(t_price) * args[5].result(VM.t) * args[6].result(VM.t);
   } else if(type === VM.SPIN_RES) {
     // "spinning reserve" equals UB - level if level > 0, or 0.
     // The cash flow then equals ON/OFF*UB*price*rate - level*price*rate.
@@ -7908,7 +7936,7 @@ function VMI_update_cash_coefficient(args) {
         // NOTE: column of second variable will be relative to same offset
         plk = k + plvi - vi,
         ub = args[5].result(VM.t),
-        price_rate = args[6].result(VM.t) * args[7].result(VM.t);
+        price_rate = args[6].result(t_price) * args[7].result(VM.t);
     r = ub * price_rate;
     // NOTE: The sign of r determines whether this spinning reserve will
     // generate cash IN or cash OUT. The *subtracted* part hence be ADDED
