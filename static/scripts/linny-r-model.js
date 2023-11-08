@@ -3564,6 +3564,9 @@ class LinnyRModel {
     }
     // Finally, scan all links, and retain only those for which the CP
     // can not already be inferred from their FROM node.
+    // NOTE: Record all products having input links with a delay < 0, as
+    // their cost prices depend on future time steps and hece will have
+    // to be recomputed.
     for(let k in this.links) if(this.links.hasOwnProperty(k) &&
         !MODEL.ignored_entities[k]) {
       const
@@ -3590,6 +3593,15 @@ class LinnyRModel {
         if(!(fn instanceof Process && fn.actualLevel(t - ld) < 0) &&
             !(tn instanceof Process && tn.actualLevel(t) < 0)) {
           links.push(l);
+        }
+        // Record TO node for time step t if link has negative delay.
+        if(ld < 0) {
+          const list = MODEL.products_with_negative_delays[t];
+          if(list) {
+            list.push(l.to_node);
+          } else {
+            MODEL.products_with_negative_delays[t] = [l.to_node];
+          }
         }
       }
     }
@@ -3888,28 +3900,7 @@ class LinnyRModel {
     // in time step t.
     for(let k in this.products) if(this.products.hasOwnProperty(k) &&
         !MODEL.ignored_entities[k]) {
-      const p = this.products[k];
-      let hcp = VM.MINUS_INFINITY;
-      for(let i = 0; i < p.inputs.length; i++) {
-        const l = p.inputs[i];
-        if(l.from_node instanceof Process && l.actualFlow(t) > VM.NEAR_ZERO) {
-          const ld = l.actualDelay(t);
-          // NOTE: Only consider the allocated share of cost.
-          let cp = l.from_node.costPrice(t - ld) * l.share_of_cost;
-          // NOTE: Ignore undefined cost prices.
-          if(cp <= VM.PLUS_INFINITY) {
-            const rr = l.relative_rate.result(t - ld);
-            if(Math.abs(rr) < VM.NEAR_ZERO) {
-              cp = (rr < 0 && cp < 0 || rr > 0 && cp > 0 ?
-                  VM.PLUS_INFINITY : VM.MINUS_INFINITY);
-            } else {
-              cp = cp / rr;
-            }
-            hcp = Math.max(hcp, cp);
-          }
-        }
-      }
-      p.highest_cost_price[t] = hcp;
+      this.products[k].calculateHighestCostPrice(t);
     }
     return can_calculate;
   }
@@ -7723,8 +7714,8 @@ class Process extends Node {
   }
 
   attributeValue(a) {
-    // Return the computed result for attribute `a`
-    // (for processes, these are all vectors)
+    // Return the computed result for attribute `a`.
+    // For processes, these are all vectors.
     if(a === 'L') return this.level;
     if(a === 'CF') return this.cash_flow;
     if(a === 'CI') return this.cash_in;
@@ -7734,7 +7725,7 @@ class Process extends Node {
   }
 
   attributeExpression(a) {
-    // Processes have four expression attributes
+    // Processes have four expression attributes.
     if(a === 'LB') return this.lower_bound;
     if(a === 'UB') {
       return (this.equal_bounds ? this.lower_bound : this.upper_bound);
@@ -7745,15 +7736,15 @@ class Process extends Node {
   }
 
   // NOTE: DO NOT RENAME! use of underscore is intentional!
-  // this "get" function ensures that processes also "answer" to checks whether
-  // a node is a buffer
+  // This "get" function ensures that processes also "answer" to checks
+  // whether a node is a buffer.
   get is_buffer() {
     return false;
   }
   
   get totalAttributedCost() {
-    // Returns sum of Share-of-Cost percentages of the output links
-    // of this process
+    // Return sum of Share-of-Cost percentages of the output links
+    // of this process.
     let tac = 0;
     for(let i = 0; i < this.outputs.length; i++) {
       tac += this.outputs[i].share_of_cost;
@@ -7762,7 +7753,7 @@ class Process extends Node {
   }
   
   highestUpperBound() {
-    // Return UB if static, otherwise +INF
+    // Return UB if static, otherwise +INF.
     const ub = (this.equal_bounds ? this.lower_bound : this.upper_bound);
     return (ub.isStatic ? ub.result(0) : VM.PLUS_INFINITY);
   }
@@ -8020,9 +8011,36 @@ class Product extends Node {
     return VM.UNDEFINED;
   }
   
+  calculateHighestCostPrice(t) {
+    // Set the highest cost price (HCP) for this product to be the cost
+    // price of the most expensive process that in time step t contributes
+    // to the level of this product.
+    let hcp = VM.MINUS_INFINITY;
+    for(let i = 0; i < this.inputs.length; i++) {
+      const l = this.inputs[i];
+      if(l.from_node instanceof Process && l.actualFlow(t) > VM.NEAR_ZERO) {
+        const ld = l.actualDelay(t);
+        // NOTE: Only consider the allocated share of cost.
+        let cp = l.from_node.costPrice(t - ld) * l.share_of_cost;
+        // NOTE: Ignore undefined cost prices.
+        if(cp <= VM.PLUS_INFINITY) {
+          const rr = l.relative_rate.result(t - ld);
+          if(Math.abs(rr) < VM.NEAR_ZERO) {
+            cp = (rr < 0 && cp < 0 || rr > 0 && cp > 0 ?
+                VM.PLUS_INFINITY : VM.MINUS_INFINITY);
+          } else {
+            cp = cp / rr;
+          }
+          hcp = Math.max(hcp, cp);
+        }
+      }
+    }
+    this.highest_cost_price[t] = hcp;
+  }
+  
   highestCostPrice(t) {
-    // Returns the unit cost price of the most expensive process that provides
-    // input to this product in time step t
+    // Return the unit cost price of the most expensive process that
+    // provides input to this product in time step t.
     if(this.is_buffer && t >= 0 && t < this.highest_cost_price.length) {
       return this.highest_cost_price[t];
     }

@@ -2044,29 +2044,29 @@ class ExpressionParser {
 // CLASS VirtualMachine
 class VirtualMachine {
   constructor() {
-    // Set user name to default as configured in file `linny-r-config.js`
-    // This will be an empty string for local host servers
+    // Set user name to default as configured in file `linny-r-config.js`.
+    // This will be an empty string for local host servers.
     this.solver_user = SOLVER.user_id;
-    // NOTE: if not empty, then authentication is needed
+    // NOTE: If not empty, then authentication is needed.
     if(this.solver_user) {
-      // If URL contains ?u=, set user name to the passed parameter
+      // If URL contains ?u=, set user name to the passed parameter.
       let url = decodeURI(window.location.href);
-      // NOTE: trim cache buster suffix that may have been added
+      // NOTE: Trim cache buster suffix that may have been added.
       if(url.indexOf('?x=') > 0) url = url.split('?x=')[0].trim();
       if(url.indexOf('?u=') > 0) {
         this.solver_user = url.split('?u=')[1].trim();
       }
     }
-    // NOTE: if not null, the callback function is called when the VM has
-    // finished a run; this is used by the console version of Linny-R
+    // NOTE: If not null, the callback function is called when the VM has
+    // finished a run. This is used by the console version of Linny-R.
     this.callback = null;
-    // Solver limits may be set in file `linny-r-config.js` (0 => unlimited)
+    // Solver limits may be set in file `linny-r-config.js` (0 => unlimited).
     this.max_solver_time = SOLVER.max_solver_time;
     this.max_blocks = SOLVER.max_nr_of_blocks;
     this.max_tableau_size = SOLVER.max_tableau_size;
-    // Standard variables: array of tuples [type, object]
+    // Standard variables: array of tuples [type, object].
     this.variables = [];
-    // Indices for special types
+    // Indices for special variable types.
     this.int_var_indices = [];
     this.bin_var_indices = [];
     this.sec_var_indices = [];
@@ -2075,35 +2075,35 @@ class VirtualMachine {
     this.fixed_var_indices = [];
     // Chunk variables: also an array of tuples [type, object], but
     // so far, type is always HI (highest increment); object can be
-    // a process or a product
+    // a process or a product.
     this.chunk_variables = [];
-    // Array for VM instructions
+    // Array for VM instructions.
     this.code = [];
-    // The Simplex tableau: matrix, rhs and ct will have same length
+    // The Simplex tableau: matrix, rhs and ct will have same length.
     this.matrix = [];
     this.right_hand_side = [];
     this.constraint_types = [];
-    // String to hold lines of (solver-dependent) model equations
+    // String to hold lines of (solver-dependent) model equations.
     this.lines = '';
-    // String specifying a numeric issue (empty if none)
+    // String specifying a numeric issue (empty if none).
     this.numeric_issue = '';
-    // Warnings are stored in a list to permit browsing through them
+    // Warnings are stored in a list to permit browsing through them.
     this.issue_list = [];
-    // The call stack tracks evaluation of "nested" expression variables
+    // The call stack tracks evaluation of "nested" expression variables.
     this.call_stack = [];
     this.block_count = 0;
-    // Sequence of round numbers (set by default or as experiment parameter)
+    // Sequence of round numbers (set by default or as experiment parameter).
     this.round_sequence = '';
-    // NOTE: current round is index in round sequence
+    // NOTE: Current round is index in round sequence.
     this.current_round = 0;
-    // Add arrays for solver results per block
+    // Add arrays for solver results per block.
     this.round_times = [];
     this.round_secs = [];
     this.solver_times = [];
     this.solver_secs = [];
     this.messages = [];
     this.equations = [];
-    // Default texts to display for (still) empty results
+    // Default texts to display for (still) empty results.
     this.no_messages = '(no messages)';
     this.no_variables = '(no variables)';
     this.no_equations = '(select block in progress bar)';
@@ -2122,26 +2122,29 @@ class VirtualMachine {
     this.BEYOND_MINUS_INFINITY = -1e+35;
     this.SOLVER_PLUS_INFINITY = 1e+30;
     this.SOLVER_MINUS_INFINITY = -1e+30;
-    // NOTE: below the "near zero" limit, a number is considered zero
-    // (this is to timely detect division-by-zero errors)
+    // NOTE: Below the "near zero" limit, a number is considered zero
+    // (this is to timely detect division-by-zero errors).
     this.NEAR_ZERO = 1e-10;
     // Use a specific constant smaller than near-zero to denote "no cost"
-    // to differentiate "no cost" form cost prices that really are 0
+    // to differentiate "no cost" form cost prices that really are 0.
     this.NO_COST = 0.987654321e-10;
 
-    // NOTE: allow for an accuracy margin: stocks may differ 0.1%  from their
-    // target without displaying them in red or blue to signal shortage or surplus
+    // NOTE: Allow for an accuracy margin: stocks may differ 0.1%  from
+    // their target without displaying them in red or blue to signal
+    // shortage or surplus.
     this.SIG_DIF_LIMIT = 0.001;
     this.SIG_DIF_FROM_ZERO = 1e-6;
-    // On/off threshold is used to differentiate between level = 0 and still "ON"
-    // (will be displayed as +0)
+    // ON/OFF threshold is used to differentiate between level = 0 and
+    // still "ON" (will be displayed as +0).
     this.ON_OFF_THRESHOLD = 1.5e-4;
-    // Limit for upper bounds beyond which binaries cannot be computed correctly
+    // Limit for upper bounds beyond which binaries cannot be computed
+    // correctly. Modeler is warned when this occurs (typically when
+    // ON/OFF variables are needed for a process having infinite bounds.
     this.MEGA_UPPER_BOUND = 1e6;
-    // Limit slack penalty to one order of magnitude below +INF
+    // Limit slack penalty to one order of magnitude below +INF.
     this.MAX_SLACK_PENALTY = 0.1 * this.PLUS_INFINITY;
   
-    // VM constants for specifying the type of cash flow operation
+    // VM constants for specifying the type of cash flow operation.
     this.CONSUME = 0;
     this.PRODUCE = 1;
     this.ONE_C = 2;
@@ -2149,16 +2152,16 @@ class VirtualMachine {
     this.THREE_X = 4;
     this.SPIN_RES = 5;
     this.PEAK_INC = 6;
-    // Array of corrsponding strings for more readable debugging information
+    // Array of corrsponding strings for more readable debugging information.
     this.CF_CONSTANTS = ['CONSUME', 'PRODUCE', 'ONE_C', 'TWO_X',
         'THREE_X', 'SPIN_RES'];
     
-    // Constraint cost price transfer direction
+    // Constraint cost price transfer direction.
     this.SOC_X_Y = 1;
     this.SOC_Y_X = -1;
 
-    // Link multiplier type numbers
-    // NOTE: do *NOT* change existing values, as this will cause legacy issues!!
+    // Link multiplier type numbers.
+    // NOTE: Do *NOT* change existing values, as this will cause legacy issues!
     this.LM_LEVEL = 0; // No symbol
     this.LM_THROUGHPUT = 1; // Symbol: two parallel right-pointing arrows
     this.LM_INCREASE = 2; // Symbol: Delta
@@ -2176,11 +2179,11 @@ class VirtualMachine {
     this.LM_SYMBOLS = ['', '\u21C9', '\u0394', '\u03A3', '\u03BC', '\u25B2',
         '+', '0', '\u2934', '\u2732', '\u25BC', '\u2A39'];
     
-    // VM max. expression stack size
+    // VM max. expression stack size.
     this.MAX_STACK = 200;
 
-    // Base penalty of 10 is high relative to the (scaled) coefficients of the
-    // cash flows in the objective function (typically +/- 1)
+    // Base penalty of 10 is high relative to the (scaled) coefficients of
+    // the cash flows in the objective function (typically +/- 1).
     this.BASE_PENALTY = 10;
     // Peak variable penalty is added to make solver choose the *smallest*
     // value that is greater than or equal to X[t] for all t as "peak value".
@@ -2189,17 +2192,17 @@ class VirtualMachine {
     // solution (highest total cash flow).
     this.PEAK_VAR_PENALTY = 0.1;
   
-    // NOTE: the VM uses numbers >> +INF to denote special computation results
+    // NOTE: The VM uses numbers >> +INF to denote special computation results.
     this.EXCEPTION = 1e+36; // to test for any exceptional value
     this.UNDEFINED = 1e+37; // to denote "unspecified by the user"
     this.NOT_COMPUTED = 1e+38; // initial value for VM variables (to distinguish from UNDEFINED)
     this.COMPUTING = 1e+39; // used by the VM to implement lazy evaluation
   
     // NOTES:
-    // (1) computation errors are signalled by NEGATIVE values << -10^35
-    // (2) JavaScript exponents can go up to +/- 308 (IEEE 754 standard)
-    // (3) when adding/modifying these values, ALSO update the VM methods for
-    //     representing these values as human-readable strings!
+    // (1) Computation errors are signalled by NEGATIVE values << -10^35.
+    // (2) JavaScript exponents can go up to +/- 308 (IEEE 754 standard).
+    // (3) when adding/modifying these values, ALSO update the VM methods
+    //     for representing these values as human-readable strings!
     
     this.ERROR = -1e+40; // Any lower value indicates a computation error
     this.CYCLIC = -1e+41;
@@ -2218,12 +2221,12 @@ class VirtualMachine {
       this.BAD_REF, this.UNDERFLOW, this.OVERFLOW, this.INVALID, this.PARAMS,
       this.UNKNOWN_ERROR, this.UNDEFINED, this.NOT_COMPUTED, this.COMPUTING];
     
-    // Prefix for warning messages that are logged in the monitor
+    // Prefix for warning messages that are logged in the monitor.
     this.WARNING = '-- Warning: ';
 
-    // Solver constants indicating constraint type
-    // NOTE: these correspond to the codes used by LP_solve; when generating
-    // MPS files, other constants are used
+    // Solver constants indicating constraint type.
+    // NOTE: These correspond to the codes used in the LP format. When
+    // generating MPS files, other constants are used.
     this.FR = 0;
     this.LE = 1;
     this.GE = 2;
@@ -2239,18 +2242,18 @@ class VirtualMachine {
       'hour': 1, 'minute': 1/60, 'second': 1/3600
     };
     // More or less standard time unit abbreviations.
-    // NOTE: minute is abbreviated to `m` to remain consistent with the constants
-    // that can be used in expressions. There, `min` already denotes the "minimum"
-    // operator.
+    // NOTE: Minute is abbreviated to `m` to remain consistent with the
+    // constants that can be used in expressions. There, `min` already
+    // denotes the "minimum" operator.
     this.time_unit_shorthand = {
       'year': 'yr', 'week': 'wk', 'day': 'd',
       'hour': 'h', 'minute': 'm', 'second': 's'
     };
     // Number of rounds limited to 31 because JavaScript performs bitwise
-    // operations on 32 bit integers, and the sign bit may be troublesome
+    // operations on 32 bit integers, and the sign bit may be troublesome.
     this.max_rounds = 31;
     this.round_letters = '?abcdefghijklmnopqrstuvwxyzABCDE';
-    // Standard 1-letter codes for Linny-R entities
+    // Standard 1-letter codes for Linny-R entities.
     this.entity_names = {
       A: 'actor',
       B: 'constraint',
@@ -2262,7 +2265,7 @@ class VirtualMachine {
       Q: 'product'
     };
     this.entity_letters = 'ABCDELPQ';
-    // Standard attributes of Linny-R entities
+    // Standard attributes of Linny-R entities.
     this.attribute_names = {
       'LB':  'lower bound',
       'UB':  'upper bound',
@@ -2282,18 +2285,18 @@ class VirtualMachine {
       'SOC': 'share of cost',
       'A':   'active'
     };
-    // NOTE: defaults are level (L), link flow (F), cluster cash flow (CF),
-    // actor cash flow (CF); dataset value (no attribute)
-    // NOTE: exogenous properties first, then the computed properties
+    // NOTE: Defaults are level (L), link flow (F), cluster cash flow (CF),
+    // actor cash flow (CF); dataset value (no attribute).
+    // NOTE: Exogenous properties first, then the computed properties.
     this.process_attr = ['LB', 'UB', 'IL', 'LCF', 'L', 'CI', 'CO', 'CF', 'CP'];
     this.product_attr = ['LB', 'UB', 'IL', 'P', 'L', 'CP', 'HCP'];
     this.cluster_attr = ['CI', 'CO', 'CF'];
     this.link_attr = ['R', 'D', 'SOC', 'F'];
     this.constraint_attr = ['SOC', 'A'];
     this.actor_attr = ['W', 'CI', 'CO', 'CF'];
-    // Only expression attributes can be used for sensitivity analysis
+    // Only expression attributes can be used for sensitivity analysis.
     this.expression_attr = ['LB', 'UB', 'IL', 'LCF', 'P', 'R', 'D', 'W'];
-    // Attributes per entity type letter
+    // Attributes per entity type letter.
     this.attribute_codes = {
       A: this.actor_attr,
       B: this.constraint_attr,
@@ -2314,18 +2317,19 @@ class VirtualMachine {
         this.entity_attribute_names[el].push(ac[j]);
       }
     }
-    // Level-based attributes are computed only AFTER optimization
+    // Level-based attributes are computed only AFTER optimization.
     this.level_based_attr = ['L', 'CP',  'HCP', 'CF', 'CI', 'CO', 'F', 'A'];
     this.object_types = ['Process', 'Product', 'Cluster', 'Link', 'Constraint',
         'Actor', 'Dataset', 'Equation'];
     this.type_attributes = [this.process_attr, this.product_attr,
         this.cluster_attr, this.link_attr, this.constraint_attr,
         this.actor_attr, [], []];
-    // Statistics that can be calculated for sets of variables 
+    // Statistics that can be calculated for sets of variables.
     this.statistic_operators =
       ['MAX', 'MEAN', 'MIN', 'N', 'SD', 'SUM', 'VAR',
        'MAXNZ', 'MEANNZ', 'MINNZ', 'NNZ', 'SDNZ', 'SUMNZ', 'VARNZ'];
-    // Statistics that can be calculated for outcomes and experiment run results
+    // Statistics that can be calculated for outcomes and experiment run
+    // results.
     this.outcome_statistics =
       ['LAST', 'MAX', 'MEAN', 'MIN', 'N', 'NZ', 'SD', 'SUM', 'VAR'];
     this.solver_names = {
@@ -2370,8 +2374,9 @@ class VirtualMachine {
     // (1) MODEL.runLength = simulation period + look-ahead, so that
     //     should not be used to compute the number of blocks.
     // (2) For each block, a chunk (block + lookahead) is optimized.
+    this.nr_of_time_steps = MODEL.end_period - MODEL.start_period + 1;
     this.nr_of_blocks = Math.ceil(
-        (MODEL.end_period - MODEL.start_period + 1) / MODEL.block_length);
+        this.nr_of_time_steps / MODEL.block_length);
 
     // EXAMPLE: Simulation period of 55 time steps, block length of 10
     // time steps and no look-ahead => 6 chunks, and chunk length = block
@@ -3140,7 +3145,7 @@ class VirtualMachine {
 
     // FIRST: define indices for all variables (index = Simplex tableau column number)
 
-    // Each actor has a variable to compute its cash in and its cash out
+    // Each actor has a variable to compute its cash in and its cash out.
     const actor_keys = Object.keys(MODEL.actors).sort();
     for(i = 0; i < actor_keys.length; i++) {
       const a = MODEL.actors[actor_keys[i]];
@@ -3361,21 +3366,24 @@ class VirtualMachine {
     //       on this vector. If expressions for process properties are
     //       static, more efficient VM instructions are used.
 
-    // Initially assume "no cash flows for any actor to be considered"
+    // Initially assume "no cash flows for any actor to be considered".
+    // This flag will be set to FALSE when some actor cash flow constraint
+    // has a non-zero coefficient.
     this.no_cash_flows = true;
     
-    // Iterate over all actors to add the cash flow computation constraints
+    // Iterate over all actors to add the cash flow computation constraints.
     for(let ai = 0; ai < actor_keys.length; ai++) {
       const a = MODEL.actors[actor_keys[ai]];
-      this.code.push([VMI_clear_coefficients, null]);
+      // NOTE: No need for VMI_clear_coefficients because the cash flow
+      // coefficients operate on two special "registers" of the VM.
       for(i = 0; i < process_keys.length; i++) {
         k = process_keys[i];
         if(!MODEL.ignored_entities[k]) {
           const p = MODEL.processes[k];
-          // Only consider processes owned by this actor
+          // Only consider processes owned by this actor.
           if(p.actor === a) {
-            // Iterate over links IN, but only consider consumed products having
-            // a market price
+            // Iterate over links IN, but only consider consumed products
+            // having a market price.
             for(j = 0; j < p.inputs.length; j++) {
               l = p.inputs[j];
               if(!MODEL.ignored_entities[l.identifier] &&
@@ -3497,33 +3505,26 @@ class VirtualMachine {
           } // END of FOR ALL output links
         } // END of IF process not ignored
       } // END of FOR ALL processes
-      
-      // NOTE: if the last VM instruction still is "clear coefficients",
-      //       this means that (so far) no actor cash flows were detected
-      if(this.no_cash_flows) {
-        this.no_cash_flows =
-            this.code[this.code.length-1][0] === VMI_clear_coefficients;
-      }
-      
-      // ALWAYS add the two cash flow constraints for this actor, as both cash
-      // flow variables must be computed (will be 0 if no cash flows)
-      this.code.push(
-          [VMI_copy_cash_coefficients, VM.PRODUCE],
-          [VMI_add_const_to_coefficient, [a.cash_in_var_index, 1]],
-          [VMI_add_constraint, VM.EQ],
-          [VMI_copy_cash_coefficients, VM.CONSUME],
-          [VMI_add_const_to_coefficient, [a.cash_out_var_index, 1]],
-          [VMI_add_constraint, VM.EQ]
-      );
-      
+
+      // Check whether any VMI_update_cash_coefficient instructions have
+      // been added. If so, the objective function will maximze weighted
+      // sum of actor cash flows, otherwise minimize sum of process levels.
+      this.no_cash_flows = this.no_cash_flows &&
+          this.code[this.code.length - 1][0] !== VMI_update_cash_coefficient;
+
+      // ALWAYS add the two cash flow constraints for this actor, as both
+      // cash flow variables must be computed (will be 0 if no cash flows).
+      this.code.push([VMI_add_cash_constraints,
+          [a.cash_in_var_index, a.cash_out_var_index]]);
+
     } // END of FOR loop iterating over all actors
     
-    // NEXT: define the coefficients for the objective function
+    // NEXT: Define the coefficients for the objective function.
     this.code.push([VMI_clear_coefficients, null]);
 
-    // NOTE: if, after all actors -- this includes (no actor) -- have been
-    // considered, no cash flows have been detected, the solver should aim for
-    // minimal effort, i.e., lowest weighted sum of process levels
+    // NOTE: If, after all actors -- this includes (no actor) -- have been
+    // considered, no cash flows have been detected, the solver should aim
+    // for minimal effort, i.e., lowest weighted sum of process levels.
     if(this.no_cash_flows) {
       for(i = 0; i < process_keys.length; i++) {
         k = process_keys[i];
@@ -4295,8 +4296,9 @@ class VirtualMachine {
     // largest cash flow coefficient (in absolute value) within the
     // current block so that cash flows cannot easily "overrule" the
     // slack penalties in the objective function.
-    // NOTE: No scaling needed if model features no cash flows.
-    if(this.no_cash_flows) return;
+    // NOTE: No scaling needed if model features no cash flows, or if
+    // cash scalar equals 1.
+    if(this.no_cash_flows || this.cash_scalar === 1) return;
     this.logMessage(this.block_count,
         'Cash flows scaled by 1/' + this.cash_scalar);
     // Use reciprocal as multiplier to scale the constraint coefficients.
@@ -4317,7 +4319,7 @@ class VirtualMachine {
       }
     }
   }
-
+  
   checkForInfinity(n) {
     // Return floating point number `n`, or +INF or -INF if the absolute
     // value of `n` is relatively (!) close to the VM infinity constants
@@ -4343,8 +4345,6 @@ class VirtualMachine {
     let bb = (block - 1) * MODEL.block_length + 1,
         abl = this.chunk_length,
         cbl = this.actualBlockLength(block);
-    // For the last block, crop the actual block length so it does not
-    // extend beyond the simulation period (these results should be ignored).
     // If no results computed, preserve those already computed for the
     // pervious chunk as "look-ahead".
     if(err && block > 1 && MODEL.look_ahead > 0) {
@@ -4355,7 +4355,9 @@ class VirtualMachine {
           'No results from solver -- retained results of ' +
               pluralS(MODEL.look_ahead, 'look-ahead time step'));
     }
-    if(cbl <= 0) {
+    // For the last block, crop the actual block length so it does not
+    // extend beyond the simulation period (these results should be ignored).
+    if(cbl < 0) {
       this.logMessage(block, 'Results of last optimization could be discarded');
       abl = 0;
     } else if(cbl < abl) {
@@ -4395,11 +4397,11 @@ class VirtualMachine {
             x[a.cash_out_var_index + j] * this.cash_scalar);
         a.cash_flow[b] = a.cash_in[b] - a.cash_out[b];
         // Count occurrences of a negative cash flow (threshold -0.5 cent).
-        if(a.cash_in[b] < -0.005) {
+        if(b <= this.nr_of_time_steps && a.cash_in[b] < -0.005) {
           this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
               a.displayName + ' cash IN = ' + a.cash_in[b].toPrecision(2));
         }
-        if(a.cash_out[b] < -0.005) {
+        if(b <= this.nr_of_time_steps && a.cash_out[b] < -0.005) {
           this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
               a.displayName + ' cash IN = ' + a.cash_out[b].toPrecision(2));
         }
@@ -4500,10 +4502,10 @@ class VirtualMachine {
     // NOTE: Only check after the last round has been evaluated.
     if(round === this.lastRound) {
       let b = bb;
-      // Iterate over all time steps in this block
+      // Iterate over all time steps in this block.
       let j = -1;
       for(let i = 0; i < abl; i++) {
-        // Index `svt` iterates over types of slack variable (0 - 2)
+        // Index `svt` iterates over types of slack variable (0 - 2).
         for(let svt = 0; svt <= 2; svt++) {
           const
               svl = this.slack_variables[svt],
@@ -4515,12 +4517,12 @@ class VirtualMachine {
                 absl = Math.abs(slack);
             if(absl > VM.NEAR_ZERO) {
               const v = this.variables[vi - 1];
-              // NOTE: for constraints, add 'UB' or 'LB' to its vector for the
-              // time step where slack was used
+              // NOTE: for constraints, add 'UB' or 'LB' to its vector for
+              // the time step where slack was used.
               if(v[1] instanceof BoundLine) {
                 v[1].constraint.slack_info[b] = v[0];
               }
-              if(absl > VM.SIG_DIF_FROM_ZERO) {
+              if(b <= this.nr_of_time_steps && absl > VM.SIG_DIF_FROM_ZERO) {
                 this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
                     `${v[1].displayName} ${v[0]} slack = ${this.sig4Dig(slack)}`);
                 if(v[1] instanceof Product) {
@@ -4566,6 +4568,7 @@ class VirtualMachine {
     // optimization period, hence start by calculating the offset `bb`
     // being the first time step of this block.
     // Blocks are numbered 1, 2, ...
+    let latest_time_step = 0;
     const
         bb = (block - 1) * MODEL.block_length + 1,
         cbl = this.actualBlockLength(block);
@@ -4586,6 +4589,7 @@ class VirtualMachine {
         // NOTE: Flows may have a delay!
         ld = l.actualDelay(b);
         bt = b - ld;
+        latest_time_step = Math.max(latest_time_step, bt);
         // If delay < 0 AND this results in a block time beyond the
         // block length, this means that the level of the FROM node
         // must be "fixated" in the next block.
@@ -4710,9 +4714,10 @@ class VirtualMachine {
         // INPUT links from priced products generate cash OUT...
         for(let j = 0; j < p.inputs.length; j++) {
           // NOTE: Input links do NOT have a delay.
-          const l = p.inputs[j],
-                af = l.actual_flow[b],
-                fnp = l.from_node.price;
+          const
+              l = p.inputs[j],
+              af = l.actual_flow[b],
+              fnp = l.from_node.price;
           if(af > VM.NEAR_ZERO && fnp.defined) {
             const pp = fnp.result(b);
             if(pp > 0 && pp < VM.PLUS_INFINITY) {
@@ -4725,14 +4730,14 @@ class VirtualMachine {
         }
         // OUTPUT links to priced products generate cash IN ...
         for(let j = 0; j < p.outputs.length; j++) {
-          // NOTE: Actual flows already consider delay!
-          const l = p.outputs[j],
-                ld = l.actualDelay(b),
-                af = l.actual_flow[b],
-                tnp = l.to_node.price;
+          // NOTE: actualFlows already consider delay!
+          const
+              l = p.outputs[j],
+              af = l.actualFlow(b),
+              tnp = l.to_node.price;
           if(af > VM.NEAR_ZERO && tnp.defined) {
-            // NOTE: To get the correct price, again consider delays.
-            const pp = tnp.result(b - ld);
+            // NOTE: Use the price at the time of the actual flow.
+            const pp = tnp.result(b);
             if(pp > 0 && pp < VM.PLUS_INFINITY) {
               ci += pp * af;
             // ... unless the product price is negative; then cash OUT.
@@ -4761,9 +4766,14 @@ class VirtualMachine {
     // at a time because of delays, and also because expressions may refer
     // to values for earlier time steps.
     if(MODEL.infer_cost_prices) {
+      // Keep track of products for which CP will not be computed correctly
+      // due to negative delays.
+      MODEL.products_with_negative_delays = {};
       b = bb;
       for(let i = 0; i < cbl; i++) {
-        if(!MODEL.calculateCostPrices(b)) {
+        // NOTE: Issues with cost price calculation beyond simulation
+        // period need not be reported.
+        if(b <= this.nr_of_time_steps && !MODEL.calculateCostPrices(b)) {
           this.logMessage(block, `${this.WARNING}(t=${b}) ` +
               'Invalid cost prices due to negative flow(s)');
         }
@@ -4772,22 +4782,110 @@ class VirtualMachine {
       }
       // NOTE: Links with negative delays will not have correct cost
       // prices as these occur in the future. Having calculated (insofar
-      // as possibe) cost prices of processes, those on links with negative
+      // as possibe) cost prices of nodes, those on links with negative
       // delays can now be set to these "future" cost prices.
-      for(let k in MODEL.links) if(MODEL.links.hasOwnProperty(k)) {
-        const l = MODEL.links[k];
-        b = bb;
-        // Iterate over all time steps in this chunk.
-        for(let i = 0; i < cbl; i++) {
-          ld = l.actualDelay(b);
-          if(ld < 0) {
-            // Get the *future* actual flow
-            const af = l.actualFlow(b - ld);
-            if(af > VM.NEAR_ZERO) {
-console.log('HERE b link delay', b, l.displayName, ld, af, l.from_node.costPrice(b));
+      let ts = Object.keys(MODEL.products_with_negative_delays);
+      // Make a separate list of stocks, as these require post-processing.
+      const stocks = [];
+      // NOTE: Proceed backwards in time, using CP = 0 when time step
+      // falls beyond block length + look-ahead.
+      for(let i = ts.length - 1; i >= 0; i--) {
+        const
+            t = parseInt(ts[i]),
+            pwnd = MODEL.products_with_negative_delays[t];
+        // @@TO DO: Sort products in order of precedence to avoid that
+        // when Q1 --> Q2 the CP of Q2 is computed first, and remains
+        // "undefined" while the CP of Q1 can be known.
+        for(let j = 0; j < pwnd.length; j++) {
+          const p = pwnd[j];
+          if(p.is_buffer) addDistinct(p, stocks);
+          // Compute total cost price as sum of inflow * unit cost price.
+          let tcp = 0,
+              taf = 0;
+          for(let k = 0; k < p.inputs.length; k++) {
+            const
+                l = p.inputs[k],
+                d = l.actualDelay(t),
+                td = t - d;
+            // Only compute if t lies within the optimization period.
+            if(td < bb + cbl) {
+              const
+                  // NOTE: actualFlow already considers delays.
+                  af = l.actualFlow(t),
+                  // Get the cost price for the delayed time step.
+                  qcp = l.from_node.costPrice(td);
+              if(qcp > VM.EXCEPTION) {
+                tcp = VM.UNDEFINED;
+                break;
+              }
+              if(af > VM.NEAR_ZERO) {
+                tcp += af * qcp * l.share_of_cost;
+                taf += af;
+              }
             }
           }
-          b++;
+          //  CP beyond time horizon
+          if(tcp >= VM.EXCEPTION) {
+            p.cost_price[t] = VM.UNDEFINED;
+          } else if(taf > 0) {
+            // Product cost price is "per unit".
+            p.cost_price[t] = tcp / taf;
+          } else if(p.inputs.length === 1) {
+            // If product has only one input, its cost price can be
+            // inferred from this input even if there is no inflow.
+            const
+                l = p.inputs[0],
+                d = l.actualDelay(t),
+                rr = l.relative_rate.result[t - d];
+            // When t - d is outside period, `rr` is undefined => CP = 0.
+            p.cost_price[t] = (rr ? l.from_node.costPrice(t - d) *
+                rr * l.share_of_cost : 0);
+          } else {
+            p.cost_price[t] = 0;
+          }
+        }
+      }
+      // NOTE: Stocks require special treatment due to working backwards
+      // in time.
+      for(let i = 0; i < stocks.length; i++) {
+        const p = stocks[i];
+        // Get previous stock level and stock price (prior to block start).
+        let sl = p.actualLevel(bb - 1),
+            psp = p.stock_price[bb - 1] || 0;
+        for(let t = bb; t < bb + cbl; t++) {
+          // Subtract outflows from stock level.
+          for(let k = 0; k < p.outputs.length; k++) {
+            const
+                l = p.outputs[k],
+                af = l.actualFlow(t);
+            if(af > VM.NEAR_ZERO) sl -= af;
+          }
+          // Start with total CP = remaining old stock times old price.
+          let tcp = sl * psp;
+          // Add inflows to both level and total CP.
+          for(let k = 0; k < p.inputs.length; k++) {
+            const
+                l = p.inputs[k],
+                af = l.actualFlow(t),
+                d = l.actualDelay(t);
+            if(af > VM.NEAR_ZERO) {
+              const cp = l.from_node.costPrice(t - d);
+              if(cp >= VM.EXCEPTION) {
+                tcp = VM.UNDEFINED;
+                break;
+              }
+              sl += af;
+              tcp += af * cp;
+            }
+          }
+          if(tcp >= VM.EXCEPTION) {
+            psp = VM.UNDEFINED;
+          } else if(sl > VM.NEAR_ZERO) {
+            psp = tcp / sl;
+          } else {
+            psp = 0;
+          }
+          p.stock_price[t] = psp;
         }
       }
     }
@@ -4887,41 +4985,45 @@ console.log('HERE b link delay', b, l.displayName, ld, af, l.from_node.costPrice
   }
   
   resetTableau() {
-    // Clears tableau data: matrix, rhs and constraint types
-    // NOTE: this reset is called when initializing, and to free up
-    // memory after posting a block to the server
+    // Clears tableau data: matrix, rhs and constraint types.
+    // NOTE: This reset is called when initializing, and to free up
+    // memory after posting a block to the server.
     this.matrix.length = 0;
     this.right_hand_side.length = 0;
     this.constraint_types.length = 0;
   }
   
   initializeTableau(abl) {
-    // `offset` is used to calculate the actual column index for variables
+    // `offset` is used to calculate the actual column index for variables.
     this.offset = 0;
-    // NOTE: vectors are "sparse" (i.e., will contain many 0) and are hence not
-    // represented as arrays but as objects, e.g., {4:1.5, 8:0.3} to represent
-    // an array [0, 0, 0, 1.5, 0, 0, 0, 0.3, 0, 0, 0, ...]
-    // The keys can span the full chunk, so the objects represent vectors that
-    // have a "virtual length" of cols * abl
+    // NOTE: Vectors are "sparse" (i.e., will contain many 0) and are hence
+    // not represented as arrays but as objects, e.g., {4:1.5, 8:0.3} to
+    // represent an array [0, 0, 0, 1.5, 0, 0, 0, 0.3, 0, 0, 0, ...].
+    // The keys can span the full chunk, so the objects represent vectors
+    // that have a "virtual length" of cols * abl.
     this.coefficients = {};
+    this.rhs = 0;
+    // NOTE: VM needs separate "registers" for cash IN and cash OUT
+    // coefficients and RHS because the direction of the cash flow is
+    // dynamic.
     this.cash_in_coefficients = {};
+    this.cash_in_rhs = 0;
     this.cash_out_coefficients = {};
-    // NOTE: cash flow equation coefficients may be divided by a scalar to keep
-    // them amply below the base slack penalty; the scalar is increased by the
-    // VM instruction  VMI_copy_cash_coefficients  so that at the end of the
-    // block setup it equals the highest absolute coefficient in the cash flow
-    // constraint equations; the VM maintains a list of indices of matrix rows
-    // that then need to be scaled
+    this.cash_out_rhs = 0;
+    // NOTE: Cash flow equation coefficients may be divided by a scalar to
+    // keep them amply below the base slack penalty; the scalar is increased
+    // by the VM instruction VMI_add_cash_constraints so that at the end of
+    // the block setup it equals the highest absolute coefficient in the
+    // cash flow constraint equations. The VM maintains a list of indices
+    // of matrix rows that then need to be scaled.
     this.cash_scalar = 1;
     this.cash_constraints = [];
+    // Vector for the objective function coefficients.
     this.objective = {};
+    // Vectors for the bounds on decision variables.
     this.lower_bounds = {};
     this.upper_bounds = {};
-    // NOTE: right-hand side of cash IN/OUT equations will always be 0 as the
-    // actors' cash flows are calculated as C - a1P1 - a2P2 - ... anPn = 0
-    this.rhs = 0;
-    // NOTE: the constraint coefficient matrix and the rhs and ct vectors
-    // have equal length (#rows); the matrix is a list of sparse vectors
+    // Clear the tableau matrix and constraint type and RHS columns.
     this.resetTableau();
     // NOTE: setupBlock only works properly if setupProblem was successful
     // Every variable gets one column per time step => tableau is organized
@@ -4947,7 +5049,7 @@ console.log('HERE b link delay', b, l.displayName, ld, af, l.from_node.costPrice
         this.is_binary[parseInt(i) + j*this.cols] = true;
       }
     }
-    // Set list with indices of semi-contiuous variables
+    // Set list with indices of semi-contiuous variables.
     this.is_semi_continuous = {};
     for(let i in this.sec_var_indices) if(Number(i)) {
       for(let j = 0; j < abl; j++) {
@@ -6004,7 +6106,7 @@ function VMI_push_block_number(x) {
 
 function VMI_push_run_length(x) {
   // Push the run length (excl. look-ahead!).
-  const n = MODEL.end_period - MODEL.start_period + 1;
+  const n = VM.nr_of_time_steps;
   if(DEBUGGING) console.log('push run length N = ' + n);
   x.push(n);
 }
@@ -6283,7 +6385,7 @@ function relativeTimeStep(t, anchor, offset, dtm, x) {
   }
   if(anchor === 'l') {
     // Last: offset relative to the last index in the vector.
-    return MODEL.end_period - MODEL.start_period + 1 + offset;
+    return VM.nr_of_time_steps + offset;
   }
   if(anchor === 's') {
     // Scaled: offset is scaled to time unit of run.
@@ -6671,7 +6773,7 @@ function VMI_push_run_result(x, args) {
       } else if(rrspec.nr !== false) {
         // Run number inferred from local time step of expression
         const
-            rl = MODEL.end_period - MODEL.start_period + 1,
+            rl = VM.nr_of_time_steps,
             range = rangeToList(rrspec.nr, xp.runs.length - 1);
         if(range) {
           const
@@ -6800,7 +6902,7 @@ function VMI_push_statistic(x, args) {
   }
   // Negative time step is evaluated as t = 0 (initial value) t beyond
   // optimization period is evaluated as its last time step
-  const tmax = MODEL.end_period - MODEL.start_period + 1;
+  const tmax = VM.nr_of_time_steps;
   t1 = Math.max(0, Math.min(tmax, t1));
   t2 = Math.max(0, Math.min(tmax, t2));
   // Trace only now that time step range has been computed
@@ -7637,11 +7739,26 @@ function VMI_set_bounds(args) {
 }
 
 function VMI_clear_coefficients() {
+  // Clear the coefficients register and set RHS to zero.
   if(DEBUGGING) console.log('clear_coefficients');
   VM.coefficients = {};
-  VM.cash_in_coefficients = {};
-  VM.cash_out_coefficients = {};
   VM.rhs = 0;
+}
+
+// AUXILIARY FUNCTION (added to support debugging)
+function knownValue(vi, t) {
+  // Return the value of decision variable X that has already been
+  // computed while optimizing a previous block. 
+  const
+      // `vi` is the variable index for X, so use vi-1 for the zero-based
+      // list VM.variables list.
+      vbl = VM.variables[vi - 1],
+      // NOTE: priorValue deals with special cases for binary variables.
+      pv = VM.priorValue(vbl, t);
+  if(DEBUGGING) {
+    console.log(`--known value: ${vbl[0]} ${vbl[1].displayName} @ ${t} = ${pv}`);
+  }
+  return pv;
 }
 
 function VMI_add_const_to_coefficient(args) {
@@ -7659,9 +7776,7 @@ function VMI_add_const_to_coefficient(args) {
       d = args[2];
     }
   }
-  const
-      k = VM.offset + vi - d*VM.cols,
-      t = VM.t - d;
+  const k = VM.offset + vi - d*VM.cols;
   if(DEBUGGING) {
     console.log(`add_const_to_coefficient [${k}]: ${VM.sig4Dig(n)}`);
   }
@@ -7675,16 +7790,7 @@ function VMI_add_const_to_coefficient(args) {
     // while solving a previous block. Since the value of X is known,
     // adding n to C is implemented as subtracting n*X from the right hand
     // side of the constraint.
-    // NOTE: Subtract 1 from index `vi` because VM.variables is a 0-based
-    // array.
-    const
-        vbl = VM.variables[vi - 1],
-        pv = VM.priorValue(vbl, t);
-    if(DEBUGGING) {
-      console.log(`--lookup[${k}]: ${vbl[0]} ${vbl[1].displayName} @ ${t} = ${pv}`);
-    }
-    // NOTE: Special cases for binary variables!
-    VM.rhs -= pv * n;
+    VM.rhs -= knownValue(vi, VM.t - d) * n;
   } else if(k in VM.coefficients) {
     VM.coefficients[k] += n;
   } else {
@@ -7716,11 +7822,7 @@ function VMI_add_const_to_sum_coefficients(args) {
     if(k > VM.chunk_offset) return;
     if(k <= 0) {
       // See NOTE in VMI_add_const_to_coefficient instruction.
-      const vbl = VM.variables[vi - 1];
-      if(DEBUGGING) {
-        console.log('--lookup[' + k + ']: ' + vbl[0] + ' ' + vbl[1].displayName);
-      }
-      VM.rhs -= VM.priorValue(vbl, t) * n;
+      VM.rhs -= knownValue(vi, t) * n;
     } else if(k in VM.coefficients) {
       VM.coefficients[k] += n;
     } else {
@@ -7754,11 +7856,7 @@ function VMI_add_var_to_coefficient(args) {
   if(k > VM.chunk_offset) return;
   if(k <= 0) {
     // See NOTE in VMI_add_const_to_coefficient instruction.
-    const vbl = VM.variables[vi - 1];
-    if(DEBUGGING) {
-      console.log('--lookup[' + k + ']: ' + vbl[0] + ' ' + vbl[1].displayName);
-    }
-    VM.rhs -= VM.priorValue(vbl, t) * r;
+    VM.rhs -= knownValue(vi, t) * r;
   } else if(k in VM.coefficients) {
     VM.coefficients[k] += r;
   } else {
@@ -7792,11 +7890,7 @@ function VMI_add_var_to_weighted_sum_coefficients(args) {
     if(args.length > 3) r /= (d + 1);
     if(k <= 0) {
       // See NOTE in VMI_add_const_to_coefficient instruction
-      const vbl = VM.variables[vi - 1];
-      if(DEBUGGING) {
-        console.log('--lookup[' + k + ']: ' + vbl[0] + ' ' + vbl[1].displayName);
-      }
-      VM.rhs -= VM.priorValue(vbl, t) * r;
+      VM.rhs -= knownValue(vi, t) * r;
     } else if(k in VM.coefficients) {
       VM.coefficients[k] += r;
     } else {
@@ -7818,9 +7912,7 @@ function VMI_subtract_const_from_coefficient(args) {
     // 4th argument indicates "delay + 1"
     if(args.length > 3) d++;
   }
-  const
-      k = VM.offset + vi - d*VM.cols,
-      t = VM.t - d;
+  const k = VM.offset + vi - d*VM.cols;
   if(DEBUGGING) {
     console.log('subtract_const_from_coefficient [' + k + ']: ' + VM.sig4Dig(n));
   }
@@ -7828,11 +7920,7 @@ function VMI_subtract_const_from_coefficient(args) {
   if(k > VM.chunk_offset) return;
   if(k <= 0) {
     // See NOTE in VMI_add_const_to_coefficient instruction
-    const vbl = VM.variables[vi - 1];
-    if(DEBUGGING) {
-      console.log('--lookup[' + k + ']: ' + vbl[0] + ' ' + vbl[1].displayName);
-    }
-    VM.rhs += VM.priorValue(vbl, t) * n;
+    VM.rhs += knownValue(vi, VM.t - d) * n;
   } else if(k in VM.coefficients) {
     VM.coefficients[k] -= n;
   } else {
@@ -7870,11 +7958,7 @@ function VMI_subtract_var_from_coefficient(args) {
   if(k > VM.chunk_offset) return;
   if(k <= 0) {
     // See NOTE in VMI_add_const_to_coefficient instruction.
-    const vbl = VM.variables[vi - 1];
-    if(DEBUGGING) {
-      console.log('--lookup[' + k + ']: ' + vbl[0] + ' ' + vbl[1].displayName);
-    }
-    VM.rhs += VM.priorValue(vbl, t) * r;
+    VM.rhs += knownValue(vi, t) * r;
   } else if(k in VM.coefficients) {
     VM.coefficients[k] -= r;
   } else {
@@ -7894,26 +7978,28 @@ function VMI_update_cash_coefficient(args) {
       vi = args[2],
       dx = args[3];
   if(dx instanceof Expression) {
+    // When delay is an expression, `dx.object` is the delayed link.
     d = dx.object.actualDelay(VM.t);
-    // Extra argument indicates "delay + 1".
+    // Extra argument indicates "delay + 1" (for delta-multipliers).
     if((type === VM.ONE_C && args.length === 6) ||
         (type === VM.TWO_X && args.length === 7)) d++;
   }
+  // NOTE: When delay < 0, the coefficient must be set for a matrix row
+  // that will be added to the tableau for some later VM.t.
   // `k` is the tableau column index of the variable that affects the CF
   let k = (type === VM.PEAK_INC ? VM.chunk_offset + vi :
       VM.offset + vi - d*VM.cols);
-  // NOTE: This instruction is used only for objective function
-  // coefficients. Previously computed decision variables and variables
-  // beyond the tableau column range (when delay < 0) can be ignored.
-  if(k <= 0 || k > VM.chunk_offset) return;
+  // NOTE: Variables beyond the tableau column range (when delay < 0) can
+  // be ignored.
+  if(k > VM.chunk_offset) return;
   // NOTE: Peak increase can generate cash only at the first time
   // step of a block (when VM.offset = 0) and at the first time step
   // of the look-ahead period (when VM.offset = block length).
   if(type === VM.PEAK_INC &&
       VM.offset > 0 && VM.offset !== MODEL.block_length) return;
-  // NOTE: delay > 0 affects not only which variable is to be used,
-  // but also for which time step the price must be computed.
-  const t_price = VM.t - d;
+  // NOTE: Delay affects only which variable is to be used. The level of
+  // this variable is then the delayed production volume to be priced at
+  // the *current* time.
   // First compute the result to be processed.
   let r = 0;
   if(type === VM.ONE_C) {
@@ -7921,10 +8007,10 @@ function VMI_update_cash_coefficient(args) {
   } else if(type === VM.TWO_X || type === VM.PEAK_INC) {
     // NOTE: "peak increase" always passes two expressions.
     // The first expression determines the price.
-    r = args[4].result(t_price) * args[5].result(VM.t);
+    r = args[4].result(VM.t) * args[5].result(VM.t);
   } else if(type === VM.THREE_X) {
     // NOTE: Here, too, the first expression determines the price. 
-    r = args[4].result(t_price) * args[5].result(VM.t) * args[6].result(VM.t);
+    r = args[4].result(VM.t) * args[5].result(VM.t) * args[6].result(VM.t);
   } else if(type === VM.SPIN_RES) {
     // "spinning reserve" equals UB - level if level > 0, or 0.
     // The cash flow then equals ON/OFF*UB*price*rate - level*price*rate.
@@ -7933,15 +8019,27 @@ function VMI_update_cash_coefficient(args) {
     // expressions (UB, price, rate).
     const
         plvi = args[4],
-        // NOTE: column of second variable will be relative to same offset
+        // NOTE: Column of second variable will be relative to same offset.
         plk = k + plvi - vi,
         ub = args[5].result(VM.t),
-        price_rate = args[6].result(t_price) * args[7].result(VM.t);
+        price_rate = args[6].result(VM.t) * args[7].result(VM.t);
     r = ub * price_rate;
     // NOTE: The sign of r determines whether this spinning reserve will
-    // generate cash IN or cash OUT. The *subtracted* part hence be ADDED
-    // if r > 0, and SUBTRACTED if r < 0 (unlike the "primary" part r itself).
-    if(r > 0) {
+    // generate cash IN or cash OUT. The *subtracted* part (production level
+    // times price_rate) should hence be ADDED if r > 0, and SUBTRACTED
+    // if r < 0 (unlike the "primary" part r itself).
+    if(plk <= 0) {
+      // NOTE: If `plk` falls PRIOR to the start of the block being solved,
+      // update the right hand side of the cash flow constraint.
+      // Assume that the known production level is be non-negative, so its
+      // sign does not alter the flow direction.
+      const pl = knownValue(plvi, VM.t - d);
+      if(r > 0) {
+        VM.cash_in_rhs -= pl * price_rate;
+      } else {
+        VM.cash_out_rhs += pl * price_rate;      
+      }
+    } else if(r > 0) {
       if(plk in VM.cash_in_coefficients) {
         VM.cash_in_coefficients[plk] += price_rate;
       } else {
@@ -7959,16 +8057,27 @@ function VMI_update_cash_coefficient(args) {
   // be PRODUCE.
   if(flow === VM.CONSUME) r = -r;
   if(DEBUGGING) {
-    const vbl = (vi <= this.cols ? VM.variables[vi - 1] :
-        VM.chunk_variables[vi - this.cols]); //@@@ TO MAKE CORRECT FOR chunk vars!
-    console.log(['update_cash_coefficient [', k, ']: ', vbl[0], ' ',
-        vbl[1].displayName, ' (t = ', t, ') ', VM.CF_CONSTANTS[type], ' ',
-        VM.CF_CONSTANTS[flow], ' r = ', VM.sig4Dig(r)].join(''));
+    const vbl = (vi <= VM.cols ? VM.variables[vi - 1] :
+        VM.chunk_variables[vi - VM.cols]);
+    //@@@ MESSAGE TO MAKE CORRECT FOR chunk vars!
+    console.log(['update_cash_coefficient [', k, ']: ',
+        vbl[1].displayName, '[' + vbl[0] + '] (t = ', VM.t, ') ',
+        VM.CF_CONSTANTS[type], ' ', VM.CF_CONSTANTS[flow], ' r = ',
+        VM.sig4Dig(r)].join(''));
   }
   // Use look-ahead peak increase when offset > 0.
   if(type === VM.PEAK_INC && VM.offset) k++;
-  // Then update the cash flow: cash IN if r > 0, otherwise cash OUT . 
-  if(r > 0) {
+  // Then update the cash flow: cash IN if r > 0, otherwise cash OUT. 
+  if(k <= 0) {
+    // NOTE: If `k` falls PRIOR to the start of the block being solved,
+    // subtract the known prior value of the decision variable from the
+    // right hand side of the cash flow constraint.
+    if(r > 0) {
+      VM.cash_in_rhs += knownValue(vi, VM.t - d) * r;
+    } else {
+      VM.cash_out_rhs -= knownValue(vi, VM.t - d) * r;      
+    }
+  } else if(r > 0) {
     if(k in VM.cash_in_coefficients) {
       VM.cash_in_coefficients[k] -= r;
     } else {
@@ -8115,27 +8224,69 @@ function VMI_add_constraint(ct) {
   }
 }
 
-function VMI_copy_cash_coefficients(flow) {
-  // Overwrites the coefficients vector with the specified cash coefficients
-  // vector (cash IN for production and cash OUT for consumption)
+function VMI_add_cash_constraints(args) {
+  // args = [cash IN variable index, cash OUT variable index]
+  // Overwrites the coefficients vector with the cash coefficients
+  // vector specified by the first argument (cash IN for production,
+  // cash OUT for consumption). The second argument is passed only for
+  // tracing purposes.
   if(DEBUGGING) {
-    console.log('copy_cash_coefficients: ' + VM.CF_CONSTANTS[flow]);
+    console.log('add cash constraints for ',
+        VM.variables[args[0]][1].displayName, '(t = ' + VM.t + ')');
   }
-  if(flow === VM.PRODUCE) {
-    VM.coefficients = Object.assign({}, VM.cash_in_coefficients);
-  } else {
-    VM.coefficients = Object.assign({}, VM.cash_out_coefficients);
+  if(!VM.add_constraints_flag) {
+    console.log('Constraint NOT added!');
+    return;
   }
-  // NOTE: This instruction also keeps track of the highest cash flow constraint
-  // coefficient (to be used for scaling these constraint equations)
-  for(let i in VM.coefficients) if(VM.coefficients.hasOwnProperty(i)) {
-    VM.cash_scalar = Math.max(VM.cash_scalar, Math.abs(VM.coefficients[i]));
+  // Add a constraint for cash IN.
+  let row = {};
+  for(let i in VM.cash_in_coefficients) if(VM.cash_in_coefficients.hasOwnProperty(i)) {
+    const
+        c = VM.cash_in_coefficients[i],
+        ac = Math.abs(c);
+    // Do not add variables having near-zero coefficients.
+    if(ac > VM.NEAR_ZERO) {
+      row[i] = c;
+      // NOTE: This instruction also keeps track of the highest absolute
+      // cash flow constraint coefficient, so it can be used for scaling
+      // these constraint equations.
+      VM.cash_scalar = Math.max(VM.cash_scalar, ac);
+    }
   }
-  // NOTE: To permit such scaling, this instruction creates a list of constraint
-  // row indices, as these are the equations that need to be scaled
+  // To permit such scaling, this instruction maintains a list of cash
+  // constraint row indices, as these are the equations that need to be
+  // scaled once the tableau is complete.
   VM.cash_constraints.push(VM.matrix.length);
-  // Always set RHS to 0 as cash flow constraints are EQ 0 constraints
-  VM.rhs = 0;
+  // Set coefficient for the cash IN variable to 1.
+  row[VM.offset + args[0]] = 1;
+  // Add the constraint to the tableau.
+  VM.matrix.push(row);
+  VM.right_hand_side.push(VM.cash_in_rhs);
+  VM.constraint_types.push(VM.EQ);
+  // Clear the cash IN coefficient register and RHS.
+  VM.cash_in_coefficients = {};
+  VM.cash_in_rhs = 0;
+  // Now likewise add a constraint for cash OUT.
+  row = {};
+  for(let i in VM.cash_out_coefficients) if(VM.cash_out_coefficients.hasOwnProperty(i)) {
+    const
+        c = VM.cash_out_coefficients[i],
+        ac = Math.abs(c);
+    if(ac > VM.NEAR_ZERO) {
+      row[i] = c;
+      VM.cash_scalar = Math.max(VM.cash_scalar, ac);
+    }
+  }
+  VM.cash_constraints.push(VM.matrix.length);
+  // Add the cash OUT variable index.
+  row[VM.offset + args[1]] = 1;
+  // Add the constraint to the tableau.
+  VM.matrix.push(row);
+  VM.right_hand_side.push(VM.cash_out_rhs);
+  VM.constraint_types.push(VM.EQ);
+  // Clear the cash OUT coefficients register and RHS (just to be sure).
+  VM.cash_out_coefficients = {};
+  VM.cash_out_rhs = 0;
 }
 
 function VMI_add_bound_line_constraint(args) {
@@ -8388,7 +8539,7 @@ function VMI_profitable_units(x) {
         mpa = d[3].attribute,
         pt = (d.length > 4 ? d[4] : 0), // the profit threshold (0 by default)
         // the time horizon (by default the length of the simulation period)
-        nt = (d.length > 5 ? d[5] : MODEL.end_period - MODEL.start_period + 1); 
+        nt = (d.length > 5 ? d[5] : VM.nr_of_time_steps); 
     // Handle exceptional values of `uc` and `mc`.
     if(uc <= VM.BEYOND_MINUS_INFINITY || mc <= VM.BEYOND_MINUS_INFINITY) {
       x.retop(Math.min(uc, mc));
@@ -8526,7 +8677,7 @@ function VMI_highest_cumulative_consecutive_deviation(x) {
       // NOTE: an expression may not have been (fully) computed yet.
       x.compute(0);
       if(!x.isStatic) {
-        const nt = MODEL.end_period - MODEL.start_period + 1;
+        const nt = VM.nr_of_time_steps;
         for(let t = 1; t <= nt; t++) x.result(t);
       }
       vector = x.vector;
@@ -8677,7 +8828,7 @@ function correlation_or_slope(x, c_or_s) {
         // NOTE: An equation may not have been (fully) computed yet.
         eq.compute(0, x.wildcard_vector_index);
         if(!eq.isStatic) {
-          const nt = MODEL.end_period - MODEL.start_period + 1;
+          const nt = VM.nr_of_time_steps;
           for(let t = 1; t <= nt; t++) eq.result(t, x.wildcard_vector_index);
         }
         vector[k].v = eq.vector;
