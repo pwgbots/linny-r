@@ -124,7 +124,7 @@ function checkNodeModule(name) {
 }
 
 // Currently, these external solvers are supported:
-const SUPPORTED_SOLVERS = ['gurobi', 'cplex', 'scip', 'lp_solve'];
+const SUPPORTED_SOLVERS = ['gurobi', 'mosek', 'cplex', 'scip', 'lp_solve'];
 
 // Load class MILPSolver
 const MILPSolver = require('./static/scripts/linny-r-milp.js');
@@ -1555,7 +1555,7 @@ Possible options are:
   port=[number]      will listen at the specified port number
                      (default is 5050; number must be unique for each server)
   solver=[name]      will select solver [name], or warn if not found
-                     (name choices: Gurobi, CPLEX, SCIP or LP_solve)
+                     (name choices: Gurobi, MOSEK, CPLEX, SCIP or LP_solve)
   verbose            will output solver messages to the console
   workspace=[path]   will create workspace in [path] instead of (Linny-R)/user
 `;

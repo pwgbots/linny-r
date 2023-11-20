@@ -30,7 +30,7 @@ Technical documentation will be developed on GitHub: https://github.com/pwgbots/
 Linny-R is developed as a JavaScript package, and requires that **Node.js** is installed on your computer. 
 This software can be downloaded from <a href="https://nodejs.org" target="_blank">https://nodejs.org</a>. 
 Make sure that you choose the correct installer for your computer.
-Linny-R is developed using the _current_ release. Presently (October 2023) this is 21.1.0. 
+Linny-R is developed using the _current_ release. Presently (November 2023) this is 21.2.0. 
 
 Run the installer and accept the default settings.
 There is **no** need to install the optional _Tools for Native Modules_.
@@ -41,7 +41,7 @@ Verify the installation by typing:
 
 ``node --version``
 
-The response should be the version number of Node.js, for example: v21.1.0.
+The response should be the version number of Node.js, for example: v21.2.0.
 
 ## Installing Linny-R
 It is advisable to install Linny-R in a directory on your computer, not in a cloud. 
@@ -147,10 +147,10 @@ directory and type:
 
 ## Configuring the MILP solver
 
-Linny-R presently supports four MILP solvers: Gurobi, CPLEX, SCIP and LP_solve. 
-Gurobi and CPLEX are _considerably_ more powerful than the open source solvers SCIP and LP_solve,
+Linny-R presently supports five MILP solvers: Gurobi, MOSEK, CPLEX, SCIP and LP_solve. 
+Gurobi, MOSEK and CPLEX are _considerably_ more powerful than the open source solvers SCIP and LP_solve,
 but they require a license.
-Academic licenses can be obtained by students and staff of eligible institutions. 
+Academic licenses can be obtained by students and staff of eligible institutions.
 
 > **Important**
 > When installing a solver, it is advisable to accept the default file
@@ -181,6 +181,17 @@ When running a model, Linny-R will try to execute the command line application `
 It will look for this application in the directory specified in the environment variable PATH
 or more specifically in the environment variable CPLEX_STUDIO_BINARIES<em>nnnn</em>
 (where _nnnn_ denotes the CPLEX version number) on your computer.
+
+#### Installing MOSEK
+
+The software you need to install is **MOSEK**.
+More information on how to obtain a license, and instructions for installing
+MOSEK on your computer can be obtained via this URL:
+<a href="https://www.mosek.com/resources/getting-started/"
+   target="_blank">https://www.mosek.com/resources/getting-started/</a>
+
+When running a model, Linny-R will try to execute the command line application `mosek`.
+It will look for this application in the directory specified in the environment variable PATH on your computer.
 
 #### Installing SCIP
 
@@ -234,8 +245,8 @@ Open the Command Line Interface (CLI) of your computer, change to your Linny-R d
 This response should be something similar to:
 
 <pre>
-Node.js server for Linny-R version 1.7.0
-Node.js version: v21.1.0
+Node.js server for Linny-R version 1.7.4
+Node.js version: v21.2.0
 ... etc.
 </pre>
 
@@ -245,9 +256,9 @@ The Linny-R GUI should show in your browser window,
 while in the CLI you should see a long series of server log messages like:
 
 <pre>
-[2023-10-29 22:55:17] Static file: /index.html
-[2023-10-29 22:55:17] Static file: /scripts/iro.min.js
-[2023-10-29 22:55:17] Static file: /images/open.png
+[2023-11-19 22:55:17] Static file: /index.html
+[2023-11-19 22:55:17] Static file: /scripts/iro.min.js
+[2023-11-19 22:55:17] Static file: /images/open.png
 ... etc.
 </pre>
 
@@ -278,7 +289,7 @@ and then the diagram will be updated to reflect the obtained solution.
 Meanwhile, in the CLI, you should see a server log message like:
 
 <pre>
-Solve block 1 a
+Solve block 1 a with SCIP
 </pre>
 
 To end a modeling session, you can shut down the server by clicking on the
@@ -295,7 +306,7 @@ Optionally, you can add more arguments to the `node` command:
 dpi=[number]       to overrule the default resolution (300 dpi) for Inkscape 
 launch             to automatically launch Linny-R in your default browser
 port=[number]      to overrule the default port number (5050)
-solver=[name]      to overrule the default sequence (Gurobi, CPLEX, SCIP, LP_solve)
+solver=[name]      to overrule the default sequence (Gurobi, MOSEK, CPLEX, SCIP, LP_solve)
 workspace=[path]   to overrule the default path for the user directory
 </pre>
 

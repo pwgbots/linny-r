@@ -118,7 +118,22 @@ module.exports = class MILPSolver {
         }
       }
       if(sp) continue;
-      // If no Gurobi path, check whether it is a CPLEX path.
+      // If no Gurobi path, check whether it is a MOSEK path.
+      match = path_list[i].match(/[\/\\]mosek.*[\/\\]bin/i);
+      if(match) {
+        // Check whether mosek(.exe) exists in its directory
+        sp = path.join(path_list[i], 'mosek' + (windows ? '.exe' : ''));
+        try {
+          fs.accessSync(sp, fs.constants.X_OK);
+          console.log('Path to MOSEK:', sp);
+          this.solver_list.mosek = {name: 'MOSEK', path: sp};
+        } catch(err) {
+          console.log(err.message);
+          console.log('WARNING: MOSEK application not found in', sp);
+        }
+      }
+      if(sp) continue;
+      // If no MOSEK path, check whether it is a CPLEX path.
       match = path_list[i].match(/[\/\\]cplex[\/\\]bin/i);
       if(match) {
         sp = path_list[i];
@@ -188,10 +203,10 @@ module.exports = class MILPSolver {
     let s = this.solver_list.gurobi;
     if(s) {
       s.ext = '.lp';
-      s.user_model = path.join(workspace.solver_output, 'usr_model.lp');
+      s.user_model = path.join(workspace.solver_output, 'user_model.lp');
       s.solver_model = path.join(workspace.solver_output, 'solver_model.lp');
-      s.solution = path.join(workspace.solver_output, 'model.json');
-      s.log = path.join(workspace.solver_output, 'model.log');
+      s.solution = path.join(workspace.solver_output, 'gurobi.json');
+      s.log = path.join(workspace.solver_output, 'gurobi.log');
       // NOTE: Arguments 0, 1 and 2 will be updated for each solver run.
       s.args = [
           'timeLimit=30',
@@ -203,31 +218,92 @@ module.exports = class MILPSolver {
           `ResultFile=${s.solver_model}`,
           `${s.user_model}`
         ];
-      s.errors = {
-        1: 'Model loaded -- no further information',
-        2: 'Optimal solution found',
-        3: 'The model is infeasible',
-        4: 'The model is either unbounded or infeasible',
-        5: 'The model is unbounded',
-        6: 'Aborted -- Optimal objective is worse than specified cut-off',
-        7: 'Halted -- Iteration limit exceeded',
-        8: 'Halted -- Node limit exceeded',
-        9: 'Halted -- Solver time limit exceeded',
-       10: 'Halted -- Solution count limit exceeded',
-       11: 'Halted -- Optimization terminated by user',
-       12: 'Halted -- Unrecoverable numerical difficulties',
-       13: 'The model is sub-obtimal',
-       14: 'Optimization still in progress',
-       15: 'User-specified objective limit has been reached'
+      // Function to provide legend to status codes.
+      s.statusMessage = (s) => {
+        if(s >= 1 && s <= 15) return [
+            'Model loaded -- no further information',
+            'Optimal solution found',
+            'The model is infeasible',
+            'The model is either unbounded or infeasible',
+            'The model is unbounded',
+            'Aborted -- Optimal objective is worse than specified cut-off',
+            'Halted -- Iteration limit exceeded',
+            'Halted -- Node limit exceeded',
+            'Halted -- Solver time limit exceeded',
+            'Halted -- Solution count limit exceeded',
+            'Halted -- Optimization terminated by user',
+            'Halted -- Unrecoverable numerical difficulties',
+            'The model is sub-obtimal',
+            'Optimization still in progress',
+            'User-specified objective limit has been reached'
+          ][s - 1];
+        // No message otherwise; if `s` is non-zero, exception is reported.
+        return '';
+      };
+      // For some status codes, solution may be sub-optimal, but useful.
+      s.usableSolution = (s) => {
+        return [2, 5, 7, 8, 9, 10, 13, 15].indexOf(s) >= 0;
       };
       this.best_solver = 'gurobi';   
+    }
+    s = this.solver_list.mosek;
+    if(s) {
+      s.ext = '.lp';
+      s.user_model = path.join(workspace.solver_output, 'user_model.lp');
+      s.solver_model = path.join(workspace.solver_output, 'solver_model.lp');
+      s.solution = path.join(workspace.solver_output, 'user_model.int');
+      s.log = path.join(workspace.solver_output, 'mosek.log');
+      // NOTE: MOSEK command line accepts space separated commands, but paths
+      // should be enclosed in quotes.
+      s.args = [
+          `-out "${s.solver_model}"`,
+          `-d MSK_DPAR_MIO_MAX_TIME %T%`,
+          `-d MSK_DPAR_MIO_TOL_ABS_RELAX_INT %I%`,
+          '-d MSK_DPAR_MIO_REL_GAP_CONST %M%',
+          `"${s.user_model}"`
+        ];
+      s.solve_cmd = `mosek ${s.args.join(' ')} >${s.log}`;
+      // Function to provide legend to status codes.
+      s.statusMessage = (s) => {
+        if(s === 0) return '';
+        if(s >= 100000) {
+          s -= 100000;
+          const m = {
+              0: 'Maximum number of iterations exceeded',
+              1: 'Time limit exceeded',
+              2: 'Objective value outside range',
+              6: 'Terminated due to slow progress',
+              8: 'Maximum number of integer relaxations exceeded',
+              9: 'Maximum number of branches exceeded',
+              15: 'Maximum number of feasible solutions exceeded',
+              20: 'Maximum number of set-backs exceeded',
+              25: 'Terminated due to numerical problems',
+              30: 'Terminated due to internal error',
+              31: 'Terminated due to internal error'
+          };
+          return m[s] || '';
+        }
+        if(s >= 1000 && s <= 1030) {
+          return 'Invalid MOSEK license - see message in monitor';
+        }
+        // All other codes beyond 1000 indicate an error.
+        if(s > 1000) {
+          return 'Solver encoutered a problem - see messages in monitor';
+        }
+        return 'Solver warning(s) - see messages in monitor'; 
+      };
+      // For some status codes, solution may be sub-optimal, but useful.
+      s.usableSolution = (s) => {
+        return [2, 5, 7, 8, 9, 10, 13, 15].indexOf(s) >= 0;
+      };
+      this.best_solver = this.best_solver || 'mosek';
     }
     s = this.solver_list.cplex;
     if(s) {
       s.ext = '.lp';
-      s.user_model = path.join(workspace.solver_output, 'usr_model.lp');
+      s.user_model = path.join(workspace.solver_output, 'user_model.lp');
       s.solver_model = path.join(workspace.solver_output, 'solver_model.lp');
-      s.solution = path.join(workspace.solver_output, 'model.sol');
+      s.solution = path.join(workspace.solver_output, 'cplex.sol');
       // NOTE: CPLEX log file is located in the Linny-R working directory
       s.log = path.join(workspace.solver_output, 'cplex.log');
       // NOTE: CPLEX command line accepts space separated commands ...
@@ -245,16 +321,20 @@ module.exports = class MILPSolver {
       // be enclosed in double quotes.
       s.solve_cmd = `cplex -c "${s.args.join('" "')}"`;
       // NOTE: CPLEX error message is inferred from solution file.
-      s.errors = {};
+      s.statusMessage = () => { return ''; };
+      // For some status codes, solution may be sub-optimal, but useful.
+      s.usableSolution = (s) => {
+        return false; // @@@ STILL TO CHECK!
+      };
       this.best_solver = this.best_solver || 'cplex';
     }
     s = this.solver_list.scip;
     if(s) {
       s.ext = '.lp';
-      s.user_model = path.join(workspace.solver_output, 'usr_model.lp');
+      s.user_model = path.join(workspace.solver_output, 'user_model.lp');
       s.solver_model = path.join(workspace.solver_output, 'solver_model.lp');
-      s.solution = path.join(workspace.solver_output, 'model.sol');
-      s.log = path.join(workspace.solver_output, 'model.log');
+      s.solution = path.join(workspace.solver_output, 'scip.sol');
+      s.log = path.join(workspace.solver_output, 'scip.log');
       // NOTE: SCIP command line accepts space separated commands ...
       s.args = [
           'read', s.user_model,
@@ -272,31 +352,43 @@ module.exports = class MILPSolver {
       // caputured in a log file, hence the output redirection with > to
       // the log file.
       s.solve_cmd = `scip -c "${s.args.join(' ')}" >${s.log}`;
-      s.errors = {
-        1: 'User interrupt',
-        2: 'Node limit reached',
-        3: 'Total node limit reached',
-        4: 'Stalling node limit reached',
-        5: 'Time limit reached',
-        6: 'Memory limit reached',
-        7: 'Gap limit reached',
-        8: 'Solution limit reached',
-        9: 'Solution improvement limit reached',
-       10: 'Restart limit reached',
-       11: 'Optimal solution found',
-       12: 'Problem is infeasible',
-       13: 'Problem is unbounded',
-       14: 'Problem is either infeasible or unbounded',
-       15: 'Solver terminated by user'
+      // Function to provide legend to status codes.
+      s.statusMessage = (s) => {
+        if(s >= 1 && s <= 15) return [
+            'User interrupt',
+            'Node limit reached',
+            'Total node limit reached',
+            'Stalling node limit reached',
+            'Time limit reached',
+            'Memory limit reached',
+            'Gap limit reached',
+            'Solution limit reached',
+            'Solution improvement limit reached',
+            'Restart limit reached',
+            'Optimal solution found',
+            'Problem is infeasible',
+            'Problem is unbounded',
+            'Problem is either infeasible or unbounded',
+            'Solver terminated by user'
+          ][s - 1];
+        // No message otherwise; if `s` is non-zero, exception is reported.
+        return '';
+      };
+      // For some status codes, solution may be sub-optimal, but useful.
+      s.usableSolution = (s) => {
+        return false; // @@@ STILL TO CHECK!
       };
       this.best_solver = this.best_solver || 'scip';
     }
     s = this.solver_list.lp_solve;
     if(s) {
       s.ext = '.lp';
-      s.user_model = path.join('user', 'solver', 'usr_model.lp');
+      s.user_model = path.join('user', 'solver', 'user_model.lp');
       s.solver_model = path.join('user', 'solver', 'solver_model.lp');
-      s.solution = path.join('.', 'user', 'solver', 'output.txt');
+      // NOTE: LP_solve outputs solver messages AND solution to console,
+      // hence no separate solution file.
+      s.solution = '';
+      s.log = path.join('.', 'user', 'solver', 'lp_solve.log');
       s.args = [
           '-timeout %T%',
           '-v4',
@@ -304,24 +396,33 @@ module.exports = class MILPSolver {
           '-gr %M%',
           '-epsel 1e-7',
           `-wlp ${s.solver_model}`,
-          `>${s.solution}`,
+          `>${s.log}`,
           s.user_model
         ];
       // Execute file command differs across platforms.
       s.solve_cmd = (windows ? 'lp_solve.exe ' : './lp_solve ') +
           s.args.join(' ');
-      s.errors = {
-        '-2': 'Out of memory',
-           1: 'The model is sub-optimal',
-           2: 'The model is infeasible',
-           3: 'The model is unbounded',
-           4: 'The model is degenerative',
-           5: 'Numerical failure encountered',
-           6: 'Solver was stopped by user',
-           7: 'Solver time limit exceeded',
-           9: 'The model could be solved by presolve',
-          25: 'Accuracy error encountered'  
-        };
+      // Function to provide legend to status codes.
+      s.statusMessage = (s) => {
+        if(s === -2) return 'Out of memory';
+        if(s === 9) return 'The model could be solved by presolve';
+        if(s === 25) return 'Accuracy error encountered';
+        if(s >= 1 && s <= 7) return [
+            'The model is sub-optimal',
+            'The model is infeasible',
+            'The model is unbounded',
+            'The model is degenerative',
+            'Numerical failure encountered',
+            'Solver was stopped by user',
+            'Solver time limit exceeded'
+          ][s - 1];
+        // No message otherwise; if `s` is non-zero, exception is reported.
+        return '';
+      };
+      // For some status codes, solution may be sub-optimal, but useful.
+      s.usableSolution = (s) => {
+        return [-2, 2, 6].indexOf(s) < 0;
+      };
       this.best_solver = this.best_solver || 'lp_solve';
     }
   }
@@ -332,6 +433,7 @@ module.exports = class MILPSolver {
         block: sp.get('block'),
         round: sp.get('round'),
         status: 0,
+        solution: true,
         error: '',
         messages: []
       };
@@ -346,6 +448,7 @@ module.exports = class MILPSolver {
     }
     if(!this.id) {
       result.status = -999;
+      result.solution = false;
       result.error = 'No MILP solver';
       return result;
     }
@@ -363,7 +466,14 @@ module.exports = class MILPSolver {
     try {
       if(s.solution) fs.unlinkSync(s.solution);
     } catch(err) {
-      // Ignore error
+      // NOTE: MOSEK solution may also be a '.bas' file.
+      if(this.id === 'mosek') {
+        try {
+          fs.unlinkSync(s.solution.replace(/\.int$/, '.bas'));
+        } catch(err) {
+          // Ignore error.
+        }
+      }
     }
     let timeout = parseInt(sp.get('timeout')),
         inttol = parseFloat(sp.get('inttol')),
@@ -402,8 +512,8 @@ module.exports = class MILPSolver {
         const options = {windowsHide: true};
         spawn = child_process.spawnSync(s.path, s.args, options);
       } else {
-        // CPLEX, SCIP and LP_solve will not work when the arguments are
-        // passed as an array. Therefore they are executed with a single
+        // MOSEK, CPLEX, SCIP and LP_solve will not work when the arguments
+        // are passed as an array. Therefore they are executed with a single
         // command string that includes all arguments.
         // Spawn options must be set such that (1) the command is executed
         // within an OS shell script, (2) output is ignored (warnings should
@@ -431,13 +541,16 @@ module.exports = class MILPSolver {
       error = err;
     }
     if(status) console.log(`Process status: ${status}`);
-    if(status in s.errors) {
-      // If solver exited with known status code, report message
+    let msg = s.statusMessage(status);  
+    if(msg) {
+      // If solver exited with known status code, report message.
       result.status = status;
-      result.error = s.errors[status];
+      result.solution = s.usableSolution(status);
+      result.error = msg;
     } else if(status !== 0) {
       result.status = -13;
-      const msg = (error ? error.message : 'Unknown error');
+      result.solution = false;
+      msg = (error ? error.message : 'Unknown error');
       result.error += 'ERROR: ' + msg;
     }
     return this.processSolverOutput(result);
@@ -449,9 +562,9 @@ module.exports = class MILPSolver {
         x_values = [],
         x_dict = {},
         getValuesFromDict = () => {
-          // Returns a result vector for as many real numbers (as strings!)
+          // Return a result vector for as many real numbers (as strings!)
           // as there are columns (0 if not reported by the solver).
-          // First sort on variable name
+          // First sort on variable name (assuming format Xn+).
           const vlist = Object.keys(x_dict).sort();
           // Start with column 1.
           let col = 1;
@@ -477,14 +590,22 @@ module.exports = class MILPSolver {
         };
 
     const s = this.solver_list[this.id];
+    let log = '';
+    try {
+      log = fs.readFileSync(s.log, 'utf8');
+    } catch(err) {
+      console.log(`Failed to read solver log file ${s.log}`);
+    }
     // Solver output has different formats, hence separate routines.
     if(this.id === 'gurobi') {
       // `messages` must be an array of strings.
-      result.messages = fs.readFileSync(s.log, 'utf8').split(os.EOL);
-      if(result.status !== 0) {
-        // Non-zero solver exit code may indicate expired license.
+      result.messages = log.split(os.EOL);
+      if(result.status === 1 ||
+          (result.status !== 0 && log.indexOf('license') < 0)) {
+        // Exit code typically indicates expired license, but also
+        // assume this cause when log does not contain the word "license". 
         result.error = 'Your Gurobi license may have expired';
-      } else {
+       } else {
         try {
           // Read JSON string from solution file.
           const
@@ -516,16 +637,72 @@ module.exports = class MILPSolver {
           result.error = 'No solution found';
         }
       }
+    } else if(this.id === 'mosek') {
+      let solved = false,
+          output = [];
+      // `messages` must be an array of strings.
+      result.messages = log.split(os.EOL);
+      // NOTE: MOSEK may also write solution to 'user_model.bas', so
+      // try that as well before reporting failure.
+      try {
+        output = fs.readFileSync(s.solution, 'utf8').trim();
+      } catch(err) {
+        try {
+          const bas = s.solution.replace(/\.int$/, '.bas');
+          output = fs.readFileSync(bas, 'utf8').trim();
+        } catch(err) {
+          output = '';
+        }
+      }
+      if(!output) {
+        console.log('No MOSEK solution file');
+      } else if(output.indexOf('SOLUTION STATUS') >= 0) {
+        solved = true;
+        output = output.split(os.EOL);
+      }
+      if(solved) {
+        // MOSEK saves solution in a proprietary format, so just extract
+        // the status and then the variables.
+        let i = 0;
+        while(i < output.length && output[i].indexOf('CONSTRAINTS') < 0) {
+          const o = output[i].split(':');
+          if(o[0].indexOf('PRIMAL OBJECTIVE') >= 0) {
+            result.obj = o[1].trim();
+          } else if(o[0].indexOf('SOLUTION STATUS') >= 0) {
+            result.status = o[1].trim();
+          }
+          i++;
+        }
+        if(result.status.indexOf('OPTIMAL') >= 0) {
+          result.status = 0;
+          result.error = '';
+        }
+        while(i < output.length && output[i].indexOf('VARIABLES') < 0) {
+          i++;
+        }
+        // Fill dictionary with variable name: value entries.
+        while(i < output.length) {
+          const m = output[i].match(/^\d+\s+X(\d+)\s+SB\s+([^\s]+)\s+/);
+          if(m !== null)  {
+            const vn = 'X' + m[1].padStart(7, '0');
+            x_dict[vn] = parseFloat(m[2]);
+          }
+          i++;
+        }
+        // Fill the solution vector, adding 0 for missing columns.
+        getValuesFromDict();
+      } else {
+        console.log('No solution found');
+      }
     } else if(this.id === 'cplex') {
       result.seconds = 0;
       const
-          msg = fs.readFileSync(s.log, 'utf8'),
-          no_license = (msg.indexOf('No license found') >= 0),
+          no_license = (log.indexOf('No license found') >= 0),
           // NOTE: Solver reports time with 1/100 secs precision.
-          mst = msg.match(/Solution time \=\s+(\d+\.\d+) sec/);
+          mst = log.match(/Solution time \=\s+(\d+\.\d+) sec/);
       if(mst && mst.length > 1) result.seconds = parseFloat(mst[1]);
       // `messages` must be an array of strings.
-      result.messages = msg.split(os.EOL);
+      result.messages = log.split(os.EOL);
       let solved = false,
           output = [];
       if(no_license) {
@@ -562,8 +739,10 @@ module.exports = class MILPSolver {
           }
           i++;
         }
+        // CPLEX termination codes 1, 101 and 102 indicate success.
         if(['1', '101', '102'].indexOf(result.status) >= 0) {
           result.status = 0;
+          result.solution = true;
           result.error = '';
         }
         // Fill dictionary with variable name: value entries.
@@ -580,7 +759,7 @@ module.exports = class MILPSolver {
     } else if(this.id === 'scip') {
       result.seconds = 0;
       // `messages` must be an array of strings.
-      result.messages = fs.readFileSync(s.log, 'utf8').split(os.EOL);
+      result.messages = log.split(os.EOL);
       let solved = false,
           output = [];
       if(result.status !== 0) {
@@ -636,32 +815,35 @@ module.exports = class MILPSolver {
         console.log('No solution found');
       }
     } else if(this.id === 'lp_solve') {
-      // Read solver messages from file.
-      // NOTE: Linny-R client expects a list of strings.
       const
-          output = fs.readFileSync(s.solution, 'utf8').trim().split(os.EOL),
+          // NOTE: LP_solve both messages and solution console, hence
+          // the log file is processed in two "stages".
+          output = log.trim().split(os.EOL),
+          // NOTE: Linny-R client expects log messages as list of strings.
           msgs = [];
       result.seconds = 0;
       let i = 0,
           solved = false;
       while(i < output.length && !solved) {
+        // All output lines are "log lines"...
         msgs.push(output[i]);
         const m = output[i].match(/in total (\d+\.\d+) seconds/);
         if(m && m.length > 1) result.seconds = parseFloat(m[1]);
+        // ... until the value of the objective function is detected.
         solved = output[i].startsWith('Value of objective function:');
         i++;
       }
       result.messages = msgs;
       if(solved) {
-        // Look for line with first variable
+        // Look for line with first variable.
         while(i < output.length && !output[i].startsWith('X')) i++;
-        // Fill dictionary with variable name: value entries 
+        // Fill dictionary with variable name: value entries.
         while(i < output.length) {
           const v = output[i].split(/\s+/);
           x_dict[v[0]] = parseFloat(v[1]);
           i++;
         }
-        // Fill the solution vector, adding 0 for missing columns
+        // Fill the solution vector, adding 0 for missing columns.
         getValuesFromDict();
       } else {
         console.log('No solution found');

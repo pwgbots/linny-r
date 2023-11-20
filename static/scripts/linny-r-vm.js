@@ -742,6 +742,7 @@ class ExpressionParser {
     // For debugging, TRACE can be used to log to the console for
     // specific expressions and/or variables, for example:
     // this.TRACE = name.endsWith('losses') || this.ownerName.endsWith('losses');
+
     if(this.TRACE) console.log(
         `TRACE: Parsing variable "${name}" in expression for`,
         this.ownerName, ' -->  ', this.expr);
@@ -2334,10 +2335,43 @@ class VirtualMachine {
       ['LAST', 'MAX', 'MEAN', 'MIN', 'N', 'NZ', 'SD', 'SUM', 'VAR'];
     this.solver_names = {
       gurobi: 'Gurobi',
+      mosek: 'MOSEK',
       cplex: 'CPLEX',
       scip: 'SCIP',
       lp_solve: 'LP_solve'
     };
+  }
+  
+  selectSolver(id) {
+    if(id in this.solver_names) {
+      this.solver_id = id;
+/*
+      if(id === 'mosek') {
+        this.PLUS_INFINITY = 1e+6;
+        this.MINUS_INFINITY = -1e+6;
+        this.MAX_SLACK_PENALTY = 1e+6;
+      } else {
+        this.PLUS_INFINITY = 1e+25;
+        this.PLUS_INFINITY = -1e+25;
+        this.MAX_SLACK_PENALTY = 1e+24;
+      }
+*/
+    } else {
+      UI.alert(`Invalid solver ID "${id}"`);
+    }
+  }
+  
+  get noSemiContinuous() {
+    // Return TRUE if the selected solver does NOT support semi-continuous
+    // variables (used to implement "shut down when lower bound constraints"
+    // for processes).
+    return this.solver_id === 'mosek';
+  }
+
+  get noSupportForSOS() {
+    // Return TRUE if the selected solver does NOT support special
+    // ordered sets (SOS).
+    return this.solver_id === 'mosek';
   }
 
   reset() {
@@ -2870,7 +2904,7 @@ class VirtualMachine {
     }
     if(type === 'I' || type === 'PiL') {
       this.int_var_indices[index] = true;
-    } else if('OO|IZ|SU|SD|SO|FC'.indexOf(type) >= 0) {
+    } else if('OO|IZ|SU|SD|SO|FC|SB'.indexOf(type) >= 0) {
       this.bin_var_indices[index] = true;
     }
     if(obj instanceof Process && obj.pace > 1) {
@@ -2884,7 +2918,20 @@ class VirtualMachine {
       for(let i = 2; i <= n; i++) {
         this.variables.push(['W' + i, obj]);
       }
-      this.sos_var_indices.push([index, n]);
+      // NOTE: Some solvers do not support SOS. To ensure that only 2
+      // adjacent w[i]-variables are non-zero (they range from 0 to 1),
+      // as many binary variables b[i] must be defined, and additional
+      // constraints must be added (see function VMI_add_boundline).
+      // NOTE: These additional variables and constraints are not needed
+      // when a bound line defines a convex feasible area.
+      const sos_with_bin = this.noSupportForSOS && !obj.needsNoSOS;
+      this.sos_var_indices.push([index, n, sos_with_bin]);
+      if(sos_with_bin) {
+        for(let i = 1; i <= n; i++) {
+          const bi = this.variables.push(['b' + i, obj]);
+          this.bin_var_indices[bi] = true;
+        }        
+      }
     }
     return index;
   }
@@ -2903,6 +2950,8 @@ class VirtualMachine {
     if(p instanceof Product) {
       p.stock_LE_slack_var_index = -1;
       p.stock_GE_slack_var_index = -1;
+    } else {
+      p.semic_var_index = -1;
     }
   }
   
@@ -2913,6 +2962,11 @@ class VirtualMachine {
     // storage capacity, because it simplifies the formulation of
     // product-related (data) constraints.
     p.level_var_index = this.addVariable(p.integer_level ? 'PiL': 'PL', p);
+    if(p.level_to_zero && this.noSemiContinuous) {
+      // When the selected solver does not support semi-continous variables,
+      // they must be implemented with an additional binary variable.
+      p.semic_var_index = this.addVariable('SB', p);
+    }
     // Some "data-only" link multipliers require additional variables.
     if(p.needsOnOffData) {
       p.on_off_var_index = this.addVariable('OO', p);
@@ -3000,7 +3054,7 @@ class VirtualMachine {
       for(let i = 0; i < this.chunk_variables.length; i++) {
         const
             obj = this.chunk_variables[i][1],
-            // NOTE: chunk offset takes into account that variable
+            // NOTE: Chunk offset takes into account that variable
             // indices are 0-based.
             cvi = chof + i;
         let v = 'X' + cvi.toString().padStart(z, '0');
@@ -3040,7 +3094,7 @@ class VirtualMachine {
           l = p.lower_bound;
         }
       }
-      // Likewise get the upper bound
+      // Likewise get the upper bound.
       if(p.equal_bounds && p.lower_bound.defined) {
         u = l;
       } else if(p.upper_bound.defined) {
@@ -3052,47 +3106,47 @@ class VirtualMachine {
         }
       }
     } else {
-      // Implicit bounds: if not a source, then LB is set to 0
+      // Implicit bounds: if not a source, then LB is set to 0.
       if(notsrc) l = 0;
-      // If not a sink, UB is set to 0
+      // If not a sink, UB is set to 0.
       if(notsnk) u = 0;
     }
     
-    // NOTE: stock constraints must take into account extra inflows
+    // NOTE: Stock constraints must take into account extra inflows
     // (source) or outflows (sink).
     // Check for special case of equal bounds, as then one EQ constraint
     // suffices. This applies if P is a constant ...
     if(p.isConstant) {
-      // NOTE: no slack on constants
-      // Use the lower bound (number or expression) as RHS
+      // NOTE: No slack on constants. Use the lower bound (number or
+      // expression) as RHS.
       this.code.push(
         [l instanceof Expression ? VMI_set_var_rhs : VMI_set_const_rhs, l],
         [VMI_add_constraint, VM.EQ]
       );
-    // ... or if P is neither source nor sink
+    // ... or if P is neither source nor sink.
     } else if(p.equal_bounds && notsrc && notsnk) {
       if(!p.no_slack) {
-        // NOTE: for EQ, both slack variables should be used,
-        // having respectively -1 and +1 as coefficients
+        // NOTE: For EQ, both slack variables should be used, having
+        // respectively -1 and +1 as coefficients.
         this.code.push(
           [VMI_add_const_to_coefficient, [lesvi, -1]],
           [VMI_add_const_to_coefficient, [gesvi, 1]]
         );
       }
-      // Use the lower bound (number or expression) as RHS
+      // Use the lower bound (number or expression) as RHS.
       this.code.push(
         [l instanceof Expression ? VMI_set_var_rhs : VMI_set_const_rhs, l],
         [VMI_add_constraint, VM.EQ]
       );
     } else {
-      // Add lower bound (GE) constraint unless product is a source node
+      // Add lower bound (GE) constraint unless product is a source node.
       if(notsrc) {
         if(!p.no_slack) {
-          // Add the GE slack index with coefficient +1
-          // (so it can INcrease the LHS)
+          // Add the GE slack index with coefficient +1 (so it can
+          // INcrease the left-hand side of the equation)
           this.code.push([VMI_add_const_to_coefficient, [gesvi, 1]]);
         }
-        // Use the lower bound (number or expression) as RHS
+        // Use the lower bound (number or expression) as RHS.
         this.code.push(
           [l instanceof Expression? VMI_set_var_rhs : VMI_set_const_rhs, l],
           [VMI_add_constraint, VM.GE]
@@ -3101,11 +3155,11 @@ class VirtualMachine {
       // Add upper bound (LE) constraint unless product is a sink node
       if(notsnk) {
         if(!p.no_slack) {
-          // Add the stock LE index with coefficient -1
-          // (so it can DEcrease the LHS)
+          // Add the stock LE index with coefficient -1 (so it can
+          // DEcrease the LHS).
           this.code.push([VMI_add_const_to_coefficient, [lesvi, -1]]);
         }
-        // Use the upper bound (number or expression) as RHS
+        // Use the upper bound (number or expression) as RHS.
         this.code.push(
           [u instanceof Expression ? VMI_set_var_rhs : VMI_set_const_rhs, u],
           [VMI_add_constraint, VM.LE]
@@ -3119,7 +3173,7 @@ class VirtualMachine {
     // Linny-R! It sets up the VM variable list, and then generates VM code
     // that that, when executed, creates the MILP tableau for a chunk.
     let i, j, k, l, vi, p, c, lbx, ubx;
-    // Reset variable arrays and code array
+    // Reset variable arrays and code array.
     this.variables.length = 0;
     this.chunk_variables.length = 0;
     this.int_var_indices = [];
@@ -3130,12 +3184,12 @@ class VirtualMachine {
     this.sos_var_indices = [];
     this.slack_variables = [[], [], []];
     this.code.length = 0;
-    // Initialize fixed variable array: 1 list per round
+    // Initialize fixed variable array: 1 list per round.
     for(i = 0; i < MODEL.rounds; i++) {
       this.fixed_var_indices.push([]);
     }
     
-    // Just in case: re-determine which entities can be ignored
+    // Just in case: re-determine which entities can be ignored.
     MODEL.inferIgnoredEntities();
     const n = Object.keys(MODEL.ignored_entities).length;
     if(n > 0) {
@@ -3143,7 +3197,8 @@ class VirtualMachine {
           pluralS(n, 'entity', 'entities') + ' will be ignored');
     }
 
-    // FIRST: define indices for all variables (index = Simplex tableau column number)
+    // FIRST: Define indices for all variables (index = Simplex tableau
+    // column number).
 
     // Each actor has a variable to compute its cash in and its cash out.
     const actor_keys = Object.keys(MODEL.actors).sort();
@@ -3184,8 +3239,8 @@ class VirtualMachine {
     // The slack variables prevent that the solver will consider an
     // overconstrained model "infeasible". EQ bound lines have 2 slack
     // variables, LE and GE bound lines need only 1.
-    // NOTE: slack variables are omitted when the "no slack" property
-    // of the constraint is set
+    // NOTE: Slack variables are omitted when the "no slack" property
+    // of the constraint is set.
     const constraint_keys = Object.keys(MODEL.constraints).sort();
     for(i = 0; i < constraint_keys.length; i++) {
       k = constraint_keys[i];
@@ -3195,11 +3250,13 @@ class VirtualMachine {
           const bl = c.bound_lines[l];
           bl.sos_var_indices = [];
           if(bl.isActive && bl.constrainsY) {
-            // Define SOS2 variables w[i]
-            // NOTE: method will add as many as there are points!
+            // Define SOS2 variables w[i] (plus associated binaries if
+            // solver does not support special ordered sets).
+            // NOTE: `addVariable` will add as many as there are points!
             bl.first_sos_var_index = this.addVariable('W1', bl);
             if(!c.no_slack) {
-              // Define the slack variable(s) for bound line constraints
+              // Define the slack variable(s) for bound line constraints.
+              // NOTE: Category [2] means: highest slack penalty.
               if(bl.type !== VM.GE) {
                 bl.LE_slack_var_index = this.addVariable('CLE', bl);
                 this.slack_variables[2].push(bl.LE_slack_var_index);
@@ -3286,6 +3343,10 @@ class VirtualMachine {
         ubx = (p.equal_bounds && lbx.defined ? lbx : p.upper_bound);
         if(lbx.isStatic) lbx = lbx.result(0);
         if(ubx.isStatic) ubx = ubx.result(0);
+        // NOTE: When semic_var_index is set, the lower bound must be
+        // zero, as the semi-continuous lower bound is implemented with
+        // a binary variable.
+        if(p.semic_var_index >= 0) lbx = 0;
         // NOTE: Pass TRUE as fourth parameter to indicate that +INF
         // and -INF can be coded as the infinity values used by the
         // solver, rather than the Linny-R values used to detect
@@ -3307,34 +3368,34 @@ class VirtualMachine {
       }
     }
 
-    // NEXT: Define the bounds for all stock level variables 
+    // NEXT: Define the bounds for all stock level variables.
     for(i = 0; i < product_keys.length; i++) {
       k = product_keys[i];
       if(!MODEL.ignored_entities[k]) {
         p = MODEL.products[k];
-        // Get index of variable that is constrained by LB and UB 
+        // Get index of variable that is constrained by LB and UB.
         vi = p.level_var_index;
         if(p.no_slack) {
           // If no slack, the bound constraints can be set on the
-          // variables themselves
+          // variables themselves.
           lbx = p.lower_bound;
-          // NOTE: if UB = LB, set UB to LB only if LB is defined,
+          // NOTE: If UB = LB, set UB to LB only if LB is defined,
           // because LB expressions default to -INF while UB expressions
-          // default to + INF
+          // default to + INF.
           ubx = (p.equal_bounds && lbx.defined ? lbx : p.upper_bound);
           if(lbx.isStatic) lbx = lbx.result(0);
           if(ubx.isStatic) ubx = ubx.result(0);
           this.code.push([VMI_set_bounds, [vi, lbx, ubx]]);
         } else {
           // Otherwise, set bounds of stock variable to -INF and +INF,
-          // as product constraints will be added later on
+          // as product constraints will be added later on.
           this.code.push([VMI_set_bounds,
               [vi, VM.MINUS_INFINITY, VM.PLUS_INFINITY]]);
         }
       }
     }
     
-    // NEXT: Define objective function that maximizes total cash flow
+    // NEXT: Define objective function that maximizes total cash flow.
 
     // NOTE: As of 19 October 2020, the objective function is *explicitly*
     //       calculated as the (weighted) sum of the cash flows of actors
@@ -3580,18 +3641,18 @@ class VirtualMachine {
       }
     }
 
-    // Copy the VM coefficient vector to the objective function coefficients
+    // Copy the VM coefficient vector to the objective function coefficients.
     // NOTE: for the VM's current time step (VM.t)!
     this.code.push([VMI_set_objective, null]);
 
     // NOTES:
-    // (1) Scaling of the objective function coefficients is performed by the
-    //     VM just before the tableau is submitted to the solver, so for now it
-    //     suffices to differentiate between the different "priorities" of slack
-    //     variables
+    // (1) Scaling of the objective function coefficients is performed by
+    //     the VM just before the tableau is submitted to the solver, so
+    //     for now it suffices to differentiate between the different
+    //     "priorities" of slack variables.
     // (2) Slack variables have different penalties: type 0 = market demands,
     //     i.e., EQ constraints on stocks, 1 = GE and LE constraints on product
-    //     levels, 2 = strongest constraints: on data, or set by boundlines
+    //     levels, 2 = strongest constraints: on data, or set by boundlines.
     let pen, hb;
     for(i = 0; i < product_keys.length; i++) {
       k = product_keys[i];
@@ -3600,7 +3661,7 @@ class VirtualMachine {
         if(p.level_var_index >= 0 && !p.no_slack) {
           hb = p.hasBounds;
           pen = (p.is_data ? 2 :
-              // NOTE: lowest penalty also for IMPLIED sources and sinks
+              // NOTE: Lowest penalty also for IMPLIED sources and sinks.
               (p.equal_bounds || (!hb && (p.isSourceNode || p.isSinkNode)) ? 0 :
                   (hb ? 1 : 2)));
           this.slack_variables[pen].push(
@@ -3609,7 +3670,48 @@ class VirtualMachine {
       }
     }
     
-    // NEXT: add product constraints to calculate (and constrain) their stock
+    // NEXT: Add semi-continuous constraints only if not supported by solver.
+    if(!this.noSemiContinuous) {
+      for(i = 0; i < process_keys.length; i++) {
+        k = process_keys[i];
+        if(!MODEL.ignored_entities[k]) {
+          p = MODEL.processes[k];
+          const svi = p.semic_var_index;
+          if(svi >= 0) {
+            const
+                vi = p.level_var_index,
+                lbx = p.lower_bound,
+                ubx = (p.equal_bounds && lbx.defined ? lbx : p.upper_bound);
+            // LB*binary - level <= 0
+            this.code.push(
+              [VMI_clear_coefficients, null],
+              [VMI_add_const_to_coefficient, [vi, -1]]
+            );
+            if(lbx.isStatic) {
+              this.code.push([VMI_add_const_to_coefficient,
+                  [svi, lbx.result(0)]]);
+            } else {
+              this.code.push([VMI_add_var_to_coefficient, [svi, lbx]]);
+            }
+            this.code.push([VMI_add_constraint, VM.LE]);          
+            // level - UB*binary <= 0
+            this.code.push(
+              [VMI_clear_coefficients, null],
+              [VMI_add_const_to_coefficient, [vi, 1]]
+            );
+            if(ubx.isStatic) {
+              this.code.push([VMI_subtract_const_from_coefficient,
+                  [svi, ubx.result(0)]]);
+            } else {
+              this.code.push([VMI_subtract_var_from_coefficient, [svi, ubx]]);
+            }
+            this.code.push([VMI_add_constraint, VM.LE]);          
+          }
+        }
+      }
+    }
+
+    // NEXT: Add product constraints to calculate (and constrain) their stock.
 
     for(let pi = 0; pi < product_keys.length; pi++) {
       k = product_keys[pi];
@@ -4187,30 +4289,35 @@ class VirtualMachine {
       }
     }
   
-    // NEXT: add constraints
-    // NOTE: as of version 1.0.10, constraints are implemented using special
+    // NEXT: Add constraints.
+    // NOTE: As of version 1.0.10, constraints are implemented using special
     // ordered sets (SOS2). This is effectuated with a dedicated VM instruction
     // for each of its "active" bound lines. This instruction requires these
     // parameters:
     // - variable indices for the constraining node X, the constrained node Y
     // - expressions for the LB and UB of X and Y
     // - the bound line object, as this provides all further information
+    // NOTE: For efficiency, the useBinaries flag is also passed, as it can
+    // be determined at compile time whether a SOS constraint is needed
+    // (bound lines are static), and whether the solver does not support
+    // SOS, in which case binary variables must be used.
     for(i = 0; i < constraint_keys.length; i++) {
       k = constraint_keys[i];
       if(!MODEL.ignored_entities[k]) {
         c = MODEL.constraints[k];
-        // Get the two associated nodes
+        // Get the two associated nodes.
         const
            x = c.from_node,
            y = c.to_node;
         for(j = 0; j < c.bound_lines.length; j++) {
           const bl = c.bound_lines[j];
           // Only add constrains for bound lines that are "active" for the
-          // current run, and do constrain Y in some way
+          // current run, and do constrain Y in some way.
           if(bl.isActive && bl.constrainsY) {
             this.code.push([VMI_add_bound_line_constraint,
                 [x.level_var_index, x.lower_bound, x.upper_bound,
-                    y.level_var_index, y.lower_bound, y.upper_bound, bl]]);
+                    y.level_var_index, y.lower_bound, y.upper_bound,
+                    bl, this.noSupportForSOS && !bl.needsNoSOS]]);
           }
         }
       }
@@ -5049,24 +5156,28 @@ class VirtualMachine {
         this.is_binary[parseInt(i) + j*this.cols] = true;
       }
     }
-    // Set list with indices of semi-contiuous variables.
+    // Set list with indices of semi-continuous variables.
     this.is_semi_continuous = {};
-    for(let i in this.sec_var_indices) if(Number(i)) {
-      for(let j = 0; j < abl; j++) {
-        this.is_semi_continuous[parseInt(i) + j*this.cols] = true;
+    // NOTE: Solver may not support semi-continuous variables.
+    if(!this.noSemiContinuous) {
+      for(let i in this.sec_var_indices) if(Number(i)) {
+        for(let j = 0; j < abl; j++) {
+          this.is_semi_continuous[parseInt(i) + j*this.cols] = true;
+        }
       }
     }
-    // Initialize the "add constraints flag" to TRUE
-    // NOTE: this flag can be set/unset dynamically by VM instructions
+    // Initialize the "add constraints flag" to TRUE.
+    // NOTE: This flag can be set/unset dynamically by VM instructions.
     this.add_constraints_flag = true;    
-    // Execute code for each time step in this block
+    // Execute code for each time step in this block.
     this.logTrace('START executing block code (' +
         pluralS(this.code.length, ' instruction)'));
-    // NOTE: `t` is the VM's "time tick", which is "relative time" compared to
-    // the "absolute time" of the simulated period. VM.t always starts at 1,
-    // which corresponds to MODEL.start_period
+    // NOTE: `t` is the VM's "time tick", which is "relative time" compared
+    // to the "absolute time" of the simulated period. VM.t always starts
+    // at 1, which corresponds to MODEL.start_period.
     this.t = (this.block_count - 1) * MODEL.block_length + 1;
-    // Show this relative (!) time step on the status bar as progress indicator
+    // Show this relative (!) time step on the status bar as progress
+    // indicator.
     UI.updateTimeStep(this.t);
     setTimeout((t, n) => VM.addTableauSegment(t, n), 0, 0, abl);
   }
@@ -5120,10 +5231,10 @@ class VirtualMachine {
           VMI_add_constraint(VM.EQ);
         }
       }
-      // Proceed to the next time tick
+      // Proceed to the next time tick.
       this.t++;
       // This also means advancing the offset, because all VM instructions
-      // pass variable indices relative to the first column in the tableau
+      // pass variable indices relative to the first column in the tableau.
       this.offset += this.cols;
     }
     if(next_start < abl) {
@@ -5136,7 +5247,7 @@ class VirtualMachine {
     
   finishBlockSetup(abl) {
     // Scale the coefficients of the objective function, and calculate
-    // the "base" slack penalty
+    // the "base" slack penalty.
     this.scaleObjective();
     this.scaleCashFlowConstraints();
     // Add (appropriately scaled!) slack penalties to the objective function
@@ -5235,7 +5346,7 @@ class VirtualMachine {
     }
   }
   
-  writeLpFormat(cplex=false) {
+  writeLpFormat(cplex=false, named_constraints=false) {
     // NOTE: Up to version 1.5.6, actual block length of last block used
     // to be shorter than the chunk length so as not to go beyond the
     // simulation end time. The look-ahead is now *always* part of the
@@ -5301,6 +5412,7 @@ class VirtualMachine {
     n = this.matrix.length;
     for(let r = 0; r < n; r++) {
       const row = this.matrix[r];
+      if(named_constraints) line = `C${r + 1}: `;
       for(p in row) if (row.hasOwnProperty(p)) {
         c = row[p];
         if (c < VM.SOLVER_MINUS_INFINITY || c > VM.SOLVER_PLUS_INFINITY) {
@@ -5419,7 +5531,8 @@ class VirtualMachine {
         line = '';
         scv = 0;
       }
-      if(this.sos_var_indices.length > 0) {
+      // NOTE: Add SOS section only if the solver supports SOS.
+      if(this.sos_var_indices.length > 0 && !this.noSupportForSOS) {
         this.lines += 'SOS\n';
         let sos = 0;
         const v_set = [];
@@ -5439,6 +5552,7 @@ class VirtualMachine {
       }
       this.lines += 'End';
     } else {
+      // Follow LP_solve conventions.
       // NOTE: LP_solve does not differentiate between binary and integer,
       // so for binary variables, the constraint <= 1 must be added.
       const v_set = [];
@@ -5454,7 +5568,7 @@ class VirtualMachine {
       // Add the semi-continuous variables.
       for(let i in this.is_semi_continuous) if(Number(i)) v_set.push(vbl(i));
       if(v_set.length > 0) this.lines += 'sec ' + v_set.join(', ') + ';\n';
-      // Add the SOS section.
+      // LP_solve supports SOS, so add the SOS section if needed.
       if(this.sos_var_indices.length > 0) {
         this.lines += 'sos\n';
         let sos = 1;
@@ -5698,18 +5812,6 @@ class VirtualMachine {
     setTimeout(() => VM.submitFile(), 0);
   }
   
-  get noSolutionStatus() {
-    // Return the set of status codes that indicate that solver did not
-    // return a solution (so look-ahead should be conserved).
-    if(this.solver_name === 'lp_solve') {
-      return [-2, 2, 6];
-    } else if(this.solver_name === 'gurobi') {
-      return [1, 3, 4, 6, 11, 12, 14];
-    } else {
-      return [];
-    }
-  }
-  
   checkLicense() {
     // Compare license expiry date (if set) with current time, and notify
     // when three days or less remain.
@@ -5785,9 +5887,7 @@ Solver status = ${json.status}`);
     // if this block was not solved (indicated by the 4th parameter that
     // tests the status).
     try {
-      this.setLevels(bnr, rl, json.data.x,
-        // NOTE: Appropriate status codes are solver-dependent.
-        this.noSolutionStatus.indexOf(json.status) >= 0);
+      this.setLevels(bnr, rl, json.data.x, !json.solution);
       // NOTE: Post-process levels only AFTER the last round!
       if(rl === this.lastRound) {
         // Calculate data for all other dependent variables.
@@ -5919,17 +6019,24 @@ Solver status = ${json.status}`);
       this.show_progress = false;
     }
     // Generate lines of code in format that should be accepted by solver.
-    if(this.solver_name === 'gurobi') {
+    if(this.solver_id === 'gurobi') {
       this.writeLpFormat(true);
-    } else if(this.solver_name === 'scip' || this.solver_name === 'cplex') {
-      // NOTE: The CPLEX LP format that is also used by SCIP differs from
-      // the LP_solve format that was used by the first versions of Linny-R.
+    } else if(this.solver_id === 'mosek') {
+      // NOTE: For MOSEK, constraints must be named, or variable names
+      // in solution file will not match.
+      this.writeLpFormat(true, true);
+    } else if(this.solver_id === 'cplex' || this.solver_id === 'scip') {
+      // NOTE: The more widely accepted CPLEX LP format differs from the
+      // LP_solve format that was used by the first versions of Linny-R.
       // TRUE indicates "CPLEX format".
       this.writeLpFormat(true);
-    } else if(this.solver_name === 'lp_solve') {
+    } else if(this.solver_id === 'lp_solve') {
       this.writeLpFormat(false);
     } else {
-      this.numeric_issue = 'solver name: ' + this.solver_name;
+      const msg = `Cannot write LP format: invalid solver ID "${this.solver_id}"`;
+      this.logMessage(this.block_count, msg);
+      UI.alert(msg);
+      this.stopSolving();
     }
   }  
 
@@ -6674,8 +6781,11 @@ function VMI_push_dataset_modifier(x, args) {
     if(wcnr === '?') {
       wcnr = x.wildcard_vector_index;
     }
+  } else if(mx && wcnr === false) {
+    // Regular dataset with explicit modifier.
+    obj = mx;
   } else if(!ud) {
-    // In no selector and not "use data", check whether a running experiment
+    // If no selector and not "use data", check whether a running experiment
     // defines the expression to use. If not, `obj` will be the dataset
     // vector (so same as when "use data" is set).
     obj = ds.activeModifierExpression;
@@ -7652,7 +7762,7 @@ of VM instructions to get the "right" column index.
 
 A delay of d "time ticks" means that cols*d must be subtracted from this
 index, hence the actual column index k = var_index + VM.offset - d*VM.cols.
-Keep in mind that var_index starts at 1 to comply with LP_SOLVE convention.
+Keep in mind that var_index starts at 1 to comply with LP_solve convention.
 
 If k <= 0, this means that the decision variable for that particular time
 tick (t - d) was already calculated while solving the previous block
@@ -8292,10 +8402,13 @@ function VMI_add_cash_constraints(args) {
 function VMI_add_bound_line_constraint(args) {
   // `args`: [variable index for X, LB expression for X, UB expression for X,
   //          variable index for Y, LB expression for Y, UB expression for Y,
-  //          boundline object]
+  //          boundline object, useBinaries]
+  // The `use_binaries` flag can be determined at compile time, as bound
+  // lines are not dynamic. When use_binaries = TRUE, additional constraints
+  // on binary variables are needed (see below).
   const
       vix = args[0],
-      vx = VM.variables[vix - 1],  // variables is zero-based!
+      vx = VM.variables[vix - 1],  // `variables` is zero-based!
       objx = vx[1],
       ubx = args[2].result(VM.t),
       viy = args[3],
@@ -8303,14 +8416,16 @@ function VMI_add_bound_line_constraint(args) {
       objy= vy[1],
       uby = args[5].result(VM.t),
       bl = args[6],
-      x = [],
-      y = [],
-      w = [];
+      use_binaries = args[7],
+      n = bl.points.length,
+      x = new Array(n),
+      y = new Array(n),
+      w = new Array(n);
   if(DEBUGGING) {
     console.log('add_bound_line_constraint:', bl.displayName);
   }
-  // NOTE: for semi-continuous processes, lower bounds > 0 should to be
-  // adjusted to 0, as then 0 is part of the process level range
+  // NOTE: For semi-continuous processes, lower bounds > 0 should to be
+  // adjusted to 0, as then 0 is part of the process level range.
   let lbx = args[1].result(VM.t),
       lby = args[4].result(VM.t);
   if(lbx > 0 && objx instanceof Process && objx.level_to_zero) lbx = 0;
@@ -8338,7 +8453,7 @@ function VMI_add_bound_line_constraint(args) {
   const
       rx = (ubx - lbx) / 100,
       ry = (uby - lby) / 100;
-  for(let i = 0; i < bl.points.length; i++) {
+  for(let i = 0; i < n; i++) {
     x[i] = lbx + bl.points[i][0] * rx;
     y[i] = lby + bl.points[i][1] * ry;
     w[i] = wi;
@@ -8346,7 +8461,7 @@ function VMI_add_bound_line_constraint(args) {
   }
   // Add constraint (1):
   VMI_clear_coefficients();
-  for(let i = 0; i < w.length; i++) {
+  for(let i = 0; i < n; i++) {
     VM.coefficients[w[i]] = 1;
   }
   VM.rhs = 1;
@@ -8357,7 +8472,7 @@ function VMI_add_bound_line_constraint(args) {
   for(let i = 0; i < w.length; i++) {
     VM.coefficients[w[i]] = -x[i];
   }
-  // No need to set RHS as it is already reset to 0
+  // No need to set RHS as it is already reset to 0.
   VMI_add_constraint(VM.EQ);
   // Add constraint (3):
   VMI_clear_coefficients();
@@ -8366,12 +8481,59 @@ function VMI_add_bound_line_constraint(args) {
     VM.coefficients[w[i]] = -y[i];
   }
   if(!bl.constraint.no_slack) {
-    // Add coefficients for slack variables unless omitted
+    // Add coefficients for slack variables unless omitted.
     if(bl.type != VM.LE) VM.coefficients[VM.offset + bl.GE_slack_var_index] = 1;
     if(bl.type != VM.GE) VM.coefficients[VM.offset + bl.LE_slack_var_index] = -1;
   }
-  // No need to set RHS as it is already reset to 0  
+  // No need to set RHS as it is already reset to 0.
   VMI_add_constraint(bl.type);
+  // NOTE: SOS variables w[i] have bounds [0, 1], but these have not been
+  // set yet.
+  for(let i = 0; i < w.length; i++) {
+    VM.lower_bounds[w[i]] = 0; 
+    VM.upper_bounds[w[i]] = 1;
+  }
+  // NOTE: Some solvers do not support SOS. To ensure that only 2
+  // adjacent w[i]-variables can be non-zero (they range from 0 to 1),
+  // as many binary variables b[i] are defined, and the following
+  // constraints are added:
+  //   w[1] <= b[1]
+  //   W[2] <= b[1] + b[2]
+  //   W[3] <= b[2] + b[3]
+  // and so on for all pairs of consecutive binaries, until finally:
+  //   w[N] <= b[N]
+  // and then to ensure that at most 2 binaries can be 1:
+  //   b[1] + ... + b[N] <= 2
+  // NOTE: These additional variables and constraints are not needed
+  // when a bound line defines a convex feasible area. The `use_binaries`
+  // parameter takes this into account.
+  if(use_binaries) {
+    // Add the constraints mentioned above. The index of b[i] is the
+    // index of w[i] plus the number of points on the boundline N.
+    VMI_clear_coefficients();
+    VM.coefficients[w[0]] = 1;
+    VM.coefficients[w[0] + n] = -1;
+    VMI_add_constraint(VM.LE);  // w[1] - b[1] <= 0
+    VMI_clear_coefficients();
+    for(let i = 1; i < n - 1; i++) {
+      VMI_clear_coefficients();
+      VM.coefficients[w[i]] = 1;
+      VM.coefficients[w[i] + n - 1] = -1;
+      VM.coefficients[w[i] + n] = -1;
+      VMI_add_constraint(VM.LE);  // w[i] - b[i-1] - b[i] <= 0
+    }
+    VMI_clear_coefficients();
+    VM.coefficients[w[n - 1]] = 1;
+    VM.coefficients[w[n - 1] + n] = -1;
+    VMI_add_constraint(VM.LE);  // w[N] - b[N] <= 0
+    // Add last constraint: sum of binaries must be <= 2.
+    VMI_clear_coefficients();
+    for(let i = 0; i < n; i++) {
+      VM.coefficients[w[i] + n] = 1;
+    }
+    VM.rhs = 2;
+    VMI_add_constraint(VM.LE);
+  }
 }
 
 function VMI_add_peak_increase_constraints(args) {

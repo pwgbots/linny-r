@@ -1412,4 +1412,4 @@ if(NODE) module.exports = {
   ChartManager: ChartManager,
   SensitivityAnalysis: SensitivityAnalysis,
   ExperimentManager: ExperimentManager
-}
+};

@@ -234,7 +234,7 @@ class EquationManager {
       this.new_modal.hide();
       this.selected_modifier = m;
       this.updateDialog();
-      // Open expression editor if expression is still undefined
+      // Open expression editor if expression is still undefined.
       if(!m.expression.text) this.editEquation();
     }
   }
@@ -243,13 +243,13 @@ class EquationManager {
     const m = this.selected_modifier;
     if(m) {
       this.edited_expression = m.expression;
-      const md = UI.modals.expression;
-      md.element('property').innerHTML = this.selected_modifier.selector;
-      md.element('text').value = m.expression.text;
-      document.getElementById('variable-obj').value = 0;
+      X_EDIT.edited_input_id = '';
+      X_EDIT.property.innerHTML = this.selected_modifier.selector;
+      X_EDIT.text.value = m.expression.text;
+      X_EDIT.obj.value = 0;
       X_EDIT.updateVariableBar();
       X_EDIT.clearStatusBar();
-      md.show('text');
+      UI.modals.expression.show('text');
     }
   }
   

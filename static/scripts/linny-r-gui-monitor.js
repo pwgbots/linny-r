@@ -325,12 +325,12 @@ class GUIMonitor {
             UI.alert(jsr.error);
           } else if(jsr.server) {
             VM.solver_token = jsr.token;
-            VM.solver_name = jsr.solver;
+            VM.selectSolver(jsr.solver);
             // Remote solver may indicate user-specific solver time limit.
             let utl = '';
             if(jsr.time_limit) {
               VM.max_solver_time = jsr.time_limit;
-              utl = ` -- ${VM.solver_name} solver: ` +
+              utl = ` -- ${VM.solver_names[VM.solver_id]} solver: ` +
                   `max. ${VM.max_solver_time} seconds per block`;
               // If user has a set time limit, no restrictions on tableau size.
               VM.max_tableau_size = 0;
@@ -354,7 +354,7 @@ class GUIMonitor {
       VM.solver_token = 'local host';
       fetch('solver/', postData({
             action: 'logon',
-            solver: MODEL.preferred_solver || VM.solver_name}))
+            solver: MODEL.preferred_solver || VM.solver_id}))
         .then((response) => {
             if(!response.ok) {
               UI.alert(`ERROR ${response.status}: ${response.statusText}`);
@@ -367,10 +367,10 @@ class GUIMonitor {
                   jsr = JSON.parse(data),
                   sname = VM.solver_names[jsr.solver] || 'unknown',
                   svr = `Solver on ${jsr.server} is ${sname}`;
-              if(jsr.solver !== VM.solver_name) UI.notify(svr);
+              if(jsr.solver !== VM.solver_id) UI.notify(svr);
               VM.server = jsr.server;
               VM.working_directory = jsr.path;
-              VM.solver_name = jsr.solver;
+              VM.selectSolver(jsr.solver);
               VM.solver_list = jsr.solver_list;
               document.getElementById('host-logo').title  = svr;
               VM.connected = true;

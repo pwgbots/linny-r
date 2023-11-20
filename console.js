@@ -198,7 +198,7 @@ class ConsoleMonitor {
   logOnToServer() {
     VM.solver_user = '';
     VM.solver_token = 'local host';
-    VM.solver_name = SOLVER.id;
+    VM.solver_id = SOLVER.id;
   }
 
   connectToServer() {
@@ -1081,7 +1081,7 @@ if(SETTINGS.model_path) {
         // NOTE: Solver preference in model overrides default solver.
         const mps = MODEL.preferred_solver;
         if(mps && SOLVER.solver_list.hasOwnProperty(mps)) {
-          VM.solver_name = mps;
+          VM.solver_id = mps;
           SOLVER.id = mps;
           console.log(`Using solver ${SOLVER.name} (model preference)`);
         }

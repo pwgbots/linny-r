@@ -895,13 +895,16 @@ class GUIController extends Controller {
     // If not a valid Linny-R model, ensure that the current model is clean.
     if(!loaded) MODEL = new LinnyRModel();
     // If model specifies a preferred solver, immediately try to switch.
-    if(MODEL.preferred_solver !== VM.solver_name) {
+    if(MODEL.preferred_solver !== VM.solver_id) {
       UI.changeSolver(MODEL.preferred_solver);
     }
     this.updateScaleUnitList();
     this.drawDiagram(MODEL);
     // Cursor may have been set to `waiting` when decrypting.
     this.normalCursor();
+    // Reset the Virtual Machine.
+    VM.reset();
+    this.updateIssuePanel();
     this.setMessage('');
     this.updateButtons();
     // Undoable operations no longer apply!
@@ -992,7 +995,7 @@ class GUIController extends Controller {
     for(let i = 0; i < VM.solver_list.length; i++) {
       const s = VM.solver_list[i];
       html.push(['<option value="', s,
-          (s === VM.solver_name ? '"selected="selected' : ''),
+          (s === VM.solver_id ? '"selected="selected' : ''),
           '">', VM.solver_names[s], '</option>'].join(''));
     }
     md.element('solver').innerHTML = html.join('');
@@ -1028,7 +1031,7 @@ class GUIController extends Controller {
         })
       .then((data) => {
           if(UI.postResponseOK(data, true)) {
-            VM.solver_name = sid;
+            VM.selectSolver(sid);
             UI.modals.server.hide();
           }
         })

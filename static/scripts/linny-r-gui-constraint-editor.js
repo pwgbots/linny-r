@@ -66,6 +66,7 @@ class ConstraintEditor {
     this.pos_y_div = document.getElementById('constraint-pos-y');
     this.point_div = document.getElementById('constraint-point');
     this.equation_div = document.getElementById('constraint-equation');
+    this.convex_div = document.getElementById('constraint-convex');
     this.add_point_btn = document.getElementById('add-point-btn');
     this.add_point_btn.addEventListener('click',
         () => CONSTRAINT_EDITOR.addPointToLine());
@@ -395,7 +396,7 @@ class ConstraintEditor {
   
   checkLines() {
     // Checks whether cursor is on a bound line and updates the constraint
-    // editor status accordingly
+    // editor status accordingly.
     this.on_line = null;
     this.on_point = -1;
     this.seg_points = null;
@@ -446,7 +447,10 @@ class ConstraintEditor {
   }
   
   updateEquation() {
-    var segeq = '';
+    // Show the equation for the line segment under the cursor, and
+    // indicate whether the bound line is concave or convex.
+    var segeq = '',
+        convex = '';
     if(this.on_line && this.seg_points) {
       const
           p1 = this.on_line.points[this.seg_points[0]],
@@ -466,7 +470,16 @@ class ConstraintEditor {
             (y0 < 0 ? ' - ' : ' + ') + Math.abs(y0).toPrecision(3));
       }
     }
+    if(this.on_line) {
+      const c = this.on_line.needsNoSOS;
+      if(c > 0) {
+        convex = '\u2934'; // Curved arrow up
+      } else if(c < 0) {
+        convex = '\u2935'; // Curved arrow down
+      }
+    }
     this.equation_div.innerHTML = segeq;
+    this.convex_div.innerHTML = convex;
   }
   
   positionPoint() {

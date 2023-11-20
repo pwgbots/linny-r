@@ -1985,6 +1985,7 @@ div.menu-item:hover {
 #constraint-from-name,
 #constraint-to-name {
   display: inline-block;
+  vertical-align: middle;
   max-width: 190px;
   white-space: nowrap;
   overflow: hidden;
@@ -2025,7 +2026,15 @@ div.menu-item:hover {
   position: absolute;
   left: -2px;
   bottom: -1px;
-  width: 100px;
+  width: 75px;
+}
+
+#constraint-convex {
+  position: absolute;
+  left: 75px;
+  bottom: -2px;
+  color: #00c030;
+  font-size: 20px;
 }
 
 #constraint-no-slack-lbl {

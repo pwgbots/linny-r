@@ -38,16 +38,16 @@ class ExpressionEditor {
     this.dataset_dot_option = '. (this dataset)';
     this.edited_input_id = '';
     this.edited_expression = null;
-    // Dialog DOM elements
+    // Dialog DOM elements.
     this.property = document.getElementById('expression-property');
     this.text = document.getElementById('expression-text');
     this.status = document.getElementById('expression-status');
     this.info = document.getElementById('expression-info');
-    // The DOM elements for the "insert variable" bar
+    // The DOM elements for the "insert variable" bar.
     this.obj = document.getElementById('variable-obj');
     this.name = document.getElementById('variable-name');
     this.attr = document.getElementById('variable-attr');
-    // The quick guide to Linny-R expressions
+    // The quick guide to Linny-R expressions.
     this.info.innerHTML = `
 <h3>Linny-R expressions</h3>
 <p><em>NOTE: Move cursor over a</em> <code>symbol</code>
@@ -229,6 +229,9 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
     // CLear other properties that relate to the edited expression.
     this.edited_input_id = '';
     this.edited_expression = null;
+    // Clear edited expression attributes of other dialogs.
+    DATASET_MANAGER.edited_expression = null;
+    EQUATION_MANAGER.edited_expression = null;
   }
   
   parseExpression() {

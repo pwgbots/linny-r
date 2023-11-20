@@ -8938,6 +8938,12 @@ class Dataset {
       return this.vector;
     }
     if(a === '.') return this.vector;
+    // Still permit legacy use of [dataset|attr] as a way to "call" a
+    // dataset modifier expression explicitly.
+    if(a) {
+      const x = this.attributeExpression(a);
+      if(x) return x.result(MODEL.t);
+    }
     // Fall-through: return the default value of this dataset.
     return this.defaultValue;
   }
@@ -9384,11 +9390,15 @@ class ChartVariable {
       t_end = tsteps;
     } else {
       // Get the variable's own value (number, vector or expression)
-      if(this.object instanceof Dataset && !this.attribute) {
-        // Special case: Variables that depict a dataset with no explicit
-        // modifier selector must recompute the vector using the current
-        // experiment run combination or the default selector.
-        av = this.object.activeModifierExpression;
+      if(this.object instanceof Dataset) {
+        if(this.attribute) {
+          av = this.object.attributeExpression(this.attribute);
+        } else {
+          // Special case: Variables that depict a dataset with no explicit
+          // modifier selector must recompute the vector using the current
+          // experiment run combination or the default selector.
+          av = this.object.activeModifierExpression;
+        }
       } else if(this.object instanceof DatasetModifier) {
         av = this.object.expression;
       } else {
@@ -12024,7 +12034,7 @@ class Experiment {
 class BoundLine {
   constructor(c) {
     this.constraint = c;
-    // Default bound line imposes no constraint: Y >= 0 for all X
+    // Default bound line imposes no constraint: Y >= 0 for all X.
     this.points = [[0, 0], [100, 0]];
     this.type = VM.GE;
     this.selectors = '';
@@ -12039,7 +12049,7 @@ class BoundLine {
   }
 
   get copy() {
-    // Returns a "clone" of this bound line
+    // Return a "clone" of this bound line.
     let bl = new BoundLine(this.constraint);
     bl.points.length = 0;
     for(let i = 0; i < this.points.length; i++) {
@@ -12068,8 +12078,8 @@ class BoundLine {
   }
   
   get isActive() {
-    // Returns TRUE if this line has no selectors, or if its selectors match
-    // with the selectors of the current experiment run
+    // Return TRUE if this line has no selectors, or if its selectors match
+    // with the selectors of the current experiment run.
     if(!this.selectors) return true;
     const x = MODEL.running_experiment;
     if(!x) return false;
@@ -12077,12 +12087,49 @@ class BoundLine {
     return ss.length > 0;
   }
   
+  get needsNoSOS() {
+    // Return 1 if boundline is NOT of type <= and line segments have an
+    // increasing slope, -1 if boundline is NOT of type >= and line segments
+    // have a decreasing slope, and otherwise 0 (FALSE). If non-zero (TRUE),
+    // the constraint can be implemented without the SOS2 constraint that
+    // only two consecutive SOS variables may be non-zero.
+    if(this.type !== VM.LE) {
+      let slope = 0,
+          pp = this.points[0];
+      for(let i = 1; i < this.points.length; i++) {
+        const
+            p = this.points[i],
+            dx = p[0] - pp[0],
+            s = (dx <= VM.NEAR_ZERO ? VM.PLUS_INFINITY : (p[1] - pp[1]) / dx);
+        // Decreasing slope => not convex.
+        if(s < slope) return 0;
+        slope = s;
+      }
+      return 1;
+    } else if (this.type !== VM.GE) {
+      let slope = VM.PLUS_INFINITY,
+          pp = this.points[0];
+      for(let i = 1; i < this.points.length; i++) {
+        const
+            p = this.points[i],
+            dx = p[0] - pp[0],
+            s = (dx <= VM.NEAR_ZERO ? VM.PLUS_INFINITY : (p[1] - pp[1]) / dx);
+        // Increasing slope => not convex.
+        if(s > slope) return 0;
+        slope = s;
+      }
+      return -1;
+    }
+    // Fall-through (should not occur).
+    return 0;
+  }
+  
   get constrainsY() {
-    // Returns TRUE if this bound line constrains Y in some way
+    // Return TRUE if this bound line constrains Y in some way.
     if(this.type === VM.EQ) return true;
     for(let j = 0; j < this.points.length; j++) {
       const p = this.points[j];
-      // LE bound line constrains when not at 100%, GE when not at 0%
+      // LE bound line constrains when not at 100%, GE when not at 0%.
       if(this.type === VM.LE && p[1] < 100 || this.type === VM.GE && p[1] > 0) {
         return true;
       }
@@ -12091,8 +12138,8 @@ class BoundLine {
   }
   
   pointOnLine(x, y) {
-    // Returns TRUE iff (x, y) lies on this bound line (+/- 0.001%)
-    // or within radius < tolerance from a point
+    // Return TRUE iff (x, y) lies on this bound line (+/- 0.001%)
+    // or within radius < tolerance from a point.
     const
         tol = 0.001,
         tolsq = tol * tol;
@@ -12107,27 +12154,27 @@ class BoundLine {
         if(x > pp[0] - 1 && x < p[0] + 1 &&
             ((y > pp[1] - tol && y < p[1] + tol) ||
              (y < pp[1] + tol && y > p[1] + tol))) {
-          // Cursor lies within rectangle around line segment
+          // Cursor lies within rectangle around line segment.
           const
               dx = p[0] - pp[0],
               dy = p[1] - pp[1];
           if(Math.abs(dx) < tol || Math.abs(dy) < tol) {
-            // Special case: (near) vertical or (near) horizontal line
+            // Special case: (near) vertical or (near) horizontal line.
             return true;
           } else {
-            // Compute horizontal & vertical distance to line segment
+            // Compute horizontal & vertical distance to line segment.
             const
-                // H & V distance from left-most point
+                // H & V distance from left-most point.
                 dpx = x - pp[0],
                 dpy = y - pp[1],
-                // Projected X, given Y-distance
+                // Projected X, given Y-distance.
                 nx = pp[0] + dpy * dx / dy,
-                // Projected Y, given X-distance
+                // Projected Y, given X-distance.
                 ny = pp[1] + dpx * dy / dx,
-                // Take absolute differences
+                // Take absolute differences.
                 dxol = Math.abs(nx - x),
                 dyol = Math.abs(ny - y);
-            // Only test the shortest distance
+            // Only test the shortest distance.
             if (Math.min(dxol, dyol) < tol) {
               return true;
             }
