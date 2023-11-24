@@ -300,9 +300,9 @@ class Paper {
       at_process_ub_arrow: '#f0b0e8',
       // NOTE: special color when level at negative lower bound
       at_process_neg_lb: '#800050',
-      // Process with unbound level = +INF is displayed in maroon-red
-      infinite_level: '#a00001',
-      infinite_level_fill: '#ff90a0',
+      // Process with unbound level: +INF marine-blue, -INF maroon-red
+      plus_infinite_level: '#1000a0',
+      minus_infinite_level: '#a00010',
       // Process state change symbols are displayed in red
       switch_on_off: '#b00000',
       // Compound arrows with non-zero actual flow are displayed in red-purple
@@ -1979,9 +1979,16 @@ class Paper {
     if(MODEL.solved && !ignored) {
       if(l === VM.PLUS_INFINITY) {
         // Infinite level => unbounded solution
-        stroke_color = this.palette.infinite_level;
-        fill_color = this.palette.infinite_level_fill;
-        lrect_color = this.palette.infinite_level;
+        stroke_color = this.palette.plus_infinite_level;
+        fill_color = this.palette.above_upper_bound;
+        lrect_color = this.palette.plus_infinite_level;
+        font_color = 'white';
+        stroke_width = 2;
+      } else if(l === VM.MINUS_INFINITY) {
+        // Infinite level => unbounded solution
+        stroke_color = this.palette.minus_infinite_level;
+        fill_color = this.palette.below_lower_bound;
+        lrect_color = this.palette.minus_infinite_level;
         font_color = 'white';
         stroke_width = 2;
       } else if(l > ub - VM.SIG_DIF_FROM_ZERO ||

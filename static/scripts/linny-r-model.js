@@ -104,6 +104,7 @@ class LinnyRModel {
     this.preferred_solver = ''; // empty string denotes "use default"
     this.integer_tolerance = 5e-7; // integer feasibility tolerance
     this.MIP_gap = 1e-4; // relative MIP gap
+    this.always_diagnose = false;
 
     // Sensitivity-related properties
     this.base_case_selectors = '';
@@ -2666,6 +2667,7 @@ class LinnyRModel {
       this.infer_cost_prices = nodeParameterValue(node, 'cost-prices') === '1';
       this.report_results = nodeParameterValue(node, 'report-results') === '1';
       this.show_block_arrows = nodeParameterValue(node, 'block-arrows') === '1';
+      this.always_diagnose = nodeParameterValue(node, 'diagnose') === '1';
       this.name = xmlDecoded(nodeContentByTag(node, 'name'));
       this.author = xmlDecoded(nodeContentByTag(node, 'author'));
       this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
@@ -3014,6 +3016,7 @@ class LinnyRModel {
     if(this.infer_cost_prices) p += ' cost-prices="1"';
     if(this.report_results) p += ' report-results="1"';
     if(this.show_block_arrows) p += ' block-arrows="1"';
+    if(this.always_diagnose) p += ' diagnose="1"';
     let xml = this.xml_header + ['<model', p, '><name>',  xmlEncoded(this.name),
         '</name><author>', xmlEncoded(this.author),
         '</author><notes>', xmlEncoded(this.comments),
@@ -6302,7 +6305,9 @@ class Cluster extends NodeBox {
   }
   
   usesSlack(t, p, slack_type) {
-    // Adds slack-using product `p` to slack info for this cluster
+    // Adds slack-using product `p` to slack info for this cluster.
+    // NOTE: When diagnosing an unbounded problem, `p` can also be a
+    // process with an infinite level.
     let s;
     if(t in this.slack_info) {
       s = this.slack_info[t];
@@ -6311,6 +6316,7 @@ class Cluster extends NodeBox {
       this.slack_info[t] = s;
     }
     addDistinct(p, s[slack_type]);
+    // NOTE: Recursive call to let the slack use info "bubble up".
     if(this.cluster) this.cluster.usesSlack(t, p, slack_type);
   }
 

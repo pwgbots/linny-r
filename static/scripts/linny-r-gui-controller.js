@@ -501,6 +501,9 @@ class GUIController extends Controller {
     
     // Visible draggable dialogs are sorted by their z-index.
     this.dr_dialog_order = [];
+    
+    // Record of message that was overridden by more important message.
+    this.old_info_line = null;
   }
   
   get color() {
@@ -617,7 +620,8 @@ class GUIController extends Controller {
             UI.updateButtons();
           }
         });
-    this.buttons.solve.addEventListener('click', () => VM.solveModel());
+    this.buttons.solve.addEventListener('click',
+        (event) => VM.solveModel(event.altKey));
     this.buttons.stop.addEventListener('click', () => VM.halt());
     this.buttons.reset.addEventListener('click', () => UI.resetModel());
 
@@ -2665,12 +2669,13 @@ class GUIController extends Controller {
     
   setMessage(msg, type=null) {
     // Displays message on infoline unless no type (= plain text) and some
-    // info, warning or error message is already displayed
+    // info, warning or error message is already displayed.
     super.setMessage(msg, type);
     const types = ['notification', 'warning', 'error'];
     let d = new Date(),
         t = d.getTime(),
-        dt = t - this.time_last_message,
+        dt = t - this.time_last_message, // Time since display
+        rt = this.message_display_time - dt, // Time remaining
         mti = types.indexOf(type),
         lmti = types.indexOf(this.last_message_type);
     if(type) {
@@ -2683,18 +2688,36 @@ class GUIController extends Controller {
       // When receiver is active, add message to its log.
       if(RECEIVER.active) RECEIVER.log(`[${now}] ${msg}`);
     }
-    // Display text only if previous message has "timed out" or was less
-    // urgent than this one.
-    if(lmti < 0 || mti > lmti || dt >= this.message_display_time) {
+    if(mti === 1 && lmti === 2 && rt > 0) {
+      // Queue warnings if an error message is still being displayed.
+          setTimeout(() => {
+          UI.info_line.innerHTML = msg;
+          UI.info_line.classList.remove(...types);
+          UI.info_line.classList.add(type);
+          UI.updateIssuePanel();
+        }, rt);      
+    } else if(lmti < 0 || mti > lmti || rt <= 0) {
+      // Display text only if previous message has "timed out" or was less
+      // urgent than this one.
+      const override = mti === 2 && lmti === 1 && rt > 0;
       this.time_last_message = t;
       this.last_message_type = type;
       if(type) SOUNDS[type].play().catch(() => {
           console.log('NOTICE: Sounds will only play after first user action');
         });
-      const il = document.getElementById('info-line');
-      il.classList.remove(...types);
-      il.classList.add(type);
-      il.innerHTML = msg;
+      if(override && !this.old_info_line) {
+        // Set time-out to restore overridden warning.
+        this.old_info_line = {msg: this.info_line.innerHTML, status: types[lmti]};
+        setTimeout(() => {
+            UI.info_line.innerHTML = UI.old_info_line.msg;
+            UI.info_line.classList.add(UI.old_info_line.status);
+            UI.old_info_line = null;
+            UI.updateIssuePanel();
+          }, this.message_display_time);
+      }
+      UI.info_line.classList.remove(...types);
+      UI.info_line.classList.add(type);
+      UI.info_line.innerHTML = msg;
     }
   }
   
@@ -3630,6 +3653,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     md.element('preference').innerHTML = html.join('');
     md.element('int-feasibility').value = MODEL.integer_tolerance;
     md.element('mip-gap').value = MODEL.MIP_gap;
+    this.setBox('solver-diagnose', MODEL.always_diagnose);
     md.show();
   }
   
@@ -3658,6 +3682,11 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     }
     MODEL.integer_tolerance = Math.max(1e-9, Math.min(0.1, itol));
     MODEL.MIP_gap = Math.max(0, Math.min(0.5, mgap));
+    MODEL.always_diagnose = this.boxChecked('solver-diagnose');
+    if(MODEL.always_diagnose) {
+      UI.notify('To diagnose unbounded problems, values beyond 1e+10 ' +
+          'are considered as infinite (\u221E)');
+    }
     // Close the dialog.
     md.hide();
   }

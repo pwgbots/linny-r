@@ -2078,6 +2078,15 @@ class VirtualMachine {
     // so far, type is always HI (highest increment); object can be
     // a process or a product.
     this.chunk_variables = [];
+    // NOTE: As of version 1.8.0, diagnosis is performed only when the
+    // modeler Alt-clicks the "run" button or clicks the link in the
+    // infoline warning that is displayed when the solver reports that a
+    // block poses a problem that is infeasible (too tight constraints)
+    // or unbounded (no upper limit on some processes). Diagnosis is
+    // implemented by adding slack and setting finite bounds on processes
+    // and then make a second attempt to solve the block.
+    this.diagnose = false;
+    this.prompt_to_diagnose = false;
     // Array for VM instructions.
     this.code = [];
     // The Simplex tableau: matrix, rhs and ct will have same length.
@@ -2112,17 +2121,23 @@ class VirtualMachine {
     // Floating-point constants used in calculations
     // Meaningful solver results are assumed to lie wihin reasonable bounds.
     // Extreme absolute values (10^25 and above) are used to signal particular
-    // outcomes. This 10^25 limit is used because the default MILP solver
-    // LP_solve considers a problem to be unbounded if decision variables
-    // reach +INF (1e+30) or -INF (-1e+30), and a solution inaccurate if
-    // extreme values get too close to +/-INF. The higher values have been
-    // chosen arbitrarily.
+    // outcomes. This 10^25 limit is used because the original MILP solver
+    // used by Linny-R (LP_solve) considers a problem to be unbounded if
+    // decision variables reach +INF (1e+30) or -INF (-1e+30), and a solution
+    // inaccurate if extreme values get too close to +/-INF. The higher
+    // values have been chosen arbitrarily.
     this.PLUS_INFINITY = 1e+25;
     this.MINUS_INFINITY = -1e+25;
     this.BEYOND_PLUS_INFINITY = 1e+35;
     this.BEYOND_MINUS_INFINITY = -1e+35;
+    // The 1e+30 value is recognized by all supported solvers as "infinity",
+    // and hence can be used to indicate that a variable has no upper bound.
     this.SOLVER_PLUS_INFINITY = 1e+30;
     this.SOLVER_MINUS_INFINITY = -1e+30;
+    // As of version 1.8.0, Linny-R imposes no +INF bounds on processes
+    // unless diagnosing an unbounded problem. For such diagnosis, the
+    // (relatively) low value 9.99999999e+9 is used.
+    this.DIAGNOSIS_UPPER_BOUND = 9.99999999e+9;
     // NOTE: Below the "near zero" limit, a number is considered zero
     // (this is to timely detect division-by-zero errors).
     this.NEAR_ZERO = 1e-10;
@@ -2345,17 +2360,6 @@ class VirtualMachine {
   selectSolver(id) {
     if(id in this.solver_names) {
       this.solver_id = id;
-/*
-      if(id === 'mosek') {
-        this.PLUS_INFINITY = 1e+6;
-        this.MINUS_INFINITY = -1e+6;
-        this.MAX_SLACK_PENALTY = 1e+6;
-      } else {
-        this.PLUS_INFINITY = 1e+25;
-        this.PLUS_INFINITY = -1e+25;
-        this.MAX_SLACK_PENALTY = 1e+24;
-      }
-*/
     } else {
       UI.alert(`Invalid solver ID "${id}"`);
     }
@@ -2996,7 +3000,7 @@ class VirtualMachine {
     //     to respect certain constraints. This may result in infeasible
     //     MILP problems. The solver will report this, but provide no
     //     clue as to which constraints may be critical.
-    if(p instanceof Product && !p.no_slack) {
+    if(p instanceof Product && this.diagnose && !p.no_slack) {
       p.stock_LE_slack_var_index = this.addVariable('LE', p);
       p.stock_GE_slack_var_index = this.addVariable('GE', p);
     }
@@ -3125,7 +3129,7 @@ class VirtualMachine {
       );
     // ... or if P is neither source nor sink.
     } else if(p.equal_bounds && notsrc && notsnk) {
-      if(!p.no_slack) {
+      if(this.diagnose && !p.no_slack) {
         // NOTE: For EQ, both slack variables should be used, having
         // respectively -1 and +1 as coefficients.
         this.code.push(
@@ -3141,7 +3145,7 @@ class VirtualMachine {
     } else {
       // Add lower bound (GE) constraint unless product is a source node.
       if(notsrc) {
-        if(!p.no_slack) {
+        if(this.diagnose && !p.no_slack) {
           // Add the GE slack index with coefficient +1 (so it can
           // INcrease the left-hand side of the equation)
           this.code.push([VMI_add_const_to_coefficient, [gesvi, 1]]);
@@ -3154,7 +3158,7 @@ class VirtualMachine {
       }
       // Add upper bound (LE) constraint unless product is a sink node
       if(notsnk) {
-        if(!p.no_slack) {
+        if(this.diagnose && !p.no_slack) {
           // Add the stock LE index with coefficient -1 (so it can
           // DEcrease the LHS).
           this.code.push([VMI_add_const_to_coefficient, [lesvi, -1]]);
@@ -3187,6 +3191,14 @@ class VirtualMachine {
     // Initialize fixed variable array: 1 list per round.
     for(i = 0; i < MODEL.rounds; i++) {
       this.fixed_var_indices.push([]);
+    }
+    
+    // Log if run is performed in "diagnosis" mode.
+    if(this.diagnose) {
+      this.logMessage(this.block_count, 'DIAGNOSTIC RUN' +
+          (MODEL.always_diagnose ? ' (default -- see model settings)': '') +
+          '\n- slack variables on products and constraints' +
+          '\n- finite bounds on all processes');
     }
     
     // Just in case: re-determine which entities can be ignored.
@@ -3254,7 +3266,7 @@ class VirtualMachine {
             // solver does not support special ordered sets).
             // NOTE: `addVariable` will add as many as there are points!
             bl.first_sos_var_index = this.addVariable('W1', bl);
-            if(!c.no_slack) {
+            if(this.diagnose && !c.no_slack) {
               // Define the slack variable(s) for bound line constraints.
               // NOTE: Category [2] means: highest slack penalty.
               if(bl.type !== VM.GE) {
@@ -3375,7 +3387,7 @@ class VirtualMachine {
         p = MODEL.products[k];
         // Get index of variable that is constrained by LB and UB.
         vi = p.level_var_index;
-        if(p.no_slack) {
+        if(p.no_slack || !this.diagnose) {
           // If no slack, the bound constraints can be set on the
           // variables themselves.
           lbx = p.lower_bound;
@@ -3658,7 +3670,7 @@ class VirtualMachine {
       k = product_keys[i];
       if(!MODEL.ignored_entities[k]) {
         p = MODEL.products[k];
-        if(p.level_var_index >= 0 && !p.no_slack) {
+        if(p.level_var_index >= 0 && !p.no_slack && this.diagnose) {
           hb = p.hasBounds;
           pen = (p.is_data ? 2 :
               // NOTE: Lowest penalty also for IMPLIED sources and sinks.
@@ -4605,7 +4617,8 @@ class VirtualMachine {
       // Compute the peak from the peak increase.
       p.b_peak[block] = p.b_peak[block - 1] + p.b_peak_inc[block];
     }
-    // Add warning to messages if slack has been used.
+    // Add warning to messages if slack has been used, or some process
+    // level is "infinite" while diagnosing an unbounded problem.
     // NOTE: Only check after the last round has been evaluated.
     if(round === this.lastRound) {
       let b = bb;
@@ -4643,6 +4656,27 @@ class VirtualMachine {
                    v[1].displayName + ' ' + v[0] + ' slack = ' +
                    slack.toPrecision(2));
               }
+            }
+          }
+        }
+        if(this.diagnose) {
+          // Iterate over all processes, and set the "slack use" flag
+          // for their cluster so that these clusters will be highlighted.
+          for(let o in MODEL.processes) if(MODEL.processes.hasOwnProperty(o) &&
+              !MODEL.ignored_entities[o]) {
+            const
+                p = MODEL.processes[o],
+                l = p.level[b];
+            if(l >= VM.PLUS_INFINITY) {
+              this.logMessage(block,
+                  `${this.WARNING}(t=${b}${round}) ${p.displayName} has level +INF`);
+              // NOTE: +INF is signalled in blue, just like use of LE slack.
+              p.cluster.usesSlack(b, p, 'LE');
+            } else if(l <= VM.MINUS_INFINITY) {
+              this.logMessage(block,
+                  `${this.WARNING}(t=${b}${round}) ${p.displayName} has level -INF`);
+              // NOTE: -INF is signalled in red, just like use of GE slack.
+              p.cluster.usesSlack(b, p, 'GE');
             }
           }
         }
@@ -5878,6 +5912,9 @@ Solver status = ${json.status}`);
       }
       this.logMessage(bnr, errmsg);
       UI.alert(errmsg);
+      if(errmsg.indexOf('nfeasible') >= 0 || errmsg.indexOf('nbounded') >= 0) {
+        this.prompt_to_diagnose = true;
+      }
     }
     this.logMessage(bnr, msg);
     this.equations[bnr - 1] = json.model;
@@ -5936,7 +5973,12 @@ Solver status = ${json.status}`);
         RECEIVER.report();
       }
       // Warn modeler if any issues occurred.
-      if(this.block_issues) {
+      if(this.prompt_to_diagnose && !this.diagnose) {
+        UI.warn('Model is infeasible or unbounded -- ' +
+            '<strong>Alt</strong>-click on the <em>Run</em> button ' +
+            '<img id="solve-btn" class="sgray" src="images/solve.png">' +
+            ' for diagnosis');
+      } else if(this.block_issues) {
         let msg = 'Issues occurred in ' +
             pluralS(this.block_issues, 'block') +
             ' -- details can be viewed in the monitor';
@@ -6091,7 +6133,7 @@ Solver status = ${json.status}`);
     this.solveBlocks();
   }
   
-  solveModel() {
+  solveModel(diagnose=false) {
     // Start the sequence of data loading, model translation, solving
     // consecutive blocks, and finally calculating dependent variables.
     // NOTE: Do this only if the model defines a MILP problem, i.e.,
@@ -6101,6 +6143,22 @@ Solver status = ${json.status}`);
       UI.notify('Nothing to solve');
       return;
     }
+    // Diagnosis (by adding slack variables and finite bounds on processes)
+    // is activated when Alt-clicking the "run" button, or by clicking the
+    // "clicke HERE to diagnose" link on the infoline.
+    this.diagnose = diagnose || MODEL.always_diagnose;
+    if(this.diagnose) {
+      this.PLUS_INFINITY = this.DIAGNOSIS_UPPER_BOUND;
+      this.MINUS_INFINITY = -this.DIAGNOSIS_UPPER_BOUND;
+      console.log('DIAGNOSIS ON');
+    } else {
+      this.PLUS_INFINITY = 1e+25;
+      this.MINUS_INFINITY = -1e+25;
+      console.log('DIAGNOSIS OFF');
+    }
+    // The "propt to diagnose" flag is set when some block posed an
+    // infeasible or unbounded problem.
+    this.prompt_to_diagnose = false;
     const n = MODEL.loading_datasets.length;
     if(n > 0) {
       // Still within reasonable time? (3 seconds per dataset)
@@ -7784,10 +7842,11 @@ function VMI_set_bounds(args) {
       vbl = VM.variables[vi - 1][1],
       k = VM.offset + vi,
       r = VM.round_letters.indexOf(VM.round_sequence[VM.current_round]),
-      // Optional fourth parameter indicates whether the solver's
-      // infinity values should be used.
-      solver_inf = args.length > 3 && args[3],
-      inf_val = (solver_inf ? VM.SOLVER_PLUS_INFINITY : VM.PLUS_INFINITY);
+      // When diagnosing an unbounded problem, use low value for INFINITY,
+      // but the optional fourth parameter indicates whether the solver's
+      // infinity values should override the diagnosis INFINITY.
+      inf_val = (VM.diagnose && !(args.length > 3 && args[3]) ?
+          VM.DIAGNOSIS_UPPER_BOUND : VM.SOLVER_PLUS_INFINITY);
   let l,
       u,
       fixed = (vi in VM.fixed_var_indices[r - 1]);
@@ -7812,17 +7871,15 @@ function VMI_set_bounds(args) {
     u = args[2];
     if(u instanceof Expression) u = u.result(VM.t);
     u = Math.min(u, VM.PLUS_INFINITY);
-    if(solver_inf) {
-      if(l === VM.MINUS_INFINITY) l = -inf_val;
-      if(u === VM.PLUS_INFINITY) u = inf_val;
-    }
+    if(l === VM.MINUS_INFINITY) l = -inf_val;
+    if(u === VM.PLUS_INFINITY) u = inf_val;
     fixed = '';
   }
   // NOTE: To see in the console whether fixing across rounds works, insert
   // "fixed !== '' || " before DEBUGGING below.
   if(DEBUGGING) {
     console.log(['set_bounds [', k, '] ', vbl.displayName, ' t = ', VM.t,
-      ' LB = ', VM.sig4Dig(l), ', UB = ', VM.sig4Dig(u), fixed].join(''));
+      ' LB = ', VM.sig4Dig(l), ', UB = ', VM.sig4Dig(u), fixed, l, u, inf_val].join(''));
   }
   // NOTE: Since the VM vectors for lower bounds and upper bounds are
   // initialized with default values (0 for LB, +INF for UB), there is
@@ -8327,7 +8384,15 @@ function VMI_add_constraint(ct) {
       }
     }
     VM.matrix.push(row);
-    VM.right_hand_side.push(VM.rhs);
+    let rhs = VM.rhs;
+    if(rhs >= VM.PLUS_INFINITY) {
+      rhs = (VM.diagnose ? VM.DIAGNOSIS_UPPER_BOUND :
+          VM.SOLVER_PLUS_INFINITY);
+    } else if(rhs <= VM.MINUS_INFINITY) {
+      rhs = (VM.diagnose ? -VM.DIAGNOSIS_UPPER_BOUND :
+          VM.SOLVER_MINUS_INFINITY);
+    }
+    VM.right_hand_side.push(rhs);
     VM.constraint_types.push(ct);
   } else if(DEBUGGING) {
     console.log('Constraint NOT added!');
@@ -8480,7 +8545,7 @@ function VMI_add_bound_line_constraint(args) {
   for(let i = 0; i < w.length; i++) {
     VM.coefficients[w[i]] = -y[i];
   }
-  if(!bl.constraint.no_slack) {
+  if(VM.diagnose && !bl.constraint.no_slack) {
     // Add coefficients for slack variables unless omitted.
     if(bl.type != VM.LE) VM.coefficients[VM.offset + bl.GE_slack_var_index] = 1;
     if(bl.type != VM.GE) VM.coefficients[VM.offset + bl.LE_slack_var_index] = -1;

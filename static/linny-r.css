@@ -313,6 +313,15 @@ img.sbtn.senab:hover {
   filter: brightness(150%);
 }
 
+img.sgray {
+  width: 16px;
+  height: 16px;
+  margin: -1px;
+  vertical-align: middle;
+  filter: grayscale(100%);
+}
+
+
 /* Bounds button indicates whether LB = UB */
 div.bbtn {
   background-size: contain;
@@ -1002,7 +1011,7 @@ input.pws-5 {
 }
 
 #solver-dlg {
-  width: 212px;
+  width: 250px;
   height: min-content;
 }
 
@@ -2727,6 +2736,7 @@ td.equation-expression {
   top: 134px;
   left: 2px;
   width: calc(100% - 5px);
+  white-space: nowrap;
 }
 
 #series-clip {

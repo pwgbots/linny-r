@@ -612,15 +612,21 @@ module.exports = class MILPSolver {
               json = fs.readFileSync(s.solution, 'utf8').trim(),
               sol = JSON.parse(json);
           result.seconds = sol.SolutionInfo.Runtime;
+          let status = sol.SolutionInfo.Status;
           // NOTE: Status = 2 indicates success!
-          if(sol.SolutionInfo.Status !== 2) {
-            result.status = sol.SolutionInfo.Status;
-            result.error = s.errors[result.status];
+          if(status !== 2) {
+            let msg = s.statusMessage(status);  
+            if(msg) {
+              // If solver exited with known status code, report message.
+              result.status = status;
+              result.solution = s.usableSolution(status);
+              result.error = msg;
+            }
             if(!result.error) result.error = 'Unknown solver error';
             console.log(`Solver status: ${result.status} - ${result.error}`);
           }
           // Objective value.
-          result.obj = sol.SolutionInfo.ObjVal;
+          result.obj = sol.SolutionInfo.ObjVal || 0;
           // Values of solution vector.
           if(sol.Vars) {
             // Fill dictionary with variable name: value entries.
@@ -676,21 +682,29 @@ module.exports = class MILPSolver {
         if(result.status.indexOf('OPTIMAL') >= 0) {
           result.status = 0;
           result.error = '';
+        } else if(result.status.indexOf('DUAL_INFEASIBLE') >= 0) {
+          result.error = 'Problem is unbounded';
+          solved = false;
+        } else if(result.status.indexOf('INFEASIBLE') >= 0) {
+          result.error = 'Problem is infeasible';
+          solved = false;
         }
-        while(i < output.length && output[i].indexOf('VARIABLES') < 0) {
-          i++;
-        }
-        // Fill dictionary with variable name: value entries.
-        while(i < output.length) {
-          const m = output[i].match(/^\d+\s+X(\d+)\s+SB\s+([^\s]+)\s+/);
-          if(m !== null)  {
-            const vn = 'X' + m[1].padStart(7, '0');
-            x_dict[vn] = parseFloat(m[2]);
+        if(solved) {
+          while(i < output.length && output[i].indexOf('VARIABLES') < 0) {
+            i++;
           }
-          i++;
+          // Fill dictionary with variable name: value entries.
+          while(i < output.length) {
+            const m = output[i].match(/^\d+\s+X(\d+)\s+\w\w\s+([^\s]+)\s+/);
+            if(m !== null)  {
+              const vn = 'X' + m[1].padStart(7, '0');
+              x_dict[vn] = parseFloat(m[2]);
+            }
+            i++;
+          }
+          // Fill the solution vector, adding 0 for missing columns.
+          getValuesFromDict();
         }
-        // Fill the solution vector, adding 0 for missing columns.
-        getValuesFromDict();
       } else {
         console.log('No solution found');
       }
@@ -698,6 +712,14 @@ module.exports = class MILPSolver {
       result.seconds = 0;
       const
           no_license = (log.indexOf('No license found') >= 0),
+          // NOTE: Omit first letter U, I and P as they may be either in
+          // upper case or lower case.
+          unbounded = (log.indexOf('nbounded') >= 0),
+          infeasible = (log.indexOf('nfeasible') >= 0),
+          primal_unbounded = (log.indexOf('rimal unbounded') >= 0),
+          err = log.match(/CPLEX Error\s+(\d+):\s+(.+)\./),
+          err_nr = (err && err.length > 1 ? parseInt(err[1]) : 0),
+          err_msg = (err_nr ? err[2] : ''),
           // NOTE: Solver reports time with 1/100 secs precision.
           mst = log.match(/Solution time \=\s+(\d+\.\d+) sec/);
       if(mst && mst.length > 1) result.seconds = parseFloat(mst[1]);
@@ -712,6 +734,15 @@ module.exports = class MILPSolver {
         // Non-zero solver exit code indicates serious trouble.
         result.error = 'CPLEX solver terminated with error';
         result.status = -13;
+      } else if(err_nr) {
+        result.status = err_nr;
+        if(infeasible && !primal_unbounded) {
+          result.error = 'Problem is infeasible';
+        } else if(unbounded) {
+          result.error = 'Problem is unbounded';
+        } else {
+          result.error = err_msg;
+        }
       } else {
         try {
           output = fs.readFileSync(s.solution, 'utf8').trim();
@@ -792,7 +823,14 @@ module.exports = class MILPSolver {
               }
             }
             if(result.status) {
-              result.error = this.solver_list.scip.errors[result.status];
+              let msg = s.statusMessage(result.status);  
+              if(msg) {
+                // If solver exited with known status code, report message.
+                result.solution = s.usableSolution(result.status);
+                result.error = msg;
+              }
+              if(!result.error) result.error = 'Unknown solver error';
+              console.log(`Solver status: ${result.status} - ${result.error}`);
             }
           } else if (m.startsWith('Solving Time')) {
             result.seconds = parseFloat(m.split(':')[1]);

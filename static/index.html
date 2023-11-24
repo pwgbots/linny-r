@@ -723,24 +723,31 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
       </div>
       <table style="width: 100%">
         <tr title="This solver will be used if it is installed">
-          <td>
+          <td colspan="2">
             <label>Preferred solver:</label>
             <select id="solver-preference">
             </select>
           </td>
         </tr>
         <tr title="Tolerance may range from 1e-9 to 0.1">
-          <td>
+          <td colspan="2">
             <label>Integer feasibility tolerance:</label>
-            <input id="solver-int-feasibility" style="width: 55px"
+            <input id="solver-int-feasibility" style="width: 65px"
                    placeholder="5e-7" type="text" autocomplete="off">
           </td>
         </tr>
         <tr title="Relative gap may range from 0 to 0.5">
-          <td>
+          <td colspan="2">
             <label>Relative MIP gap:</label>
-            <input id="solver-mip-gap" style="width: 55px"
+            <input id="solver-mip-gap" style="width: 65px"
                    placeholder="1e-4" type="text" autocomplete="off">
+          </td>
+        </tr>
+        <tr title="When checked, finite process bounds and slack variables are always added">
+          <td style="padding:0px">
+            <div id="solver-diagnose" class="box clear"></div>
+          </td>
+          <td style="padding-bottom:4px">Diagnose infeasible/unbounded problems</td>
           </td>
         </tr>
       </table>
