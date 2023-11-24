@@ -66,7 +66,7 @@ and then type at the command line prompt:
 
 ``npm install --prefix . linny-r``
 
-> **Important**
+> [!IMPORTANT]
 > The spacing around the dot is essential. Type the command in lower case.
 
 After installation has completed, `Linny-R` should have this directory tree structure:
@@ -98,7 +98,7 @@ on a Windows machine the batch script `linny-r.bat`. By default, this script fil
 two commands: first change to the Linny-R directory and then tell Node.js to launch the
 start the Linny-R server.
 
-> **Note**
+> [!NOTE]
 > When configuring Linny-R for a network environment where individual users
 > each have their personal work space (e.g., a virtual drive U:), you must edit this script file,
 > adding the argument `workspace=path/to/workspace` to the `node` command.
@@ -129,7 +129,7 @@ version 1.4.0, open the CLI, change to your `Linny-R` directory, and then type:
 
 ``npm install linny-r@1.4.0``
 
-> **Note**
+> [!NOTE]
 > This will overwrite the contents of the `node_modules` directory, but
 > it will not affect the files in your user space.
 
@@ -139,7 +139,7 @@ directory and type:
 
 ``npm install --prefix . linny-r@1.4.0``
 
-> **Note**
+> [!NOTE]
 > To run a specific version in your browser, you must start the server from
 > the directory where you installed this version.
 > Should you wish to run two different versions concurrently, you must use
@@ -152,7 +152,7 @@ Gurobi, MOSEK and CPLEX are _considerably_ more powerful than the open source so
 but they require a license.
 Academic licenses can be obtained by students and staff of eligible institutions.
 
-> **Important**
+> [!IMPORTANT]
 > When installing a solver, it is advisable to accept the default file
 > locations that are proposed by the installer.
 > After installation, do **not** move files to some other directory,
@@ -262,7 +262,7 @@ while in the CLI you should see a long series of server log messages like:
 ... etc.
 </pre>
 
-> **Important**
+> [!IMPORTANT]
 > Do **not** close the CLI. If you do, the Linny-R GUI may still be
 > visible in your browser, but you will be warned that it cannot connect
 > to the server (at 127.0.0.1:5050). This means that you have to restart
@@ -348,7 +348,7 @@ The sub-directories of this directory `user` are used by Linny-R to store files.
 * `solver` will contain the files that are exchanged with the Mixed Integer Linear Programming (MILP) solver
   (the names of the files that will appear in this directory may vary, depending on the MILP-solver you use)
 
-> **Note**
+> [!NOTE]
 > By default, the `user` directory is created in your `Linny-R` directory.
 > You can overrule this by starting the server with the `workspace=[path]` option.
 > This will create a new, empty workspace (the directories listed above) in the specified path.
@@ -381,7 +381,7 @@ Linny-R will automatically detect whether Inkscape is installed by searching
 for it in the environment variable PATH on your computer. On a macOS computer,
 Linny-R will look for Inkscape in `/Applications/Inkscape.app/Contents/MacOS`.
 
-> **Note**
+> [!NOTE]
 > The installation wizard for Inkscape (version 1.3) may **not**
 > add the application to the PATH variable. Please check whether you need to
 > do this yourself.
@@ -396,7 +396,7 @@ If you open a CLI box, change to your `Linny-R` directory, and then type:
 
 you will see the command line options that allow you to run models in various ways.
 
-> **Note**
+> [!NOTE]
 > The console-only version is still in development, and does not provide all functions yet.
 
 ## Troubleshooting problems
@@ -405,7 +405,7 @@ If during any of the steps above you encounter problems, please try to diagnose 
 You can find a lot of useful information on the Linny-R user documentation website:
 <a href="https://linny-r.info" target="_blank">https://linny-r.info</a>.
 
-> **Important**
+> [!IMPORTANT]
 > To diagnose a problem, always look in the CLI box where Node.js is running, 
 > as informative server-side error messages will appear there.
 
