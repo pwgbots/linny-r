@@ -74,16 +74,16 @@ Attributes, however, are case sensitive!">[Actor X|CF]</code> for cash flow.
   <code title="Number of last round in the sequence (1=a, 2=b, etc.)">lr</code>,
   <code title="Number of rounds in the sequence">nr</code>,
   <code title="Number of current experiment run (starts at 0)">x</code>,
-  <code title="Number of runs in the experiment">nx</code>,
-  <span title="Index variables of iterator dimensions)">
+  <code title="Number of runs in the current experiment">nx</code>,
+  <span title="Index variables of iterator dimensions">
     <code>i</code>, <code>j</code>, <code>k</code>,
   </span>
-  <code title="Number of time steps in 1 year)">yr</code>,
-  <code title="Number of time steps in 1 week)">wk</code>,
-  <code title="Number of time steps in 1 day)">d</code>,
-  <code title="Number of time steps in 1 hour)">h</code>,
-  <code title="Number of time steps in 1 minute)">m</code>,
-  <code title="Number of time steps in 1 second)">s</code>,
+  <code title="Number of time steps in 1 year">yr</code>,
+  <code title="Number of time steps in 1 week">wk</code>,
+  <code title="Number of time steps in 1 day">d</code>,
+  <code title="Number of time steps in 1 hour">h</code>,
+  <code title="Number of time steps in 1 minute">m</code>,
+  <code title="Number of time steps in 1 second">s</code>,
   <code title="A random number from the uniform distribution U(0, 1)">random</code>),
   constants (<code title="Mathematical constant &pi; = ${Math.PI}">pi</code>,
   <code title="Logical constant true = 1
@@ -178,8 +178,8 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
   }
 
   editExpression(event) {
-    // Infer which entity property expression is to edited from the button
-    // that was clicked, and then opens the dialog.
+    // Infer which entity property expression is to be edited from the
+    // button that was clicked, and then opens the dialog.
     const
         btn = event.target,
         ids = btn.id.split('-'), // 3-tuple [entity type, attribute, 'x']

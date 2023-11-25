@@ -572,6 +572,7 @@ class Controller {
     VM.reset();
     // Redraw model in the browser (GUI only).
     MODEL.clearSelection();
+    this.clearStatusLine();
     this.drawDiagram(MODEL);
   }
   
@@ -605,6 +606,7 @@ class Controller {
   setProgressNeedle() {}
   updateTimeStep() {}
   updateIssuePanel() {}
+  clearStatusLine() {}
   updateDraggableDialogs() {}
   logHeapSize() {}
   

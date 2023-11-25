@@ -909,7 +909,7 @@ class GUIController extends Controller {
     // Reset the Virtual Machine.
     VM.reset();
     this.updateIssuePanel();
-    this.setMessage('');
+    this.clearStatusLine();
     this.updateButtons();
     // Undoable operations no longer apply!
     UNDO_STACK.clear();
@@ -1733,8 +1733,8 @@ class GUIController extends Controller {
     }
     for(let i = fc.sub_clusters.length-1; i >= 0; i--) {
       const obj = fc.sub_clusters[i];
-      // NOTE: ignore cluster that is being dragged, so that a cluster it is
-      // being dragged over will be detected instead
+      // NOTE: Ignore cluster that is being dragged, so that a cluster
+      // it is being dragged over will be detected instead.
       if(obj != this.dragged_node &&
           obj.containsPoint(this.mouse_x, this.mouse_y)) {
         this.on_cluster = obj;
@@ -1742,12 +1742,13 @@ class GUIController extends Controller {
         break;
       }
     }
-    // unset and redraw target cluster if cursor no longer over it
+    // Unset and redraw target cluster if cursor no longer over it.
     if(!this.on_cluster && this.target_cluster) {
       const c = this.target_cluster;
       this.target_cluster = null;
       UI.paper.drawCluster(c);
-      // NOTE: element is persistent, so semi-transparency must also be undone
+      // NOTE: Element is persistent, so semi-transparency must also be
+      // undone.
       c.shape.element.setAttribute('opacity', 1);
     }
     for(let i = fc.notes.length-1; i >= 0; i--) {
@@ -1758,15 +1759,15 @@ class GUIController extends Controller {
       }
     }
     if(this.active_button === this.buttons.link && this.linking_node) {
-      // Draw red dotted line from linking node to cursor
+      // Draw red dotted line from linking node to cursor.
       this.paper.dragLineToCursor(this.linking_node, this.mouse_x, this.mouse_y);
     } else if(this.start_sel_x >= 0 && this.start_sel_y >= 0) {
-      // Draw selecting rectangle in red dotted lines
+      // Draw selecting rectangle in red dotted lines.
       this.paper.dragRectToCursor(this.start_sel_x, this.start_sel_y,
           this.mouse_x, this.mouse_y);
     } else if(this.active_button === this.buttons.constraint &&
         this.constraining_node) {
-      // Draw red dotted line from constraining node to cursor
+      // Draw red dotted line from constraining node to cursor.
       this.paper.dragLineToCursor(this.constraining_node,
           this.mouse_x, this.mouse_y);
     } else if(this.dragged_node) {
@@ -1774,14 +1775,14 @@ class GUIController extends Controller {
         this.mouse_y - this.move_dy - this.dragged_node.y);
     }
     let cr = 'pointer';
-    // NOTE: first check ON_CONSTRAINT because constraint thumbnails overlap
-    // with nodes
+    // NOTE: First check ON_CONSTRAINT because constraint thumbnails overlap
+    // with nodes.
     if(this.on_constraint) {
       DOCUMENTATION_MANAGER.update(this.on_constraint, e.shiftKey);
-    // NOTE: skip the "on node" check if the node is being dragged 
+    // NOTE: Skip the "on node" check if the node is being dragged.
     } else if(this.on_node && this.on_node !== this.dragged_node) {
       if((this.active_button === this.buttons.link) && this.linking_node) {
-        // Cannot link process to process
+        // Cannot link process to process.
         cr = (MODEL.canLink(this.linking_node, this.on_node) ?
             'crosshair' : 'not-allowed');
       } else if(this.active_button === this.buttons.constraint) {
@@ -1789,21 +1790,21 @@ class GUIController extends Controller {
           cr = (this.constraining_node.canConstrain(this.on_node) ?
               'crosshair' : 'not-allowed');
         } else if(!this.on_node.hasBounds) {
-          // Products can only constrain when they have bounds
+          // Products can only constrain when they have bounds.
           cr = 'not-allowed';
         }
       }
-      // NOTE: do not overwite status line when cursor is on a block arrow
+      // NOTE: Do not overwite status line when cursor is on a block arrow.
       if(!this.on_block_arrow) {
         DOCUMENTATION_MANAGER.update(this.on_node, e.shiftKey);
       }
     } else if(this.on_note) {
-      // When shift-moving over a note, show the model's documentation
+      // When shift-moving over a note, show the model's documentation.
       DOCUMENTATION_MANAGER.update(MODEL, e.shiftKey);
     } else {
       if((this.active_button === this.buttons.link && this.linking_node) ||
           (this.active_button === this.buttons.constraint && this.constraining_node)) {
-        // Cannot link to clusters or notes
+        // Cannot link to clusters or notes.
         cr = (this.on_cluster || this.on_note ? 'not-allowed' : 'crosshair');                      
       } else if(!this.on_note && !this.on_constraint && !this.on_link &&
           !this.on_cluster_edge) {
@@ -1819,38 +1820,42 @@ class GUIController extends Controller {
         }
       }
       // When dragging selection that contains a process, change cursor to
-      // indicate that selected process(es) will be moved into the cluster
-      if(this.dragged_node && this.on_cluster) {
-        cr = 'cell';
-        this.target_cluster = this.on_cluster;
-        // Redraw the target cluster so it will appear on top (and highlighted)
-        UI.paper.drawCluster(this.target_cluster);
+      // indicate that selected process(es) will be moved into the cluster.
+      if(this.dragged_node) {
+        if(this.on_cluster) {
+          cr = 'cell';
+          this.target_cluster = this.on_cluster;
+          // Redraw the target cluster so it will appear on top (and highlighted).
+          UI.paper.drawCluster(this.target_cluster);
+        } else {
+          cr = 'grab';
+        }
       }
     }
     this.paper.container.style.cursor = cr;
   }
 
   mouseDown(e) {
-    // Responds to mousedown event in model diagram area
+    // Responds to mousedown event in model diagram area.
     // In case mouseup event occurred outside drawing area,ignore this
-    // mousedown event, so that only the mouseup will be processed
+    // mousedown event, so that only the mouseup will be processed.
     if(this.start_sel_x >= 0 && this.start_sel_y >= 0) return;
     const cp = this.paper.cursorPosition(e.pageX, e.pageY);
     this.mouse_down_x = cp[0];
     this.mouse_down_y = cp[1];
     // De-activate "stay active" buttons if dysfunctional, or if SHIFT,
-    // ALT or CTRL is pressed
+    // ALT or CTRL is pressed.
     if((e.shiftKey || e.altKey || e.ctrlKey ||
         this.on_note || this.on_cluster || this.on_link || this.on_constraint ||
         (this.on_node && this.active_button !== this.buttons.link &&
             this.active_button !== this.buttons.constraint)) && this.stayActive) {
       resetActiveButton();
     }
-    // NOTE: only left button is detected (browser catches right menu button)
+    // NOTE: Only left button is detected (browser catches right menu button).
     if(e.ctrlKey) {
       // Remove clicked item from selection
       if(MODEL.selection) {
-        // NOTE: first check constraints -- see mouseMove() for motivation
+        // NOTE: First check constraints -- see mouseMove() for motivation.
         if(this.on_constraint) {
           if(MODEL.selection.indexOf(this.on_constraint) >= 0) {
             MODEL.deselect(this.on_constraint);
@@ -1889,7 +1894,7 @@ class GUIController extends Controller {
     } // END IF Ctrl
   
     // Clear selection unless SHIFT pressed or mouseDown while hovering
-    // over a SELECTED node or link
+    // over a SELECTED node or link.
     if(!(e.shiftKey ||
         (this.on_node && MODEL.selection.indexOf(this.on_node) >= 0) ||
         (this.on_cluster && MODEL.selection.indexOf(this.on_cluster) >= 0) ||
@@ -1901,7 +1906,7 @@ class GUIController extends Controller {
     }
   
     // If one of the top six sidebar buttons is active, prompt for new node
-    // (not link or constraint)
+    // (not link or constraint).
     if(this.active_button && this.active_button !== this.buttons.link &&
         this.active_button !== this.buttons.constraint) {
       this.add_x = this.mouse_x;
@@ -1943,16 +1948,16 @@ class GUIController extends Controller {
     }
   
     // ALT key pressed => open properties dialog if cursor hovers over
-    // some element
+    // some element.
     if(e.altKey) {
-      // NOTE: first check constraints -- see mouseMove() for motivation
+      // NOTE: First check constraints -- see mouseMove() for motivation.
       if(this.on_constraint) {
         this.showConstraintPropertiesDialog(this.on_constraint);
       } else if(this.on_node) {
         if(this.on_node instanceof Process) {
           this.showProcessPropertiesDialog(this.on_node);
         } else if(e.shiftKey) {
-          // Shift-Alt on product is like Shift-Double-click
+          // Shift-Alt on product is like Shift-Double-click.
           this.showReplaceProductDialog(this.on_node);
         } else { 
           this.showProductPropertiesDialog(this.on_node);
@@ -1964,7 +1969,7 @@ class GUIController extends Controller {
       } else if(this.on_link) {
         this.showLinkPropertiesDialog(this.on_link);
       }
-    // NOTE: first check constraints -- see mouseMove() for motivation
+    // NOTE: First check constraints -- see mouseMove() for motivation.
     } else if(this.on_constraint) {
       MODEL.select(this.on_constraint);
     } else if(this.on_note) {
@@ -1973,17 +1978,17 @@ class GUIController extends Controller {
       this.move_dy = this.mouse_y - this.on_note.y;
       MODEL.select(this.on_note);
       UNDO_STACK.push('move', this.dragged_node, true);
-    // Cursor on node => add link or constraint, or start moving
+    // Cursor on node => add link or constraint, or start moving.
     } else if(this.on_node) {
       if(this.active_button === this.buttons.link) {
         this.linking_node = this.on_node;
         // NOTE: return without updating buttons
         return;
       } else if(this.active_button === this.buttons.constraint) {
-        // Allow constraints only on nodes having upper bounds defined
+        // Allow constraints only on nodes having upper bounds defined.
         if(this.on_node.upper_bound.defined) {
           this.constraining_node = this.on_node;
-          // NOTE: here, too, return without updating buttons
+          // NOTE: Here, too, return without updating buttons.
           return;
         }
       } else {
@@ -1991,7 +1996,7 @@ class GUIController extends Controller {
         this.move_dx = this.mouse_x - this.on_node.x;
         this.move_dy = this.mouse_y - this.on_node.y;
         if(MODEL.selection.indexOf(this.on_node) < 0) MODEL.select(this.on_node);
-        // Pass dragged node for UNDO
+        // Pass dragged node for UNDO.
         UNDO_STACK.push('move', this.dragged_node, true);
       }
     } else if(this.on_cluster) {
@@ -2010,23 +2015,23 @@ class GUIController extends Controller {
   }
 
   mouseUp(e) {
-    // Responds to mouseup event
+    // Responds to mouseup event.
     const cp = this.paper.cursorPosition(e.pageX, e.pageY);
     this.mouse_up_x = cp[0];
     this.mouse_up_y = cp[1];
-    // First check whether user is selecting a rectangle
+    // First check whether user is selecting a rectangle.
     if(this.start_sel_x >= 0 && this.start_sel_y >= 0) {
       // Clear previous selection unless user is adding to it (by still
-      // holding SHIFT button down)
+      // holding SHIFT button down).
       if(!e.shiftKey) MODEL.clearSelection();
-      // Compute defining points of rectangle (top left and bottom right)
+      // Compute defining points of rectangle (top left and bottom right).
       const
           tlx = Math.min(this.start_sel_x, this.mouse_up_x),
           tly = Math.min(this.start_sel_y, this.mouse_up_y),
           brx = Math.max(this.start_sel_x, this.mouse_up_x),
           bry = Math.max(this.start_sel_y, this.mouse_up_y);
       // If rectangle has size greater than 2x2 pixels, select all elements
-      // having their center inside the selection rectangle
+      // having their center inside the selection rectangle.
       if(brx - tlx > 2 && bry - tly > 2) {
         const ol = [], fc = MODEL.focal_cluster;
         for(let i = 0; i < fc.processes.length; i++) {
@@ -2055,19 +2060,19 @@ class GUIController extends Controller {
         }
         for(let i in MODEL.links) if(MODEL.links.hasOwnProperty(i)) {
           const obj = MODEL.links[i];
-          // Only add a link if both its nodes are selected as well
+          // Only add a link if both its nodes are selected as well.
           if(fc.linkInList(obj, ol)) {
             ol.push(obj);
           }
         }
         for(let i in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(i)) {
           const obj = MODEL.constraints[i];
-          // Only add a constraint if both its nodes are selected as well
+          // Only add a constraint if both its nodes are selected as well.
           if(fc.linkInList(obj, ol)) {
             ol.push(obj);
           }
         }
-        // Having compiled the object list, actually select them
+        // Having compiled the object list, actually select them.
         MODEL.selectList(ol);
         this.paper.drawSelection(MODEL);
       }
@@ -2075,10 +2080,10 @@ class GUIController extends Controller {
       this.start_sel_y = -1;
       this.paper.hideDragRect();
   
-    // Then check whether user is drawing a flow link
-    // (by dragging its endpoint)
+    // Then check whether user is drawing a flow link (by dragging its
+    // endpoint).
     } else if(this.linking_node) {
-      // If so, check whether the cursor is over a node of the appropriate type
+      // If so, check whether the cursor is over a node of the appropriate type.
       if(this.on_node && MODEL.canLink(this.linking_node, this.on_node)) {
         const obj = MODEL.addLink(this.linking_node, this.on_node);
         UNDO_STACK.push('add', obj);
@@ -2089,8 +2094,8 @@ class GUIController extends Controller {
       if(!this.stayActive) this.resetActiveButton();
       this.paper.hideDragLine();
   
-    // Then check whether user is drawing a constraint link
-    // (again: by dragging its endpoint)
+    // Then check whether user is drawing a constraint link (again: by
+    // dragging its endpoint).
     } else if(this.constraining_node) {
       if(this.on_node && this.constraining_node.canConstrain(this.on_node)) {
         // display constraint editor
@@ -2104,35 +2109,37 @@ class GUIController extends Controller {
       UI.drawDiagram(MODEL);
   
     // Then check whether the user is moving a node (possibly part of a
-    // larger selection)
+    // larger selection).
     } else if(this.dragged_node) {
       // Always perform the move operation (this will do nothing if the
-      // cursor did not move) 
+      // cursor did not move).
       MODEL.moveSelection(
           this.mouse_up_x - this.mouse_x, this.mouse_up_y - this.mouse_y);
-      // @@TO DO: if on top of a cluster, move it there
-      // NOTE: cursor will always be over the selected cluster (while dragging) 
+      // Set cursor to pointer, as it should be on some node while dragging.
+      this.paper.container.style.cursor = 'pointer';
+      // @@TO DO: if on top of a cluster, move it there.
+      // NOTE: Cursor will always be over the selected cluster (while dragging).
       if(this.on_cluster && !this.on_cluster.selected) {
         UNDO_STACK.push('drop', this.on_cluster);
         MODEL.dropSelectionIntoCluster(this.on_cluster);
         this.on_node = null;
         this.on_note = null;
         this.target_cluster = null;
-        // Redraw cluster to erase its "target corona"
+        // Redraw cluster to erase its orange "target corona".
         UI.paper.drawCluster(this.on_cluster);
       }
   
-      // Check wether the cursor has been moved
+      // Check wether the cursor has been moved.
       const
           absdx = Math.abs(this.mouse_down_x - this.mouse_x),
           absdy = Math.abs(this.mouse_down_y - this.mouse_y);
-      // If no *significant* move made, remove the move undo
+      // If no *significant* move made, remove the move undo.
       if(absdx + absdy === 0) UNDO_STACK.pop('move');
       if(this.doubleClicked && absdx + absdy < 3) {
         // Double-clicking opens properties dialog, except for clusters;
-        // then "drill down", i.e., make the double-clicked cluster focal
+        // then "drill down", i.e., make the double-clicked cluster focal.
         if(this.dragged_node instanceof Cluster) {
-          // NOTE: bottom & right cluster edges remain sensitive!
+          // NOTE: Bottom & right cluster edges remain sensitive!
           if(this.on_cluster_edge) {
             this.showClusterPropertiesDialog(this.dragged_node);
           } else {
@@ -2142,7 +2149,7 @@ class GUIController extends Controller {
           if(e.shiftKey) {
             // Shift-double-clicking on a *product* prompts for "remapping"
             // the product position to another product (and potentially
-            // deleting the original one if it has no more occurrences)
+            // deleting the original one if it has no more occurrences).
             this.showReplaceProductDialog(this.dragged_node);
           } else {
             this.showProductPropertiesDialog(this.dragged_node);
@@ -2155,7 +2162,7 @@ class GUIController extends Controller {
       }
       this.dragged_node = null;
   
-    // Then check whether the user is clicking on a link
+    // Then check whether the user is clicking on a link.
     } else if(this.on_link) {
       if(this.doubleClicked) {
         this.showLinkPropertiesDialog(this.on_link);
@@ -2171,8 +2178,8 @@ class GUIController extends Controller {
   }
   
   dragOver(e) {
-    // Accepts products that are dragged from the Finder and do not have
-    // a placeholder in the focal cluster
+    // Accept products that are dragged from the Finder and do not have
+    // a placeholder in the focal cluster.
     this.updateCursorPosition(e);
     const p = MODEL.products[e.dataTransfer.getData('text')];
     if(p && MODEL.focal_cluster.indexOfProduct(p) < 0) e.preventDefault();
@@ -2180,7 +2187,7 @@ class GUIController extends Controller {
 
   drop(e) {
     // Adds a product that is dragged from the Finder to the focal cluster
-    // at the cursor position if it does not have a placeholder yet
+    // at the cursor position if it does not have a placeholder yet.
     const p = MODEL.products[e.dataTransfer.getData('text')];
     if(p && MODEL.focal_cluster.indexOfProduct(p) < 0) {
       e.preventDefault();
@@ -2189,7 +2196,7 @@ class GUIController extends Controller {
       this.selectNode(p);
       this.drawDiagram(MODEL);
     }
-    // NOTE: update afterwards, as the modeler may target a precise (X, Y)
+    // NOTE: Update afterwards, as the modeler may target a precise (X, Y).
     this.updateCursorPosition(e);
   }
 
@@ -2198,14 +2205,16 @@ class GUIController extends Controller {
   //
   
   checkModals(e) {
-    // Respond to Escape, Enter and shortcut keys
+    // Respond to Escape, Enter and shortcut keys.
     const
         ttype = e.target.type,
         ttag = e.target.tagName,
         modals = document.getElementsByClassName('modal');
-    // Modal dialogs: hide on ESC and move to next input on ENTER
+    // Modal dialogs: hide on ESC and move to next input on ENTER.
     let maxz = 0,
-        topmod = null;
+        topmod = null,
+        code = e.code,
+        alt = e.altKey;
     for(let i = 0; i < modals.length; i++) {
       const
           m = modals[i],
@@ -2216,11 +2225,11 @@ class GUIController extends Controller {
         maxz = z;
       }
     }
-    // NOTE: consider only the top modal (if any)
-    if(e.keyCode === 27) {
+    // NOTE: Consider only the top modal (if any is showing).
+    if(code === 'Escape') {
       e.stopImmediatePropagation();
       if(topmod) topmod.style.display = 'none';
-    } else if(e.keyCode === 13 && ttype !== 'textarea') {
+    } else if(code === 'Enter' && ttype !== 'textarea') {
       e.preventDefault();
       if(topmod) {
         const inp = Array.from(topmod.getElementsByTagName('input'));
@@ -2229,73 +2238,78 @@ class GUIController extends Controller {
         if(i < inp.length) {
           inp[i].focus();
         } else if('constraint-modal xp-clusters-modal'.indexOf(topmod.id) >= 0) {
-          // NOTE: constraint modal and "ignore clusters" modal must NOT close
-          // when Enter is pressed; just de-focus the input field
+          // NOTE: Constraint modal and "ignore clusters" modal must NOT close
+          // when Enter is pressed, but only de-focus the input field.
           e.target.blur();
         } else {
           const btns = topmod.getElementsByClassName('ok-btn');
           if(btns.length > 0) btns[0].dispatchEvent(new Event('click'));
         }
       } else if(this.dr_dialog_order.length > 0) {
-        // Send ENTER key event to the top draggable dialog
+        // Send ENTER key event to the top draggable dialog.
         const last = this.dr_dialog_order.length - 1;
         if(last >= 0) {
           const mgr = window[this.dr_dialog_order[last].dataset.manager];
           if(mgr && 'enterKey' in mgr) mgr.enterKey();
         }
       }
-    } else if(e.keyCode === 8 &&
+    } else if(code === 'Backspace' &&
         ttype !== 'text' && ttype !== 'password' && ttype !== 'textarea') {
-      // Prevent backspace to be interpreted (by FireFox) as "go back in browser"
+      // Prevent backspace to be interpreted (by FireFox) as "go back in browser".
       e.preventDefault();
     } else if(ttag === 'BODY') {
-      // Constraint Editor accepts arrow keys
+      // Constraint Editor accepts arrow keys.
       if(topmod && topmod.id === 'constraint-modal') {
-        if([37, 38, 39, 40].indexOf(e.keyCode) >= 0) {
+        if(code.startsWith('Arrow')) {
           e.preventDefault();
           CONSTRAINT_EDITOR.arrowKey(e);
           return;
         }
       }
-      // Up and down arrow keys
-      if([38, 40].indexOf(e.keyCode) >= 0) {
+      // Up and down arrow keys.
+      if(code === 'ArrowUp' || code === 'ArrowDown') {
         e.preventDefault();
-        // Send event to the top draggable dialog
+        // Send event to the top draggable dialog.
         const last = this.dr_dialog_order.length - 1;
         if(last >= 0) {
           const mgr = window[this.dr_dialog_order[last].dataset.manager];
-          // NOTE: pass key direction as -1 for UP and +1 for DOWN
+          // NOTE: Pass key direction as -1 for UP and +1 for DOWN.
           if(mgr && 'upDownKey' in mgr) mgr.upDownKey(e.keyCode - 39);
         }
       }
-      // end, home, Left and right arrow keys
-      if([35, 36, 37, 39].indexOf(e.keyCode) >= 0) e.preventDefault();
-      if(e.keyCode === 35) {
+      // End, Home, and left and right arrow keys.
+      if(code === 'End') {
+        e.preventDefault();
         MODEL.t = MODEL.end_period - MODEL.start_period + 1;
         UI.updateTimeStep();
         UI.drawDiagram(MODEL);
-      } else if(e.keyCode === 36) {
+      } else if(code === 'Home') {
+        e.preventDefault();
         MODEL.t = 1;
         UI.updateTimeStep();
         UI.drawDiagram(MODEL);
-      } else if(e.keyCode === 37) {
+      } else if(code === 'ArrowLeft') {
+        e.preventDefault();
         this.stepBack(e);
-      } else if(e.keyCode === 39) {
+      } else if(code === 'ArrowRight') {
+        e.preventDefault();
         this.stepForward(e);
-      } else if(e.altKey && [67, 77].indexOf(e.keyCode) >= 0) {
-        // Special shortcut keys for "clone selection" and "model settings"
+      } else if(alt && code === 'KeyR') {
+        // Alt-R means: run to diagnose infeasible/unbounded problem.
+          VM.solveModel(true);
+      } else if(alt && ['KeyC', 'KeyM'].indexOf(code) >= 0) {
+        // Special shortcut keys for "clone selection" and "model settings".
         const be = new Event('click');
-        be.altKey = true;
-        if(e.keyCode === 67) {
+        if(code === 'KeyC') {
           this.buttons.clone.dispatchEvent(be);
         } else {
           this.buttons.settings.dispatchEvent(be);
         }
-      } else if(!e.shiftKey && !e.altKey &&
-          (!topmod || [65, 67, 86].indexOf(e.keyCode) < 0)) {
-        // Interpret special keys as shortcuts unless a modal dialog is open
-        if(e.keyCode === 46) {
-          // DEL button => delete selection
+      } else if(!e.shiftKey && !alt &&
+          (!topmod || ['KeyA', 'KeyC', 'KeyV'].indexOf(code) < 0)) {
+        // Interpret special keys as shortcuts unless a modal dialog is open.
+        if(code === 'Delete') {
+          // DEL button => delete selection.
           e.preventDefault();
           if(!this.hidden('constraint-modal')) {
             CONSTRAINT_EDITOR.deleteBoundLine();
@@ -2304,18 +2318,18 @@ class GUIController extends Controller {
           } else {
             this.buttons['delete'].dispatchEvent(new Event('click'));
           }
-        } else if (e.keyCode === 190 && (e.ctrlKey || e.metaKey)) {
-          // Ctrl-. (dot) moves entire diagram to upper-left corner
+        } else if (code === 'Period' && (e.ctrlKey || e.metaKey)) {
+          // Ctrl-. (dot) moves entire diagram to upper-left corner.
           e.preventDefault();
           this.paper.fitToSize();
           MODEL.alignToGrid();
-        } else if (e.keyCode >= 65 && e.keyCode <= 90 && (e.ctrlKey || e.metaKey)) {
-          // ALWAYS prevent browser to do respond to Ctrl-letter commands
-          // NOTE: this cannot prevent a new tab from opening on Ctrl-T 
+        } else if (code >= 'KeyA' && code <= 'KeyZ' && (e.ctrlKey || e.metaKey)) {
+          // ALWAYS prevent browser to do respond to Ctrl-letter commands.
+          // NOTE: This cannot prevent a new tab from opening on Ctrl-T.
           e.preventDefault();
-          let shortcut = String.fromCharCode(e.keyCode);
+          let shortcut = code.substring(3);
           if(shortcut === 'Z' && e.shiftKey) {
-            // Interpret Shift-Ctrl-Z as Ctrl-Y (redo last undone operation)
+            // Interpret Shift-Ctrl-Z as Ctrl-Y (redo last undone operation).
             shortcut = 'Y';
           }
           if(this.shortcuts.hasOwnProperty(shortcut)) {
@@ -2666,9 +2680,15 @@ class GUIController extends Controller {
   //
   // Informing the modeler via the status line
   //
-    
+  
+  clearStatusLine() {
+    // Clear message on the status line.
+    this.info_line.innerHTML = '';
+    UI.info_line.classList.remove(...UI.info_line.classList);
+  }
+
   setMessage(msg, type=null) {
-    // Displays message on infoline unless no type (= plain text) and some
+    // Display `msg` on infoline unless no type (= plain text) and some
     // info, warning or error message is already displayed.
     super.setMessage(msg, type);
     const types = ['notification', 'warning', 'error'];
@@ -2692,8 +2712,8 @@ class GUIController extends Controller {
       // Queue warnings if an error message is still being displayed.
           setTimeout(() => {
           UI.info_line.innerHTML = msg;
-          UI.info_line.classList.remove(...types);
-          UI.info_line.classList.add(type);
+          UI.info_line.classList.remove(...UI.info_line.classList);
+          if(type) UI.info_line.classList.add(type);
           UI.updateIssuePanel();
         }, rt);      
     } else if(lmti < 0 || mti > lmti || rt <= 0) {
@@ -2715,8 +2735,8 @@ class GUIController extends Controller {
             UI.updateIssuePanel();
           }, this.message_display_time);
       }
-      UI.info_line.classList.remove(...types);
-      UI.info_line.classList.add(type);
+      UI.info_line.classList.remove(...UI.info_line.classList);
+      if(type) UI.info_line.classList.add(type);
       UI.info_line.innerHTML = msg;
     }
   }
@@ -2869,11 +2889,15 @@ class GUIController extends Controller {
         }
       }
     } else if(type === 'process' || type === 'product') {
+/* NOT CLEAR WHAT THIS CODE DOES, SO DISABLE IT
       if(this.dbl_clicked_node) {
         n = this.dbl_clicked_node;
         md = this.modals['add-' + type];
         this.dbl_clicked_node = null;
       } else {
+*/
+      if(true) {                      // added line
+        this.dbl_clicked_node = null; // added line
         if(type === 'process') {
           md = this.modals['add-process'];
           nn = md.element('name').value;
@@ -2927,7 +2951,7 @@ class GUIController extends Controller {
             UNDO_STACK.pop();
             return false;
           }
-          // NOTE: pre-check if product exists
+          // NOTE: Pre-check if product exists.
           const pp = MODEL.objectByName(nn);
           n = MODEL.addProduct(nn);
           if(n) {
@@ -2948,7 +2972,7 @@ class GUIController extends Controller {
         }
         if(n) {
           // If process, and X and Y are set, it exists; then if not in the
-          // focal cluster, ask whether to move it there
+          // focal cluster, ask whether to move it there.
           if(n instanceof Process && (n.x !== 0 || n.y !== 0)) {
             if(n.cluster !== MODEL.focal_cluster) {
               this.confirmToMoveNode(n);
@@ -2966,9 +2990,9 @@ class GUIController extends Controller {
     MODEL.inferIgnoredEntities();
     if(n) {
       md.hide();
-      // Select the newly added entity
-      // NOTE: If the focal cluster was selected (via the top tool bar), it
-      // cannot be selected
+      // Select the newly added entity.
+      // NOTE: If the focal cluster was selected (via the top tool bar),
+      // it cannot be selected.
       if(n !== MODEL.focal_cluster) this.selectNode(n);
     }
   }
@@ -3526,12 +3550,13 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     md.element('block-length').value = model.block_length;
     md.element('look-ahead').value = model.look_ahead;
     md.element('time-limit').value = model.timeout_period;
-    this.setBox('settings-encrypt', model.encrypt);
     this.setBox('settings-decimal-comma', model.decimal_comma);
     this.setBox('settings-align-to-grid', model.align_to_grid);
+    this.setBox('settings-block-arrows', model.show_block_arrows);
+    this.setBox('settings-diagnose', MODEL.always_diagnose);
     this.setBox('settings-cost-prices', model.infer_cost_prices);
     this.setBox('settings-report-results', model.report_results);
-    this.setBox('settings-block-arrows', model.show_block_arrows);
+    this.setBox('settings-encrypt', model.encrypt);
     md.show('name');
   }
   
@@ -3586,6 +3611,12 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     model.report_results = UI.boxChecked('settings-report-results');
     model.encrypt = UI.boxChecked('settings-encrypt');
     model.decimal_comma = UI.boxChecked('settings-decimal-comma');
+    MODEL.always_diagnose = this.boxChecked('settings-diagnose');
+    // Notify modeler that diagnosis changes the value of +INF.
+    if(MODEL.always_diagnose) {
+      UI.notify('To diagnose unbounded problems, values beyond 1e+10 ' +
+          'are considered as infinite (\u221E)');
+    }
     // Some changes may necessitate redrawing the diagram
     let cb = UI.boxChecked('settings-align-to-grid'),
         redraw = !model.align_to_grid && cb;
@@ -3653,7 +3684,6 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     md.element('preference').innerHTML = html.join('');
     md.element('int-feasibility').value = MODEL.integer_tolerance;
     md.element('mip-gap').value = MODEL.MIP_gap;
-    this.setBox('solver-diagnose', MODEL.always_diagnose);
     md.show();
   }
   
@@ -3682,11 +3712,6 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     }
     MODEL.integer_tolerance = Math.max(1e-9, Math.min(0.1, itol));
     MODEL.MIP_gap = Math.max(0, Math.min(0.5, mgap));
-    MODEL.always_diagnose = this.boxChecked('solver-diagnose');
-    if(MODEL.always_diagnose) {
-      UI.notify('To diagnose unbounded problems, values beyond 1e+10 ' +
-          'are considered as infinite (\u221E)');
-    }
     // Close the dialog.
     md.hide();
   }

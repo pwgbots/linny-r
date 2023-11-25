@@ -283,7 +283,7 @@ class DocumentationManager {
     if(list.indexOf(this.entity) >= 0) {
       this.stopEditing();
       this.entity = null;
-      this.title.innerHTML = 'Documentation';
+      this.title.innerHTML = 'Information and documentation';
       this.viewer.innerHTML = this.about_linny_r;
     }
   }

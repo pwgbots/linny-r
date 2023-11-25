@@ -375,7 +375,7 @@ and move the cursor over the status bar">
     <img id="redo-btn" class="btn disab" src="images/redo.png"
          title="Redo (Ctrl-Y)">
     <img id="solve-btn" class="btn enab" src="images/solve.png"
-         title="Run simulation (Ctrl-R)">
+         title="Run simulation (Ctrl-R) &ndash; Alt-click to diagnose infeasible/unbounded problem (Alt-R)">
     <img id="stop-btn" class="btn enab off" src="images/stop.png"
          title="Stop solving (Ctrl-Q)">
     <img id="reset-btn" class="btn enab off" src="images/reset.png"
@@ -576,11 +576,9 @@ and move the cursor over the status bar">
       <table style="width:100%; white-space: nowrap">
         <tr>
           <td style="padding:0px">
-            <div id="settings-decimal-comma" class="box clear"></div>
+            <div id="settings-block-arrows" class="box clear"></div>
           </td>
-          <td style="padding-bottom:4px">
-            Use decimal <u>comma</u> when copying data to clipboard
-          </td>
+          <td style="padding-bottom:4px">Show hidden flows as block arrows</td>
         </tr>
         <tr>
           <td style="padding:0px">
@@ -632,11 +630,26 @@ and move the cursor over the status bar">
                  title="Set solver preferences">
           </td>
         </tr>
+        <tr title="When checked, finite process bounds and slack variables are always added">
+          <td style="padding:0px">
+            <div id="settings-diagnose" class="box clear"></div>
+          </td>
+          <td style="padding-bottom:4px">Diagnose infeasible/unbounded problems</td>
+          </td>
+        </tr>
         <tr>
           <td style="padding:0px">
             <div id="settings-cost-prices" class="box clear"></div>
           </td>
           <td style="padding-bottom:4px">Infer and display cost prices</td>
+        </tr>
+        <tr>
+          <td style="padding:0px">
+            <div id="settings-decimal-comma" class="box clear"></div>
+          </td>
+          <td style="padding-bottom:4px">
+            Use decimal <u>comma</u> when copying data to clipboard
+          </td>
         </tr>
         <tr title="Reports will be saved in user/reports/, and removed after 24 h">
           <td style="padding:0px">
@@ -645,12 +658,6 @@ and move the cursor over the status bar">
           <td style="padding-bottom:4px">
             Report results after each run
           </td>
-        </tr>
-        <tr>
-          <td style="padding:0px">
-            <div id="settings-block-arrows" class="box clear"></div>
-          </td>
-          <td style="padding-bottom:4px">Show hidden flows as block arrows</td>
         </tr>
         <tr>
           <td style="padding:0px">
@@ -741,13 +748,6 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
             <label>Relative MIP gap:</label>
             <input id="solver-mip-gap" style="width: 65px"
                    placeholder="1e-4" type="text" autocomplete="off">
-          </td>
-        </tr>
-        <tr title="When checked, finite process bounds and slack variables are always added">
-          <td style="padding:0px">
-            <div id="solver-diagnose" class="box clear"></div>
-          </td>
-          <td style="padding-bottom:4px">Diagnose infeasible/unbounded problems</td>
           </td>
         </tr>
       </table>
