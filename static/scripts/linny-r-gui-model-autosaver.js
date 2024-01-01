@@ -41,6 +41,7 @@ class ModelAutoSaver {
     this.timeout_id = 0;
     this.interval = 10; // auto-save every 10 minutes
     this.period = 24; // delete models older than 24 hours
+    this.not_implemented = false;
     this.model_list = [];
     // Overwite defaults if settings still in local storage of browser.
     this.getSettings();
@@ -65,6 +66,7 @@ class ModelAutoSaver {
   
   getSettings() {
     // Reads custom auto-save settings from local storage.
+    if(this.not_implemented) return;
     try {
       const item = window.localStorage.getItem('Linny-R-autosave');
       if(item) {
@@ -86,6 +88,7 @@ class ModelAutoSaver {
   
   setSettings() {
     // Writes custom auto-save settings to local storage.
+    if(this.not_implemented) return;
     try {
       window.localStorage.setItem('Linny-R-autosave',
           this.interval + '|' + this.period);
@@ -199,7 +202,7 @@ class ModelAutoSaver {
     // Close the restore auto-save model dialog.
     document.getElementById('confirm-remove-models').style.display = 'none';
     // NOTE: Cancel button or ESC will pass `cancel` as FALSE => do not save.
-    if(!save) {
+    if(!save || this.not_implemented) {
       document.getElementById('restore-modal').style.display = 'none';
       return;
     }

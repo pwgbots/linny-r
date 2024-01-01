@@ -70,6 +70,8 @@ class LinnyRModel {
     this.charts = [];
     this.experiments = [];
     this.dimensions = [];
+    this.selector_order_string = '';
+    this.selector_order_list = [];
     this.next_process_number = 0;
     this.next_product_number = 0;
     this.focal_cluster = null;
@@ -104,7 +106,7 @@ class LinnyRModel {
     this.preferred_solver = ''; // empty string denotes "use default"
     this.integer_tolerance = 5e-7; // integer feasibility tolerance
     this.MIP_gap = 1e-4; // relative MIP gap
-    this.always_diagnose = false;
+    this.always_diagnose = true;
 
     // Sensitivity-related properties
     this.base_case_selectors = '';
@@ -2905,6 +2907,10 @@ class LinnyRModel {
         }
       }
     }
+    // Infer selector order list by splitting text on any white space.
+    this.selector_order_string = xmlDecoded(nodeContentByTag(node,
+        'selector-order'));
+    this.selector_order_list = this.selector_order_string.trim().split(/\s+/);
     // Infer dimensions of experimental design space
     this.inferDimensions();
     // NOTE: when including a model, IGNORE sensitivity analysis, experiments
@@ -3074,8 +3080,11 @@ class LinnyRModel {
       if(this.datasets.hasOwnProperty(obj)) xml += this.datasets[obj].asXML;
     }
     xml += '</datasets><charts>';
-      for(let i = 0; i < this.charts.length; i++) xml += this.charts[i].asXML;
-      xml += '</charts>';
+    for(let i = 0; i < this.charts.length; i++) {
+      xml += this.charts[i].asXML;
+    }
+    xml += '</charts><selector-order>' +
+        xmlEncoded(this.selector_order_string) + '</selector-order>';
     // NOTE: when "black-boxing", SA and experiments are not stored 
     if(!this.black_box) {
       xml += '<base-case-selectors>' +
@@ -7943,54 +7952,59 @@ class Product extends Node {
   }
 
   get isSinkNode() {
-    // Returns TRUE if this product behaves as a sink
+    // Return TRUE if this product behaves as a sink.
     return (this.is_sink || this.allOutputsAreData) &&
       !(this.upper_bound.defined ||
-        // NOTE: UB may be set by equalling it to LB
+        // NOTE: UB may be set by equalling it to LB.
         (this.equal_bounds && this.lower_bound.defined));
   }
   
   highestUpperBound(visited) {
-    // Infers the upper bound for this product from its own UB, or from its
-    // ingoing links (type, rate, and UB of their from nodes)
-    // NOTE: this is used while compiling the VM instructions that compute the
-    // ON/OFF binary variable for this product
-    // NOTE: this method performs a graph traversal. If this product is part
-    // of a cycle in the graph, its highest UB co-depends on its own, which
-    // is not constrained, so return +INF
-    // NOTE: no need to check for sink nodes, as even on those nodes a max. UB
-    // might be inferred from their max. inflows
+    // Infer the upper bound for this product from its own UB, or from
+    // its ingoing links (type, rate, and UB of their from nodes).
+    // This is used while compiling the VM instructions that compute the
+    // ON/OFF binary variable for this product.
+    // This method performs a graph traversal. If this product is part
+    // of a cycle in the graph, its highest UB co-depends on its own UB,
+    // which is not constrained, so then return +INF.
+    // No need to check for sink nodes, as even on those nodes a max. UB
+    // might be inferred from their max. inflows.
     if(visited.indexOf(this) >= 0) return VM.PLUS_INFINITY;
     let ub = (this.equal_bounds ? this.lower_bound : this.upper_bound);
-    // If an expression, return +INF to signal "no lower UB can be inferred"
+    // If dynamic expression, return +INF to signal "no lower UB can be inferred".
     if(ub.defined && !ub.isStatic) return VM.PLUS_INFINITY;
-    // If static, use its value as initial highest value
-    const max_ub = ub.result(0);
-    // See if the sum of its max. inflows will be lower than this value
+    // If static, use its value as initial highest value.
+    const max_ub = (ub.defined ? ub.result(0) : VM.PLUS_INFINITY);
+    // See if the sum of its max. inflows will be lower than this value.
     let sum = 0;
-    // Preclude infinite recursion
+    // Preclude infinite recursion.
     visited.push(this);
     for(let i = 0; i < this.inputs.length; i++) {
       const
           l = this.inputs[i],
           r = l.relative_rate,
           fn = l.from_node;
-      // Dynamic rate => inflows cannot constrain the UB any further
+      // Dynamic rate => inflows cannot constrain the UB any further.
       if(!r.isStatic) return max_ub;
+      let rate = r.result(0);
       if([VM.LM_STARTUP, VM.LM_POSITIVE, VM.LM_ZERO, VM.LM_FIRST_COMMIT,
             VM.LM_SHUTDOWN].indexOf(l.multiplier) >= 0) {
-        // For binary multipliers, the rate is the highest possible flow
-        // NOTE: do not add negative flows, as actual flow may be 0
-        sum += Math.max(0, r.result(0));
+        // For binary multipliers, the rate is the highest possible flow.
+        // NOTE: Do not add negative flows, as actual flow may be 0.
+        sum += Math.max(0, rate);
       } else {
-        // For other multipliers, max flow = rate * UB of the FROM node
-        // (for products, this will recurse; processes return their UB)
+        // For other multipliers, max flow = rate * UB of the FROM node.
+        // For products, this will recurse; processes return their UB.
         let fnub = fn.highestUpperBound(visited);
         // If +INF, no lower UB can be inferred => return initial maximum
         if(fnub >= VM.PLUS_INFINITY) return max_ub;
-        // Otherwise, add rate * UB to the max. total inflow
-        // NOTE: do not add negative flows, as actual flow may be 0
-        sum += Math.max(0, r.result(0) * fnub);
+        // Otherwise, add rate * UB to the max. total inflow.
+        // NOTE: For SUM multipliers, also consider the delay.
+        if(l.multiplier === VM.LM_SUM) {
+          rate *= Math.max(1, l.flow_delay.result(0));
+        }
+        // NOTE: Do not add negative flows, as actual flow may be 0.
+        sum += Math.max(0, rate * fnub);
       }
     }
     // Return the sum of max. inflows as the lowest max. UB, or the initial

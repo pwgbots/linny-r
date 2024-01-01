@@ -54,6 +54,9 @@ class EquationManager {
         'click', () => EQUATION_MANAGER.editEquation());
     document.getElementById('eq-delete-btn').addEventListener(
         'click', () => EQUATION_MANAGER.deleteEquation());
+    this.view_btn = document.getElementById('eq-view-btn');
+    this.view_btn.addEventListener(
+        'click', () => EQUATION_MANAGER.toggleMultiLineDisplay());
     this.outcome_btn = document.getElementById('equation-outcome');
     this.outcome_btn.addEventListener(
         'click', () => EQUATION_MANAGER.toggleOutcome());
@@ -78,6 +81,7 @@ class EquationManager {
         'click', () => EQUATION_MANAGER.clone_modal.hide());
 
     // Initialize the dialog properties
+    this.multi_line = false;
     this.reset();
   }
 
@@ -130,6 +134,19 @@ class EquationManager {
     }
   }
   
+  toggleMultiLineDisplay() {
+    // Toggle between single-line view and multi-line expressions.
+    this.multi_line = !this.multi_line;
+    if(this.multi_line) {
+      this.view_btn.src = 'images/zoom-out.png';
+      this.view_btn.title = 'Switch to single-line expression display';
+    } else {
+      this.view_btn.src = 'images/zoom-in.png';
+      this.view_btn.title = 'Switch to multi-line expression display';
+    }
+    this.updateDialog();
+  }
+  
   updateDialog() {
     // Updates equation list, highlighting selected equation (if any)
     const
@@ -148,10 +165,11 @@ class EquationManager {
           m = ed.modifiers[UI.nameToID(msl[i])],
           wild = (m.selector.indexOf('??') >= 0),
           method = m.selector.startsWith(':'),
+          multi = (this.multi_line ? '-multi' : ''),
           issue = (m.expression.compile_issue ? ' compile-issue' :
               (m.expression.compute_issue ? ' compute-issue' : '')),
           clk = '" onclick="EQUATION_MANAGER.selectModifier(event, \'' +
-              m.selector + '\'',
+              escapedSingleQuotes(m.selector) + '\'',
           mover = (method ? ' onmouseover="EQUATION_MANAGER.showInfo(\'' +
               m.identifier + '\', event.shiftKey);"' : '');
       if(m === sm) smid += i;
@@ -165,7 +183,7 @@ class EquationManager {
           (wild ? ' wildcard' : ''), clk, ', false);"', mover, '>',
           (m.outcome_equation ? '<span class="outcome"></span>' : ''),
           (wild ? wildcardFormat(m.selector) : m.selector),
-          '</td><td class="equation-expression', issue,
+          '</td><td class="equation-expression', multi, issue,
           (issue ? '"title="' +
               safeDoubleQuotes(m.expression.compile_issue ||
                   m.expression.compute_issue) : ''),

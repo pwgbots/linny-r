@@ -380,7 +380,7 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
       }
       va.innerHTML = options.join('');
       // NOTE: Chart Manager variable dialog is 60px wider
-      va.style.width = (prefix ? 'calc(100% - 84px)' : 'calc(100% - 142px)');
+      va.style.width = (prefix ? 'calc(100% - 86px)' : 'calc(100% - 142px)');
       return;
     }
     // Add "empty" as first and initial option, as it denotes "use default"

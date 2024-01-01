@@ -40,7 +40,7 @@ class Finder {
     this.dialog = UI.draggableDialog('finder');
     UI.resizableDialog('finder', 'FINDER');
     this.close_btn = document.getElementById('finder-close-btn');
-    // Make toolbar buttons responsive
+    // Make toolbar buttons responsive.
     this.close_btn.addEventListener('click', (e) => UI.toggleDialog(e));
     this.filter_input = document.getElementById('finder-filter-text');
     this.filter_input.addEventListener('input', () => FINDER.changeFilter());
@@ -78,6 +78,7 @@ class Finder {
     this.filtered_types.length = 0;
     this.selected_entity = null;
     this.filter_input.value = '';
+    this.filter_string = '';
     this.filter_pattern = null;
     this.entity_types = VM.entity_letters;
     this.find_links = true;
@@ -105,7 +106,7 @@ class Finder {
   }
   
   enterKey() {
-    // Open "edit properties" dialog for the selected entity
+    // Open "edit properties" dialog for the selected entity.
     const srl = this.entity_table.getElementsByClassName('sel-set');
     if(srl.length > 0) {
       const r = this.entity_table.rows[srl[0].rowIndex];
@@ -118,7 +119,7 @@ class Finder {
   }
   
   upDownKey(dir) {
-    // Select row above or below the selected one (if possible)
+    // Select row above or below the selected one (if possible).
     const srl = this.entity_table.getElementsByClassName('sel-set');
     if(srl.length > 0) {
       const r = this.entity_table.rows[srl[0].rowIndex + dir];
@@ -139,7 +140,7 @@ class Finder {
     let imgs = '';
     this.entities.length = 0;
     this.filtered_types.length = 0;
-    // No list unless a pattern OR a specified SUB-set of entity types
+    // No list unless a pattern OR a specified SUB-set of entity types.
     if(fp || et && et !== VM.entity_letters) {
       if(et.indexOf('A') >= 0) {
         imgs += '<img src="images/actor.png">';
@@ -151,7 +152,7 @@ class Finder {
           }
         }
       }
-      // NOTE: do not list black-boxed entities
+      // NOTE: Do not list black-boxed entities.
       if(et.indexOf('P') >= 0) {
         imgs += '<img src="images/process.png">';
         for(let k in MODEL.processes) if(MODEL.processes.hasOwnProperty(k)) {
@@ -191,7 +192,7 @@ class Finder {
           const ds = MODEL.datasets[k];
           if(!k.startsWith(UI.BLACK_BOX) && (!fp || patternMatch(
               ds.displayName, this.filter_pattern))) {
-            // NOTE: do not list the equations dataset
+            // NOTE: Do not list the equations dataset.
             if(ds !== MODEL.equations_dataset) {
               enl.push(k);
               this.entities.push(MODEL.datasets[k]);
@@ -217,11 +218,11 @@ class Finder {
       if(et.indexOf('L') >= 0) {
         imgs += '<img src="images/link.png">';
         for(let k in MODEL.links) if(MODEL.links.hasOwnProperty(k)) {
-          // NOTE: "black-boxed" link identifiers are not prefixed => other test
+          // NOTE: "black-boxed" link identifiers are not prefixed => other test.
           const
               l = MODEL.links[k],
               ldn = l.displayName,
-              // A links is "black-boxed" when BOTH nodes are "black-boxed"
+              // A link is "black-boxed" when BOTH nodes are "black-boxed".
               bb = ldn.split(UI.BLACK_BOX).length > 2;
           if(!bb && (!fp || patternMatch(ldn, this.filter_pattern))) {
             enl.push(k);
@@ -233,7 +234,7 @@ class Finder {
       if(et.indexOf('B') >= 0) {
         imgs += '<img src="images/constraint.png">';
         for(let k in MODEL.constraints) {
-          // NOTE: likewise, constraint identifiers can be prefixed by %
+          // NOTE: Likewise, constraint identifiers can be prefixed by %.
           if(MODEL.constraints.hasOwnProperty(k)) {
             if(!k.startsWith(UI.BLACK_BOX) && (!fp || patternMatch(
                 MODEL.constraints[k].displayName, this.filter_pattern))) {
@@ -241,6 +242,35 @@ class Finder {
               this.entities.push(MODEL.constraints[k]);
               addDistinct('B', this.filtered_types);
             }
+          }
+        }
+      }
+      // Also allow search for scale unit names.
+      if(et.indexOf('U') >= 0) {
+        imgs += '<img src="images/scale.png">';
+        for(let k in MODEL.products) if(MODEL.products.hasOwnProperty(k)) {
+          if(fp && !k.startsWith(UI.BLACK_BOX) && patternMatch(
+              MODEL.products[k].scale_unit, this.filter_pattern)) {
+            enl.push(k);
+            this.entities.push(MODEL.products[k]);
+            addDistinct('Q', this.filtered_types);
+          }
+        }
+      }
+      // Also allow search for link multiplier symbols.
+      if(et.indexOf('M') >= 0) {
+        if(imgs.indexOf('/link.') < 0) imgs += '<img src="images/link.png">';
+        for(let k in MODEL.links) if(MODEL.links.hasOwnProperty(k)) {
+          // NOTE: "black-boxed" link identifiers are not prefixed => other test.
+          const
+              l = MODEL.links[k],
+              m = VM.LM_LETTERS.charAt(l.multiplier),
+              // A link is "black-boxed" when BOTH nodes are "black-boxed".
+              bb = l.displayName.split(UI.BLACK_BOX).length > 2;
+          if(fp && !bb && this.filter_string.indexOf(m) >= 0) {
+            enl.push(k);
+            this.entities.push(l);
+            addDistinct('L', this.filtered_types);
           }
         }
       }
@@ -259,7 +289,7 @@ class Finder {
           e.type.toLowerCase(), '.png">', e.displayName,
           '</td></tr>'].join(''));
     }
-    // NOTE: reset `selected_entity` if not in the new list
+    // NOTE: Reset `selected_entity` if not in the new list.
     if(seid === 'etr') this.selected_entity = null;
     this.entity_table.innerHTML = el.join('');
     UI.scrollIntoView(document.getElementById(seid));
@@ -316,18 +346,18 @@ class Finder {
     let hdr = '(no entity selected)';
     if(se) {
       hdr = `<em>${se.type}:</em> <strong>${se.displayName}</strong>`;
-      // Make occurrence list
+      // Make occurrence list.
       if(se instanceof Process || se instanceof Cluster) {
-        // Processes and clusters "occur" in their parent cluster
+        // Processes and clusters "occur" in their parent cluster.
         if(se.cluster) occ.push(se.cluster.identifier);
       } else if(se instanceof Product) {
-        // Products "occur" in clusters where they have a position
+        // Products "occur" in clusters where they have a position.
         const cl = se.productPositionClusters;
         for(let i = 0; i < cl.length; i++) {
           occ.push(cl[i].identifier);
         }
       } else if(se instanceof Actor) {
-        // Actors "occur" in clusters where they "own" processes or clusters
+        // Actors "occur" in clusters where they "own" processes or clusters.
         for(let k in MODEL.processes) if(MODEL.processes.hasOwnProperty(k)) {
           const p = MODEL.processes[k];
           if(p.actor === se) occ.push(p.identifier);
@@ -337,13 +367,13 @@ class Finder {
           if(c.actor === se) occ.push(c.identifier);
         }
       } else if(se instanceof Link || se instanceof Constraint) {
-        // Links and constraints "occur" in their "best" parent cluster
+        // Links and constraints "occur" in their "best" parent cluster.
         const c = MODEL.inferParentCluster(se);
         if(c) occ.push(c.identifier);
       }
-      // NOTE: no "occurrence" of datasets or equations
+      // NOTE: No "occurrence" of datasets or equations.
       // @@TO DO: identify MODULES (?)
-      // All entities can also occur as chart variables
+      // All entities can also occur as chart variables.
       for(let j = 0; j < MODEL.charts.length; j++) {
         const c = MODEL.charts[j];
         for(let k = 0; k < c.variables.length; k++) {
@@ -355,12 +385,12 @@ class Finder {
           }
         }
       }
-      // Now also look for occurrences of entity references in expressions
+      // Now also look for occurrences of entity references in expressions.
       const
           raw = escapeRegex(se.displayName),
           re = new RegExp(
               '\\[\\s*!?' + raw.replace(/\s+/g, '\\s+') + '\\s*[\\|\\@\\]]');
-      // Check actor weight expressions
+      // Check actor weight expressions.
       for(let k in MODEL.actors) if(MODEL.actors.hasOwnProperty(k)) {
         const a = MODEL.actors[k];
         if(re.test(a.weight.text)) {
@@ -368,7 +398,7 @@ class Finder {
           xol.push(a.identifier);
         }
       }
-      // Check all process attribute expressions
+      // Check all process attribute expressions.
       for(let k in MODEL.processes) if(MODEL.processes.hasOwnProperty(k)) {
         const p = MODEL.processes[k];
         if(re.test(p.lower_bound.text)) {
@@ -384,7 +414,7 @@ class Finder {
           xol.push(p.identifier);
         }
       }
-      // Check all product attribute expressions
+      // Check all product attribute expressions.
       for(let k in MODEL.products) if(MODEL.products.hasOwnProperty(k)) {
         const p = MODEL.products[k];
         if(re.test(p.lower_bound.text)) {
@@ -404,7 +434,7 @@ class Finder {
           xol.push(p.identifier);
         }
       }
-      // Check all notes in clusters for their color expressions and field
+      // Check all notes in clusters for their color expressions and field.
       for(let k in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(k)) {
         const c = MODEL.clusters[k];
         for(let i = 0; i < c.notes.length; i++) {
@@ -416,7 +446,7 @@ class Finder {
           }
         }
       }
-      // Check all link rate expressions
+      // Check all link rate expressions.
       for(let k in MODEL.links) if(MODEL.links.hasOwnProperty(k)) {
         const l = MODEL.links[k];
         if(re.test(l.relative_rate.text)) {
@@ -428,7 +458,7 @@ class Finder {
           xol.push(l.identifier);
         }
       }
-      // Check all dataset modifier expressions
+      // Check all dataset modifier expressions.
       for(let k in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(k)) {
         const ds = MODEL.datasets[k];
         for(let m in ds.modifiers) if(ds.modifiers.hasOwnProperty(m)) {
@@ -451,22 +481,22 @@ class Finder {
           '</td></tr>'].join(''));
     }
     this.item_table.innerHTML = el.join('');
-    // Clear the table row list
+    // Clear the table row list.
     el.length = 0;
-    // Now fill it with entity+attribute having a matching expression
+    // Now fill it with entity+attribute having a matching expression.
     for(let i = 0; i < xal.length; i++) {
       const
           id = xol[i],
           e = MODEL.objectByID(id),
           attr = (e instanceof Note ? '' : xal[i]);
       let img = e.type.toLowerCase(),
-          // NOTE: a small left-pointing triangle denotes that the right-hand
-          // part has the left hand part as its attribute
+          // NOTE: A small left-pointing triangle denotes that the right-hand
+          // part has the left hand part as its attribute.
           cs = '',
           td = attr + '</td><td>&#x25C2;</td><td style="width:95%">' +
               e.displayName;
-      // NOTE: equations may have LONG names while the equations dataset name
-      // is irrelevant, hence use 3 columns (no triangle)
+      // NOTE: Equations may have LONG names while the equations dataset
+      // name is irrelevant, hence use 3 columns (no triangle).
       if(e === MODEL.equations_dataset) {
         img = 'equation';
         cs = ' colspan="3"';
@@ -484,7 +514,7 @@ class Finder {
   }
   
   drag(ev) {
-    // Start dragging the selected entity
+    // Start dragging the selected entity.
     let t = ev.target;
     while(t && t.nodeName !== 'TD') t = t.parentNode;
     ev.dataTransfer.setData('text', MODEL.objectByName(t.innerText).identifier);
@@ -493,30 +523,31 @@ class Finder {
   
   changeFilter() {
     // Filter expression can start with 1+ entity letters plus `?` to
-    // look only for the entity types denoted by these letters
+    // look only for the entity types denoted by these letters.
     let ft = this.filter_input.value,
         et = VM.entity_letters;
-    if(/^(\*|[ABCDELPQ]+)\?/i.test(ft)) {
+    if(/^(\*|U|M|[ABCDELPQ]+)\?/i.test(ft)) {
       ft = ft.split('?');
-      // NOTE: *? denotes "all entity types except constraints"
+      // NOTE: *? denotes "all entity types except constraints".
       et = (ft[0] === '*' ? 'ACDELPQ' : ft[0].toUpperCase());
       ft = ft.slice(1).join('=');
     }
+    this.filter_string = ft;
     this.filter_pattern = patternList(ft);
     this.entity_types = et;
     this.updateDialog();
   }
   
   showInfo(id, shift) {
-    // Displays documentation for the entity identified by `id`
+    // Display documentation for the entity identified by `id`.
     const e = MODEL.objectByID(id);
     if(e) DOCUMENTATION_MANAGER.update(e, shift);
   }
   
   selectEntity(id, alt=false) {
-    // Looks up entity, selects it in the left pane, and updates the
-    // right pane; opens the "edit properties" modal dialog on double-click
-    // and Alt-click if the entity is editable
+    // Look up entity, select it in the left pane, and update the right
+    // pane. Open the "edit properties" modal dialog on double-click
+    // and Alt-click if the entity is editable.
     const obj = MODEL.objectByID(id);
     this.selected_entity = obj;
     this.updateDialog();
@@ -551,7 +582,7 @@ class Finder {
   }
   
   reveal(id) {
-    // Shows selected occurrence
+    // Show selected occurrence.
     const
         se = this.selected_entity,
         obj = (se ? MODEL.objectByID(id) : null);
@@ -559,7 +590,7 @@ class Finder {
     // If cluster, make it focal...
     if(obj instanceof Cluster) {
       UI.makeFocalCluster(obj);
-      // ... and select the entity unless it is an actor or dataset
+      // ... and select the entity unless it is an actor or dataset.
       if(!(se instanceof Actor || se instanceof Dataset)) {
         MODEL.select(se);
         if(se instanceof Link || se instanceof Constraint) {
@@ -572,7 +603,7 @@ class Finder {
     } else if(obj instanceof Process || obj instanceof Note) {
       // If occurrence is a process or a note, then make its cluster focal...
       UI.makeFocalCluster(obj.cluster);
-      // ... and select it
+      // ... and select it.
       MODEL.select(obj);
       UI.scrollIntoView(obj.shape.element.childNodes[0]);
     } else if(obj instanceof Product) {
@@ -586,7 +617,7 @@ class Finder {
         if(a) UI.scrollIntoView(a.shape.element.childNodes[0]);
       }
     } else if(obj instanceof Chart) {
-      // If occurrence is a chart, select and show it in the chart manager
+      // If occurrence is a chart, select and show it in the chart manager.
       CHART_MANAGER.chart_index = MODEL.charts.indexOf(obj);
       if(CHART_MANAGER.chart_index >= 0) {
         if(UI.hidden('chart-dlg')) {
@@ -595,7 +626,7 @@ class Finder {
       }
       CHART_MANAGER.updateDialog();
     }
-    // NOTE: return the object to save a second lookup by revealExpression
+    // NOTE: Return the object to save a second lookup by revealExpression.
     return obj;
   }
   

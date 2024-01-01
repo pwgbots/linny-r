@@ -341,7 +341,7 @@ module.exports = class MILPSolver {
           'write problem', s.solver_model,
           'set limit time %T%',
           'set numerics feastol %I%',
-          // NOTE: MIP gap setting for SCIP is unclear, hence ignored.
+          'set limit gap %M%',
           'optimize',
           'write solution', s.solution,
           'quit'
@@ -392,6 +392,7 @@ module.exports = class MILPSolver {
       s.args = [
           '-timeout %T%',
           '-v4',
+          '-ac 5e-6',
           '-e %I%',
           '-gr %M%',
           '-epsel 1e-7',
@@ -838,14 +839,13 @@ module.exports = class MILPSolver {
         }
       }
       if(solved) {
-        // Look for line with first variable.
-        let i = 0;
-        while(i < output.length && !output[i].startsWith('X')) i++;
+        // Line 0 holds solution status, line 1 the objective value,
+        // and lines 2+ the variables.
+        result.obj = parseFloat(output[1].split(':')[1]);
         // Fill dictionary with variable name: value entries .
-        while(i < output.length) {
+        for(let i = 2; i < output.length; i++) {
           const v = output[i].split(/\s+/);
           x_dict[v[0]] = parseFloat(v[1]);
-          i++;
         }
         // Fill the solution vector, adding 0 for missing columns.
         getValuesFromDict();
@@ -873,6 +873,8 @@ module.exports = class MILPSolver {
       }
       result.messages = msgs;
       if(solved) {
+        // Get value of objective function
+        result.obj = parseFloat(output[i].split(':')[1]);
         // Look for line with first variable.
         while(i < output.length && !output[i].startsWith('X')) i++;
         // Fill dictionary with variable name: value entries.

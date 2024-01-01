@@ -492,7 +492,7 @@ function matchingNumber(m, s) {
   // (where asterisks match 0 or more characters, and question marks 1
   // character) and the matching parts jointly denote an integer.
   // NOTE: A "+" must be escaped, "*" and "?" must become groups.
-  let raw = s.replaceAll('+', '\+')
+  let raw = s.replaceAll('+', '\\+')
           .replace(/\*/g, '(.*)').replace(/\?/g, '(.)'),
       match = m.match(new RegExp(`^${raw}$`)),
       n = '';
@@ -534,9 +534,21 @@ function compareSelectors(s1, s2) {
   // Dataset selectors comparison is case-insensitive, and puts wildcards
   // last, where * comes later than ?, and leading colons come AFTER
   // regular selector names.
-  // NOTE: Without wildcards, strings that are identical except for the
-  // digits they *end* on are sorted on this "end number" (so abc12 > abc2).
-  // NOTE: This also applies to percentages ("end number"+ %).
+  // NOTES:
+  // (1) Without wildcards, strings that are identical except for
+  //     the digits they *end* on are sorted on this "end number"
+  //     (so abc12 > abc2).
+  // (2) This also applies to percentages ("end number"+ %).
+  // (3) As of version 1.9.0, the order of selectors can be (partially)
+  //     specified by the modeler.
+  if(MODEL) {
+    const
+        i1 = MODEL.selector_order_list.indexOf(s1),
+        i2 = MODEL.selector_order_list.indexOf(s2);
+    // BOTH selectors must be in the list, or regular sorting order is
+    // applied.
+    if(i1 >= 0 && i2 >= 0) return i1 - i2;
+  }
   if(s1 === s2) return 0;
   if(s1 === '*') return 1;
   if(s2 === '*') return -1;
@@ -580,22 +592,36 @@ function compareSelectors(s1, s2) {
   // by as many spaces (ASCII 32) and add a '!' (ASCII 33). This will then
   // "sorts things out".
   let n = s_1.length,
-      i = n - 1;
+      i = n - 1,
+      plusmin = false;
   while(i >= 0 && s_1[i] === '-') i--;
-  // If trailing minuses, replace by as many spaces and add an exclamation point
+  // If trailing minuses, replace by as many spaces and add an exclamation
+  // point.
   if(i < n - 1) {
-    s_1 = s_1.substring(0, i);
+    s_1 = s_1.substring(0, i + 1);
+    // NOTE: Consider X- as lower than just X.
+    if(s_1 === s_2) return -1;
     while(s_1.length < n) s_1 += ' ';
     s_1 += '!';
+    plusmin = true;
   }
-  // Do the same for the second "normalized" selector
+  // Do the same for the second "normalized" selector.
   n = s_2.length;
   i = n - 1;
   while(i >= 0 && s_2[i] === '-') i--;
   if(i < n - 1) {
-    s_2 = s_2.substring(0, i);
+    s_2 = s_2.substring(0, i + 1);
+    // NOTE: Consider X as higher than X-.
+    if(s_2 === s_1) return 1;
     while(s_2.length < n) s_2 += ' ';
     s_2 += '!';
+    plusmin = true;
+  }
+  if(plusmin) {
+    // As X0 typically denotes "base case", replace a trailing zero by
+    // ")" to ensure that X- < X0 < X+.
+    s_1.replace(/([^0])0$/, '$1)');
+    s_2.replace(/([^0])0$/, '$1)');
   }
   // Now compare the two "normalized" selectors
   if(s_1 < s_2) return -1;

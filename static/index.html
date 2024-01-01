@@ -876,7 +876,7 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
             <a href="https://creativecommons.org/licenses/by-sa/4.0"
                target="_blank">
             Creative Commons Attribution-ShareAlike (CC BY-SA) license</a>.
-            <img src="../images/by-sa.svg" style="height:21px; margin-top:3px"> 
+            <img src="images/by-sa.svg" style="height:21px; margin-top:3px"> 
           </td>
         </tr>
       </table>
@@ -908,7 +908,7 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
             <a href="https://creativecommons.org/licenses/by-sa/4.0"
                target="_blank">
             Creative Commons Attribution-ShareAlike (CC BY-SA) license</a>.
-            <img src="../images/by-sa.svg" style="height:21px; margin-top:3px"> 
+            <img src="images/by-sa.svg" style="height:21px; margin-top:3px"> 
           </td>
         </tr>
       </table>
@@ -1848,6 +1848,8 @@ NOTE: * and ? will be interpreted as wildcards"
            title="Edit selected equation">
       <img id="eq-delete-btn" class="btn disab" src="images/delete.png"
            title="Delete selected equation">
+      <img id="eq-view-btn" class="btn enab" src="images/zoom-in.png"
+           title="Switch to multi-line expression display">
     </div>
     <img id="equation-outcome" class="not-selected" src="images/outcome.png"
          title="Click to consider/ignore selected equation as experiment outcome">
@@ -2266,6 +2268,8 @@ NOTE: * and ? will be interpreted as wildcards"
              title="Rename selected experiment">
         <img id="xp-view-btn" class="btn disab" src="images/table.png"
              title="View selected experiment">
+        <img id="xp-order-btn" class="btn enab" src="images/sel-order.png"
+             title="Specify ordering of selectors">
         <img id="xp-reset-btn" class="btn enab off" src="images/reset.png"
              title="Clear results for selected experiment">
         <img id="xp-delete-btn" class="btn disab" src="images/delete.png"
@@ -2426,6 +2430,24 @@ NOTE: * and ? will be interpreted as wildcards"
         <img class="ok-btn" src="images/ok.png">
       </div>
       <input id="xp-rename-name" type="text" autocomplete="off">
+    </div>
+  </div>
+
+  <!-- the SELECTOR ORDER dialog permits specifying how selectors should
+       be sorted. The selectors may contain a leading or trailing * as
+       wildcard, and can be separated by spacrs, comma's or semicolons.
+   -->
+  <div id="sel-order-modal" class="modal">
+    <div id="sel-order-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Ordering of selectors
+        <img class="ok-btn" src="images/ok.png">
+        <img class="cancel-btn" src="images/cancel.png">
+      </div>
+      <textarea id="sel-order-lines" autocomplete="off"
+         placeholder="Selectors must be separated by spaces or new lines."
+         autocorrect="off" autocapitalize="off" spellcheck="false">
+      </textarea>
     </div>
   </div>
 

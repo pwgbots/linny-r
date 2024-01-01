@@ -46,6 +46,9 @@ class GUIExperimentManager extends ExperimentManager {
     this.view_btn = document.getElementById('xp-view-btn');
     this.view_btn.addEventListener(
         'click', () => EXPERIMENT_MANAGER.viewerMode());
+    this.sel_order_btn = document.getElementById('xp-order-btn');
+    this.sel_order_btn.addEventListener(
+        'click', () => EXPERIMENT_MANAGER.showSelectorOrder());
     this.reset_btn = document.getElementById('xp-reset-btn');
     this.reset_btn.addEventListener(
         'click', () => EXPERIMENT_MANAGER.clearRunResults());
@@ -154,6 +157,13 @@ class GUIExperimentManager extends ExperimentManager {
     this.rename_modal.cancel.addEventListener(
         'click', () => EXPERIMENT_MANAGER.rename_modal.hide());
     
+    this.sel_order_modal = new ModalDialog('sel-order');
+    this.sel_order_modal.ok.addEventListener(
+        'click', () => EXPERIMENT_MANAGER.modifySelectorOrder());
+    this.sel_order_modal.cancel.addEventListener(
+        'click', () => EXPERIMENT_MANAGER.sel_order_modal.hide());
+    this.sel_order_lines = this.sel_order_modal.element('lines');
+
     this.parameter_modal = new ModalDialog('xp-parameter');
     this.parameter_modal.ok.addEventListener(
         'click', () => EXPERIMENT_MANAGER.addParameter());
@@ -473,9 +483,23 @@ class GUIExperimentManager extends ExperimentManager {
       }
     }
   }
+
+  showSelectorOrder() {
+    // Show selector order modal.
+    this.sel_order_lines.value = MODEL.selector_order_string;
+    this.sel_order_modal.show();
+  }
   
+  modifySelectorOrder() {
+    // Save text area contents as new selector order string.
+    MODEL.selector_order_string = this.sel_order_lines.value.trim();
+    MODEL.selector_order_list = MODEL.selector_order_string.trim().split(/\s+/);
+    this.sel_order_modal.hide();
+    UI.updateControllerDialogs('DX');
+  }
+
   designMode() {
-    // Switch to default view
+    // Switch to default view.
     this.viewer.style.display = 'none';
     this.design.style.display = 'block';
   }

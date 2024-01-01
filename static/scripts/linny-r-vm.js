@@ -317,6 +317,7 @@ class Expression {
     if((typeof number !== 'number' ||
         (this.isStatic && !this.isWildcardExpression)) &&
         !this.isMethod) return this.vector;
+//console.log('HERE choosing wcnr', number, this);
     // Method expressions are not "numbered" but differentiate by the
     // entity to which they are applied. Their "vector number" is then
     // inferred by looking up this entity in a method object list.
@@ -331,7 +332,9 @@ class Expression {
     }
     // Use the vector for the wildcard number (create it if necessary).
     if(!this.wildcard_vectors.hasOwnProperty(number)) {
+//console.log('HERE adding wc vector', number, this);
       this.wildcard_vectors[number] = [];
+//console.log('HERE adding wc vector', number, this.wildcard_vectors);
       if(this.isStatic) {
         this.wildcard_vectors[number][0] = VM.NOT_COMPUTED;
       } else {
@@ -2136,8 +2139,8 @@ class VirtualMachine {
     this.SOLVER_MINUS_INFINITY = -1e+30;
     // As of version 1.8.0, Linny-R imposes no +INF bounds on processes
     // unless diagnosing an unbounded problem. For such diagnosis, the
-    // (relatively) low value 9.99999999e+9 is used.
-    this.DIAGNOSIS_UPPER_BOUND = 9.99999999e+9;
+    // (relatively) low value 9.999999999e+9 is used.
+    this.DIAGNOSIS_UPPER_BOUND = 9.999999999e+9;
     // NOTE: Below the "near zero" limit, a number is considered zero
     // (this is to timely detect division-by-zero errors).
     this.NEAR_ZERO = 1e-10;
@@ -2149,7 +2152,8 @@ class VirtualMachine {
     // their target without displaying them in red or blue to signal
     // shortage or surplus.
     this.SIG_DIF_LIMIT = 0.001;
-    this.SIG_DIF_FROM_ZERO = 1e-6;
+    // Numbers near zero are displayed as +0 or -0.
+    this.SIG_DIF_FROM_ZERO = 5e-5;
     // ON/OFF threshold is used to differentiate between level = 0 and
     // still "ON" (will be displayed as +0).
     this.ON_OFF_THRESHOLD = 1.5e-4;
@@ -2194,6 +2198,7 @@ class VirtualMachine {
     this.LM_NEEDING_ON_OFF = [5, 6, 7, 8, 9, 10];
     this.LM_SYMBOLS = ['', '\u21C9', '\u0394', '\u03A3', '\u03BC', '\u25B2',
         '+', '0', '\u2934', '\u2732', '\u25BC', '\u2A39'];
+    this.LM_LETTERS = ' TDSMU+0RFDP';
     
     // VM max. expression stack size.
     this.MAX_STACK = 200;
@@ -2537,7 +2542,7 @@ class VirtualMachine {
     if(sv[0]) return sv[1];
     const a = Math.abs(n);
     // Signal small differences from true 0 by leading + or - sign.
-    if(n !== 0 && a < 0.0005) return n > 0 ? '+0' : '-0';
+    if(n !== 0 && a <= this.ON_OFF_THRESHOLD) return n > 0 ? '+0' : '-0';
     if(a >= 999999.5) return n.toPrecision(2);
     if(Math.abs(a-Math.round(a)) < 0.05) return Math.round(n);
     if(a < 1) return Math.round(n*100) / 100;
@@ -2556,7 +2561,7 @@ class VirtualMachine {
     if(sv[0]) return sv[1];
     const a = Math.abs(n);
     // Signal small differences from true 0 by a leading + or - sign.
-    if(n !== 0 && a < 0.0005) return n > 0 ? '+0' : '-0';
+    if(n !== 0 && a <= this.ON_OFF_THRESHOLD) return n > 0 ? '+0' : '-0';
     if(a >= 9999995) return n.toPrecision(4);
     if(Math.abs(a-Math.round(a)) < 0.0005) return Math.round(n);
     if(a < 1) return Math.round(n*10000) / 10000;
@@ -2922,19 +2927,20 @@ class VirtualMachine {
       for(let i = 2; i <= n; i++) {
         this.variables.push(['W' + i, obj]);
       }
-      // NOTE: Some solvers do not support SOS. To ensure that only 2
-      // adjacent w[i]-variables are non-zero (they range from 0 to 1),
-      // as many binary variables b[i] must be defined, and additional
-      // constraints must be added (see function VMI_add_boundline).
-      // NOTE: These additional variables and constraints are not needed
-      // when a bound line defines a convex feasible area.
-      const sos_with_bin = this.noSupportForSOS && !obj.needsNoSOS;
-      this.sos_var_indices.push([index, n, sos_with_bin]);
-      if(sos_with_bin) {
-        for(let i = 1; i <= n; i++) {
-          const bi = this.variables.push(['b' + i, obj]);
-          this.bin_var_indices[bi] = true;
-        }        
+      // NOTE: SOS constraints are not needed when a bound line defines
+      // a convex feasible area.
+      if(!obj.needsNoSOS) {
+        this.sos_var_indices.push([index, n]);
+        // NOTE: Some solvers do not support SOS. To ensure that only 2
+        // adjacent w[i]-variables are non-zero (they range from 0 to 1),
+        // as many binary variables b[i] must be defined, and additional
+        // constraints must be added (see VMI_add_bound_line_constraint).
+        if(this.noSupportForSOS) {
+          for(let i = 1; i <= n; i++) {
+            const bi = this.variables.push(['b' + i, obj]);
+            this.bin_var_indices[bi] = true;
+          }        
+        }
       }
     }
     return index;
@@ -4044,7 +4050,7 @@ class VirtualMachine {
        these variables can take on higher values. The modeler must ensure
        that there is a cost associated with the actual flow, not a revenue.
     */
-    // NOTE: as of 20 June 2021, binary attributes of products are also computed
+    // NOTE: As of 20 June 2021, binary attributes of products are also computed.
     const pp_nodes = [];
     for(i = 0; i < process_keys.length; i++) {
       k = process_keys[i];
@@ -4093,8 +4099,8 @@ class VirtualMachine {
           [VMI_add_const_to_coefficient, [p.level_var_index, 1]]
         );
         if(ubx.isStatic) {
-          // If UB is very high (typically: undefined, so +INF), try to infer
-          // a lower value for UB to use for the ON/OFF binary
+          // If UB is very high (typically: undefined, so +INF), try to
+          // infer a lower value for UB to use for the ON/OFF binary.
           let ub = ubx.result(0),
               hub = ub;
           if(ub > VM.MEGA_UPPER_BOUND) {
@@ -4642,7 +4648,7 @@ class VirtualMachine {
               if(v[1] instanceof BoundLine) {
                 v[1].constraint.slack_info[b] = v[0];
               }
-              if(b <= this.nr_of_time_steps && absl > VM.SIG_DIF_FROM_ZERO) {
+              if(b <= this.nr_of_time_steps && absl > VM.ON_OFF_THRESHOLD) {
                 this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
                     `${v[1].displayName} ${v[0]} slack = ${this.sig4Dig(slack)}`);
                 if(v[1] instanceof Product) {
@@ -4652,9 +4658,9 @@ class VirtualMachine {
                   }
                 }
               } else if(CONFIGURATION.slight_slack_notices) {
-                this.logMessage(block, '-- Notice: (t=' + b + round + ') ' +
+                this.logMessage(block, '---- Notice: (t=' + b + round + ') ' +
                    v[1].displayName + ' ' + v[0] + ' slack = ' +
-                   slack.toPrecision(2));
+                   slack.toPrecision(1));
               }
             }
           }
@@ -5410,7 +5416,7 @@ class VirtualMachine {
     this.numeric_issue = '';
     // First add the objective (always MAXimize).
     if(cplex) {
-      this.lines = 'Maximize\n';
+      this.lines = `\\${this.solver_id}\nMaximize\n`;
     } else {
       this.lines = '/* Objective function */\nmax:\n';
     }
@@ -5461,6 +5467,12 @@ class VirtualMachine {
         }
       }
       c = this.right_hand_side[r];
+      // NOTE: When previous block was infeasible or unbounded (no solution),
+      // expressions for RHS may not evaluate as a number.
+      if(Number.isNaN(c)) {
+        this.setNumericIssue(c, r, 'constraint RHS');
+        c = 0;
+      }
       this.lines += line + ' ' +
           this.constraint_symbols[this.constraint_types[r]] + ' ' + c + EOL;
       line = '';
@@ -5507,8 +5519,14 @@ class VirtualMachine {
           }
         } else {
           // Bounds can be specified on a single line: lb <= X001 <= ub.
-          if(lb !== null && lb !== 0) line = lb + ' <= ' + line;
-          if(ub !== null) line += ' <= ' + ub;
+          // NOTE: LP_solve has Infinity value 1e+25. Use this literal
+          // because VM.PLUS_INFINITY may be set to *diagnostic* value.
+          if(lb !== null && lb !== 0 && lb > -1e+25) {
+            line = lb + ' <= ' + line;
+          }
+          if(ub !== null && ub < 1e+25) line += ' <= ' + ub;
+          // NOTE: Do not add line if both bounds are infinite.
+          if(line.indexOf('<=') < 0) line = '';
         }
       }
       if(line) this.lines += line + EOL;
@@ -5568,19 +5586,17 @@ class VirtualMachine {
       // NOTE: Add SOS section only if the solver supports SOS.
       if(this.sos_var_indices.length > 0 && !this.noSupportForSOS) {
         this.lines += 'SOS\n';
-        let sos = 0;
         const v_set = [];
         for(let j = 0; j < abl; j++) {
           for(let i = 0; i < this.sos_var_indices.length; i++) {
+            const svi = this.sos_var_indices[i];
             v_set.length = 0;
-            let vi = this.sos_var_indices[i][0] + j * this.cols;
-            const n = this.sos_var_indices[i][1];
-            for(let j = 1; j <= n; j++)  {
+            let vi = svi[0] + j * this.cols;
+            for(let j = 1; j <= svi[1]; j++)  {
               v_set.push(`${vbl(vi)}:${j}`);
               vi++;
             }
-            this.lines += ` s${sos}: S2:: ${v_set.join(' ')}\n`;
-            sos++;
+            this.lines += ` s${i}: S2:: ${v_set.join(' ')}\n`;
           }
         }
       }
@@ -5605,18 +5621,16 @@ class VirtualMachine {
       // LP_solve supports SOS, so add the SOS section if needed.
       if(this.sos_var_indices.length > 0) {
         this.lines += 'sos\n';
-        let sos = 1;
         for(let j = 0; j < abl; j++) {
           for(let i = 0; i < this.sos_var_indices.length; i++) {
+            const svi = this.sos_var_indices[i];
             v_set.length = 0;
-            let vi = this.sos_var_indices[i][0] + j * this.cols;
-            const n = this.sos_var_indices[i][1];
-            for(let j = 1; j <= n; j++)  {
+            let vi = svi[0] + j * this.cols;
+            for(let j = 1; j <= svi[1]; j++)  {
               v_set.push(vbl(vi));
               vi++;
             }
             this.lines += `SOS${sos}: ${v_set.join(',')} <= 2;\n`;
-            sos++;
           }
         }
       }
@@ -5825,19 +5839,18 @@ class VirtualMachine {
     if(this.sos_var_indices.length > 0) {
       this.lines += 'SOS\n';
       const abl = this.actualBlockLength(this.block_count);
-      let sos = 1;
       for(let j = 0; j < abl; j++) {
         for(let i = 0; i < this.sos_var_indices.length; i++) {
-          this.lines += ' S2 sos' + sos + '\n';
-          let vi = this.sos_var_indices[i][0] + j * this.cols;
-          const n = this.sos_var_indices[i][1];
-          for(let j = 1; j <= n; j++) {
-            const s = '    X' + vi.toString().padStart(this.decimals, '0') +
+          const svi = this.sos_var_indices[i];
+          this.lines += ` S2 sos${i + 1}\n`;
+          let vi = svi[0] + j * this.cols;
+          for(let j = 1; j <= svi[1]; j++) {
+            const s = '    X' +
+                vi.toString().padStart(this.decimals, '0') +
                 '          ';
             this.lines += s.substring(0, 15) + j + '\n';
             vi++;
           }
-          sos++;
         }
       }
     }
@@ -6145,7 +6158,7 @@ Solver status = ${json.status}`);
     }
     // Diagnosis (by adding slack variables and finite bounds on processes)
     // is activated when Alt-clicking the "run" button, or by clicking the
-    // "clicke HERE to diagnose" link on the infoline.
+    // "clicke *here* to diagnose" link on the infoline.
     this.diagnose = diagnose || MODEL.always_diagnose;
     if(this.diagnose) {
       this.PLUS_INFINITY = this.DIAGNOSIS_UPPER_BOUND;
@@ -8329,10 +8342,11 @@ function VMI_set_const_rhs(c) {
 }
 
 function VMI_set_var_rhs(x) {
-  if(DEBUGGING) {
-    console.log('set_var_rhs: ' + x.variableName + ' (t = ' + VM.t + ')');
-  }
   VM.rhs = x.result(VM.t);
+  if(DEBUGGING) {
+    console.log(`set_var_rhs: ${x.variableName} (t = ${VM.t}) = ` +
+        VM.sig4Dig(VM.rhs));
+  }
 }
 
 function VMI_add_const_to_rhs(c) {

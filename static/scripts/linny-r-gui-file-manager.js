@@ -333,7 +333,12 @@ class GUIFileManager {
           return response.text();
         })
       .then((data) => {
-          UI.postResponseOK(data);
+          if(!UI.postResponseOK(data) && data.indexOf('not implemented') >= 0) {
+            // Switch off auto-save when server does not implement it.
+            AUTO_SAVE.interval = 0;
+            AUTO_SAVE.not_implemented = true;
+            console.log('Auto-save disabled');
+          }
           bcl.remove('stay-activ');
         })
       .catch((err) => {

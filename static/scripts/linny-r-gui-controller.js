@@ -1025,7 +1025,12 @@ class GUIController extends Controller {
           ' as preferred solver');
       return;
     }
-    const pd = postData({action: 'change', solver: sid});
+    const pd = postData({
+        action: 'change',
+        solver: sid,
+        user: VM.solver_user,
+        token: VM.solver_token
+      });
     fetch('solver/', pd)
       .then((response) => {
           if(!response.ok) {

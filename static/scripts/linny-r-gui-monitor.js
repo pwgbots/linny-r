@@ -326,6 +326,7 @@ class GUIMonitor {
           } else if(jsr.server) {
             VM.solver_token = jsr.token;
             VM.selectSolver(jsr.solver);
+            VM.solver_list = jsr.solver_list;
             // Remote solver may indicate user-specific solver time limit.
             let utl = '';
             if(jsr.time_limit) {

@@ -368,7 +368,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   }
   
   addRepository(name) {
-    // Adds repository if name is unique and valid
+    // Adds repository if name is unique and valid.
     let r = null,
         can_store = false;
     if(name.endsWith('+')) {
@@ -389,8 +389,8 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   }
   
   removeRepository() {
-    // Removes selected repository from list
-    // NOTE: do not remove the first item (local host)
+    // Removes selected repository from list.
+    // NOTE: Do not remove the first item (local host).
     if(this.repository_index < 1) return;
     fetch('repo/', postData({
           action: 'remove',
@@ -415,7 +415,8 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   }
   
   promptForRepository() {
-    // Opens "Add repository" dialog
+    // Open "Add repository" dialog (only on local host).
+    if(!this.isLocalHost) return;
     this.add_modal.element('name').value = '';
     this.add_modal.element('url').value = '';
     this.add_modal.element('token').value = '';
@@ -423,7 +424,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   }
 
   registerRepository() {
-    // Checks whether URL defines a Linny-R repository, and if so, adds it
+    // Check whether URL defines a Linny-R repository, and if so, add it.
     fetch('repo/', postData({
           action: 'add',
           repo: this.add_modal.element('name').value,
