@@ -66,6 +66,7 @@ Attributes, however, are case sensitive!">[Actor X|CF]</code> for cash flow.
   <code title="Relative time step (t &minus; t&#8320; + 1)">rt</code>,
   <code title="Number of current block">b</code>,
   <code title="Time step within current block">bt</code>,
+  <code title="Time step within current chunk">ct</code>,
   <code title="Duration of 1 time step (in hours)">dt</code>,
   <code title="Run length (# time steps)">N</code>,
   <code title="Block length (# time steps)">n</code>,

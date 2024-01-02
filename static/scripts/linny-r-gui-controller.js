@@ -3689,6 +3689,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     md.element('preference').innerHTML = html.join('');
     md.element('int-feasibility').value = MODEL.integer_tolerance;
     md.element('mip-gap').value = MODEL.MIP_gap;
+    this.setBox('solver-show-notices', MODEL.show_notices);
     md.show();
   }
   
@@ -3717,6 +3718,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     }
     MODEL.integer_tolerance = Math.max(1e-9, Math.min(0.1, itol));
     MODEL.MIP_gap = Math.max(0, Math.min(0.5, mgap));
+    MODEL.show_notices = this.boxChecked('solver-show-notices');
     // Close the dialog.
     md.hide();
   }

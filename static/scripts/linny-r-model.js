@@ -107,6 +107,7 @@ class LinnyRModel {
     this.integer_tolerance = 5e-7; // integer feasibility tolerance
     this.MIP_gap = 1e-4; // relative MIP gap
     this.always_diagnose = true;
+    this.show_notices = true;
 
     // Sensitivity-related properties
     this.base_case_selectors = '';
@@ -2670,6 +2671,7 @@ class LinnyRModel {
       this.report_results = nodeParameterValue(node, 'report-results') === '1';
       this.show_block_arrows = nodeParameterValue(node, 'block-arrows') === '1';
       this.always_diagnose = nodeParameterValue(node, 'diagnose') === '1';
+      this.show_notices = nodeParameterValue(node, 'show-notices') === '1';
       this.name = xmlDecoded(nodeContentByTag(node, 'name'));
       this.author = xmlDecoded(nodeContentByTag(node, 'author'));
       this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
@@ -3023,6 +3025,7 @@ class LinnyRModel {
     if(this.report_results) p += ' report-results="1"';
     if(this.show_block_arrows) p += ' block-arrows="1"';
     if(this.always_diagnose) p += ' diagnose="1"';
+    if(this.show_notices) p += ' show-notices="1"';
     let xml = this.xml_header + ['<model', p, '><name>',  xmlEncoded(this.name),
         '</name><author>', xmlEncoded(this.author),
         '</author><notes>', xmlEncoded(this.comments),

@@ -430,20 +430,25 @@ class Expression {
   }
 
   result(t, number=false) {
-    // Computes (only if needed) and then returns result for time step t
+    // Compute (only if needed) and then returns result for time step t.
     // The `number` is passed only by the VMI_push_dataset_modifier
-    // instruction so as to force recomputation of the expression
-    // NOTE: for t < 1 return the value for t = 1, since expressions have no
-    // "initial value" (these follow from the variables used in the expression)
-    // Select the vector to use
+    // instruction so as to force recomputation of the expression.
+    // Select the vector to use.
     const v = this.chooseVector(number);
     if(!Array.isArray(v)) {
       console.log('ANOMALY: No vector for result(t)');
       return VM.UNDEFINED;
     }
+    // NOTE: For t < 1 return the value for t = 1, since expressions have
+    // no "initial value" (these follow from the variables used in the
+    // expression).
     if(t < 0 || this.isStatic) t = 0;
     if(t >= v.length) return VM.UNDEFINED;
-    if(v[t] === VM.NOT_COMPUTED || v[t] === VM.COMPUTING) {
+    // NOTE: When VM is setting up a tableau, values computed for the
+    // look-ahead period must be recomputed.
+    if(v[t] === VM.NOT_COMPUTED || v[t] === VM.COMPUTING ||
+      (!this.isStatic && VM.inLookAhead(t))) {
+      v[t] = VM.NOT_COMPUTED;
       this.compute(t, number);
     }
     // NOTE: when this expression is the "active" parameter for sensitivity
@@ -2477,7 +2482,18 @@ class VirtualMachine {
     this.t = 0;
     // Prepare for halt.
     this.halted = false;
+    // Flag to indicate that VM is executing its tableau construction code.
+    // This affects how chunk time (ct) is computed, and whether expression
+    // results must be recomputed (see inLookAhead below).
+    this.executing_tableau_code = false;
     UI.readyToSolve();
+  }
+  
+  inLookAhead(t) {
+    // Return TRUE if VM is executing its tableau construction code AND
+    // time step `t` falls in the look-ahead period of the previous block.
+    return this.executing_tableau_code &&
+        t - (this.block_count - 1) * MODEL.block_length <= MODEL.look_ahead;
   }
 
   errorMessage(n) {
@@ -2871,7 +2887,7 @@ class VirtualMachine {
         const
             bm = r.block_messages[i],
             err = (bm.messages.indexOf('Solver status = 0') < 0 ||
-                bm.messages.indexOf('Warning') >= 0);
+                bm.messages.indexOf(this.WARNING) >= 0);
         this.solver_times.push(bm.solver_time);
         this.messages.push(bm.messages);
         this.variables.push(this.no_variables);
@@ -4657,7 +4673,7 @@ class VirtualMachine {
                     ppc[ci].usesSlack(b, v[1], v[0]);
                   }
                 }
-              } else if(CONFIGURATION.slight_slack_notices) {
+              } else if(MODEL.show_notices) {
                 this.logMessage(block, '---- Notice: (t=' + b + round + ') ' +
                    v[1].displayName + ' ' + v[0] + ' slack = ' +
                    slack.toPrecision(1));
@@ -5223,7 +5239,7 @@ class VirtualMachine {
   }
   
   addTableauSegment(start, abl) {
-    if(VM.halted) {
+    if(this.halted) {
       this.hideSetUpOrWriteProgress();
       this.stopSolving();
       return;
@@ -5233,6 +5249,7 @@ class VirtualMachine {
     var l;
     const next_start = (start + this.tsl * 1.2 < abl ? start + this.tsl : abl);
     for(let i = start; i < next_start; i++) {
+      this.executing_tableau_code = true;
       this.logTrace('EXECUTE for t=' + this.t);
       l = this.code.length;
       for(let j = 0; j < l; j++) {
@@ -5244,6 +5261,7 @@ class VirtualMachine {
         this.logTrace([('    ' + j).slice(-5), ': coeff = ',
             JSON.stringify(this.coefficients), ';  rhs = ', this.rhs].join(''));
       }
+      this.executing_tableau_code = false;
       this.logTrace('STOP executing block code');
       // Add constraints for paced process variables.
       // NOTE: This is effectuated by *executing* VM instructions.
@@ -6268,9 +6286,24 @@ function VMI_push_block_time(x) {
   const
       lt = x.step[x.step.length - 1] - 1,
       bnr = Math.floor(lt / MODEL.block_length),
-      t = lt - bnr * MODEL.block_length + 1; 
+      t = lt - bnr * MODEL.block_length + 1;
   if(DEBUGGING) console.log('push block time bt = ' + t);
   x.push(t);
+}
+
+function VMI_push_chunk_time(x) {
+  // Push the time step for which the VM is preparing the tableau.
+  // NOTE: Chunk time is meaningful only while the VM is solving a block.
+  // If not, the block time is pushed.
+  if(VM.executing_tableau_code) {
+    const
+        ct = VM.t - (VM.block_count - 1) * MODEL.block_length;
+    if(DEBUGGING) console.log('push chunk time ct = ' + ct);
+    x.push(ct);
+  } else {
+    if(DEBUGGING) console.log('push chunk time: NOT constructing tableau'); 
+    VMI_push_block_time(x);    
+  }
 }
 
 function VMI_push_block_number(x) {
@@ -8683,11 +8716,12 @@ const
   SEPARATOR_CHARS = PARENTHESES + OPERATOR_CHARS + "[ '",
   COMPOUND_OPERATORS = ['!=', '<>', '>=', '<='],
   CONSTANT_SYMBOLS = [
-      't', 'rt', 'bt', 'b', 'N', 'n', 'l', 'r', 'lr', 'nr', 'x', 'nx',
+      't', 'rt', 'bt', 'ct', 'b', 'N', 'n', 'l', 'r', 'lr', 'nr', 'x', 'nx',
       'random', 'dt', 'true', 'false', 'pi', 'infinity', '#',
       'i', 'j', 'k', 'yr', 'wk', 'd', 'h', 'm', 's'],
   CONSTANT_CODES = [
       VMI_push_time_step, VMI_push_relative_time, VMI_push_block_time,
+      VMI_push_chunk_time,
       VMI_push_block_number, VMI_push_run_length, VMI_push_block_length,
       VMI_push_look_ahead, VMI_push_round, VMI_push_last_round,
       VMI_push_number_of_rounds, VMI_push_run_number, VMI_push_number_of_runs,
@@ -8696,7 +8730,7 @@ const
       VMI_push_i, VMI_push_j, VMI_push_k,
       VMI_push_year, VMI_push_week, VMI_push_day, VMI_push_hour,
       VMI_push_minute, VMI_push_second],
-  DYNAMIC_SYMBOLS = ['t', 'rt', 'bt', 'b', 'r', 'random', 'i', 'j', 'k'],
+  DYNAMIC_SYMBOLS = ['t', 'rt', 'bt', 'ct', 'b', 'r', 'random', 'i', 'j', 'k'],
   MONADIC_OPERATORS = [
       '~', 'not', 'abs', 'sin', 'cos', 'atan', 'ln',
       'exp', 'sqrt', 'round', 'int', 'fract', 'min', 'max',
