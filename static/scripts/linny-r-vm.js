@@ -2567,7 +2567,7 @@ class VirtualMachine {
     return Math.round(n);
   }
   
-  sig4Dig(n) {
+  sig4Dig(n, tiny=false) {
     // Return number `n` formatted so as to show 4-5 significant digits.
     // NOTE: As `n` should be a number, a warning sign will typically
     // indicate a bug in the software.
@@ -2576,8 +2576,13 @@ class VirtualMachine {
     // If `n` has a special value, return its representation.
     if(sv[0]) return sv[1];
     const a = Math.abs(n);
+    if(a === 0) return 0;
     // Signal small differences from true 0 by a leading + or - sign.
-    if(n !== 0 && a <= this.ON_OFF_THRESHOLD) return n > 0 ? '+0' : '-0';
+    if(a <= this.ON_OFF_THRESHOLD) {
+      // The `tiny` flag indicates: display small number in E-notation.
+      if(tiny) return n.toPrecision(1);
+      return n > 0 ? '+0' : '-0';
+    }
     if(a >= 9999995) return n.toPrecision(4);
     if(Math.abs(a-Math.round(a)) < 0.0005) return Math.round(n);
     if(a < 1) return Math.round(n*10000) / 10000;
@@ -4666,7 +4671,9 @@ class VirtualMachine {
               }
               if(b <= this.nr_of_time_steps && absl > VM.ON_OFF_THRESHOLD) {
                 this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
-                    `${v[1].displayName} ${v[0]} slack = ${this.sig4Dig(slack)}`);
+                    `${v[1].displayName} ${v[0]} slack = ` +
+                    // NOTE: TRUE denotes "show tiny values with precision".
+                    this.sig4Dig(slack, true));
                 if(v[1] instanceof Product) {
                   const ppc = v[1].productPositionClusters;
                   for(let ci = 0; ci < ppc.length; ci++) {
@@ -6582,28 +6589,32 @@ function relativeTimeStep(t, anchor, offset, dtm, x) {
     // Offset relative to current time step, scaled to time unit of run.
     return Math.floor((t + offset) * dtm);
   }
-  if(anchor === 'c') {
-    // Relative to start of current optimization block.
-    return Math.trunc(t / MODEL.block_length) * MODEL.block_length + offset;
-  }
-  if(anchor === 'p') {
-    // Relative to start of previous optimization block.
-    return (Math.trunc(t / MODEL.block_length) - 1) * MODEL.block_length + offset;
-  }
-  if(anchor === 'n') {
-    // Relative to start of next optimization block.
-    return (Math.trunc(t / MODEL.block_length) + 1) * MODEL.block_length + offset;
+  if(anchor === 'f') {
+    // Last: offset relative to index  1 in the vector.
+    return 1 + offset;
   }
   if(anchor === 'l') {
     // Last: offset relative to the last index in the vector.
     return VM.nr_of_time_steps + offset;
+  }
+  const cb = Math.trunc((t - 1) / MODEL.block_length);
+  if(anchor === 'c') {
+    // Relative to start of current optimization block.
+    return cb * MODEL.block_length + 1 + offset;
+  }
+  if(anchor === 'p') {
+    // Relative to start of previous optimization block.
+    return (cb - 1) * MODEL.block_length + 1 + offset;
+  }
+  if(anchor === 'n') {
+    // Relative to start of next optimization block.
+    return (cb + 1) * MODEL.block_length + 1 + offset;
   }
   if(anchor === 's') {
     // Scaled: offset is scaled to time unit of run.
     return Math.floor(offset * dtm);
   }
   // Fall-through: offset relative to the initial value index (0).
-  // NOTE: this also applies to anchor f (First).
   return offset;
 }
 
@@ -7121,7 +7132,8 @@ function VMI_push_statistic(x, args) {
   t2 = Math.max(0, Math.min(tmax, t2));
   // Trace only now that time step range has been computed
   if(DEBUGGING) {
-    const trc = ['push statistic: [', stat, ': N = ', list.length, ']', ao1, ao2];
+    const trc = ['push statistic: [', stat, ': N = ', list.length, ']',
+        ao1, ao2, ' (t = ', t1, '-', t2, ')'];
     console.log(trc.join(''));
   }
   // Establish whether statistic pertains to non-zero values only
@@ -7157,7 +7169,7 @@ function VMI_push_statistic(x, args) {
   const
       n = vlist.length,
       // NOTE: count is the number of values used in the statistic 
-      count = (nz ? n : list.length);
+      count = (nz ? n : list.length * (t2 - t1 + 1));
   if(stat === 'N') {
     x.push(count);
     return;
