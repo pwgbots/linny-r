@@ -3471,8 +3471,9 @@ class LinnyRModel {
             let n = 0;
             for(let i = 0; i < constraints.length; i++) {
               const c = constraints[i];
-              if((c.to_node === p && c.soc_direction === VM.SOC_X_Y) ||
-                  (c.from_node === p && c.soc_direction === VM.SOC_Y_X)) n++;
+              if(!MODEL.ignored_entities[c.identifier] &&
+                  ((c.to_node === p && c.soc_direction === VM.SOC_X_Y) ||
+                  (c.from_node === p && c.soc_direction === VM.SOC_Y_X))) n++;
             }
             return n;
           },
@@ -3484,7 +3485,8 @@ class LinnyRModel {
             for(let i = 0; i < p.inputs.length; i++) {
               const l = p.inputs[i];
               // NOTE: Only process --> product links can carry cost.
-              if(l.from_node instanceof Process) {
+              if(!MODEL.ignored_entities[l.identifier] &&
+                  l.from_node instanceof Process) {
                 tuple.n++;
                 if(l.share_of_cost === 0) tuple.nosoc++;
                 const d = l.actualDelay(t);
@@ -3656,12 +3658,15 @@ class LinnyRModel {
         const p = processes[i];
         let cp = 0;
         for(let j = 0; j < p.inputs.length; j++) {
-          const ucp = p.inputs[j].unit_cost_price;
-          if(ucp === VM.UNDEFINED) {
-            cp = VM.UNDEFINED;
-            break;
-          } else {
-            cp += ucp;
+          const l = p.inputs[j];
+          if(!MODEL.ignored_entities[l.identifier]) {
+            const ucp = l.unit_cost_price;
+            if(ucp === VM.UNDEFINED) {
+              cp = VM.UNDEFINED;
+              break;
+            } else {
+              cp += ucp;
+            }
           }
         }
         // NOTE: Also check constraints that transfer cost to `p`.
@@ -3682,31 +3687,33 @@ class LinnyRModel {
           // NOTE: ignore SoC, as this affects the CP of the product, but
           // NOT the CP of the process producing it.
           for(let j = 0; j < p.outputs.length; j++) {
-            const
-                l = p.outputs[j],
-                // NOTE: For output links always use current price.
-                px = l.to_node.price,
-                pr = (px.defined ? px.result(t) : 0),
-                // For levels, consider delay: earlier if delay > 0.
-                dt = t - l.actualDelay(t);
-            if(pr < 0) {
-              // Only consider negative prices.
-              if(l.multiplier === VM.LM_LEVEL) {
-                // Treat links with level multiplier similar to input links,
-                // as this computes CP even when actual level = 0.
-                // NOTE: Subtract (!) so as to ADD the cost.
-                cp -= pr * l.relative_rate.result(dt);
-              } else {
-                // For other types, multiply price by actual flow / level
-                // NOTE: actualFlow already considers delay => use t, not dt.
-                const af = l.actualFlow(t);
-                if(af > VM.NEAR_ZERO) {
-                  // Prevent division by zero.
-                  // NOTE: Level can be zero even if actual flow > 0!
-                  let al = p.nonZeroLevel(dt, l.multiplier);
-                  // NOTE: Scale to level only when level > 1, or fixed
-                  // costs for start-up or first commit will be amplified.
-                  if(al > VM.NEAR_ZERO) cp -= pr * af / Math.max(al, 1);
+            const l = p.outputs[j];
+            if(!MODEL.ignored_entities[l.identifier]) {
+              const
+                  // NOTE: For output links always use current price.
+                  px = l.to_node.price,
+                  pr = (px.defined ? px.result(t) : 0),
+                  // For levels, consider delay: earlier if delay > 0.
+                  dt = t - l.actualDelay(t);
+              if(pr < 0) {
+                // Only consider negative prices.
+                if(l.multiplier === VM.LM_LEVEL) {
+                  // Treat links with level multiplier similar to input links,
+                  // as this computes CP even when actual level = 0.
+                  // NOTE: Subtract (!) so as to ADD the cost.
+                  cp -= pr * l.relative_rate.result(dt);
+                } else {
+                  // For other types, multiply price by actual flow / level
+                  // NOTE: actualFlow already considers delay => use t, not dt.
+                  const af = l.actualFlow(t);
+                  if(af > VM.NEAR_ZERO) {
+                    // Prevent division by zero.
+                    // NOTE: Level can be zero even if actual flow > 0!
+                    let al = p.nonZeroLevel(dt, l.multiplier);
+                    // NOTE: Scale to level only when level > 1, or fixed
+                    // costs for start-up or first commit will be amplified.
+                    if(al > VM.NEAR_ZERO) cp -= pr * af / Math.max(al, 1);
+                  }
                 }
               }
             }
@@ -3767,7 +3774,8 @@ class LinnyRModel {
             cp_sccp = VM.COMPUTING;
         for(let j = 0; j < p.inputs.length; j++) {
           const l = p.inputs[j];
-          if(l.from_node instanceof Process) {
+          if(!MODEL.ignored_entities[l.identifier] &&
+              l.from_node instanceof Process) {
             cp = l.from_node.costPrice(t - l.actualDelay(t));
             if(cp === VM.UNDEFINED && l.share_of_cost > 0) {
               // Contributing CP still unknown => break from FOR loop.
