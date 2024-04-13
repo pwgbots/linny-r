@@ -500,7 +500,7 @@ class GUIChartManager extends ChartManager {
           ysign = (yval < 0 ? '-' : ''),
           ytrunc = Math.abs(Math.round(yval / yres) * yres),
           yprec = (ytrunc >= 10000 || ytrunc < 0.0001 ?
-              ytrunc.toExponential(1) : ytrunc.toPrecision(3)).substring(0, 5),
+              ytrunc.toExponential(1) : ytrunc.toPrecision(2)),
           ystr = (Math.abs(parseFloat(yprec)) === 0 ? '0' : ysign + yprec),
           ylbl = (yfract < 0 || yfract > 1 || c.plot_min_y >= c.plot_max_y ?
               '' : 'y = ' + ystr);
