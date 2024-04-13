@@ -136,7 +136,7 @@ class Expression {
     if(this.object) return this.object.displayName + UI.OA_SEPARATOR + this.attribute;
     return 'Unknown variable (no object)';
   }
-  
+
   get timeStepDuration() {
     // Return dt for dataset if this is a dataset modifier expression;
     // otherwise dt for the current model.
@@ -2121,6 +2121,7 @@ class VirtualMachine {
     this.solver_secs = [];
     this.messages = [];
     this.equations = [];
+    
     // Default texts to display for (still) empty results.
     this.no_messages = '(no messages)';
     this.no_variables = '(no variables)';
@@ -2134,18 +2135,23 @@ class VirtualMachine {
     // decision variables reach +INF (1e+30) or -INF (-1e+30), and a solution
     // inaccurate if extreme values get too close to +/-INF. The higher
     // values have been chosen arbitrarily.
-    this.PLUS_INFINITY = 1e+25;
-    this.MINUS_INFINITY = -1e+25;
+    this.SOLVER_PLUS_INFINITY = 1e+25;
+    this.SOLVER_MINUS_INFINITY = -1e+25;
     this.BEYOND_PLUS_INFINITY = 1e+35;
     this.BEYOND_MINUS_INFINITY = -1e+35;
-    // The 1e+30 value is recognized by all supported solvers as "infinity",
-    // and hence can be used to indicate that a variable has no upper bound.
-    this.SOLVER_PLUS_INFINITY = 1e+30;
-    this.SOLVER_MINUS_INFINITY = -1e+30;
+    // The VM properties "PLUS_INFINITY" and "MINUS_INFINITY" are used
+    // when evaluating expressions. These propeties may be changed for
+    // diagnostic purposes -- see below.
+    this.PLUS_INFINITY = 1e+25;
+    this.MINUS_INFINITY = -1e+25;
     // As of version 1.8.0, Linny-R imposes no +INF bounds on processes
     // unless diagnosing an unbounded problem. For such diagnosis, the
     // (relatively) low value 9.999999999e+9 is used.
     this.DIAGNOSIS_UPPER_BOUND = 9.999999999e+9;
+    // For processes representing grid elements, upper bounds of +INF are
+    // "capped" to 9999 grid element capacity units (typically MW for
+    // high voltage grids). 
+    this.UNLIMITED_POWER_FLOW = 9999;
     // NOTE: Below the "near zero" limit, a number is considered zero
     // (this is to timely detect division-by-zero errors).
     this.NEAR_ZERO = 1e-10;
@@ -2257,6 +2263,7 @@ class VirtualMachine {
     this.LE = 1;
     this.GE = 2;
     this.EQ = 3;
+    this.ACTOR_CASH = 4;
     
     this.constraint_codes = ['FR', 'LE', 'GE', 'EQ'];
     this.constraint_symbols = ['', '<=', '>=', '='];
@@ -2399,6 +2406,9 @@ class VirtualMachine {
     // Likewise, clear slack use information for all clusters.
     for(let k in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(k)) {
       MODEL.clusters[k].slack_info = {};
+    }
+    if(MODEL.with_power_flow) {
+      POWER_GRID_MANAGER.checkLengths();
     }
     // Clear the expression call stack -- used only for diagnostics.
     this.call_stack.length = 0;
@@ -2559,12 +2569,20 @@ class VirtualMachine {
     const a = Math.abs(n);
     // Signal small differences from true 0 by leading + or - sign.
     if(n !== 0 && a <= this.ON_OFF_THRESHOLD) return n > 0 ? '+0' : '-0';
-    if(a >= 999999.5) return n.toPrecision(2);
+/* 
+    if(a >= 9999.5) return n.toPrecision(2);
     if(Math.abs(a-Math.round(a)) < 0.05) return Math.round(n);
     if(a < 1) return Math.round(n*100) / 100;
     if(a < 10) return Math.round(n*10) / 10;
     if(a < 100) return Math.round(n*10) / 10;
     return Math.round(n);
+*/
+    let s = n.toString();
+    const prec = n.toPrecision(2);
+    if(prec.length < s.length) s = prec;
+    const expo = n.toExponential(1);
+    if(expo.length < s.length) s = expo;
+    return s;
   }
   
   sig4Dig(n, tiny=false) {
@@ -2577,19 +2595,25 @@ class VirtualMachine {
     if(sv[0]) return sv[1];
     const a = Math.abs(n);
     if(a === 0) return 0;
-    // Signal small differences from true 0 by a leading + or - sign.
-    if(a <= this.ON_OFF_THRESHOLD) {
-      // The `tiny` flag indicates: display small number in E-notation.
-      if(tiny) return n.toPrecision(1);
-      return n > 0 ? '+0' : '-0';
-    }
-    if(a >= 9999995) return n.toPrecision(4);
+    // Signal small differences from exactly 0 by a leading + or - sign
+    // except when the `tiny` flag is set.
+    if(a <= this.ON_OFF_THRESHOLD && !tiny) return n > 0 ? '+0' : '-0';
+/*
+    if(a >= 9999.5) return n.toPrecision(4);
     if(Math.abs(a-Math.round(a)) < 0.0005) return Math.round(n);
     if(a < 1) return Math.round(n*10000) / 10000;
     if(a < 10) return Math.round(n*1000) / 1000;
     if(a < 100) return Math.round(n*100) / 100;
     if(a < 1000) return Math.round(n*10) / 10;
     return Math.round(n);
+*/
+    let s = n.toString();
+    const prec = n.toPrecision(4);
+    if(prec.length < s.length) s = prec;
+    const expo = n.toExponential(2);
+    if(expo.length < s.length) s = expo;
+    if(s.indexOf('e') < 0) s = parseFloat(s).toString();
+    return s;
   }
   
   //
@@ -2934,7 +2958,7 @@ class VirtualMachine {
     }
     if(type === 'I' || type === 'PiL') {
       this.int_var_indices[index] = true;
-    } else if('OO|IZ|SU|SD|SO|FC|SB'.indexOf(type) >= 0) {
+    } else if('OO|IZ|SU|SD|SO|FC|SB|UO1|DO1|UO2|DO2|UO3|DO3'.indexOf(type) >= 0) {
       this.bin_var_indices[index] = true;
     }
     if(obj instanceof Process && obj.pace > 1) {
@@ -2967,6 +2991,33 @@ class VirtualMachine {
     return index;
   }
   
+  gridProcessVarIndices(p, offset=0) {
+    // Return an object with lists of 1, 2 or 3 slope variable indices.
+    if(p.up_1_var_index <= 0) return null;
+    const gpv = {
+        slopes: 1,
+        up: [p.up_1_var_index + offset],
+        up_on: [p.up_1_on_var_index + offset],
+        down: [p.down_1_var_index + offset],
+        down_on: [p.down_1_on_var_index + offset]
+    };
+    if(p.up_2_var_index >= 0) {
+      gpv.slopes++;
+      gpv.up.push(p.up_2_var_index + offset);
+      gpv.up_on.push(p.up_2_on_var_index + offset);
+      gpv.down.push(p.down_2_var_index + offset);
+      gpv.down_on.push(p.down_2_on_var_index + offset);
+      if(p.up_3_var_index >= 0) {
+        gpv.slopes++;
+        gpv.up.push(p.up_3_var_index + offset);
+        gpv.up_on.push(p.up_3_on_var_index + offset);
+        gpv.down.push(p.down_3_var_index + offset);
+        gpv.down_on.push(p.down_3_on_var_index + offset);
+      }
+    }
+    return gpv;
+  }
+
   resetVariableIndices(p) {
     // Set all variable indices to -1 ("no such variable") for node `p`.
     p.level_var_index = -1;
@@ -2983,6 +3034,19 @@ class VirtualMachine {
       p.stock_GE_slack_var_index = -1;
     } else {
       p.semic_var_index = -1;
+      // Additional indices for grid elements.
+      p.up_1_var_index = -1;
+      p.up_1_on_var_index = -1;
+      p.down_1_var_index = -1;
+      p.down_1_on_var_index = -1;
+      p.up_2_var_index = -1;
+      p.up_2_on_var_index = -1;
+      p.down_2_var_index = -1;
+      p.down_2_on_var_index = -1;
+      p.up_3_var_index = -1;
+      p.up_3_on_var_index = -1;
+      p.down_3_var_index = -1;
+      p.down_3_on_var_index = -1;
     }
   }
   
@@ -3001,7 +3065,9 @@ class VirtualMachine {
     // Some "data-only" link multipliers require additional variables.
     if(p.needsOnOffData) {
       p.on_off_var_index = this.addVariable('OO', p);
-      p.is_zero_var_index = this.addVariable('IZ', p);
+      if(p.needsIsZeroData) {
+        p.is_zero_var_index = this.addVariable('IZ', p);
+      }
       // To detect startup, one more variable is needed
       if(p.needsStartUpData) {
         p.start_up_var_index = this.addVariable('SU', p);
@@ -3015,6 +3081,27 @@ class VirtualMachine {
       // To detect shut-down, one more variable is needed
       if(p.needsShutDownData) {
         p.shut_down_var_index = this.addVariable('SD', p);
+      }
+    }
+    if(p.grid) {
+      // Processes representing power grid elements are bi-directional
+      // and hence need separate UP and DOWN flow variables.
+      p.up_1_var_index = this.addVariable('U1', p);
+      p.up_1_on_var_index = this.addVariable('UO1', p);
+      p.down_1_var_index = this.addVariable('D1', p);
+      p.down_1_on_var_index = this.addVariable('DO1', p);
+      // Additional UP and DOWN is needed for each additional loss slope.
+      if(p.grid.loss_approximation > 1) {
+        p.up_2_var_index = this.addVariable('U2', p);
+        p.up_2_on_var_index = this.addVariable('UO2', p);
+        p.down_2_var_index = this.addVariable('D2', p);
+        p.down_2_on_var_index = this.addVariable('DO2', p);
+        if(p.grid.loss_approximation > 2) {
+          p.up_3_var_index = this.addVariable('U3', p);
+          p.up_3_on_var_index = this.addVariable('UO3', p);
+          p.down_3_var_index = this.addVariable('D3', p);
+          p.down_3_on_var_index = this.addVariable('DO3', p);
+        }
       }
     }
     // NOTES:
@@ -3222,7 +3309,7 @@ class VirtualMachine {
     
     // Log if run is performed in "diagnosis" mode.
     if(this.diagnose) {
-      this.logMessage(this.block_count, 'DIAGNOSTIC RUN' +
+      this.logMessage(1, 'DIAGNOSTIC RUN' +
           (MODEL.always_diagnose ? ' (default -- see model settings)': '') +
           '\n- slack variables on products and constraints' +
           '\n- finite bounds on all processes');
@@ -3232,8 +3319,23 @@ class VirtualMachine {
     MODEL.inferIgnoredEntities();
     const n = Object.keys(MODEL.ignored_entities).length;
     if(n > 0) {
-      this.logMessage(this.block_count,
+      this.logMessage(1,
           pluralS(n, 'entity', 'entities') + ' will be ignored');
+    }
+
+    // Infer cycle basis for combined power grids for which Kirchhoff's
+    // voltage law must be enforced.
+    if(MODEL.with_power_flow) {
+      MONITOR.logMessage(1, 'POWER FLOW: ' +
+          pluralS(Object.keys(MODEL.power_grids).length, 'grid'));
+      POWER_GRID_MANAGER.inferCycleBasis();
+      if(POWER_GRID_MANAGER.messages.length > 1) {
+        UI.warn('Check monitor for power grid warnings');
+      }
+      MONITOR.logMessage(1, POWER_GRID_MANAGER.messages.join('\n'));
+      if(POWER_GRID_MANAGER.cycle_basis.length) this.logMessage(1,
+          'Enforcing Kirchhoff\'s voltage law for ' +
+          POWER_GRID_MANAGER.cycleBasisAsString);
     }
 
     // FIRST: Define indices for all variables (index = Simplex tableau
@@ -3379,9 +3481,16 @@ class VirtualMachine {
         // NOTE: If UB = LB, set UB to LB only if LB is defined,
         // because LB expressions default to -INF while UB expressions
         // default to +INF.
-        ubx = (p.equal_bounds && lbx.defined ? lbx : p.upper_bound);
+        ubx = (!p.grid && p.equal_bounds && lbx.defined ? lbx : p.upper_bound);
         if(lbx.isStatic) lbx = lbx.result(0);
-        if(ubx.isStatic) ubx = ubx.result(0);
+        if(ubx.isStatic) {
+          ubx = ubx.result(0);
+          if(p.grid) lbx = -ubx;
+        } else if (p.grid) {
+          // When UB is dynamic, pass NULL as LB; the VM instruction will
+          // interpret this as "LB = -UB".
+          lbx = null;
+        }
         // NOTE: When semic_var_index is set, the lower bound must be
         // zero, as the semi-continuous lower bound is implemented with
         // a binary variable.
@@ -3482,39 +3591,50 @@ class VirtualMachine {
           const p = MODEL.processes[k];
           // Only consider processes owned by this actor.
           if(p.actor === a) {
-            // Iterate over links IN, but only consider consumed products
-            // having a market price.
-            for(j = 0; j < p.inputs.length; j++) {
-              l = p.inputs[j];
-              if(!MODEL.ignored_entities[l.identifier] &&
-                  l.from_node.price.defined) {
-                if(l.from_node.price.isStatic && l.relative_rate.isStatic) {
-                  k = l.from_node.price.result(0) * l.relative_rate.result(0);
-                  // NOTE: VMI_update_cash_coefficient has at least 4 arguments:
-                  // flow (CONSUME or PRODUCE), type (specifies the number and
-                  // type of arguments), the level_var_index of the process,
-                  // and the delay.
-                  // NOTE: Input links cannot have delay, so then delay = 0.
-                  if(Math.abs(k) > VM.NEAR_ZERO) {
-                    // Consumption rate & price are static: pass one constant.
+            if(p.grid) {
+              // Grid processes are a special case, as they can have a
+              // negative level and potentially multiple slopes. Hence a
+              // special VM instruction.
+              this.code.push([VMI_update_grid_process_cash_coefficients, p]);
+            } else {
+              // Iterate over links IN, but only consider consumed products
+              // having a market price.
+              for(j = 0; j < p.inputs.length; j++) {
+                l = p.inputs[j];
+                if(!MODEL.ignored_entities[l.identifier] &&
+                    l.from_node.price.defined) {
+                  if(l.from_node.price.isStatic && l.relative_rate.isStatic) {
+                    k = l.from_node.price.result(0) * l.relative_rate.result(0);
+                    // NOTE: VMI_update_cash_coefficient has at least 4 arguments:
+                    // flow (CONSUME or PRODUCE), type (specifies the number and
+                    // type of arguments), the level_var_index of the process,
+                    // and the delay.
+                    // NOTE: Input links cannot have delay, so then delay = 0.
+                    if(Math.abs(k) > VM.NEAR_ZERO) {
+                      // Consumption rate & price are static: pass one constant.
+                      this.code.push([VMI_update_cash_coefficient,
+                        [VM.CONSUME, VM.ONE_C, p.level_var_index, 0, k]]);
+                    }
+                  } else {
+                    // No further optimization: assume two dynamic expressions.
                     this.code.push([VMI_update_cash_coefficient,
-                      [VM.CONSUME, VM.ONE_C, p.level_var_index, 0, k]]);
+                      [VM.CONSUME, VM.TWO_X, p.level_var_index, 0,
+                       l.from_node.price, l.relative_rate]]);
                   }
-                } else {
-                  // No further optimization: assume two dynamic expressions.
-                  this.code.push([VMI_update_cash_coefficient,
-                    [VM.CONSUME, VM.TWO_X, p.level_var_index, 0,
-                     l.from_node.price, l.relative_rate]]);
                 }
-              }
-            } // END of FOR ALL input links
-            
-            // Iterate over links OUT, but only consider produced products
-            // having a (non-zero) market price.
+              } // END of FOR ALL input links
+            }
+            // Now iterate over links OUT, but only consider produced
+            // products having a (non-zero) market price.
+            // NOTE: Grid processes can have output links to *data* products,
+            // so do NOT skip this iteration...
             for(j = 0; j < p.outputs.length; j++) {
               l = p.outputs[j];
-              const tnpx = l.to_node.price;
-              if(!MODEL.ignored_entities[l.identifier] && tnpx.defined &&
+              const
+                  tnpx = l.to_node.price,
+                  // ... but DO skip links from grid processes to regular products.
+                  skip = p.grid && !l.to_node.is_data;
+              if(!(skip || MODEL.ignored_entities[l.identifier]) && tnpx.defined &&
                   !(tnpx.isStatic && Math.abs(tnpx.result(0)) < VM.NEAR_ZERO)) {
                 // By default, use the process level as multiplier.
                 vi = p.level_var_index;
@@ -3609,8 +3729,10 @@ class VirtualMachine {
       // Check whether any VMI_update_cash_coefficient instructions have
       // been added. If so, the objective function will maximze weighted
       // sum of actor cash flows, otherwise minimize sum of process levels.
+      const last_vmi = this.code[this.code.length - 1][0];
       this.no_cash_flows = this.no_cash_flows &&
-          this.code[this.code.length - 1][0] !== VMI_update_cash_coefficient;
+          last_vmi !== VMI_update_cash_coefficient &&
+          last_vmi !== VMI_update_grid_process_cash_coefficients;
 
       // ALWAYS add the two cash flow constraints for this actor, as both
       // cash flow variables must be computed (will be 0 if no cash flows).
@@ -3749,6 +3871,21 @@ class VirtualMachine {
         }
       }
     }
+    
+    // NEXT: Add constraints for processes representing grid elements.
+    if(MODEL.with_power_flow) {
+      for(i = 0; i < process_keys.length; i++) {
+        k = process_keys[i];
+        if(!MODEL.ignored_entities[k]) {
+          p = MODEL.processes[k];
+          if(p.grid) {
+            this.code.push([VMI_add_grid_process_constraints, p]);
+          }
+        }
+      }
+      this.code.push(
+          [VMI_add_kirchhoff_constraints, POWER_GRID_MANAGER.cycle_basis]);
+    }
 
     // NEXT: Add product constraints to calculate (and constrain) their stock.
 
@@ -3786,7 +3923,9 @@ class VirtualMachine {
             // Add coefficient -1 for level index variable of `p`.
             this.code.push([VMI_add_const_to_coefficient,
                 [p.level_var_index, -1, 0]]);
-            this.code.push([VMI_add_constraint, VM.EQ]);
+            // NOTE: Pass special constraint type parameter to indicate
+            // that this constraint must be scaled by the cash scalar.
+            this.code.push([VMI_add_constraint, VM.ACTOR_CASH]);
           } else {
             console.log('ANOMALY: no actor for cash flow product', p.displayName);
           }
@@ -3818,8 +3957,20 @@ class VirtualMachine {
               } else {
                 vi = fn.level_var_index;
               }
-              // First check for throughput links, as these are elaborate
-              if(l.multiplier === VM.LM_THROUGHPUT) {
+              // First check whether the link is a power flow.
+              if(l.multiplier === VM.LM_LEVEL && !p.is_data && fn.grid) {
+                // If so, pass the grid process to a special VM instruction
+                // that will add coefficients that account for losses.
+                // NOTES:
+                // (1) The second parameter (+1) indicates that the
+                //     coefficients of the UP flows should be positive
+                //     and those of the DOWN flows should be negative
+                //     (because it is a P -> Q link).
+                // (2) The rate and delay properties of the link are ignored.
+                this.code.push(
+                    [VMI_add_power_flow_to_coefficients, [fn, 1]]);
+              // Then check for throughput links, as these are elaborate.
+              } else if(l.multiplier === VM.LM_THROUGHPUT) {
                 // Link `l` is Y-->Z and "reads" the total inflow into Y
                 // over links Xi-->Y having rate Ri and when Y is a
                 // product potentially also delay Di.
@@ -3936,19 +4087,35 @@ class VirtualMachine {
             } // END IF not ignored
           } // END FOR all inputs
           
-          // subtract outflow from product P to consuming processes (outputs)
+          // Subtract outflow from product P to consuming processes (outputs)
           for(i = 0; i < p.outputs.length; i++) {
-            // NOTE: only consider outputs to processes; data outflows do not subtract
             l = p.outputs[i];
             if(!MODEL.ignored_entities[l.identifier]) {
-              if(l.to_node instanceof Process) {
-                const rr = l.relative_rate;
-                if(rr.isStatic) {
-                  this.code.push([VMI_subtract_const_from_coefficient,
-                      [l.to_node.level_var_index, rr.result(0), l.flow_delay]]);
+              const tn = l.to_node;
+              // NOTE: Only consider outputs to processes; data flows do
+              // not subtract from their tail nodes.
+              if(tn instanceof Process) {
+                if(tn.grid) {
+                // If the link is a power flow, pass the grid process to
+                // a special VM instruction that will add coefficients that
+                // account for losses.
+                // NOTES:
+                // (1) The second parameter (-1) indicates that the
+                //     coefficients of the UP flows should be negative
+                //     and those of the DOWN flows should be positive
+                //     (because it is a Q -> P link).
+                // (2) The rate and delay properties of the link are ignored.
+                this.code.push(
+                    [VMI_add_power_flow_to_coefficients, [tn, -1]]);
                 } else {
-                  this.code.push([VMI_subtract_var_from_coefficient,
-                      [l.to_node.level_var_index, rr, l.flow_delay]]);
+                  const rr = l.relative_rate;
+                  if(rr.isStatic) {
+                    this.code.push([VMI_subtract_const_from_coefficient,
+                        [tn.level_var_index, rr.result(0), l.flow_delay]]);
+                  } else {
+                    this.code.push([VMI_subtract_var_from_coefficient,
+                        [tn.level_var_index, rr, l.flow_delay]]);
+                  }
                 }
               }
             }
@@ -4090,88 +4257,94 @@ class VirtualMachine {
         // To deal with this, the default equations will NOT be set when UB <= 0,
         // while the "exceptional" equations (q.v.) will NOT be set when UB > 0.
         // This can be realized using a special VM instruction:
-        ubx = (p.equal_bounds && p.lower_bound.defined ? p.lower_bound : p.upper_bound);
+        ubx = (p.equal_bounds && p.lower_bound.defined && !p.grid ?
+            p.lower_bound : p.upper_bound);
         this.code.push([VMI_set_add_constraints_flag, [ubx, '>', 0]]);
-
-        // NOTE: if UB <= 0 the following constraints will be prepared but NOT added   
-
-        this.code.push(
-          // Set coefficients vector to 0
-          [VMI_clear_coefficients, null],
-          // (a) L[t] - LB[t]*OO[t] >= 0
-          [VMI_add_const_to_coefficient, [p.level_var_index, 1]]
-        );
-        if(p.lower_bound.isStatic) {
-          let lb = p.lower_bound.result(0);
-          if(Math.abs(lb) < VM.NEAR_ZERO) lb = VM.ON_OFF_THRESHOLD;
-          this.code.push([VMI_subtract_const_from_coefficient,
-            [p.on_off_var_index, lb]]);
-        } else {
-          this.code.push([VMI_subtract_var_from_coefficient,
-            // NOTE: the 3rd parameter signals VM to use the ON/OFF threshold
-            // value when the LB evaluates as near-zero
-            [p.on_off_var_index, p.lower_bound, VM.ON_OFF_THRESHOLD]]);
-        }
-        this.code.push(
-          [VMI_add_constraint, VM.GE], // >= 0 as default RHS = 0
-          // Set coefficients vector to 0
-          [VMI_clear_coefficients, null],
-          // (b) L[t] - UB[t]*OO[t] <= 0
-          [VMI_add_const_to_coefficient, [p.level_var_index, 1]]
-        );
-        if(ubx.isStatic) {
-          // If UB is very high (typically: undefined, so +INF), try to
-          // infer a lower value for UB to use for the ON/OFF binary.
-          let ub = ubx.result(0),
-              hub = ub;
-          if(ub > VM.MEGA_UPPER_BOUND) {
-            hub = p.highestUpperBound([]);
-            // If UB still very high, warn modeler on infoline and in monitor
-            if(hub > VM.MEGA_UPPER_BOUND) {
-              const msg = 'High upper bound (' + this.sig4Dig(hub) +
-                  ') for <strong>' + p.displayName + '</strong>' +
-                  ' will compromise computation of its binary variables';
-              UI.warn(msg);
-              this.logMessage(this.block_count,
-                  'WARNING: ' + msg.replace(/<\/?strong>/g, '"'));
+        // This instruction ensures that when UB <= 0, the constraints for
+        // binaries will be prepared, but NOT added to the MILP problem.
+        
+        // NOTE: For grid element processes, the ON/OFF binary is set by
+        // the VMI_add_grid_process_constraints.
+        if(!p.grid) {
+          this.code.push(
+            // Set coefficients vector to 0
+            [VMI_clear_coefficients, null],
+            // (a) L[t] - LB[t]*OO[t] >= 0
+            [VMI_add_const_to_coefficient, [p.level_var_index, 1]]
+          );
+          if(p.lower_bound.isStatic) {
+            let lb = p.lower_bound.result(0);
+            if(Math.abs(lb) < VM.NEAR_ZERO) lb = VM.ON_OFF_THRESHOLD;
+            this.code.push([VMI_subtract_const_from_coefficient,
+              [p.on_off_var_index, lb]]);
+          } else {
+            this.code.push([VMI_subtract_var_from_coefficient,
+              // NOTE: the 3rd parameter signals VM to use the ON/OFF threshold
+              // value when the LB evaluates as near-zero
+              [p.on_off_var_index, p.lower_bound, VM.ON_OFF_THRESHOLD]]);
+          }
+          this.code.push(
+            [VMI_add_constraint, VM.GE], // >= 0 as default RHS = 0
+            // Set coefficients vector to 0
+            [VMI_clear_coefficients, null],
+            // (b) L[t] - UB[t]*OO[t] <= 0
+            [VMI_add_const_to_coefficient, [p.level_var_index, 1]]
+          );
+          if(ubx.isStatic) {
+            // If UB is very high (typically: undefined, so +INF), try to
+            // infer a lower value for UB to use for the ON/OFF binary.
+            let ub = ubx.result(0),
+                hub = ub;
+            if(ub > VM.MEGA_UPPER_BOUND) {
+              hub = p.highestUpperBound([]);
+              // If UB still very high, warn modeler on infoline and in monitor
+              if(hub > VM.MEGA_UPPER_BOUND) {
+                const msg = 'High upper bound (' + this.sig4Dig(hub) +
+                    ') for <strong>' + p.displayName + '</strong>' +
+                    ' will compromise computation of its binary variables';
+                UI.warn(msg);
+                this.logMessage(this.block_count,
+                    'WARNING: ' + msg.replace(/<\/?strong>/g, '"'));
+              }
             }
+            if(hub !== ub) {
+              ub = hub;
+              this.logMessage(1,
+                  `Inferred upper bound for ${p.displayName}: ${this.sig4Dig(ub)}`);
+            }
+            this.code.push([VMI_subtract_const_from_coefficient,
+              [p.on_off_var_index, ub]]);
+          } else {
+            // NOTE: no check (yet) for high values when UB is an expression
+            // (this could be achieved by a special VM instruction)
+            this.code.push([VMI_subtract_var_from_coefficient,
+              [p.on_off_var_index, ubx]]);
           }
-          if(hub !== ub) {
-            ub = hub;
-            this.logMessage(this.block_count,
-                `Inferred upper bound for ${p.displayName}: ${this.sig4Dig(ub)}`);
-          }
-          this.code.push([VMI_subtract_const_from_coefficient,
-            [p.on_off_var_index, ub]]);
-        } else {
-          // NOTE: no check (yet) for high values when UB is an expression
-          // (this could be achieved by a special VM instruction)
-          this.code.push([VMI_subtract_var_from_coefficient,
-            [p.on_off_var_index, ubx]]);
+          this.code.push([VMI_add_constraint, VM.LE]); // <= 0 as default RHS = 0
         }
-        this.code.push(
-          [VMI_add_constraint, VM.LE], // <= 0 as default RHS = 0 
+        if(p.is_zero_var_index >= 0) {
           // Also add the constraints for is-zero
-          [VMI_clear_coefficients, null],
-          // (c) OO[t] + IZ[t] = 1
-          [VMI_add_const_to_coefficient, [p.is_zero_var_index, 1]],
-          [VMI_add_const_to_coefficient, [p.on_off_var_index, 1]],
-          [VMI_set_const_rhs, 1],
-          [VMI_add_constraint, VM.EQ],
-          // (d) L[t] + IZ[t] >= LB[t]
-          [VMI_clear_coefficients, null],
-          [VMI_add_const_to_coefficient, [p.level_var_index, 1]],
-          [VMI_add_const_to_coefficient, [p.is_zero_var_index, 1]]
-        );
-        // NOTE: for semicontinuous variable, always use LB = 0
-        if(p.lower_bound.isStatic || p.level_to_zero) {
-          const plb = (p.level_to_zero ? 0 : p.lower_bound.result(0));
-          this.code.push([VMI_set_const_rhs, plb]);
-        } else {
-          this.code.push([VMI_set_var_rhs, p.lower_bound]);
+          this.code.push(
+              [VMI_clear_coefficients, null],
+              // (c) OO[t] + IZ[t] = 1
+              [VMI_add_const_to_coefficient, [p.is_zero_var_index, 1]],
+              [VMI_add_const_to_coefficient, [p.on_off_var_index, 1]],
+              [VMI_set_const_rhs, 1],
+              [VMI_add_constraint, VM.EQ],
+              // (d) L[t] + IZ[t] >= LB[t]
+              [VMI_clear_coefficients, null],
+              [VMI_add_const_to_coefficient, [p.level_var_index, 1]],
+              [VMI_add_const_to_coefficient, [p.is_zero_var_index, 1]]
+            );
+          // NOTE: for semicontinuous variable, always use LB = 0
+          if(p.lower_bound.isStatic || p.level_to_zero) {
+            const plb = (p.level_to_zero ? 0 : p.lower_bound.result(0));
+            this.code.push([VMI_set_const_rhs, plb]);
+          } else {
+            this.code.push([VMI_set_var_rhs, p.lower_bound]);
+          }
+          this.code.push([VMI_add_constraint, VM.GE]);
         }
-        this.code.push([VMI_add_constraint, VM.GE]);
-
         // Also add constraints for start-up (if needed)
         if(p.start_up_var_index >= 0) {
           this.code.push(
@@ -4271,18 +4444,22 @@ class VirtualMachine {
         // NOTE: toggle the flag so that if UB <= 0, the following constraints
         // for setting the binary variables WILL be added   
         this.code.push(
-          [VMI_toggle_add_constraints_flag, null],
-          // When UB <= 0, add these much simpler "exceptional" constraints:
-          // OO[t] = 0
-          [VMI_clear_coefficients, null],
-          [VMI_add_const_to_coefficient, [p.on_off_var_index, 1]],
-          [VMI_add_constraint, VM.EQ],          
-          // IZ[t] = 1
-          [VMI_clear_coefficients, null],
-          [VMI_add_const_to_coefficient, [p.is_zero_var_index, 1]],
-          [VMI_set_const_rhs, 1], // RHS = 1
-          [VMI_add_constraint, VM.EQ]
-        );          
+            [VMI_toggle_add_constraints_flag, null],
+            // When UB <= 0, add these much simpler "exceptional" constraints:
+            // OO[t] = 0
+            [VMI_clear_coefficients, null],
+            [VMI_add_const_to_coefficient, [p.on_off_var_index, 1]],
+            [VMI_add_constraint, VM.EQ]
+          );          
+        if(p.is_zero_var_index >= 0) {
+          this.code.push(
+              // IZ[t] = 1
+              [VMI_clear_coefficients, null],
+              [VMI_add_const_to_coefficient, [p.is_zero_var_index, 1]],
+              [VMI_set_const_rhs, 1], // RHS = 1
+              [VMI_add_constraint, VM.EQ]
+            );
+        }
         // Add constraints for start-up and first commit only if needed
         if(p.start_up_var_index >= 0) {
           this.code.push(
@@ -4361,8 +4538,9 @@ class VirtualMachine {
         }
       }
     } // end FOR all constraints
+    
     MODEL.set_up = true;
-    this.logMessage(this.block_count,
+    this.logMessage(1,
       `Problem formulation took ${this.elapsedTime} seconds.`);
   } // END of setup_problem function
 
@@ -4464,6 +4642,24 @@ class VirtualMachine {
         if(cv && !cv[0].startsWith('C')) cc[ci] *= m;
       }
     }
+    // In case the model contains data products that represent an actor
+    // cash flow, the coefficients of the constraint that equates the
+    // product level to the cash flow must be *multiplied* by the cash
+    // scalar so that they equal the cash flow in the model's monetary unit.
+    for(let i = 0; i < this.actor_cash_constraints.length; i++) {
+      const cc = this.matrix[this.actor_cash_constraints[i]];
+      for(let ci in cc) if(cc.hasOwnProperty(ci)) {
+        if(ci < this.chunk_offset) {
+          // NOTE: Subtract 1 as variables array is zero-based.
+          cv = this.variables[(ci - 1) % this.cols];
+        } else {
+          // Chunk variable array is zero-based.
+          cv = this.chunk_variables[ci - this.chunk_offset];
+        }
+        // NOTE: Scale coefficients of cash variables only.
+        if(cv && cv[0].startsWith('C')) cc[ci] *= this.cash_scalar;
+      }
+    }
   }
   
   checkForInfinity(n) {
@@ -4549,7 +4745,7 @@ class VirtualMachine {
         }
         if(b <= this.nr_of_time_steps && a.cash_out[b] < -0.005) {
           this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
-              a.displayName + ' cash IN = ' + a.cash_out[b].toPrecision(2));
+              a.displayName + ' cash OUT = ' + a.cash_out[b].toPrecision(2));
         }
         // Advance column offset in tableau by the # cols per time step.
         j += this.cols;
@@ -4564,7 +4760,8 @@ class VirtualMachine {
           p = MODEL.processes[o],
           has_OO = (p.on_off_var_index >= 0),
           has_SU = (p.start_up_var_index >= 0),
-          has_SD = (p.shut_down_var_index >= 0);
+          has_SD = (p.shut_down_var_index >= 0),
+          grid = p.grid;
       // Clear all start-ups and shut-downs at t >= bb.
       if(has_SU) p.resetStartUps(bb);
       if(has_SD) p.resetShutDowns(bb);
@@ -4747,6 +4944,9 @@ class VirtualMachine {
     this.variables_to_fixate = {};
     // FIRST: Calculate the actual flows on links.
     let b, bt, p, pl, ld, ci;
+    for(let g in MODEL.power_grids) if(MODEL.power_grids.hasOwnProperty(g)) {
+      MODEL.power_grids[g].total_losses = 0;
+    }
     for(let l in MODEL.links) if(MODEL.links.hasOwnProperty(l) &&
         !MODEL.ignored_entities[l]) {
       l = MODEL.links[l];
@@ -4756,7 +4956,7 @@ class VirtualMachine {
       b = bb;
       // Iterate over all time steps in this chunk.
       for(let i = 0; i < cbl; i++) {
-        // NOTE: Flows may have a delay!
+        // NOTE: Flows may have a delay (but will be 0 for grid processes).
         ld = l.actualDelay(b);
         bt = b - ld;
         latest_time_step = Math.max(latest_time_step, bt);
@@ -4857,11 +5057,35 @@ class VirtualMachine {
           }
         }
         // Preserve special values such as INF, UNDEFINED and VM error codes.
-        const
-            rr = l.relative_rate.result(bt),
-            af = this.severestIssue([pl, rr], rr * pl);
+        let rr = l.relative_rate.result(bt);
+        if(p.grid) {
+          // For grid processes, rates depend on losses, which depend on
+          // the process level, and whether the link is P -> Q or Q -> P.
+          rr = 1;
+          if(p.grid.loss_approximation > 0 &&
+              ((pl > 0 && p === l.from_node) ||
+                  (pl < 0 && p === l.to_node))) {
+            const alr = p.actualLossRate(bt);
+            rr = 1 - alr;
+            p.grid.total_losses += alr * Math.abs(pl);
+          }
+        }
+        const af = this.severestIssue([pl, rr], rr * pl);
         l.actual_flow[b] = (Math.abs(af) > VM.NEAR_ZERO ? af : 0);
         b++;
+      }
+    }
+    // Report power losses per grid, if applicable.
+    if(MODEL.with_power_flow) {
+      const ll = [];
+      for(let g in MODEL.power_grids) if(MODEL.power_grids.hasOwnProperty(g)) {
+        const pg = MODEL.power_grids[g];
+        if(pg.loss_approximation > 0) {
+          ll.push(`${pg.name}: ${VM.sig4Dig(pg.total_losses / cbl)} ${pg.power_unit}`);
+        }
+      }
+      if(ll.length) {
+        this.logMessage(block, 'Average power grid losses per time step:\n ' + ll.join('\n '));
       }
     }
 
@@ -5188,6 +5412,12 @@ class VirtualMachine {
     // of matrix rows that then need to be scaled.
     this.cash_scalar = 1;
     this.cash_constraints = [];
+    // NOTE: The model may contain data products that represent a cash
+    // flow property of an actor. To calculate the actual value of such
+    // properties, the coefficients in the effectuating constraint must
+    // be *multiplied* by the scalar to compensate for the downscaling
+    // explained above.
+    this.actor_cash_constraints = [];
     // Vector for the objective function coefficients.
     this.objective = {};
     // Vectors for the bounds on decision variables.
@@ -5447,6 +5677,7 @@ class VirtualMachine {
     }
     let c,
         p,
+        v,
         line = '';
     // NOTE: Iterate over ALL columns to maintain variable order.
     let n = abl * this.cols + this.chunk_variables.length;
@@ -5508,6 +5739,7 @@ class VirtualMachine {
     } else {
       this.lines += '\n/* Variable bounds */\n';
     }
+console.log()
     n = abl * this.cols;
     for(p = 1; p <= n; p++) {
       let lb = null,
@@ -5527,31 +5759,23 @@ class VirtualMachine {
           break;
         }
       }
-      line = '';
+      v = vbl(p);
       if(lb === ub) {
-        if(lb !== null) line = ` ${vbl(p)} = ${lb}`;
+        line = (lb !== null ? ` ${v} = ${lb}` : '');
       } else {
+        const
+            lbfree = (lb === null || lb <= VM.SOLVER_MINUS_INFINITY),
+            ubfree = (ub === null || ub >= VM.SOLVER_PLUS_INFINITY);
         // NOTE: By default, lower bound of variables is 0.
-        line = ` ${vbl(p)}`;
-        if(cplex) {
-          // Explicitly denote free variables.
-          if(lb === null && ub === null && !this.is_binary[p]) {
-            line += ' free';
-          } else {
-            // Separate lines for LB and UB if specified.
-            if(ub !== null) line += ' <= ' + ub;
-            if(lb !== null && lb !== 0) line += `\n ${vbl(p)} >= ${lb}`;
-          }
+        if(cplex && lbfree && ubfree) {
+            line = ` ${v} ${this.is_binary[p] ? '<= 1' : 'free'}`;
         } else {
           // Bounds can be specified on a single line: lb <= X001 <= ub.
-          // NOTE: LP_solve has Infinity value 1e+25. Use this literal
-          // because VM.PLUS_INFINITY may be set to *diagnostic* value.
-          if(lb !== null && lb !== 0 && lb > -1e+25) {
-            line = lb + ' <= ' + line;
+          if(lb || lb === 0) {
+            line = ` ${lb} <= ${v}${ubfree ? '' : ' <= ' + ub}`;
+          } else {
+            line = (ubfree ? '' : ` ${v} <= ${ub}`);
           }
-          if(ub !== null && ub < 1e+25) line += ' <= ' + ub;
-          // NOTE: Do not add line if both bounds are infinite.
-          if(line.indexOf('<=') < 0) line = '';
         }
       }
       if(line) this.lines += line + EOL;
@@ -6190,8 +6414,8 @@ Solver status = ${json.status}`);
       this.MINUS_INFINITY = -this.DIAGNOSIS_UPPER_BOUND;
       console.log('DIAGNOSIS ON');
     } else {
-      this.PLUS_INFINITY = 1e+25;
-      this.MINUS_INFINITY = -1e+25;
+      this.PLUS_INFINITY = this.SOLVER_PLUS_INFINITY;
+      this.MINUS_INFINITY = this.SOLVER_MINUS_INFINITY;
       console.log('DIAGNOSIS OFF');
     }
     // The "propt to diagnose" flag is set when some block posed an
@@ -7903,8 +8127,12 @@ function VMI_set_bounds(args) {
       // When diagnosing an unbounded problem, use low value for INFINITY,
       // but the optional fourth parameter indicates whether the solver's
       // infinity values should override the diagnosis INFINITY.
-      inf_val = (VM.diagnose && !(args.length > 3 && args[3]) ?
-          VM.DIAGNOSIS_UPPER_BOUND : VM.SOLVER_PLUS_INFINITY);
+      // NOTE: For grid processes, the bounds are always "capped" so as
+      // to permit Big M constraints for the associated binary variables.
+      inf_is_free = (args.length > 3 && args[3]),
+      inf_val = (vbl.grid ? VM.UNLIMITED_POWER_FLOW :
+          (VM.diagnose && !inf_is_free ?
+              VM.DIAGNOSIS_UPPER_BOUND : VM.SOLVER_PLUS_INFINITY));
   let l,
       u,
       fixed = (vi in VM.fixed_var_indices[r - 1]);
@@ -7924,26 +8152,35 @@ function VMI_set_bounds(args) {
   } else {
     // Set bounds as specified by the two arguments.
     l = args[1];
-    if(l instanceof Expression) l = l.result(VM.t);
-    if(l === VM.UNDEFINED) l = 0;
     u = args[2];
     if(u instanceof Expression) u = u.result(VM.t);
-    u = Math.min(u, VM.PLUS_INFINITY);
-    if(l === VM.MINUS_INFINITY) l = -inf_val;
-    if(u === VM.PLUS_INFINITY) u = inf_val;
+    u = Math.min(u, inf_val);
+    // When LB is passed as NULL, this indicates: LB = -UB.
+    if(l === null) {
+      l = -u;
+    } else { 
+      if(l instanceof Expression) l = l.result(VM.t);
+      if(l === VM.UNDEFINED) {
+        l = 0;
+      } else {
+        l = Math.max(l, -inf_val);
+      }
+    }
     fixed = '';
   }
   // NOTE: To see in the console whether fixing across rounds works, insert
   // "fixed !== '' || " before DEBUGGING below.
-  if(DEBUGGING) {
-    console.log(['set_bounds [', k, '] ', vbl.displayName, ' t = ', VM.t,
-      ' LB = ', VM.sig4Dig(l), ', UB = ', VM.sig4Dig(u), fixed, l, u, inf_val].join(''));
+  if(isNaN(l) || isNaN(u) ||
+      typeof l !== 'number' || typeof u !== 'number' || DEBUGGING) {
+    console.log(['set_bounds [', k, '] ', vbl.displayName, '[',
+      VM.variables[vi - 1][0],'] t = ', VM.t, ' LB = ', VM.sig4Dig(l),
+      ', UB = ', VM.sig4Dig(u), fixed].join(''), l, u, inf_val);
   }
   // NOTE: Since the VM vectors for lower bounds and upper bounds are
-  // initialized with default values (0 for LB, +INF for UB), there is
-  // no need to set them.
-  if(l !== 0 || u < inf_val) {
-    VM.lower_bounds[k] = l; 
+  // initialized with default values (0 for LB, +INF for UB), the bounds
+  // need only be set when they differ from these default values.
+  if(l !== 0) VM.lower_bounds[k] = l;
+  if(u < VM.SOLVER_PLUS_INFINITY) {
     VM.upper_bounds[k] = u;
     // If associated node is FROM-node of a "peak increase" link, then
     // the "peak increase" variables of this node must have the highest
@@ -7959,6 +8196,26 @@ function VMI_set_bounds(args) {
       if(piub) u = Math.max(piub, u);
       VM.upper_bounds[cvi] = u;
       VM.upper_bounds[cvi + 1] = u;
+    }
+    // For grid elements, bounds must be set on UP and DOWN variables.
+    if(vbl.grid) {
+      // When considering losses, partition range 0...UB in sections.
+      const step = (vbl.grid.loss_approximation < 2 ? u :
+          u / vbl.grid.loss_approximation);
+      VM.upper_bounds[VM.offset + vbl.up_1_var_index] = step;
+      VM.upper_bounds[VM.offset + vbl.down_1_var_index] = step;
+      if(vbl.grid.loss_approximation > 1) {
+        // Set UB for semi-contiuous variables Up & Down slope 2.
+        VM.upper_bounds[VM.offset + vbl.up_2_var_index] = 2 * step;
+        VM.upper_bounds[VM.offset + vbl.down_2_var_index] = 2 * step;
+        if(vbl.grid.loss_approximation > 2) {
+          // Set UB for semi-contiuous variables Up & Down slope 3.
+          VM.upper_bounds[VM.offset + vbl.up_3_var_index] = 3 * step;
+          VM.upper_bounds[VM.offset + vbl.down_3_var_index] = 3 * step;
+        }
+      }
+      // NOTE: lower bounds are 0 for all variables; their semi-continuous
+      // ranges are set by VMI_add_grid_process_constraints.
     }
   }
 }
@@ -8191,6 +8448,28 @@ function VMI_subtract_var_from_coefficient(args) {
   }
 }
 
+/* AUXILIARY FUNCTIONS for setting cash flow coefficients */
+
+function addCashIn(index, value) {
+  if(index in VM.cash_in_coefficients) {
+    // Add value to coefficient if it already exists...
+    VM.cash_in_coefficients[index] += value;
+  } else {
+    // ... and set it if it is new.
+    VM.cash_in_coefficients[index] = value;
+  }
+}
+
+function addCashOut(index, value) {
+  if(index in VM.cash_out_coefficients) {
+    // Add value to coefficient if it already exists...
+    VM.cash_out_coefficients[index] += value;
+  } else {
+    // ... and set it if it is new.
+    VM.cash_out_coefficients[index] = value;
+  }
+}
+
 function VMI_update_cash_coefficient(args) {
   // `args`: [flow, type, level_var_index, delay, x1, x2, ...]
   // NOTE: Flow is either CONSUME or PRODUCE; type can be ONE_C (one
@@ -8265,17 +8544,9 @@ function VMI_update_cash_coefficient(args) {
         VM.cash_out_rhs += pl * price_rate;      
       }
     } else if(r > 0) {
-      if(plk in VM.cash_in_coefficients) {
-        VM.cash_in_coefficients[plk] += price_rate;
-      } else {
-        VM.cash_in_coefficients[plk] = price_rate;
-      }
+      addCashIn(plk, price_rate);
     } else if(r < 0) {
-      if(plk in VM.cash_out_coefficients) {
-        VM.cash_out_coefficients[plk] -= price_rate;
-      } else {
-        VM.cash_out_coefficients[plk] = -price_rate;
-      }
+      addCashOut(plk, -price_rate);
     }
   }
   // NOTE: For spinning reserve and highest increment, flow will always
@@ -8303,18 +8574,108 @@ function VMI_update_cash_coefficient(args) {
       VM.cash_out_rhs -= knownValue(vi, VM.t - d) * r;      
     }
   } else if(r > 0) {
-    if(k in VM.cash_in_coefficients) {
-      VM.cash_in_coefficients[k] -= r;
-    } else {
-      VM.cash_in_coefficients[k] = -r;
-    }
+    addCashIn(k, -r);
   } else if(r < 0) {
     // NOTE: Test for r < 0 because no action is needed if r = 0.
-    if(k in VM.cash_out_coefficients) {
-      VM.cash_out_coefficients[k] += r;
-    } else {
-      VM.cash_out_coefficients[k] = r;
+    addCashOut(k, r);
+  }
+}
+
+function VMI_update_grid_process_cash_coefficients(p) {
+  // Update cash flow coefficients for process `p` that relate to its
+  // regular input and output link (data links are handled by means of
+  // VMI_update_cash_coefficient).
+  let fn = null,
+      tn = null;
+  for(let i = 0; i <= p.inputs.length; i++) {
+    const l = p.inputs[i];
+    if(l.multiplier === VM.LM_LEVEL &&
+        !MODEL.ignored_entities[l.identifier]) {
+      fn = l.from_node;
+      break;
     }
+  }
+  for(let i = 0; i <= p.outputs.length; i++) {
+    const l = p.outputs[i];
+    if(l.multiplier === VM.LM_LEVEL &&
+        !MODEL.ignored_entities[l.identifier]) {
+      tn = l.to_node;
+      break;
+    }
+  }
+  const
+      fp = (fn && fn.price.defined ? fn.price.result(VM.t) : 0),
+      tp = (tn && tn.price.defined ? tn.price.result(VM.t) : 0);
+  // Only proceed if process links to a product with a non-zero price.
+  if(fp || tp) {
+    const
+        gpv = VM.gridProcessVarIndices(p, VM.offset),
+        lr = p.lossRates(VM.t);
+    if(fp > 0) {    
+      // If FROM node has price > 0, then all UP flows generate cash OUT
+      // *without* loss while all DOWN flows generate cash IN *with* loss.
+      for(let i = 0; i < gpv.slopes; i++) {
+        addCashOut(gpv.up[i], -fp);
+        addCashIn(gpv.down[i], (1 - lr[i]) * -fp);
+      }
+    } else if(fp < 0) {
+      // If FROM node has price < 0, then all UP flows generate cash IN
+      // *without* loss while all DOWN flows generate cash OUT *with* loss.
+      for(let i = 0; i < gpv.slopes; i++) {
+        addCashIn(gpv.up[i], fp);
+        addCashOut(gpv.down[i], (1 - lr[i]) * fp);
+      }
+    }
+    if(tp > 0) {    
+      // If TO node has price > 0, then all UP flows generate cash IN *with*
+      // loss while all DOWN flows generate cash OUT *without* loss.
+      for(let i = 0; i < gpv.slopes; i++) {
+        addCashIn(gpv.up[i], (1 - lr[i]) * -tp);
+        addCashOut(gpv.down[i], -tp);
+      }
+    } else if(tp < 0) {
+      // If TO node has price < 0, then all UP flows generate cash OUT
+      // *with* loss while all DOWN flows generate cash IN *without* loss.
+      for(let i = 0; i < gpv.slopes; i++) {
+        addCashOut(gpv.up[i], (1 - lr[i]) * tp);
+        addCashIn(gpv.down[i], tp);
+      }
+    }
+  }
+}
+
+function VMI_add_power_flow_to_coefficients(args) {
+  // Special instruction to add power flow rates represented by process
+  // P to the coefficient vector that is being constructed to compute the
+  // level for product Q.
+  // The instruction is added once for the link P -> Q (then UP flows
+  // add to the level of Q, while DOWN flows subtract) and once for the
+  // link Q -> P (then UP flows *subtract* from the level of Q while
+  // DOWN flows *add*).
+  // The instruction expects two arguments: a grid process and an integer
+  // indicating the direction: P -> Q (1) or Q -> P (-1).
+  const
+      p = args[0],
+      up = args[1] > 0,
+      gpv = VM.gridProcessVarIndices(p, VM.offset),
+      lr = p.lossRates(VM.t);
+  for(let i = 0; i < gpv.slopes; i++) {
+    // Losses must be subtracted only from flows *into* P.
+    const
+        uv = (up ? 1 - lr[i] : -1),
+        dv = (up ? -1 : 1 - lr[i]);
+    let k = gpv.up[i];
+    if(k in VM.coefficients) {
+       VM.coefficients[k] += uv;
+     } else {
+       VM.coefficients[k] = uv;
+     }
+    k = gpv.down[i];
+    if(k in VM.coefficients) {
+       VM.coefficients[k] += dv;
+     } else {
+       VM.coefficients[k] = dv;
+     }
   }
 }
 
@@ -8442,17 +8803,29 @@ function VMI_add_constraint(ct) {
         row[i] = c;
       }
     }
-    VM.matrix.push(row);
-    let rhs = VM.rhs;
-    if(rhs >= VM.PLUS_INFINITY) {
-      rhs = (VM.diagnose ? VM.DIAGNOSIS_UPPER_BOUND :
-          VM.SOLVER_PLUS_INFINITY);
-    } else if(rhs <= VM.MINUS_INFINITY) {
-      rhs = (VM.diagnose ? -VM.DIAGNOSIS_UPPER_BOUND :
-          VM.SOLVER_MINUS_INFINITY);
+    // Special case: 
+    if(ct === VM.ACTOR_CASH) {
+      VM.actor_cash_constraints.push(VM.matrix.length);
+      ct = VM.EQ;
     }
-    VM.right_hand_side.push(rhs);
-    VM.constraint_types.push(ct);
+    let rhs = VM.rhs;
+    // Check for <= (near) +infinity and >= (near) -infinity: such
+    // constraints should not be added to the model.
+    if((ct === VM.LE && rhs >= 0.1 * VM.PLUS_INFINITY) ||
+        (ct === VM.GE && rhs < 0.1 * VM.MINUS_INFINITY)) {
+      if(DEBUGGING) console.log('Ignored infinite bound constraint');
+    } else {
+      VM.matrix.push(row);
+      if(rhs >= VM.PLUS_INFINITY) {
+        rhs = (VM.diagnose ? VM.DIAGNOSIS_UPPER_BOUND :
+            VM.SOLVER_PLUS_INFINITY);
+      } else if(rhs <= VM.MINUS_INFINITY) {
+        rhs = (VM.diagnose ? -VM.DIAGNOSIS_UPPER_BOUND :
+            VM.SOLVER_MINUS_INFINITY);
+      }
+      VM.right_hand_side.push(rhs);
+      VM.constraint_types.push(ct);
+    }
   } else if(DEBUGGING) {
     console.log('Constraint NOT added!');
   }
@@ -8521,6 +8894,78 @@ function VMI_add_cash_constraints(args) {
   // Clear the cash OUT coefficients register and RHS (just to be sure).
   VM.cash_out_coefficients = {};
   VM.cash_out_rhs = 0;
+}
+
+function VMI_add_grid_process_constraints(p) {
+  // Add constraints that will ensure that power flows either UP or DOWN,
+  // and that loss slopes properties are set.  
+  const gpv = VM.gridProcessVarIndices(p, VM.offset);
+  if(!gpv) return;
+  // Now the variable index lists all contain 1, 2 or 3 indices,
+  // depending on the loss approximation level.
+  let ub = p.upper_bound.result(VM.t);
+  if(ub >= VM.PLUS_INFINITY) {
+    // When UB = +INF, this is interpreted as "unlimited", which is
+    // implemented as 99999 grid power units.
+    ub = VM.UNLIMITED_POWER_FLOW;
+  }
+  const
+      step = ub / gpv.slopes,
+      // NOTE: For slope 1 use a small positive number as LB.
+      lbs = [VM.ON_OFF_THRESHOLD, step, 2*step],
+      ubs = [step, 2*step, 3*step];
+  for(let i = 0; i < gpv.slopes; i++) {
+    // Add constraints to set the ON/OFF binary for each slope:
+    VMI_clear_coefficients();
+    //   level - UB*binary <= 0
+    VM.coefficients[gpv.up[i]] = 1;
+    VM.coefficients[gpv.up_on[i]] = -ubs[i];
+    VMI_add_constraint(VM.LE);
+    //   level - LB*binary >= 0
+    VM.coefficients[gpv.up_on[i]] = -lbs[i];
+    VMI_add_constraint(VM.GE);
+    // Two similar constraints for the Down slope
+    VMI_clear_coefficients();
+    VM.coefficients[gpv.down[i]] = 1;
+    VM.coefficients[gpv.down_on[i]] = -ubs[i];
+    VMI_add_constraint(VM.LE);
+    VM.coefficients[gpv.down_on[i]] = -lbs[i];
+    VMI_add_constraint(VM.GE);
+  }
+  // Set level to sum of all Up variables minus sum of all Down variables.
+  VMI_clear_coefficients();
+  VM.coefficients[VM.offset + p.level_var_index] = -1;
+  for(let i = 0; i < gpv.slopes; i++) {
+    VM.coefficients[gpv.up[i]] = 1;
+    VM.coefficients[gpv.down[i]] = -1;
+  }
+  VMI_add_constraint(VM.EQ);
+  // Set OO to the sum of all binary ON variables. This not only makes
+  // OO available for read-out but also ensures that at most one slope
+  // can be active (because OO is binary).
+  VMI_clear_coefficients();
+  VM.coefficients[VM.offset + p.on_off_var_index] = -1;
+  for(let i = 0; i < gpv.slopes; i++) {
+    VM.coefficients[gpv.up_on[i]] = 1;
+    VM.coefficients[gpv.down_on[i]] = 1;
+  }
+  VMI_add_constraint(VM.EQ);
+}
+
+function VMI_add_kirchhoff_constraints(cb) {
+  // Add Kirchhoff's voltage law constraint for each cycle in `cb`.
+  for(let i = 0; i < cb.length; i++) {
+    const c = cb[i];
+    VMI_clear_coefficients();
+    for(let i = 0; i < c.length; i++) {
+      const
+          p = c[i].process,
+          x = p.length_in_km * p.grid.reactancePerKm,
+          o = c[i].orientation;
+      VM.coefficients[VM.offset + p.level_var_index] = x * o;
+    }
+    VMI_add_constraint(VM.EQ);
+  }
 }
 
 function VMI_add_bound_line_constraint(args) {

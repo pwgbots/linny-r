@@ -421,7 +421,7 @@ class GUIController extends Controller {
     this.edit_btns = ['clone', 'paste', 'delete', 'undo', 'redo'];
     this.model_btns = ['settings', 'save', 'repository', 'actors',
         'dataset', 'equation', 'chart', 'sensitivity', 'experiment',
-        'diagram', 'savediagram', 'finder', 'monitor', 'solve'];
+        'diagram', 'savediagram', 'finder', 'monitor', 'tex', 'solve'];
     this.other_btns = ['new', 'load', 'receiver', 'documentation',
         'parent', 'lift', 'solve', 'stop', 'reset', 'zoomin', 'zoomout',
         'stepback', 'stepforward', 'autosave', 'recall'];
@@ -569,6 +569,7 @@ class GUIController extends Controller {
     this.buttons.finder.addEventListener('click', tdf);
     this.buttons.monitor.addEventListener('click', tdf);
     this.buttons.documentation.addEventListener('click', tdf);
+    this.buttons.tex.addEventListener('click', tdf);
     // Cluster navigation elements:
     this.focal_name.addEventListener('click',
         () => UI.showClusterPropertiesDialog(MODEL.focal_cluster));
@@ -717,6 +718,10 @@ class GUIController extends Controller {
         () => SCALE_UNIT_MANAGER.show());
     this.modals.settings.element('solver-prefs-btn').addEventListener('click',
         () => UI.showSolverPreferencesDialog());
+    this.modals.settings.element('power').addEventListener('click',
+        () => UI.togglePowerGridButton());
+    this.modals.settings.element('power-btn').addEventListener('click',
+        () => POWER_GRID_MANAGER.show());
     // Make solver modal elements responsive.
     this.modals.solver.ok.addEventListener('click',
         () => UI.updateSolverPreferences());
@@ -773,7 +778,12 @@ class GUIController extends Controller {
     this.modals.process.element('UB-x').addEventListener('click', eoxedit);
     this.modals.process.element('IL-x').addEventListener('click', eoxedit);
     this.modals.process.element('LCF-x').addEventListener('click', eoxedit);
-
+    // Processes can represent power grid elements.
+    this.modals.process.element('grid-plate').addEventListener(
+        'mouseenter', () => UI.showGridPlateMenu('process'));
+    // Make the grid plate menu responsive.
+    this.modals.process.element('grid-plate-menu').addEventListener(
+        'mouseleave', () => UI.hideGridPlateMenu('process'));
     this.modals.product.ok.addEventListener('click',
         () => UI.updateProductProperties());
     this.modals.product.cancel.addEventListener('click',
@@ -2763,8 +2773,8 @@ class GUIController extends Controller {
   }
   
   hideStayOnTopDialogs() {
-    // Hide and reset all stay-on-top dialogs (even when not showing)
-    // NOTE: this routine is called when a new model is loaded
+    // Hide and reset all stay-on-top dialogs (even when not showing).
+    // NOTE: This routine is called when a new model is loaded.
     DATASET_MANAGER.dialog.style.display = 'none';
     this.buttons.dataset.classList.remove('stay-activ');
     DATASET_MANAGER.reset();
@@ -2786,6 +2796,9 @@ class GUIController extends Controller {
     DOCUMENTATION_MANAGER.dialog.style.display = 'none';
     this.buttons.documentation.classList.remove('stay-activ');
     DOCUMENTATION_MANAGER.reset();
+    TEX_MANAGER.dialog.style.display = 'none';
+    this.buttons.tex.classList.remove('stay-activ');
+    TEX_MANAGER.reset();
     FINDER.dialog.style.display = 'none';
     this.buttons.finder.classList.remove('stay-activ');
     FINDER.reset();
@@ -3558,10 +3571,13 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     this.setBox('settings-decimal-comma', model.decimal_comma);
     this.setBox('settings-align-to-grid', model.align_to_grid);
     this.setBox('settings-block-arrows', model.show_block_arrows);
-    this.setBox('settings-diagnose', MODEL.always_diagnose);
+    this.setBox('settings-diagnose', model.always_diagnose);
+    this.setBox('settings-power', model.with_power_flow);
     this.setBox('settings-cost-prices', model.infer_cost_prices);
     this.setBox('settings-report-results', model.report_results);
     this.setBox('settings-encrypt', model.encrypt);
+    const pg_btn = md.element('power-btn');
+    pg_btn.style.display = (model.with_power_flow ? 'inline-block' : 'none');
     md.show('name');
   }
   
@@ -3616,9 +3632,9 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     model.report_results = UI.boxChecked('settings-report-results');
     model.encrypt = UI.boxChecked('settings-encrypt');
     model.decimal_comma = UI.boxChecked('settings-decimal-comma');
-    MODEL.always_diagnose = this.boxChecked('settings-diagnose');
+    model.always_diagnose = this.boxChecked('settings-diagnose');
     // Notify modeler that diagnosis changes the value of +INF.
-    if(MODEL.always_diagnose) {
+    if(model.always_diagnose) {
       UI.notify('To diagnose unbounded problems, values beyond 1e+10 ' +
           'are considered as infinite (\u221E)');
     }
@@ -3627,6 +3643,9 @@ console.log('HERE name conflicts', name_conflicts, mapping);
         redraw = !model.align_to_grid && cb;
     model.align_to_grid = cb;
     model.grid_pixels = Math.floor(px);
+    cb = UI.boxChecked('settings-power');
+    redraw = redraw || cb !== model.with_power_flow;
+    model.with_power_flow = cb;
     cb = UI.boxChecked('settings-cost-prices');
     redraw = redraw || cb !== model.infer_cost_prices;
     model.infer_cost_prices = cb;
@@ -3672,6 +3691,20 @@ console.log('HERE name conflicts', name_conflicts, mapping);
       redraw = true;
     }
     if(redraw) this.drawDiagram(model);
+  }
+  
+  togglePowerGridButton() {
+    // Responds to clicking the "power grid options" checkbox by toggling
+    // the "View/edit power grids" button.
+    const
+        cb = this.modals.settings.element('power'),
+        pb = this.modals.settings.element('power-btn');
+    // NOTE: When clicked, state has not been updated yet. 
+    if(cb.classList.contains('clear')) {
+      pb.style.display = 'inline-block';
+    } else {
+      pb.style.display = 'none';
+    }
   }
   
   // Solver preferences modal
@@ -3749,6 +3782,17 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     md.group = group;
     md.element('name').value = p.name;
     md.element('actor').value = (p.hasActor ? p.actor.name : '');
+    md.element('length').value = p.length_in_km;
+    md.grid_id = (p.grid ? p.grid.id : '');
+    this.hideGridPlateMenu('process');
+    this.updateGridFields();
+    const tex = md.element('tex-id');
+    tex.value = p.TEX_id;
+    if(TEX_MANAGER.visible) {
+      tex.style.display = 'block';
+    } else {
+      tex.style.display = 'none';
+    }
     // Focus on lower bound when showing the dialog for a group.
     if(group.length > 0) {
       attr = 'LB';
@@ -3765,6 +3809,59 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     if(alt && !md.group) {
       md.element(attr + '-x').dispatchEvent(new Event('click'));
     }
+  }
+  
+  showGridPlateMenu(modal) {
+    const md = this.modals[modal];
+    POWER_GRID_MANAGER.updateGridMenu(modal);
+    md.element('grid-plate-menu').style.display = 'block';
+  }
+  
+  hideGridPlateMenu(modal) {
+    const md = this.modals[modal];
+    md.element('grid-plate-menu').style.display = 'none';
+  }
+  
+  setGridPlate(div) {
+    const
+        parts = div.id.split('-'),
+        modal = parts[0],
+        md = this.modals[modal],
+        id = parts.pop(),
+        grid = MODEL.powerGridByID(id);
+    // NOTE: Store power grid identifier as property of the modal.
+    md.grid_id = (grid ? id : '');
+    this.updateGridFields();
+  }
+  
+  updateGridFields() {
+    // Adjust the powergrid-related elements of the dialog according to
+    // the value of the `grid_id` property of the modal.
+    const
+        md = this.modals.process,
+        plate = md.element('grid-plate'),
+        overlay = md.element('grid-overlay'),
+        notab = ['LB', 'IL', 'LCF'],
+        pg = MODEL.powerGridByID(md.grid_id);
+    if(pg) {
+      plate.className = 'grid-kV-plate';
+      plate.style.backgroundColor = pg.color;
+      plate.innerHTML = pg.voltage;
+      overlay.style.display = 'block';
+      // Disable tab stop for the properties that are now not shown.
+      for(let i = 0; i < notab.length; i++) {
+        md.element(notab[i]).tabIndex = -1;
+      }
+    } else {
+      plate.innerHTML = '(&#x21AF;)';
+      plate.className = 'no-grid-plate';
+      overlay.style.display = 'none';
+      // Enable tab stop for the properties that are now not shown.
+      for(let i = 0; i < notab.length; i++) {
+        md.element(notab[i]).tabIndex = 0;
+      }
+    }
+    this.hideGridPlateMenu('process');
   }
 
   updateProcessProperties() {
@@ -3826,6 +3923,10 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     p.integer_level = this.boxChecked('process-integer');
     p.level_to_zero = this.boxChecked('process-shut-down');
     p.collapsed = this.boxChecked('process-collapsed');
+    p.power_grid = MODEL.powerGridByID(md.grid_id);
+    p.length_in_km = safeStrToFloat(md.element('length').value, 0);
+    p.TEX_id = md.element('tex-id').value;
+    if(TEX_MANAGER.visible) TEX_MANAGER.update(p);
     if(md.group.length > 1) {
       // Redraw the entire diagram, as multiple processes may have changed.
       md.updateModifiedProperties(p);
@@ -3852,6 +3953,13 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     md.element('P-unit').innerHTML =
         (p.scale_unit === '1' ? '' : '/' + p.scale_unit);
     md.element('currency').innerHTML = MODEL.currency_unit;
+    const tex = md.element('tex-id');
+    tex.value = p.TEX_id;
+    if(TEX_MANAGER.visible) {
+      tex.style.display = 'block';
+    } else {
+      tex.style.display = 'none';
+    }
     // NOTE: IO parameter status is not "group-edited"!
     this.setImportExportBox('product', MODEL.ioType(p));
     // Focus on lower bound when showing the dialog for a group.
@@ -3924,9 +4032,11 @@ console.log('HERE name conflicts', name_conflicts, mapping);
         p.upper_bound)) return false;
     if(p.name.startsWith('$')) {
       // NOTE: For actor cash flow data products, price and initial
-      // level must remain blank.
+      // level must remain blank...
       md.element('P').value = '';
       md.element('IL').value = '';
+      // ... and the unit must be the model's currency unit.
+      md.element('unit').value = MODEL.currency_unit;
     }
     if(!this.updateExpressionInput('product-IL', 'initial level',
         p.initial_level)) return false;
@@ -3943,10 +4053,10 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     }
     // At this point, all input has been validated, so entity properties
     // can be modified.
+    p.changeScaleUnit(md.element('unit').value);
     if(!p.name.startsWith('$')) {
       // NOTE: For actor cash flow data products, these properties must
       // also retain their initial value.
-      p.changeScaleUnit(md.element('unit').value);
       p.is_source = this.boxChecked('product-source');
       p.is_sink = this.boxChecked('product-sink');
       // NOTE: Do not unset `is_data` if product has ingoing data arrows.
@@ -3964,6 +4074,8 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     p.no_links = this.boxChecked('product-no-links');
     let must_redraw = (pnl !== p.no_links);
     MODEL.ioUpdate(p, this.getImportExportBox('product'));
+    p.TEX_id = md.element('tex-id').value;
+    if(TEX_MANAGER.visible) TEX_MANAGER.update(p);
     // If a group was edited, update all entities in this group. 
     if(md.group.length > 0) md.updateModifiedProperties(p);
     if(must_redraw || md.group.length > 1) {

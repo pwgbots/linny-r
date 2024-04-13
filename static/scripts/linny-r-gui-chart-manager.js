@@ -495,10 +495,15 @@ class GUIChartManager extends ChartManager {
           yfract = (c.plot_oy - y / scale) / c.plot_height,
           yval = c.plot_min_y + yfract * (c.plot_max_y - c.plot_min_y),
           yhigh = Math.max(Math.abs(c.plot_min_y), Math.abs(c.plot_max_y)),
-          yres = (yhigh > 1000 ? Math.round(yhigh / 500) : 1),
-          ytrunc = Math.round(yval / yres) * yres,
+          yres = (yhigh > 1000 ? Math.round(yhigh / 500) :
+              (yhigh < 100 ? 0.0001 : 1)),
+          ysign = (yval < 0 ? '-' : ''),
+          ytrunc = Math.abs(Math.round(yval / yres) * yres),
+          yprec = (ytrunc >= 10000 || ytrunc < 0.0001 ?
+              ytrunc.toExponential(1) : ytrunc.toPrecision(3)).substring(0, 5),
+          ystr = (Math.abs(parseFloat(yprec)) === 0 ? '0' : ysign + yprec),
           ylbl = (yfract < 0 || yfract > 1 || c.plot_min_y >= c.plot_max_y ?
-              '' : 'y = ' + VM.sig2Dig(parseFloat(ytrunc.toPrecision(2))));
+              '' : 'y = ' + ystr);
       let n = '';
       if(c.histogram) {
         let vv = [];
@@ -807,16 +812,17 @@ class GUIChartManager extends ChartManager {
   }
   
   editVariable() {
-    // Shows the edit (or rather: format) variable dialog
+    // Show the edit (or rather: format) variable dialog.
     if(this.chart_index >= 0 && this.variable_index >= 0) {
       const cv = MODEL.charts[this.chart_index].variables[this.variable_index];
       document.getElementById('variable-dlg-name').innerHTML = cv.displayName;
       UI.setBox('variable-stacked', cv.stacked);
-      this.variable_modal.element('scale').value = VM.sig4Dig(cv.scale_factor);
+      // Pass TRUE tiny flag to permit very small scaling factors.
+      this.variable_modal.element('scale').value = VM.sig4Dig(cv.scale_factor, true);
       this.variable_modal.element('width').value = VM.sig4Dig(cv.line_width);
       this.variable_modal.element('color').style.backgroundColor = cv.color;
       this.setColorPicker(cv.color);
-      // Show change equation buttons only for equation variables
+      // Show change equation buttons only for equation variables.
       if(cv.object === MODEL.equations_dataset || cv.object instanceof DatasetModifier) {
         this.change_equation_btns.style.display = 'block';
       } else {
@@ -827,7 +833,7 @@ class GUIChartManager extends ChartManager {
   }
   
   showPasteColor() {
-    // Show last copied color (if any) as smaller square next to color box
+    // Show last copied color (if any) as smaller square next to color box.
     if(this.paste_color) {
       const pc = this.variable_modal.element('paste-color');
       pc.style.backgroundColor = this.paste_color;
@@ -836,13 +842,13 @@ class GUIChartManager extends ChartManager {
   }
   
   hidePasteColor() {
-    // Hide paste color box
+    // Hide paste color box.
     this.variable_modal.element('paste-color').style.display = 'none';
   }
   
   copyPasteColor(event) {
     // Store the current color as past color, or set it to the current
-    // paste color if this is defined and the Shift key was pressed
+    // paste color if this is defined and the Shift key was pressed.
     event.stopPropagation();
     const cbox = this.variable_modal.element('color');
     if(event.shiftKey && this.paste_color) {
@@ -896,9 +902,10 @@ class GUIChartManager extends ChartManager {
           cv = c.variables[this.variable_index];
       cv.stacked = UI.boxChecked('variable-stacked');
       cv.scale_factor = s;
-      cv.line_width = w;
+      // Prevent negative or near-zero line width.
+      cv.line_width = Math.max(0.001, w);
       cv.color = this.color_picker.color.hexString;
-      // NOTE: clear the vector so it will be recalculated
+      // NOTE: Clear the vector so it will be recalculated.
       cv.vector.length = 0;
     }
     this.variable_modal.hide();

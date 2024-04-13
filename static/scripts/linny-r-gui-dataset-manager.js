@@ -805,59 +805,60 @@ class GUIDatasetManager extends DatasetManager {
     const
         wild = this.selected_modifier.hasWildcards,
         sel = this.rename_selector_modal.element('name').value,
-        // NOTE: normal dataset selector, so remove all invalid characters
+        // NOTE: Normal dataset selector, so remove all invalid characters.
         clean_sel = sel.replace(/[^a-zA-z0-9\%\+\-\?\*]/g, ''),
         // Keep track of old name
         oldm = this.selected_modifier,
-        // NOTE: addModifier returns existing one if selector not changed
+        // NOTE: addModifier returns existing one if selector not changed.
         m = this.selected_dataset.addModifier(clean_sel);
     // NULL can result when new name is invalid
     if(!m) return;
-    // If selected modifier was the dataset default selector, update it
+    // If selected modifier was the dataset default selector, update it.
     if(oldm.selector === this.selected_dataset.default_selector) {
       this.selected_dataset.default_selector = m.selector;
     }
     MODEL.renameSelectorInExperiments(oldm.selector, clean_sel);
-    // If only case has changed, just update the selector
+    // If only case has changed, just update the selector.
     if(m === oldm) {
       m.selector = clean_sel;
       this.updateDialog();
       this.rename_selector_modal.hide();
       return;
     }
-    // Rest is needed only when a new modifier has been added
+    // Rest is needed only when a new modifier has been added.
     m.expression = oldm.expression;
     if(wild) {
-      // Wildcard selector means: recompile the modifier expression
+      // Wildcard selector means: recompile the modifier expression.
       m.expression.attribute = m.selector;
       m.expression.compile();
     }
     this.deleteModifier();
     this.selected_modifier = m;
-    // Update all chartvariables referencing this dataset + old selector
+    // Update all chartvariables referencing this dataset + old selector.
     const vl = MODEL.datasetVariables;
     let cv_cnt = 0;
     for(let i = 0; i < vl.length; i++) {
+      const v = vl[i];
       if(v.object === this.selected_dataset && v.attribute === oldm.selector) {
         v.attribute = m.selector;
         cv_cnt++;
       }
     }
-    // Also replace old selector in all expressions (count these as well)
+    // Also replace old selector in all expressions (count these as well).
     const xr_cnt = MODEL.replaceAttributeInExpressions(
         oldm.dataset.name + '|' + oldm.selector, m.selector);
-    // Notify modeler of changes (if any)
+    // Notify modeler of changes (if any).
     const msg = [];
     if(cv_cnt) msg.push(pluralS(cv_cnt, ' chart variable'));
     if(xr_cnt) msg.push(pluralS(xr_cnt, ' expression variable'));
     if(msg.length) {
       UI.notify('Updated ' +  msg.join(' and '));
       // Also update these stay-on-top dialogs, as they may display a
-      // variable name for this dataset + modifier
+      // variable name for this dataset + modifier.
       UI.updateControllerDialogs('CDEFJX');
     }
-    // NOTE: update dimensions only if dataset now has 2 or more modifiers
-    // (ignoring those with wildcards)
+    // NOTE: Update dimensions only if dataset now has 2 or more modifiers
+    // (ignoring those with wildcards).
     const sl = this.selected_dataset.plainSelectors;
     if(sl.length > 1) MODEL.expandDimension(sl);
     this.rename_selector_modal.hide();

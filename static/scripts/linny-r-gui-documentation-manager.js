@@ -336,8 +336,14 @@ class DocumentationManager {
         this.markup = (e.comments ? e.comments : '');
         this.editor.value = this.markup;
         this.viewer.innerHTML = this.markdown;
-        this.edit_btn.classList.remove('disab');
-        this.edit_btn.classList.add('enab');
+        if(e.grid && MODEL.solved && MODEL.with_power_flow) {
+          // Show cycle flows instead of comments.
+          const cf = POWER_GRID_MANAGER.allCycleFlows(e);
+          if(cf) this.viewer.innerHTML = cf;
+        } else {
+          this.edit_btn.classList.remove('disab');
+          this.edit_btn.classList.add('enab');
+        }
         // NOTE: Permit documentation of the model by raising the dialog.
         if(this.entity === MODEL) this.dialog.style.zIndex = 101;
       } else if(e instanceof DatasetModifier) {
@@ -354,6 +360,8 @@ class DocumentationManager {
         }
       }
     }
+    // When TEX renderer is visible, also update it.
+    if(TEX_MANAGER.visible) TEX_MANAGER.update(e, shift);
   }
   
   rewrite(str) {

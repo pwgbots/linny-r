@@ -56,6 +56,7 @@ class LinnyRModel {
     this.decimal_comma = CONFIGURATION.decimal_comma;
     // NOTE: Default scale unit list comprises only the primitive base unit
     this.scale_units = {'1': new ScaleUnit('1', '1', '1')};
+    this.power_grids = {};
     this.actors = {};
     this.products = {};
     this.processes = {};
@@ -81,7 +82,7 @@ class LinnyRModel {
     this.ignored_entities = {};
     this.black_box = false;
     this.black_box_entities = {};
-
+    
     // Actor related properties
     this.actor_list = [];
     this.rounds = 1;
@@ -96,6 +97,7 @@ class LinnyRModel {
     this.look_ahead = 0;
     this.grid_pixels = 20;
     this.align_to_grid = true;
+    this.with_power_flow = false;
     this.infer_cost_prices = false;
     this.report_results = false;
     this.show_block_arrows = true;
@@ -277,6 +279,32 @@ class LinnyRModel {
       if(sla !== false) this.look_ahead = sla;
     }
     return ok;
+  }
+  
+  powerGridByID(id) {
+    // Return power grid identified by hex string `id`.
+    if(this.power_grids.hasOwnProperty(id)) return this.power_grids[id];
+    return null;
+  }
+  
+  powerGridByName(n) {
+    // Return power grid identified by name `n`.
+    for(let k in this.power_grids) if(this.power_grids.hasOwnProperty(k)) {
+      const pg = this.power_grids[k];
+      if(ciCompare(pg.name, n) === 0) return pg;
+    }
+    return null;
+  }
+  
+  get powerGridsWithKVL() {
+    // Return list of power grids for which Kirchhoff's voltage law must
+    // be enforced.
+    const pgl = [];
+    for(let k in this.power_grids) if(this.power_grids.hasOwnProperty(k)) {
+      const pg = this.power_grids[k];
+      if(pg.kirchhoff) pgl.push(pg);
+    }
+    return pgl;
   }
   
   noteByID(id) {
@@ -1246,8 +1274,16 @@ class LinnyRModel {
     return VM.UNDEFINED;
   }
   
+  addPowerGrid(id, node=null) {
+    // Add a power grid to the model.
+    let pg = new PowerGrid(id);
+    if(node) pg.initFromXML(node);
+    this.power_grids[id] = pg;
+    return pg;
+  }
+  
   addNote(node=null) {
-    // Add a note to the focal cluster
+    // Add a note to the focal cluster.
     let n = new Note(this.focal_cluster);
     if(node) n.initFromXML(node);
     this.focal_cluster.notes.push(n);
@@ -2667,10 +2703,12 @@ class LinnyRModel {
       this.encrypt = nodeParameterValue(node, 'encrypt') === '1';
       this.decimal_comma = nodeParameterValue(node, 'decimal-comma') === '1';
       this.align_to_grid = nodeParameterValue(node, 'align-to-grid') === '1';
+      this.with_power_flow = nodeParameterValue(node, 'power-flow') === '1';
       this.infer_cost_prices = nodeParameterValue(node, 'cost-prices') === '1';
       this.report_results = nodeParameterValue(node, 'report-results') === '1';
       this.show_block_arrows = nodeParameterValue(node, 'block-arrows') === '1';
-      this.always_diagnose = nodeParameterValue(node, 'diagnose') === '1';
+      // NOTE: Diagnosis option should default to TRUE unless *set* to FALSE.
+      this.always_diagnose = nodeParameterValue(node, 'diagnose') !== '0';
       this.show_notices = nodeParameterValue(node, 'show-notices') === '1';
       this.name = xmlDecoded(nodeContentByTag(node, 'name'));
       this.author = xmlDecoded(nodeContentByTag(node, 'author'));
@@ -2726,6 +2764,16 @@ class LinnyRModel {
           this.addScaleUnit(xmlDecoded(nodeContentByTag(c, 'name')),
               nodeContentByTag(c, 'scalar'),
               xmlDecoded(nodeContentByTag(c, 'base-unit')));
+        }
+      }
+    }
+    // Power grids are not "entities", and can be included "as is"
+    n = childNodeByTag(node, 'powergrids');
+    if(n && n.childNodes) {
+      for(i = 0; i < n.childNodes.length; i++) {
+        c = n.childNodes[i];
+        if(c.nodeName === 'grid') {
+          this.addPowerGrid(nodeContentByTag(c, 'id'), c);
         }
       }
     }
@@ -3017,14 +3065,18 @@ class LinnyRModel {
         '" current="', this.current_time_step,
         '" rounds="', this.rounds,
         '" no-actor-round-flags="', this.actors[UI.nameToID(UI.NO_ACTOR)].round_flags,
+        // NOTE: Add the diagnosis option *explicitly* to differentiate
+        // between older models saved *without* this option, and newer
+        // models having this option switched off. 
+        '" diagnose="', (this.always_diagnose ? '1' : '0'),
         '"'].join('');
     if(this.encrypt) p += ' encrypt="1"';
     if(this.decimal_comma) p += ' decimal-comma="1"';
     if(this.align_to_grid) p += ' align-to-grid="1"';
+    if(this.with_power_flow) p += ' power-flow="1"';
     if(this.infer_cost_prices) p += ' cost-prices="1"';
     if(this.report_results) p += ' report-results="1"';
     if(this.show_block_arrows) p += ' block-arrows="1"';
-    if(this.always_diagnose) p += ' diagnose="1"';
     if(this.show_notices) p += ' show-notices="1"';
     let xml = this.xml_header + ['<model', p, '><name>',  xmlEncoded(this.name),
         '</name><author>', xmlEncoded(this.author),
@@ -3050,7 +3102,11 @@ class LinnyRModel {
     for(obj in this.scale_units) if(this.scale_units.hasOwnProperty(obj)) {
       xml += this.scale_units[obj].asXML;
     }
-    xml += '</scaleunits><actors>';
+    xml += '</scaleunits><powergrids>';
+    for(obj in this.power_grids) if(this.power_grids.hasOwnProperty(obj)) {
+      xml += this.power_grids[obj].asXML;
+    }
+    xml += '</powergrids><actors>';
     for(obj in this.actors) {
       // NOTE: do not to save "(no actor)"
       if(this.actors.hasOwnProperty(obj) && obj != UI.nameToID(UI.NO_ACTOR)) {
@@ -4765,11 +4821,97 @@ class ScaleUnit {
   }
 }
 
+// CLASS PowerGrid
+class PowerGrid {
+  constructor(id) {
+    // NOTE: PowerGrids are uniquely identified by a hexadecimal string.
+    this.id = id;
+    this.name = '';
+    this.comments = '';
+    // Default color is blue (arbitrary choice).
+    this.color = '#0000ff';
+    // Default voltage is 150 kV (arbitrary choice).
+    this.kilovolts = 150;
+    // Default power unit is MW (will be used as unit of grid nodes)
+    this.power_unit = 'MW';
+    this.kirchhoff = true;
+    // Loss approximation can be 0 (no losses), 1 (linear with load),
+    // 2 (quadratic, approximated with two linear tangents) or
+    // 3 (quadratic, approximated with three linear tangents).
+    this.loss_approximation = 0;
+  }
+
+  get type() {
+    return 'Grid';
+  }
+  
+  get displayName() {
+    return this.name;
+  }
+  
+  get voltage() {
+    // Return the voltage in the most compact human-readable notation.
+    const kv = this.kilovolts;
+    if(kv < 0.5) return Math.round(kv * 1000) + '&thinsp;V';
+    if(kv < 10) return kv.toPrecision(2) + '&thinsp;kV';
+    if(kv >= 999.5) return (kv * 0.001).toPrecision(2) + '&thinsp;MV';
+    return Math.round(kv) + '&thinsp;kV';
+  }
+  
+  // NOTE: The functions below are based on Birchfield et al. (2017)
+  // A Metric-Based Validation Process to Assess the Realism of Synthetic
+  // Power Grids. Energies, 10(1233). DOI: 10.3390/en10081233.
+  // Table 3 in this paper lists for 6 voltage levels (115 - 500 kV) the
+  // median of per unit per km reactance, and Table 4 lists for the same
+  // voltage levels the median of X/R ratios.
+  
+  get reactancePerKm() {
+    // Approximate resistance based on reactance per km and voltage.
+    // The curve 28 * (kV ^ -1.9) fits quite well on the Table 3 data.
+    return 28 * Math.pow(this.kilovolts, -1.9);
+  }
+  
+  get resistancePerKm() {
+    // Approximate resistance based on reactance per km and voltage.
+    // The line 0.032 * kV + 1 fits quite well on the Table 4 data.
+    // NOTE: Scaled by 0.003 because approximation gave unrealistic
+    // high losses. This is a "quick fix" for lack of better knowledge.
+    return 0.003 * this.reactancePerKm / (0.032 * this.kilovolts + 1);
+  }
+
+  get asXML() {
+    let p = ` loss-approximation="${this.loss_approximation}"`;
+    if(this.kirchhoff) p += ' kirchhoff="1"';
+    return ['<grid', p, '><id>', this.id,
+        '</id><name>', xmlEncoded(this.name),
+        '</name><notes>', xmlEncoded(this.comments),
+        '</notes><color>', this.color,
+        '</color><kilovolts>', this.kilovolts,
+        '</kilovolts><power-unit>', this.power_unit,
+        '</power-unit></grid>'].join('');
+  }
+  
+  initFromXML(node) {
+    this.loss_approximation = safeStrToInt(
+        nodeParameterValue(node, 'loss-approximation'), 0);
+    this.name = xmlDecoded(nodeContentByTag(node, 'name'));
+    this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
+    this.kirchhoff = nodeParameterValue(node, 'kirchhoff') === '1';
+    this.color = nodeContentByTag(node, 'color');
+    this.kilovolts = safeStrToFloat(nodeContentByTag(node, 'kilovolts'), 150);
+    this.power_unit = nodeContentByTag(node, 'power-unit') || 'MW';
+  }
+  
+} // END of class PowerGrid
+
+
 // CLASS Actor
 class Actor {
   constructor(name) {
     this.name = name;
     this.comments = '';
+    // By default, actors are labeled in formulas with the letter a.
+    this.TEX_id = 'a';
     // Actors have 1 input attribute: W
     this.weight = new Expression(this, 'W', '1');
     // Actors have 3 result attributes: CF, CI and CO
@@ -4823,11 +4965,13 @@ class Actor {
     return ['<actor round-flags="', this.round_flags,
         '"><name>', xmlEncoded(this.name),
         '</name><notes>', xmlEncoded(this.comments),
-        '</notes><weight>', this.weight.asXML,
+        '</notes><tex-id>', this.TEX_id,
+        '</tex-id><weight>', this.weight.asXML,
         '</weight></actor>'].join('');
   }
   
   initFromXML(node) {
+    this.TEX_id = xmlDecoded(nodeContentByTag(node, 'tex-id') || 'a');
     this.weight.text = xmlDecoded(nodeContentByTag(node, 'weight'));
     if(IO_CONTEXT) IO_CONTEXT.rewrite(this.weight);
     this.comments = nodeContentByTag(node, 'notes');
@@ -5451,12 +5595,12 @@ class NodeBox extends ObjectWithXYWH {
   }
   
   get infoLineName() {
-    // Returns display name plus VM variable indices
+    // Return display name plus VM variable indices when debugging.
     let n = this.displayName;
-    // NOTE: Display nothing if entity is "black-boxed"
+    // NOTE: Display nothing if entity is "black-boxed".
     if(n.startsWith(UI.BLACK_BOX)) return '';
     n = `<em>${this.type}:</em> ${n}`;
-    // For clusters, add how many processes and products they contain
+    // For clusters, add how many processes and products they contain.
     if(this instanceof Cluster) {
       let d = '';
       if(this.all_processes) {
@@ -5467,7 +5611,19 @@ class NodeBox extends ObjectWithXYWH {
       }
       if(d) n += `<span class="node-details">${d}</span>`;
     }
-    if(DEBUGGING && MODEL.solved) {
+    if(!MODEL.solved) return n;
+    const g = this.grid;
+    if(g) {
+      const
+          ub = VM.sig4Dig(this.upper_bound.result(MODEL.t)),
+          l = this.length_in_km,
+          x = VM.sig4Dig(g.reactancePerKm * l, true),
+          r = VM.sig4Dig(g.resistancePerKm * l, true),
+          alr = VM.sig4Dig(this.actualLossRate(MODEL.t) * 100, true);
+      n += ` [${g.name}] ${ub} ${g.power_unit}, ${l} km,` +
+       `  x = ${x}, R = ${r}, loss rate = ${alr}%`;
+    }
+    if(DEBUGGING) {
       n += ' [';
       if(this instanceof Process || this instanceof Product) {
         n += this.level_var_index;
@@ -5559,6 +5715,15 @@ class NodeBox extends ObjectWithXYWH {
     // Change this object's name and actor.
     this.actor = MODEL.addActor(actor_name);
     this.name = name;
+    // Ensure that actor cash flow data products have valid properties
+    if(this.name.startsWith('$')) {
+      this.scale_unit = MODEL.currency_unit;
+      this.initial_level.text = '';
+      this.price.text = '';
+      this.is_data = true;
+      this.is_buffer = false;
+      this.integer_level = false;
+    }
     // Update actor list in case some actor name is no longer used.
     MODEL.cleanUpActors();
     MODEL.replaceEntityInExpressions(old_name, this.displayName);
@@ -7338,9 +7503,12 @@ class Node extends NodeBox {
   }
   
   get needsOnOffData() {
-    // Returns TRUE if this node requires a binary ON/OFF variable
+    // Return TRUE if this node requires a binary ON/OFF variable.
     // This means that at least one output link must have the "start-up",
-    // "positive", "zero" or "spinning reserve" multiplier
+    // "positive", "zero", "shut-down", "spinning reserve" or
+    // "first commit" multiplier.
+    // NOTE: As of version 2.0.0, power grid processes also need ON/OFF.
+    if(this.grid) return true;
     for(let i = 0; i < this.outputs.length; i++) {
       if(VM.LM_NEEDING_ON_OFF.indexOf(this.outputs[i].multiplier) >= 0) {
         return true;
@@ -7349,8 +7517,19 @@ class Node extends NodeBox {
     return false;
   }
 
+  get needsIsZeroData() {
+    // Return TRUE if this node requires a binary IS ZERO variable.
+    // This means that at least one output link must have the "zero"
+    // multiplier.
+    for(let i = 0; i < this.outputs.length; i++) {
+      if(this.outputs[i].multiplier === VM.LM_ZERO) return true;
+    }
+    return false;
+  }
+
   get needsStartUpData() {
-    // Returns TRUE iff this node has an output data link for start-up 
+    // Return TRUE iff this node has an output data link for start-up
+    // or first commit.
     for(let i = 0; i < this.outputs.length; i++) {
       const m = this.outputs[i].multiplier;
       if(m === VM.LM_STARTUP || m === VM.LM_FIRST_COMMIT) return true;
@@ -7359,16 +7538,15 @@ class Node extends NodeBox {
   }
   
   get needsShutDownData() {
-    // Returns TRUE iff this node has an output data link for shut-down 
+    // Return TRUE iff this node has an output data link for shut-down. 
     for(let i = 0; i < this.outputs.length; i++) {
-      const m = this.outputs[i].multiplier;
-      if(m === VM.LM_SHUTDOWN) return true;
+      if(this.outputs[i].multiplier === VM.LM_SHUTDOWN) return true;
     }
     return false;
   }
   
   get needsFirstCommitData() {
-    // Returns TRUE iff this node has an output data link for first commit 
+    // Return TRUE iff this node has an output data link for first commit. 
     for(let i = 0; i < this.outputs.length; i++) {
       if(this.outputs[i].multiplier === VM.LM_FIRST_COMMIT) return true;
     }
@@ -7376,7 +7554,7 @@ class Node extends NodeBox {
   }
   
   get linksToFirstCommitDataProduct() {
-    // Returns data product P iff this node has an output link to P, and P has
+    // Return data product P iff this node has an output link to P, and P has
     // an output link for first commit 
     for(let i = 0; i < this.outputs.length; i++) {
       const p = this.outputs[i].to_node;
@@ -7395,7 +7573,12 @@ class Node extends NodeBox {
   }
   
   setPredecessors() {
-    // Recursive function to create list of all nodes that precede this one
+    // Recursive function to create list of all nodes that precede this one.
+    // NOTE: As of version 2.0.0, feedback links are no longer displayed
+    // as such. To permit re-enabling this function, the functional part
+    // of this method has been commented out.
+ 
+/*
     for(let i = 0; i < this.inputs.length; i++) {
       const l = this.inputs[i];
       if(!l.visited) {
@@ -7413,6 +7596,7 @@ class Node extends NodeBox {
         }
       }
     }
+*/
     return this.predecessors;
   }
   
@@ -7557,6 +7741,99 @@ class Node extends NodeBox {
     }
     return nn;
   }
+  
+  get TEXforBinaries() {
+    // Return LaTeX code for formulas that compute binary variables.
+    // In the equations, binary variables are underlined to distinguish
+    // them from (semi-)continuous variables.
+    const
+        NL = '\\\\\n',
+        tex = [NL],
+        x = (this.level_to_zero ? '\\hat{x}' : 'x'),
+        sub = (MODEL.start_period !== MODEL.end_period ?
+            '_{' + this.code + ',t}' : '_' + this.code),
+        sub_1 = '_{' + this.code +
+            (MODEL.start_period !== MODEL.end_period ? ',t-1}' : ',0}');
+    if(this.needsOnOffData) {
+      // Equations to compute OO variable (denoted as u for "up").
+      // (a)  L[t] - LB[t]*OO[t] >= 0
+      tex.push(x + sub, '- LB' + sub, '\\mathbf{u}' + sub, '\\ge 0', NL);
+      // (b)  L[t] - UB[t]*OO[t] <= 0
+      tex.push(x + sub, '- UB' + sub, '\\mathbf{u}' + sub, '\\le 0', NL);
+    }
+    if(this.needsIsZeroData) {
+      // Equation to compute IZ variable (denoted as d for "down").
+      // (c) OO[t] + IZ[t] = 1
+      tex.push('\\mathbf{u}' + sub, '+ \\mathbf{d}' + sub, '= 0', NL);
+      // (d) L[t] + IZ[t] >= LB[t]
+      // NOTE: for semicontinuous variables, use 0 instead of LB[t]
+      tex.push(x + sub, '+ \\mathbf{d}' + sub, '\\ge',
+          (this.level_to_zero ? '0' : 'LB' + sub), NL);
+    }
+    if(this.needsStartUpData) {
+      // Equation to compute start-up variable (denoted as su).
+      // (e) OO[t-1] - OO[t] + SU[t] >= 0
+      tex.push('\\mathbf{u}' + sub_1, '- \\mathbf{u}' + sub, 
+          '+ \\mathbf{su}' + sub, '\\ge 0', NL);
+      // (f) OO[t] - SU[t] >= 0
+      tex.push('\\mathbf{u}' + sub, '- \\mathbf{su}' + sub, '\\ge 0', NL);
+      // (g) OO[t-1] + OO[t] + SU[t] <= 2
+      tex.push('\\mathbf{u}' + sub_1, '+ \\mathbf{u}' + sub,
+          '+ \\mathbf{su}' + sub, '\\le 2', NL);
+    }
+    if(this.needsShutDownData) {
+      // Equation to compute shutdown variable (denoted as sd-circumflex).
+      // (e2) OO[t] - OO[t-1] + SD[t] >= 0
+      tex.push('\\mathbf{u}' + sub, '- \\mathbf{u}' + sub_1, 
+          '+ \\mathbf{sd}' + sub, '\\ge 0', NL);
+      // (f2) OO[t] + SD[t] <= 1
+      tex.push('\\mathbf{u}' + sub, '+ \\mathbf{sd}' + sub, '\\le 1', NL);
+      // (g2) SD[t] - OO[t-1] - OO[t] <= 0
+      tex.push('\\mathbf{sd}' + sub, '- \\mathbf{u}' + sub_1,
+          '- \\mathbf{su}' + sub, '\\le 0', NL);
+    }
+    if(this.needsFirstCommitData) {
+      // Equation to compute first commit variables (denoted as fc).
+      // To detect a first commit, start-ups are counted using an extra
+      // variable SC (denoted as suc) and then similar equations are
+      // added to detect "start-up" for this counter. This means one more
+      // binary SO (denoted as suo for "start-up occurred").
+      // (h)  SC[t] - SC[t-1] - SU[t] = 0
+      tex.push('\\mathbf{suc}' + sub, '- \\mathbf{suc}' + sub_1,
+          '- \\mathbf{su}' + sub, '= 0', NL);
+      // (i)  SC[t] - SO[t] >= 0
+      tex.push('\\mathbf{suc}' + sub, '- \\mathbf{suo}' + sub, '\\ge 0', NL);
+      // (j)  SC[t] - run length * SO[t] <= 0
+      tex.push('\\mathbf{suc}' + sub, '- N\\! \\mathbf{suo}' + sub, '\\le 0', NL);
+      // (k)  SO[t-1] - SO[t] + FC[t] >= 0
+      tex.push('\\mathbf{suo}' + sub_1, '- \\mathbf{suc}' + sub,
+          '+ \\mathbf{fc}' + sub, '\\ge 0', NL);
+      // (l)  SO[t] - FC[t] >= 0
+      tex.push('\\mathbf{suo}' + sub, '- \\mathbf{fc}' + sub, '\\ge 0', NL);
+      // (m)  SO[t-1] + SO[t] + FC[t] <= 2
+      tex.push('\\mathbf{suo}' + sub_1, '+ \\mathbf{suo}' + sub,
+          '+ \\mathbf{fc}' + sub, '\\le 2', NL);      
+    }
+
+    /*
+       To calculate the peak increase values, we need two continuous
+       "chunk variables", i.e., only 1 tableau column per chunk, not 1 for
+       each time step. These variables BPI and CPI will compute the highest
+       value (for all t in the block (B) and for the chunk (C)) of the
+       difference L[t] - block peak (BP) of previous block. This requires
+       one equation for every t = 1, ..., block length:
+       (n) L[t] - BPI[b] <= BP[b-1]  (where b denotes the block number)
+       plus one equation for every t = block length + 1 to chunk length:
+       (o) L[t] - BPI[b] - CPI[b] <= BP[b-1]
+       This ensures that CPI is the *additional* increase in the look-ahead 
+       Then use BPI[b] in first time step if block, and CPI[b] at first
+       time step of the look-ahead period to compute the actual flow for
+       the "peak increase" links. For all other time steps this AF equals 0.
+
+    */
+
+    return tex.join(' ');
+  }
 
 } // END of class Node
   
@@ -7565,6 +7842,8 @@ class Node extends NodeBox {
 class Process extends Node {
   constructor(cluster, name, actor) {
     super(cluster, name, actor);
+    // By default, processes have the letter p, products the letter q.
+    this.TEX_id = 'p';
     // NOTE: A process can change level once in PACE steps (default 1/1).
     // This means that for a simulation perio of N time steps, this process will
     // have a vector of only N / PACE decision variables (plus associated
@@ -7580,6 +7859,11 @@ class Process extends Node {
     this.level_to_zero = false;
     // Process node can be collapsed to take up less space in the diagram
     this.collapsed = false;
+    // Process can represent a power grid element, in which case it needs
+    // properties for calculating power flow.
+    this.power_grid = null;
+    this.length_in_km = 0;
+    this.reactance = 0;
     // Processes have 3 more result attributes: CP, CF, CI and CO
     this.cash_flow = [];
     this.cash_in = [];
@@ -7598,6 +7882,36 @@ class Process extends Node {
 
   get typeLetter() {
     return 'P';
+  }
+  
+  get grid() {
+    if(MODEL.with_power_flow) return this.power_grid;
+    return null;
+  }
+  
+  get gridEdge() {
+    // Return "FROM node -> TO node" as string if this is a grid process.
+    const g = this.grid;
+    if(!g) return '';
+    let fn = null,
+        tn = null;
+    for(let i = 0; i < this.inputs.length; i++) {
+      const l = this.inputs[i];
+      if(l.multiplier == VM.LM_LEVEL) {
+        fn = l.from_node;
+        break;
+      }
+    }
+    for(let i = 0; i < this.outputs.length; i++) {
+      const l = this.outputs[i];
+      if(l.multiplier == VM.LM_LEVEL && !l.to_node.is_data) {
+        tn = l.from_node;
+        break;
+      }
+    }
+    fn = (fn ? fn.displayName : '???');
+    tn = (tn ? tn.displayName : '???');
+    return `${fn} ${UI.LINK_ARROW} ${tn}`;
   }
 
   get attributes() {
@@ -7649,20 +7963,25 @@ class Process extends Node {
     if(this.integer_level) p += ' integer-level="1"';
     if(this.level_to_zero) p += ' level-to-zero="1"';
     if(this.equal_bounds) p += ' equal-bounds="1"';
+    // NOTE: Save power grid related properties even when grid element
+    // is not checked (so properties re-appear when re-checked).
     return ['<process', p, '><name>',  xmlEncoded(n),
         '</name><owner>', xmlEncoded(this.actor.name),
         '</owner><notes>', cmnts,
         '</notes><upper-bound>', this.upper_bound.asXML,
         '</upper-bound><lower-bound>', this.lower_bound.asXML,
         '</lower-bound><initial-level>', this.initial_level.asXML,
-        '</initial-level><pace>', this.pace_expression.asXML,
-        '</pace><x-coord>', x,
+        '</initial-level><tex-id>', this.TEX_id,
+        '</tex-id><pace>', this.pace_expression.asXML,
+        '</pace><grid-id>', (this.power_grid ? this.power_grid.id : ''),
+        '</grid-id><length>', this.length_in_km,
+        '</length><x-coord>', x,
         '</x-coord><y-coord>', y,
         '</y-coord></process>'].join('');
   }
 
   initFromXML(node) {
-    // NOTE: do not set code while importing, as new code must be assigned!
+    // NOTE: Do not set code while importing, as new code must be assigned!
     if(!IO_CONTEXT) this.code = nodeParameterValue(node, 'code');
     this.collapsed = nodeParameterValue(node, 'collapsed') === '1';
     this.integer_level = nodeParameterValue(node, 'integer-level') === '1';
@@ -7672,23 +7991,28 @@ class Process extends Node {
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     this.lower_bound.text = xmlDecoded(nodeContentByTag(node, 'lower-bound'));
     this.upper_bound.text = xmlDecoded(nodeContentByTag(node, 'upper-bound'));
-    // legacy models can have LB and UB hexadecimal data strings
+    // legacy models can have LB and UB hexadecimal data strings.
     this.convertLegacyBoundData(nodeContentByTag(node, 'lower-bound-data'),
         nodeContentByTag(node, 'upper-bound-data'));
     if(nodeParameterValue(node, 'reversible') === '1') {
-      // For legacy "reversible" processes, the LB is set to -UB 
+      // For legacy "reversible" processes, the LB is set to -UB.
       this.lower_bound.text = '-' + this.upper_bound.text;
     }
-    // NOTE: legacy models have no initial level field => default to 0 
+    // NOTE: Legacy models have no initial level field => default to 0.
     const ilt = xmlDecoded(nodeContentByTag(node, 'initial-level'));
     this.initial_level.text = ilt || '0';
-    // NOTE: until version 1.0.16, pace was stored as a node parameter; 
+    // NOTE: Until version 1.0.16, pace was stored as a node parameter. 
     const pace_text = nodeParameterValue(node, 'pace') + 
         xmlDecoded(nodeContentByTag(node, 'pace'));
-    // NOTE: legacy models have no pace field => default to 1 
+    // NOTE: Legacy models have no pace field => default to 1.
     this.pace_expression.text = pace_text || '1';
-    // NOTE: immediately evaluate pace expression as integer
+    // NOTE: Immediately evaluate pace expression as integer.
     this.pace = Math.max(1, Math.floor(this.pace_expression.result(1)));
+    this.TEX_id = xmlDecoded(nodeContentByTag(node, 'tex-id') || 'p');
+    this.power_grid = MODEL.powerGridByID(nodeContentByTag(node, 'grid-id'));
+    this.length_in_km = safeStrToFloat(nodeContentByTag(node, 'length'), 0);
+    // NOTE: Reactance may be an empty string to indicate "infer from length".
+    this.reactance = nodeContentByTag(node, 'reactance');
     this.x = safeStrToInt(nodeContentByTag(node, 'x-coord'));
     this.y = safeStrToInt(nodeContentByTag(node, 'y-coord'));
     if(IO_CONTEXT) {
@@ -7784,6 +8108,50 @@ class Process extends Node {
     return (ub.isStatic ? ub.result(0) : VM.PLUS_INFINITY);
   }
   
+  lossRates(t) {
+    // Returns a list of loss rates for the slope variables associated
+    // with this process at time t.
+    // NOTE: Rates depend on upper bound, which may be dynamic.
+    // Source: section 4.4 of Neumann et al. (2022) Assessments of linear
+    // power flow and transmission loss approximations in coordinated
+    // capacity expansion problem. Applied Energy, 314: 118859.
+    // https://doi.org/10.1016/j.apenergy.2022.118859
+    if(!(this.grid && this.grid.loss_approximation)) return [0];
+    let ub = this.upper_bound.result(t);
+    if(ub >= VM.PLUS_INFINITY) {
+      // When UB = +INF, this is interpreted as "unlimited", which is
+      // implemented as 99999 grid power units.
+      ub = VM.UNLIMITED_POWER_FLOW;
+    }
+    const
+        la = this.grid.loss_approximation,
+        // Let m be the highest per unit loss. 
+        m = ub * this.grid.resistancePerKm * this.length_in_km;
+    // Linear loss approximation: 1 slope from 0 to m.
+    if(la === 1) return [m];
+    // 2-slope approximation of quadratic curve.
+    if(la === 2) return [m * 0.25, m * 0.75];
+    // 3-slope approximation of quadratic curve.
+    return [m / 9, m * 3/9, m * 5/9];
+  }
+  
+  actualLossRate(t) {
+    // Return the actual loss rate, which depends on the power flow
+    // and the max. power flow (process UB).
+    const g = this.grid;
+    if(!g) return 0;
+    const
+        lr = this.lossRates(t),
+        apl = Math.abs(this.actualLevel(t)),
+        ub = this.upper_bound.result(t),
+        la = g.loss_approximation,
+        // Prevent division by 0.
+        slope = (ub < VM.NEAR_ZERO ? 0 :
+            // NOTE: Index may exceed # slopes - 1 when level = UB.
+            Math.min(la - 1, Math.floor(apl * la / ub)));
+    return lr[slope];
+  }
+  
   copyPropertiesFrom(p) {
     // Set properties to be identical to those of process `p`
     this.x = p.x;
@@ -7797,6 +8165,7 @@ class Process extends Node {
     this.equal_bounds = p.equal_bounds;
     this.level_to_zero = p.level_to_zero;
     this.collapsed = p.collapsed;
+    this.TEX_id = p.TEX_id;
   }
 
   differences(p) {
@@ -7809,6 +8178,32 @@ class Process extends Node {
     if(Object.keys(d).length > 0) return d;
     return null;
   }
+  
+  get TEXcode() {
+    // Return LaTeX code for mathematical formula of constraints defined
+    // by this process.
+    const
+        NL = '\\\\\n',
+        tex = [NL],
+        sub = (MODEL.start_period !== MODEL.end_period ?
+            '_{' + this.TEX_id + ',t}' : '_' + this.TEX_id),
+        lb = (this.lower_bound.defined ? 'LB' + sub + ' \\le' : ''),
+        ub = (this.upper_bound.defined ? '\\le UB' + sub : '');
+    // Integer constraint if applicable.
+    if(this.integer_level) tex.push('x' + sub, '\\in \\mathbb{Z}', NL);
+    // Bound constraints...
+    if(lb && this.equal_bounds) {
+      tex.push('x' + sub, '= LB' + sub);      
+    } else if(lb || ub) {
+      tex.push(lb, 'x' + sub, ub);
+    }
+    // ... with semi-continuity if applicable. 
+    if(lb && this.level_to_zero) tex.push('\\vee x' + sub, '= 0');
+    tex.push(NL);
+    // Add equations for associated binary variables.
+    tex.push(this.TEXforBinaries);
+    return tex.join(' ');
+  }
 
 } // END of class Process
 
@@ -7818,6 +8213,8 @@ class Product extends Node {
   constructor(cluster, name, actor) {
     super(cluster, name, actor);
     this.scale_unit = MODEL.default_unit;
+    // By default, processes have the letter p, products the letter q.
+    this.TEX_id = 'p';
     // For products, the default bounds are [0, 0], and modeler-defined bounds
     // typically are equal
     this.equal_bounds = true;
@@ -7854,6 +8251,10 @@ class Product extends Node {
   
   get typeLetter() {
     return 'Q';
+  }
+  
+  get grid() {
+    return null;
   }
   
   get attributes() {
@@ -8113,7 +8514,8 @@ class Product extends Node {
       '</lower-bound><price>', this.price.asXML,
       '</price><x-coord>', x,
       '</x-coord><y-coord>', y,
-      '</y-coord></product>'].join('');
+      '</y-coord><tex-id>', this.TEX_id,
+      '</tex-id></product>'].join('');
     return xml;
   }
 
@@ -8132,6 +8534,7 @@ class Product extends Node {
         nodeParameterValue(node, 'hidden')) === '1';
     this.scale_unit = MODEL.addScaleUnit(
         xmlDecoded(nodeContentByTag(node, 'unit')));
+    this.TEX_id = xmlDecoded(nodeContentByTag(node, 'tex-id') || 'q');
     // Legacy models have tag "profit" instead of "price"
     let pp = nodeContentByTag(node, 'price');
     if(!pp) pp = nodeContentByTag(node, 'profit');
@@ -8295,6 +8698,7 @@ class Product extends Node {
     this.no_slack = p.no_slack;
     this.initial_level.text = p.initial_level.text;
     this.integer_level = p.integer_level;
+    this.TEX_id = p.TEX_id;
     // NOTE: do not copy the `no_links` property, nor the import/export status
   }
 
@@ -8305,6 +8709,70 @@ class Product extends Node {
     return null;
   }
 
+  get TEXcode() {
+    // Return LaTeX code for mathematical formula of constraints defined
+    // by this product.
+    const
+        NL = '\\\\\n',
+        tex = [NL],
+        x = (this.level_to_zero ? '\\hat{x}' : 'x'),
+        sub = (MODEL.start_period !== MODEL.end_period ?
+            '_{' + this.TEX_id + ',t}' : '_' + this.TEX_id),
+        param = (x, p) => {
+            if(!x.defined) return '';
+            const v = safeStrToFloat(x.text, p + sub);
+            if(typeof v === 'number') return VM.sig4Dig(v);
+            return v;
+          };
+    // Integer constraint if applicable.
+    if(this.integer_level) tex.push(x + sub, '\\in \\mathbb{Z}', NL);
+    // Bounds can be explicit...
+    let lb = param(this.lower_bound, 'LB'),
+        ub = param(this.upper_bound, 'UB');
+    if(lb && this.equal_bounds) ub = lb;
+    // ... or implicit.
+    if(!lb && !this.isSourceNode) lb = '0';
+    if(!ub && !this.isSinkNode) ub = '0';
+    // Add the bound constraints.
+    if(lb && ub) {
+      if(lb === ub) {
+        tex.push(x + sub, '=', lb, NL);
+      } else {
+        tex.push(lb, '\\le ' + x + sub, '\\le', ub, NL);
+      }
+    } else if(lb) {
+      tex.push(x + sub, '\\ge', lb, NL);
+    } else if(ub) {
+      tex.push(x + sub, '\\le', ub, NL);      
+    }
+    // Add the "balance" constraint for links.
+    tex.push(x + sub, '=');
+    if(this.is_buffer) {
+      // Insert X[t-1]
+      tex.push(x + '_{' + this.code +
+            (MODEL.start_period !== MODEL.end_period ? ',t-1}' : ',0}'));
+    }
+    let first = true;
+    for(let i = 0; i < this.inputs.length; i++) {
+      let ltex = this.inputs[i].TEXcode.trim();
+      if(!first && !ltex.startsWith('-')) tex.push('+');
+      tex.push(ltex);
+      first = false;
+    }
+    for(let i = 0; i < this.outputs.length; i++) {
+      let ltex = this.outputs[i].TEXcode.trim();
+      if(ltex.trim().startsWith('-')) {
+        ltex = ltex.substring(1);
+        if(!first) {
+          ltex = '+ ' + ltex;
+          first = false;
+        }
+      }
+      tex.push(ltex);
+    }
+    return tex.join(' ');
+  }
+  
 } // END of class Product
 
 
@@ -8515,6 +8983,8 @@ class Link {
   actualDelay(t) {
     // Scale the delay expression value of this link to a discrete number
     // of time steps on the model time scale.
+    // NOTE: For links from grid processes, delays are ignored.
+    if(this.from_node.grid) return 0;
     let d = Math.floor(VM.SIG_DIF_FROM_ZERO + this.flow_delay.result(t));
     // NOTE: Negative values are permitted. This might invalidate cost
     // price calculation -- to be checked!!
@@ -8550,6 +9020,63 @@ class Link {
         (this.to_node instanceof Process ? fc.containsProcess(this.to_node) :
             fc.containsProduct(this.to_node))) return true;
     return false;
+  }
+  
+  get TEXcode() {
+    // Return LaTeX code for the term for this link in the formula
+    // for its TO node if this is a product. The TEX routines for
+    // products will take care of the sign of this term.
+    const
+        dyn = MODEL.start_period !== MODEL.end_period,
+        x = (this.from_node.level_to_zero ? '\\hat(x)' : 'x'),
+        fsub = (dyn ?
+            '_{' + this.from_node.TEX_id + ',t}' :
+            '_' + this.from_node.TEX_id),
+        fsub_i = fsub.replace(',t}', ',i}'),
+        rsub = (dyn ?
+            '_{' + this.from_node.TEX_id +
+            ' \\rightarrow ' + this.to_node.TEX_id + ',t}' :
+            '_' + this.from_node.TEX_id),
+        param = (x, p, sub) => {
+            if(!x.defined) return '';
+            const v = safeStrToFloat(x.text, p + sub);
+            if(typeof v === 'number') return (v === 1 ? '' :
+                (v === -1 ? '-' : VM.sig4Dig(v)));
+            return v;
+          },
+        r = param(this.relative_rate, 'R', rsub),
+        d = param(this.flow_delay, '\\delta', rsub),
+        dn = safeStrToInt(d, '?'),
+        d_1 = (!d || typeof dn === 'number' ? dn + 1 : d + '+1');
+    if(this.multiplier === VM.LM_LEVEL) {
+      return r + ' ' + x + fsub;
+    } else if(this.multiplier === VM.LM_THROUGHPUT) {
+      return 'THR';
+    } else if(this.multiplier === VM.LM_INCREASE) {
+      return 'INC';
+    } else if(this.multiplier === VM.LM_SUM) {
+      if(d) return r + '\\sum_{i=t-' + d + '}^{t}{' + x + fsub_i + '}';
+      return x + fsub;
+    } else if(this.multiplier === VM.LM_MEAN) {
+      if(d) return r + '{1 \\over {' + d_1 + '}} \sum_{i=t-' +
+          d + '}^{t}{' + x + fsub_i + '}';
+      return x + fsub;
+    } else if(this.multiplier === VM.LM_STARTUP) {
+      return r + ' \\mathbf{su}' + fsub;
+    } else if(this.multiplier === VM.LM_POSITIVE) {
+      return r + '\\mathbf{u}' + fsub;
+    } else if(this.multiplier === VM.LM_ZERO) {
+      return r + '\\mathbf{d}' + fsub;    
+    } else if(this.multiplier === VM.LM_SPINNING_RESERVE) {
+      return 'SPIN';
+    } else if(this.multiplier === VM.LM_FIRST_COMMIT) {
+      return r + '\\mathbf{fc}' + fsub;    
+    } else if(this.multiplier === VM.LM_SHUTDOWN) {
+      return r + '\\mathbf{sd}' + fsub;    
+    } else if(this.multiplier === VM.LM_PEAK_INC) {
+      return 'PEAK';
+    }
+    return 'Unknown link multiplier: ' + this.multiplier;
   }
 
   // NOTE: links do not draw themselves; they are visualized by Arrow objects
@@ -9270,7 +9797,8 @@ class ChartVariable {
     // the Linny-R entity and its attribute, followed by its scale factor
     // unless it equals 1 (no scaling).
     const sf = (this.scale_factor === 1 ? '' :
-        ` (x${VM.sig4Dig(this.scale_factor)})`);
+        // NOTE: Pass tiny = TRUE to permit very small scaling factors.
+        ` (x${VM.sig4Dig(this.scale_factor, true)})`);
     // Display name of equation is just the equations dataset selector. 
     if(this.object instanceof DatasetModifier) {
       let eqn = this.object.selector;
@@ -9323,9 +9851,9 @@ class ChartVariable {
             ` wildcard-index="${this.wildcard_index}"` : ''),
         ` sorted="${this.sorted}"`,
         '><object-id>', xmlEncoded(id),
-        '</object-id><attribute>', this.attribute,
+        '</object-id><attribute>', xmlEncoded(this.attribute),
         '</attribute><color>', this.color,
-        '</color><scale-factor>', VM.sig4Dig(this.scale_factor),
+        '</color><scale-factor>', VM.sig4Dig(this.scale_factor, true),
         '</scale-factor><line-width>', VM.sig4Dig(this.line_width),
         '</line-width></chart-variable>'].join('');
     return xml;
@@ -9371,7 +9899,7 @@ class ChartVariable {
     this.wildcard_index = (wci ? parseInt(wci) : false);
     this.setProperties(
         obj,
-        nodeContentByTag(node, 'attribute'),
+        xmlDecoded(nodeContentByTag(node, 'attribute')),
         nodeParameterValue(node, 'stacked') === '1',
         nodeContentByTag(node, 'color'),
         safeStrToFloat(nodeContentByTag(node, 'scale-factor')),
@@ -9826,7 +10354,7 @@ class Chart {
   }
   
   timeScaleAsString(s) {
-    // Returns number `s` (in hours) as string with most appropriate time unit
+    // Return number `s` (in hours) as string with most appropriate time unit.
     if(s < 1/60) return VM.sig2Dig(s * 3600) + 's';
     if(s < 1) return VM.sig2Dig(s * 60) + 'm';
     if(s < 24) return VM.sig2Dig(s) + 'h';
@@ -10292,7 +10820,7 @@ class Chart {
         this.plot_max_y = maxy;
         y = miny;
         const labels = [];
-        while(y <= maxy) {
+        while(y - maxy <= VM.NEAR_ZERO) {
           // NOTE: Large values having exponents will be "neat" numbers,
           // so then display fewer decimals, as these will be zeroes.
           const v = (Math.abs(y) > 1e5 ? VM.sig2Dig(y) : VM.sig4Dig(y));

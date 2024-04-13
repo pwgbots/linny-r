@@ -49,8 +49,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 -->
-
   <link rel="shortcut icon" type="image/png" href="images/icon.png">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
+        integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV"
+        crossorigin="anonymous">
+  <!-- The loading of KaTeX is deferred to speed up page rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"
+          integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8"
+          crossorigin="anonymous"></script>
   <!-- NOTE: do not display the page until after software update check -->
   <style>body { display: none; }</style>
   <script>
@@ -83,6 +90,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       SENSITIVITY_ANALYSIS = null,
       CONSTRAINT_EDITOR = null,
       DOCUMENTATION_MANAGER = null,
+      TEX_MANAGER = null,
       RECEIVER = null,
       REPOSITORY_BROWSER = null,
       // Stack for undo/redo operations
@@ -125,11 +133,13 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             '-gui-paper', '-gui-controller', '-gui-monitor',
             '-gui-file-manager', '-gui-expression-editor',
             '-gui-model-autosaver', '-gui-scale-unit-manager',
+            '-gui-power-grid-manager',
             '-gui-actor-manager', '-gui-constraint-editor',
             '-gui-repository-browser', '-gui-dataset-manager',
             '-gui-equation-manager', '-gui-chart-manager',
             '-gui-sensitivity-analysis', '-gui-experiment-manager',
-            '-gui-documentation-manager', '-gui-finder', '-gui-receiver',
+            '-gui-documentation-manager', '-gui-tex-manager',
+            '-gui-finder', '-gui-receiver',
             '-gui-undo-redo', '-vm', '-utils'], t);
       }
     }
@@ -209,6 +219,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       X_EDIT = new ExpressionEditor();
       ACTOR_MANAGER = new ActorManager();
       SCALE_UNIT_MANAGER = new ScaleUnitManager();
+      POWER_GRID_MANAGER = new PowerGridManager();
       EQUATION_MANAGER = new EquationManager();
       FINDER = new Finder();
       CONSTRAINT_EDITOR = new ConstraintEditor();  
@@ -221,6 +232,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       EXPERIMENT_MANAGER = new GUIExperimentManager();
       MONITOR = new GUIMonitor();
       RECEIVER = new GUIReceiver();
+      TEX_MANAGER = new TEXManager();
       // Check for software updates only when running on local server
       // NOTE: do this *after* GUI elements have been created, as the
       // updater uses a dialog
@@ -280,6 +292,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
            title="Listen for commands from local host (Ctrl-H)">
       <img id="documentation-btn" class="btn enab" src="images/info.png"
            title="View information and documentation (Ctrl-I)">
+      <img id="tex-btn" class="btn enab" src="images/tex.png"
+           title="View mathematical formula for node under cursor">
     </div>
     <!-- if diagram is not the TOP cluster, show a button to move up to the parent cluster -->
     <div id="focal-cluster">
@@ -639,6 +653,16 @@ and move the cursor over the status bar">
         </tr>
         <tr>
           <td style="padding:0px">
+            <div id="settings-power" class="box clear"></div>
+          </td>
+          <td>
+            <span style="padding-bottom:4px">Support power grid options</span>
+            <img id="settings-power-btn" class="sbtn" src="images/power.png"
+                 title="View/edit power grid settings">
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0px">
             <div id="settings-cost-prices" class="box clear"></div>
           </td>
           <td style="padding-bottom:4px">Infer and display cost prices</td>
@@ -714,6 +738,91 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
           </td>
           <td title="Base unit (optional)">
             <input id="new-scale-unit-base" type="text" list="units-data" autocomplete="off">
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- the POWER GRIDS dialog allows viewing/editing power grids -->
+  <div id="power-grids-modal" class="modal">
+    <div id="power-grids-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Power grids
+        <img class="close-btn" src="images/close.png">
+      </div>
+      <div id="power-grids-buttons">
+        <img id="power-grids-new-btn" class="btn enab" src="images/new.png"
+             title="New power grid">
+        <img id="power-grids-edit-btn" class="btn disab" src="images/edit.png"
+             title="Edit selected power grid">
+        <img id="power-grids-delete-btn" class="btn disab" src="images/delete.png"
+             title="Delete selected power grid">
+      </div>
+      <div id="power-grids-scroll-area">
+        <table id="power-grids-table">
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- the ADD POWER GRID dialog prompts for a new power grid -->
+  <div id="new-power-grid-modal" class="modal">
+    <div id="new-power-grid-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="new-power-grid-action" >Define new</span> power grid
+        <img class="cancel-btn" src="images/cancel.png"">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table style="margin: auto">
+        <tr>
+          <td colspan="2">Name:</td>
+          <td>
+            <input id="new-power-grid-name" type="text" autocomplete="off">
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2">
+            Voltage:
+          </td>
+          <td>
+            <input id="new-power-grid-voltage" type="text" autocomplete="off">
+            kV
+            <span style="margin-left: 40px">Color:</span>
+            <input id="new-power-grid-color" type="color">
+          </td>
+        </tr>
+        <tr title="Unit of the level of power grid processes.
+NOTE: Products directly linked to such processes should have a proportional unit.">
+          <td colspan="3">
+            Power unit:
+            <select id="new-power-grid-unit">
+              <option value="W">watt (W)</option>
+              <option value="kW">kilowatt (kW)</option>
+              <option value="MW">megawatt (MW)</option>
+              <option value="GW">gigawatt (GW)</option>
+            </select>
+          </td>
+        </tr>
+        <tr title="When checked, Kirchhoff's voltage law will be observed">
+          <td style="padding: 0px; margin-bottom: 1px; width: 20px">
+            <div id="grid-kirchhoff" class="box clear"></div>
+          </td>
+          <td colspan="2" style="padding-bottom:4px">
+            Add power flow constraints
+          </td>
+        </tr>
+        <tr title="Power loss is computed by approximating rP&sup2;">
+          <td colspan="2">
+            Losses:
+          </td>
+          <td>
+            <select id="new-power-grid-losses">
+              <option value="0">Disregard</option>
+              <option value="1">Proportional with load</option>
+              <option value="2">Piecewise linear (2 slopes)</option>
+              <option value="3">Piecewise linear (3 slopes)</option>
+            </select>
           </td>
         </tr>
       </table>
@@ -1439,6 +1548,27 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
         <div id="process-collapsed" class="box clear"></div>
         <div id="process-collapsed-lbl">Display as small rectangle</div>
       </div>
+      <div id="process-grid-plate" class="no-grid-plate"></div>
+      <div id="process-grid-plate-menu"></div>
+      <div id="process-grid-overlay" hidden="hidden">
+        <img id="process-negated" src="images/eq-negated.png">
+        <div id="process-negated-msg">
+          will be set to minus upper bound
+        </div>
+        <div id="process-grid-msg">
+          When marked as grid element, lower bound, initial level,
+          integer constraint, shut-down and level change frequency data
+          are preserved but ignored.
+        </div>
+        <div id="process-length-div">
+          Length of line or cable:
+          <input id="process-length" type="text" autocomplete="off">
+          km
+        </div>
+      </div>
+      <input id="process-tex-id" type="text"
+             title="TEX code to identify this process in formulas"
+             autocomplete="off" hidden="hidden">
     </div>
   </div>
 
@@ -1509,6 +1639,9 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
         <div id="product-no-links" class="box clear"></div>
         <div id="product-no-links-lbl">Hide related links</div>
       </div>
+      <input id="product-tex-id" type="text"
+             title="TEX code to identify this product in formulas"
+             autocomplete="off" hidden="hidden">
       <div id="product-io" title="Click to set/unset as model parameter">
         &#10063;
         <div id="product-import">&darr;</div>
@@ -2884,6 +3017,32 @@ where X can be one or several of these letters: ABCDELPQ">
       <div id="monitor-progress-bar"></div>
     </div>
     <div id="monitor-resize" class="resizer"></div>
+  </div>
+  
+  <!-- the TEX dialog shows mathematical equations for nodes -->
+  <div id="tex-dlg" class="inp-dlg">
+    <div id="tex-hdr" class="dragger dlg-title">Mathematical formulas
+      <img id="tex-close-btn" class="close-btn" src="images/close.png">
+    </div>
+    <div id="tex-entity"></div>
+    <div id="tex-tabs" class="tabs">
+      <div id="tex-formula-tab" class="tab sel-tab"
+           title="Mathematical formula">
+        Formula
+      </div>
+      <div id="tex-code-tab" class="tab"
+           title="Formula in TEX syntax">
+        TEX code
+      </div>
+      <span style="margin-left: 20px; font-style: italic; color: purple">
+        Work in progress!
+      </span>
+    </div>
+    <div id="tex-formula"></div>
+    <textarea id="tex-code" autocomplete="off" autocorrect="off"
+        autocapitalize="off" spellcheck="false" hidden="hidden"
+        readonly="true"></textarea>
+    <div id="tex-resize" class="resizer"></div>
   </div>
   
   <!-- the CHANNEL dialog prompts for two paths: channel and call-back -->

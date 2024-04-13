@@ -168,8 +168,8 @@ function uniformDecimals(data) {
     if(isNaN(f)) {
       data[i] = '\u26A0'; // Unicode warning sign
     } else if(maxe > 0) {
-    // Convert ALL numbers to exponential notation with one decimal (1.3e7)
-      const v = f.toExponential(1);
+    // Convert ALL numbers to exponential notation with two decimals (1.23e+7)
+      const v = f.toExponential(2);
       ss = v.split('e');
       x = ss[1];
       if(x.length < maxe) {

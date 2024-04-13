@@ -947,6 +947,157 @@ img.inline-cancel-btn {
   border-top: 1px solid Silver;
 }
 
+/* styles for the NEW POWER GRID dialog */
+#new-power-grid-modal {
+  z-index: 115; /* on top of the POWER GRIDS modal */
+}
+
+#new-power-grid-dlg {
+  width: 225px;
+  height: min-content;
+  max-height: 450px;
+}
+
+#new-power-grid-name {
+  width: 170px;
+}
+
+#new-power-grid-voltage {
+  width: 45px;
+}
+
+#new-power-grid-color {
+  display: inline-block;
+  width: 24px;
+  height: 22px;
+}
+
+#new-power-grid-unit {
+  font-size: 12px;
+  margin-left: 3px;
+}
+
+#new-power-grid-losses {
+  font-size: 12px;
+}
+
+/* styles for the POWER GRIDS dialog */
+#power-grids-modal {
+  z-index: 110; /* on top of the SETTINGS dialog */
+}
+
+#power-grids-dlg {
+  width: 280px;
+  height: min-content;
+  max-height: 250px;
+}
+
+#power-grids-buttons > img.btn {
+  height: 20px;
+  width: 20px;
+}
+
+#power-grids-scroll-area {
+  margin: 2px;
+  width: calc(100% - 4px);
+  max-height: 250px;
+  overflow-y: auto;
+  border-top: 1px solid Silver;
+}
+
+div.menu-plate,
+div.no-grid-plate,
+div.grid-kV-plate {
+  display: inline-block;
+  height: 17px;
+  min-width: 30px;
+  color: white;
+  text-shadow: 1px 1px 1px black;  
+  background-color: #0000ff;
+  font-size: 9px;
+  text-align: center;
+  padding: 1px;
+  padding-bottom: 0px;
+  border-radius: 3px;
+  margin-right: 3px;
+}
+
+div.no-grid-plate {
+  color: gray;
+  border: 1px solid gray !important;
+  box-shadow: gray 0px 0px 3px 1px inset;
+  margin: 1px !important;
+  padding: 0px !important;
+  text-shadow: none;
+  background-color: #f4f0f2 !important;
+  font-size: 10px;
+  height: 16px;
+  max-height: 17px !important;
+}
+
+div.menu-plate {
+  width: calc(100% - 4px);
+  margin: 1px;
+  border: 1px solid silver;
+  padding-top: 3px;
+  max-height: 14px;
+}
+
+div.menu-plate:hover {
+  border: 1px solid black;
+  box-shadow: black 0px 0px 1px 2px;
+}
+
+div.grid-watts {
+  display: inline-block;
+  vertical-align: middle;
+  height: 15px;
+  min-width: 18px;
+  color: gray;
+  border: 1px solid #b8b8b8;
+  background-color: #f0f0f0;
+  font-size: 9px;
+  text-align: center;
+  padding: 1px;
+  padding-bottom: 0px;
+  margin-right: 3px;  
+}
+
+div.grid-kcl-symbol {
+  display: inline-block;
+  height: 17px;
+  font-size: 19px;
+  color: #0000a0;
+  text-shadow: 0px 0px 2px #07f0f0;
+  margin-right: 3px;
+  vertical-align: top;
+}
+
+div.grid-loss-symbol {
+  background-color: #202020;
+  color: white;
+  display: inline-block;
+  vertical-align: middle;
+  font-size: 12px;
+  padding-left: 2px;
+  padding-right: 2px;
+  border-radius: 3px;
+  margin-right: 3px;
+}
+
+table.power-flow th {
+  text-align: left;
+}
+
+table.power-flow td:not(:first-child) {
+  text-align: right;
+}
+
+table.power-flow th:not(:first-child) {
+  text-align: right;
+  min-width: 40px;
+}
+
 /* styles for the MODEL SETTINGS dialog */
 #settings-dlg {
   width: min-content;
@@ -965,6 +1116,17 @@ img.inline-cancel-btn {
 #settings-solver-prefs-btn:hover, 
 #settings-scale-units-btn:hover {
   filter: brightness(200%);
+}
+
+#settings-power-btn {
+  margin-left: 0px;
+  margin-right: 7px;
+  margin-top: -3px;
+  cursor: pointer;
+}
+
+#settings-power-btn:hover {
+  filter: brightness(160%);
 }
 
 #password-dlg {
@@ -1460,6 +1622,78 @@ td.export {
   width: 65px;
 }
 
+#process-grid-plate {
+  position: absolute;
+  top: 191px;
+  left: 185px;
+  margin: 1px;
+  padding-top: 3px;
+  max-height: 14px;
+  cursor: pointer;
+}
+
+#process-grid-plate-menu {
+  position: absolute;
+  top: 191px;
+  left: 185px;
+  width: 33px;
+  cursor: pointer;
+}
+
+#process-grid-overlay {
+  position: absolute;
+  background-color: inherit;
+  top: 117px;
+  left: 1px;
+  width: calc(100% - 8px);
+  height: 66px;
+  padding: 3px;
+}
+
+#process-negated {
+  position: absolute;
+  top: -38px;
+  left: 0px;
+  height: 32px;
+}
+
+#process-negated-msg {
+  position: absolute;
+  top: -47px;
+  left: 92px;
+  max-height: 24px;
+  width: 210px;
+  padding: 5px;
+  font-style: italic;
+  color: #8050a0;
+  background-color: #f4f0f2;
+}
+
+#process-grid-msg {
+  padding-left: 6px;
+  font-style: italic;
+  color: #8050a0;
+}
+
+#process-length-div {
+  margin-top: 4px;
+}
+
+#process-length {
+  width: 30px;
+  margin-left: 2px;
+}
+
+#process-tex-id {
+  bottom: 3px;
+  position: absolute;
+  right: 3px;
+  width: 45px;
+  height: 14px !important;
+  font-size: 11px;
+  background: #ecd8ec;
+}
+
 /* styles for the PRODUCT properties dialog */
 #product-dlg {
   width: 360px;
@@ -1634,6 +1868,15 @@ td.export {
   width: 120px;
 }
 
+#product-tex-id {
+  bottom: 3px;
+  position: absolute;
+  left: 293px;
+  width: 45px;
+  height: 14px !important;
+  font-size: 11px;
+  background: #ecd8ec;
+}
 
 /* NOTE: actors, datasets and products have import/export toggle boxes */
 #actor-io {
@@ -2225,6 +2468,7 @@ div.io-box {
 }
 
 #scale-units-table,
+#power-grids-table,
 #dataset-table,
 #dataset-modif-table,
 #equation-table,
@@ -3256,7 +3500,7 @@ img.v-disab {
 /* the SENSITIVITY DIALOG displays the sensitivity analysis */
 #sensitivity-dlg {
   display: none;
-  z-index: 15;
+  z-index: 20;
   margin: 0;
   width: 500px;
   height: 265px;
@@ -3541,7 +3785,7 @@ td.sa-not-run {
 /* the EXPERIMENT DIALOG displays the experiment manager */
 #experiment-dlg {
   display: none;
-  z-index: 20;
+  z-index: 25;
   margin: 0;
   width: 450px;
   height: 275px;
@@ -4834,6 +5078,53 @@ div.sel-tab {
   background-color: white;
   border: 1px solid Black;
   box-shadow: inset #bfc0e2 0 0 7px 2px; 
+}
+
+/* the TEX DIALOG displays mathematical formulas */
+#tex-dlg {
+  display: none;
+  z-index: 45;
+  margin: 0;
+  width: 300px;
+  height: 200px;
+  min-width: 250px;
+  min-height: 150px;
+  max-height: 99vh;
+  max-width: 99vw;
+}
+
+#tex-entity {
+  position: absolute;
+  left: 3px;
+  bottom: 2px;
+  width: calc(100% - 24px);
+  white-space: nowrap;
+}
+
+#tex-tabs {
+  width: calc(100% - 6px);
+}
+
+#tex-formula {
+  position: absolute;
+  left: 3px;
+  top: 43px;
+  padding: 6px;
+  width: calc(100% - 20px);
+  height: calc(100% - 73px);
+  border: 1px solid silver;
+  background-color: white;
+  overflow: scroll;
+}
+
+#tex-code {
+  position: absolute;
+  left: 3px;
+  top: 42px;
+  width: calc(100% - 6px);
+  height: calc(100% - 60px);
+  font: 12px monospace;
+  border: 1px solid Black;
 }
 
 /* the CHANNEL DIALOG configures and activates the receiver */

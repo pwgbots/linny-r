@@ -998,7 +998,7 @@ class Paper {
     let cnb, proc, prod, fnx, fny, fnw, fnh, tnx, tny, tnw, tnh,
         cp, rr, aa, bb, dd, nn, af, l, s, w, tw, th, bpx, bpy, epx, epy,
         sda, stroke_color, stroke_width, arrow_start, arrow_end,
-        font_color, font_weight, luc = null;
+        font_color, font_weight, luc = null, grid = null;
     // Get the main arrow attributes
     const
         from_nb = arrw.from_node,
@@ -1243,9 +1243,12 @@ class Paper {
         prod = luc.from_node;
       }
       // NOTE: `luc` may also be a constraint!
-      if(luc instanceof Link && luc.is_feedback) {
-        sda = UI.sda.long_dash_dot;
-        arrow_end = this.feedback_triangle;
+      if(luc instanceof Link) {
+        grid = proc.grid;
+        if(luc.is_feedback) {
+          sda = UI.sda.long_dash_dot;
+          arrow_end = this.feedback_triangle;
+        }
       }
       // Data link => dotted line
       if(luc.dataOnly) {
@@ -1474,11 +1477,27 @@ class Paper {
         epy = arrw.from_y + (shift + bi) * dy / l;
         font_color = this.palette.produced;
       }
-      // Draw the rate in a semi-transparent white roundbox.
-      arrw.shape.addRect(epx, epy, tw, th,
-          {fill: 'white', opacity: 0.8, rx: 2, ry: 2});
-      arrw.shape.addNumber(epx, epy, s, {fill: font_color, 'font-style': rrfs});
-
+      let with_rate = true;
+      if(grid) {
+        // For power links, only draw the rate when the model has been run
+        // and the actual flow is less than the process level (so the rate
+        // then reflects the loss).
+        const
+            absf = Math.abs(af),
+            apl = Math.abs(proc.actualLevel(MODEL.t));
+        with_rate = MODEL.solved && apl - absf > VM.SIG_DIF_FROM_ZERO;
+        font_color = 'gray';
+        s = VM.sig4Dig(absf / apl);
+        bb = this.numberSize(s);
+        th = bb.height;
+        tw = Math.max(th, bb.width);
+      }
+      if(with_rate) {
+        // Draw the rate in a semi-transparent white roundbox.
+        arrw.shape.addRect(epx, epy, tw, th,
+            {fill: 'white', opacity: 0.8, rx: 2, ry: 2});
+        arrw.shape.addNumber(epx, epy, s, {fill: font_color, 'font-style': rrfs});
+      }
       // Draw the share of cost (only if relevant and > 0) behind the rate
       // in a pale yellow filled box.
       if(MODEL.infer_cost_prices && luc.share_of_cost > 0) {
@@ -1514,11 +1533,13 @@ class Paper {
     }
     
     // Draw the actual flow
-    if(l > 0 && af < VM.UNDEFINED && Math.abs(af) > VM.SIG_DIF_FROM_ZERO) {
+    const absf = Math.abs(af);
+    if(l > 0 && af < VM.UNDEFINED && absf > VM.SIG_DIF_FROM_ZERO) {
       const ffill = {fill:'white', opacity:0.8};
       if(luc || mf[0] == 1) {
-        // Draw flow data halfway the arrow only if calculated and non-zero
-        s = VM.sig4Dig(af); 
+        // Draw flow data halfway the arrow only if calculated and non-zero.
+        // NOTE: Power flows are always absolute flows.
+        s = VM.sig4Dig(grid ? absf : af); 
         bb = this.numberSize(s, 10, 700);
         tw = bb.width/2;
         th = bb.height/2;
@@ -2017,7 +2038,11 @@ class Paper {
         // Negative level => more reddish stroke and font
         font_color = this.palette.compound_flow;
         stroke_color = font_color;
-        if(lb < -VM.NEAR_ZERO) bar_ratio = l / lb;
+        if(proc.grid) {
+          bar_ratio = l / -ub;
+        } else if(lb < -VM.NEAR_ZERO) {
+          bar_ratio = l / lb;
+        }
         stroke_width = 1.25;
       } else {
         font_color = this.palette.active_process;
@@ -2027,7 +2052,9 @@ class Paper {
       }
       // For options, set longer-dashed rim if committed at time <= t
       const fcn = (is_fc_option ? proc : fc_option_node);
-      if(fcn && fcn.start_ups.length > 0 && MODEL.t >= fcn.start_ups[0]) {
+      // NOTE: When initial level > 0, option is already committed at t=0.
+      if(fcn && (fcn.actualLevel(0) > 0 ||
+         (fcn.start_ups.length > 0 && MODEL.t >= fcn.start_ups[0]))) {
         sda = UI.sda.longer_dash;
       }
     } else if(il) {
@@ -2062,16 +2089,45 @@ class Paper {
       const
           hsw = stroke_width / 2,
           hbl = hh * bar_ratio - hsw;
-      // NOTE: when level < 0, bar drops down from top
-      proc.shape.addRect(x + hw - 4 - hsw,
-          (l < 0 ? y - hh + hbl + hsw : y + hh - hbl - hsw),
-          8, 2 * hbl, {fill: bar_color, stroke: 'none'});
+      // Collapesed grid processes display a "wire" instead of a bar.
+      if(proc.grid && proc.collapsed) {
+        proc.shape.addPath(
+            ['M', x - hw + 0.5, ',', y - hh/2, 'L', x + hw - 0.5, ',', y - hh/2],
+            // NOTE: Use *squared* bar ratio to reflect quadratic losses.
+            {'fill': 'none', stroke: proc.grid.color,
+                'stroke-width': hh * bar_ratio * bar_ratio});        
+        
+      } else {
+        // NOTE: when level < 0, bar drops down from top
+        proc.shape.addRect(x + hw - 4 - hsw,
+            (l < 0 ? y - hh + hbl + hsw : y + hh - hbl - hsw),
+            8, 2 * hbl, {fill: bar_color, stroke: 'none'});
+      }
     }
     // If semi-continuous, add a double rim 2 px above the bottom line
     if(proc.level_to_zero) {
       const bly = y + hh - 2;
       proc.shape.addPath(['M', x - hw, ',', bly, 'L', x + hw, ',', bly],
           {'fill': 'none', stroke: stroke_color, 'stroke-width': 0.6});
+    }
+    // If grid element, add colored strip at bottom.
+    if(proc.grid) {
+      proc.shape.addRect(x, y + hh - 3.3, 2*hw - 1.5, 6,
+          {'fill': proc.grid.color, stroke: 'none'});
+      // If grid enforces Kirchhoff's voltage law and/or losses, length
+      // matters, so draw a white horizontal line through the strip that
+      // is proportional to the length property of the process.
+      if(MODEL.solved &&
+          (proc.grid.kirchhoff || proc.grid.loss_approximation)) {
+        const
+            maxl = Math.max(1, POWER_GRID_MANAGER.max_length),
+            w = (2 * hw - 8) * proc.length_in_km / maxl,
+            bly = y + hh - 3.3;
+        proc.shape.addPath(
+            ['M', x - w/2, ',', bly, 'L', x + w/2, ',', bly],
+            {'fill': 'none', stroke: 'white', 'stroke-width': 1.5,
+                'stroke-linecap': 'round'});        
+      }
     }
     if(!proc.collapsed) {
       // If model has been computed or initial level is non-zero, draw
@@ -2102,6 +2158,10 @@ class Paper {
           proc.shape.addNumber(cx, cy, s,
               {'font-size': 9, 'fill': font_color, 'font-weight': 700});
         }
+        if(proc.grid && POWER_GRID_MANAGER.inCycle(proc)) {
+          proc.shape.addText(x + hw - 2, y - hh + bh + 3, '\u27F3',
+            {'font-size': 9, fill: 'black', 'text-anchor':'end'});
+        }
       }
       // Draw boundaries in upper left corner
       // NOTE: their expressions should have been computed
@@ -2118,11 +2178,11 @@ class Paper {
       } else {
         const ubs = (ub >= VM.PLUS_INFINITY && !proc.upper_bound.defined ?
             '\u221E' : VM.sig4Dig(ub));
-        if(Math.abs(lb) > VM.NEAR_ZERO) {
+        if(Math.abs(lb) > VM.NEAR_ZERO && !proc.grid) {
           // If lb <> 0 then lb...ub (with ellipsis).
           s += '\u2026' + ubs;
         } else {
-          // If lb = 0 show only the upper bound.
+          // If gid process or lb = 0, show only the upper bound.
           s = ubs;
           lbw = 0;
         }
@@ -2137,6 +2197,10 @@ class Paper {
           ty = y - hh + sh/2 + 1;
       proc.shape.addNumber(tx + btw/2, ty, s,
           {fill: 'black', 'font-style': bfs});
+      if(proc.grid) {
+        proc.shape.addText(tx + 1, ty + 8, proc.grid.power_unit,
+          {'font-size': 6, fill: 'black', 'text-anchor':'start'});
+      }
       // Show start/stop-related status right of the process boundaries.
       // NOTE: lb must be > 0 for start/stop to work.
       if(proc.level_to_zero && lbw) {
