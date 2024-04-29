@@ -5085,7 +5085,8 @@ class VirtualMachine {
         }
       }
       if(ll.length) {
-        this.logMessage(block, 'Average power grid losses per time step:\n ' + ll.join('\n '));
+        this.logMessage(block, 'Average power grid losses per time step:\n ' +
+            ll.join('\n ') + '\n');
       }
     }
 
@@ -8954,17 +8955,25 @@ function VMI_add_grid_process_constraints(p) {
 
 function VMI_add_kirchhoff_constraints(cb) {
   // Add Kirchhoff's voltage law constraint for each cycle in `cb`.
+  // NOTE: Do not add a constraint for cyles that have been "broken"
+  // because one or more of its processes have UB = 0.
   for(let i = 0; i < cb.length; i++) {
     const c = cb[i];
+    let not_broken = true;
     VMI_clear_coefficients();
-    for(let i = 0; i < c.length; i++) {
+    for(let j = 0; j < c.length; j++) {
       const
-          p = c[i].process,
+          p = c[j].process,
           x = p.length_in_km * p.grid.reactancePerKm,
-          o = c[i].orientation;
+          o = c[j].orientation,
+          ub = p.upper_bound.result(VM.t);
+      if(ub <= VM.NEAR_ZERO) {
+        not_broken = false;
+        break;
+      }
       VM.coefficients[VM.offset + p.level_var_index] = x * o;
     }
-    VMI_add_constraint(VM.EQ);
+    if(not_broken) VMI_add_constraint(VM.EQ);
   }
 }
 

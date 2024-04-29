@@ -2079,7 +2079,7 @@ class Paper {
       hw = proc.width / 2;
       hh = proc.height / 2;
     }
-    // Draw frame using colors as defined above
+    // Draw frame using colors as defined above.
     proc.shape.addRect(x, y, 2 * hw, 2 * hh,
         {fill: fill_color, stroke: stroke_color, 'stroke-width': stroke_width,
             'stroke-dasharray': sda, 'stroke-linecap': 'round'});
@@ -2094,9 +2094,8 @@ class Paper {
         proc.shape.addPath(
             ['M', x - hw + 0.5, ',', y - hh/2, 'L', x + hw - 0.5, ',', y - hh/2],
             // NOTE: Use *squared* bar ratio to reflect quadratic losses.
-            {'fill': 'none', stroke: proc.grid.color,
-                'stroke-width': hh * bar_ratio * bar_ratio});        
-        
+            {fill: 'none', stroke: proc.grid.color,
+                'stroke-width': hh * bar_ratio * bar_ratio});
       } else {
         // NOTE: when level < 0, bar drops down from top
         proc.shape.addRect(x + hw - 4 - hsw,
@@ -2127,6 +2126,23 @@ class Paper {
             ['M', x - w/2, ',', bly, 'L', x + w/2, ',', bly],
             {'fill': 'none', stroke: 'white', 'stroke-width': 1.5,
                 'stroke-linecap': 'round'});        
+      }
+      // If process has no capacity, cross it out.
+      if(ub <= VM.NEAR_ZERO) {
+        proc.shape.addPath(
+            ['M', x - hw + 0.8, ',', y - hh + 0.5,
+             'L', x + hw - 0.5, ',', y + hh - 0.5,
+             'M', x - hw + 0.8, ',', y + hh - 0.5,
+             'L', x + hw - 0.5, ',', y - hh + 0.5],
+            {fill: 'none', stroke: 'white', 'stroke-width': 2,
+                'stroke-linecap': 'round'});
+        proc.shape.addPath(
+            ['M', x - hw + 0.8, ',', y - hh + 0.5,
+             'L', x + hw - 0.5, ',', y + hh - 0.5,
+             'M', x - hw + 0.8, ',', y + hh - 0.5,
+             'L', x + hw - 0.5, ',', y - hh + 0.5],
+            {fill: 'none', stroke: proc.grid.color, 'stroke-width': 1,
+                'stroke-linecap': 'round'});
       }
     }
     if(!proc.collapsed) {
