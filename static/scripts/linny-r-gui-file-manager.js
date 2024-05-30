@@ -63,19 +63,30 @@ class GUIFileManager {
         })
       .then((data) => {
           if(data !== '' && UI.postResponseOK(data)) {
-            // Server must return either semicolon-separated or
-            // newline-separated string of numbers
-            if(data.indexOf(';') < 0) {
-              // If no semicolon found, replace newlines by semicolons
-              data = data.trim().split('\n').join(';');
-            }
-            // Remove all white space
-            data = data.replace(/\s+/g, '');
-            // Show data in text area when the SERIES dialog is visible
-            if(!UI.hidden('series-modal')) {
-              DATASET_MANAGER.series_data.value = data.split(';').join('\n');
+            if(dataset instanceof BoundLine) {
+              // Server must return semicolon-separated list of white-
+              // space-separated list of numbers.
+              dataset.unpackPointDataString(data);
+              dataset.points_string = dataset.pointDataString;
+              // Show data in boundline data modal when it is visible.
+              if(!UI.hidden('boundline-data-modal')) {
+                CONSTRAINT_EDITOR.stopEditing(false);
+              }
             } else {
-              dataset.unpackDataString(data);
+              // Server must return either semicolon-separated or
+              // newline-separated string of numbers
+              if(data.indexOf(';') < 0) {
+                // If no semicolon found, replace newlines by semicolons
+                data = data.trim().split('\n').join(';');
+              }
+              // Remove all white space
+              data = data.replace(/\s+/g, '');
+              // Show data in text area when the SERIES dialog is visible
+              if(!UI.hidden('series-modal')) {
+                DATASET_MANAGER.series_data.value = data.split(';').join('\n');
+              } else {
+                dataset.unpackDataString(data);
+              }
             }
             // NOTE: remove dataset from the "loading" list
             const i = MODEL.loading_datasets.indexOf(dataset);

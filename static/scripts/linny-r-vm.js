@@ -8024,6 +8024,18 @@ function randomBinomial(n, p) {
   }
 }
 
+// Function that computes the cumulative probability P(X <= x) when X
+// has a N(mu, sigma) distribution. Accuracy is about 1e-6.
+function normalCumulativeProbability(mu, sigma, x) {
+	const
+      t = 1 / (1 + 0.2316419 * Math.abs(x)),
+	    d = 0.3989423 * Math.exp(-0.5 * x * x),
+	    p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 +
+          t * (-1.821256 + T * 1.330274))));
+	if(x > 0) return 1 - p;
+	return p;
+}   
+
 // Global array as cache for computation of factorial numbers.
 const FACTORIALS = [0, 1];
 

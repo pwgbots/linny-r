@@ -40,7 +40,6 @@ class ConstraintEditor {
     this.from_name = document.getElementById('constraint-from-name');
     this.to_name = document.getElementById('constraint-to-name');
     this.bl_type = document.getElementById('bl-type');
-    this.bl_selectors = document.getElementById('bl-selectors');
     this.soc_direct = document.getElementById('constraint-soc-direct');
     this.soc = document.getElementById('constraint-share-of-cost');
     this.soc_div = document.getElementById('constraint-soc');
@@ -78,25 +77,42 @@ class ConstraintEditor {
         () => CONSTRAINT_EDITOR.addBoundLine());
     this.bl_type.addEventListener('change',
         () => CONSTRAINT_EDITOR.changeLineType());
-    this.bl_selectors.addEventListener('blur',
-        () => CONSTRAINT_EDITOR.changeLineSelectors());
     this.soc.addEventListener('blur',
         () => CONSTRAINT_EDITOR.changeShareOfCost());
+    this.bl_data_btn = document.getElementById('bl-data-btn');
+    this.bl_data_btn.addEventListener('click',
+        () => CONSTRAINT_EDITOR.showBoundLineModal());
     this.delete_bl_btn = document.getElementById('del-bl-btn');
     this.delete_bl_btn.addEventListener('click',
         () => CONSTRAINT_EDITOR.deleteBoundLine());
+    // Prepare the "precise point" dialog.
     this.point_modal = new ModalDialog('boundline-point');
     this.point_modal.ok.addEventListener(
         'click', () => CONSTRAINT_EDITOR.setPointPosition());
     this.point_modal.cancel.addEventListener(
         'click', () => CONSTRAINT_EDITOR.point_modal.hide());
-    // The chart is stored as an SVG string
+    // Also prepare the boundline modal.
+    this.boundline_modal = new ModalDialog('boundline-data');
+    this.boundline_modal.close.addEventListener(
+        'click', () => CONSTRAINT_EDITOR.updateBoundLineProperties());
+    this.boundline_modal.element('edit-btn').addEventListener(
+        'click', () => CONSTRAINT_EDITOR.startEditing());
+    this.boundline_modal.element('save-btn').addEventListener(
+        'click', () => CONSTRAINT_EDITOR.stopEditing(true));
+    this.boundline_modal.element('cancel-btn').addEventListener(
+        'click', () => CONSTRAINT_EDITOR.stopEditing(false));
+    this.boundline_modal.element('url').addEventListener(
+        'blur', () => CONSTRAINT_EDITOR.loadPointData());
+    const bls = this.boundline_modal.element('series');
+    bls.addEventListener('keyup', () => CONSTRAINT_EDITOR.updateLine());
+    bls.addEventListener('click', () => CONSTRAINT_EDITOR.updateLine());
+    // The chart is stored as an SVG string.
     this.svg = '';
-    // Scale, origin X and Y assume a 300x300 px square chart area
+    // Scale, origin X and Y assume a 300x300 px square chart area.
     this.scale = 3;
     this.oX = 25;
     this.oY = 315;
-    // 0 => silver, LE => orange/red, GE => cyan/blue, EQ => purple
+    // 0 => silver, LE => orange/red, GE => cyan/blue, EQ => purple.
     this.line_color = ['#a0a0a0', '#c04000', '#0040c0', '#9000a0'];
     // Use brighter shades if selected (darker for gray) 
     this.selected_color = ['#808080', '#ff8040', '#00b0d0', '#a800ff'];
@@ -105,14 +121,16 @@ class ConstraintEditor {
     // Cursor position in chart coordinates (100 x 100 grid)
     this.pos_x = 0;
     this.pos_y = 0;
-    // `on_line`: the first bound line object detected under the cursor
+    // `on_line`: the first bound line object detected under the cursor.
     this.on_line = null;
-    // `on_point`: index of point under the cursor
+    // `on_point`: index of point under the cursor.
     this.on_point = -1;
     this.dragged_point = -1;
     this.selected_point = -1;
     this.last_time_clicked = 0;
     this.cursor = 'default';
+    // Start in data viewing mode.
+    this.stopEditing(false);
     // Properties for tracking which constraint is being edited.
     this.edited_constraint = null;
     this.from_node = null;
@@ -342,6 +360,7 @@ class ConstraintEditor {
     let i = 0;
     while(i < lp.length && lp[i][0] < p[0]) i++;
     lp.splice(i, 0, p);
+    this.selected.storePoints();
     this.selected_point = i;
     this.dragged_point = i;
     this.draw();
@@ -355,29 +374,167 @@ class ConstraintEditor {
     if(this.selected && this.selected_point > 0 &&
         this.selected_point < this.selected.points.length - 1) {
       this.selected.points.splice(this.selected_point, 1);
+      this.selected.storePoints();
       this.selected_point = -1;
       this.draw();
     }
   }
     
   changeLineType() {
-    // Changes type of selected boundline
+    // Change type of selected boundline.
     if(this.selected) {
       this.selected.type = parseInt(this.bl_type.value);
       this.draw();
     }
   }
   
-  changeLineSelectors() {
-    // Changes experiment run selectors of selected boundline
-    if(this.selected) {
-      const sel = this.bl_selectors.value.replace(
-          /[\;\,]/g, ' ').trim().replace(
-          /[^a-zA-Z0-9\+\-\%\_\s]/g, '').split(/\s+/).join(' ');
-      this.selected.selectors = sel;
-      this.bl_selectors.value = sel;
-      this.draw();
+  loadPointData() {
+    const
+        md = this.boundline_modal,
+        url = md.element('url').value.trim();
+    if(this.selected && url) {
+      FILE_MANAGER.getRemoteData(this.selected, url);
     }
+  }
+
+  startEditing() {
+    const
+        md = this.boundline_modal,
+        edit_btn = md.element('edit-btn'),
+        save_btn = md.element('save-btn'),
+        cancel_btn = md.element('cancel-btn'),
+        tbl = md.element('series-area'),
+        txt = md.element('series');
+    edit_btn.classList.add('off');
+    save_btn.classList.remove('off');
+    cancel_btn.classList.remove('off');
+    tbl.style.display = 'none';
+    txt.value = this.selected.pointDataString;
+    txt.style.display = 'block';
+    txt.focus();
+    txt.selectionStart = 0;
+    txt.selectionEnd = 0;
+    md.element('line').style.display = 'block';
+    this.updateLine();
+  }
+
+  stopEditing(save=false) {
+    if(!this.selected) return;
+    const
+        bl = this.selected,
+        md = this.boundline_modal,
+        edit_btn = md.element('edit-btn'),
+        save_btn = md.element('save-btn'),
+        cancel_btn = md.element('cancel-btn'),
+        tbl = md.element('series-area'),
+        txt = md.element('series');
+    if(save) {
+      bl.unpackPointDataString(txt.value);
+      bl.points_string = JSON.stringify(bl.points);
+    }
+    edit_btn.classList.remove('off');
+    save_btn.classList.add('off');
+    cancel_btn.classList.add('off');
+    txt.style.display = 'none';
+    md.element('line').style.display = 'none';
+    tbl.innerHTML = this.boundLineDataTable;
+    tbl.style.display = 'block';
+  }  
+
+  updateLine() {
+    const
+        md = this.boundline_modal,
+        txt = md.element('series'),
+        ln = md.element('line-number'),
+        lc = md.element('line-count');
+    ln.innerHTML = 'line ' + txt.value.substring(0, txt.selectionStart)
+        .split(';').length;
+    lc.innerHTML = 'of ' + txt.value.split(';').length;
+  }
+  
+  get boundLineDataTable() {
+    // Return HTML for point coordinates table.
+    let html = '<div style="margin: 60px 115px"><em>No time series data</em></div>';
+    if(!this.selected) return html;
+    const bl = this.selected;
+    if(bl.point_data.length > 0) {
+      const lines = [];
+      for(let i = 0; i < bl.point_data.length; i++) {
+        lines.push('<tr class="dataset" ',
+            'onmouseover="CONSTRAINT_EDITOR.showDataBoundLine(',
+            i + 1, ')"><td class="bldnr">', i + 1,
+            '.</td><td>', bl.point_data[i].join(' '), '</td></tr>');
+      }
+      html = '<table style="width: 100%; border-collapse: collapse;' +
+          'background-color: white; border: 1px solid Silver">' +
+          lines.join('') + '</table>';
+    }
+    return html;
+  }
+  
+  get boundLineSelectorTable() {
+    // Return *inner* HTML for the boundline selector table.
+    if(!this.selected) return '';
+    const
+        bl = this.selected,
+        html = [],
+        onclk = ` onclick="CONSTRAINT_EDITOR.selectModifier(event, '');"`;
+    for(let i = 0; i < bl.selectors.length; i++) {
+      const sel = bl.selectors[i];
+      html.push(`<tr id="blstr${i}" class="dataset-modif">`,
+          '<td class="dataset-selector"');
+      if(i === 0) {
+        html.push(' style="background-color: #e0e0e0" title="Default',
+            'line index will be used when no experiment is running"',
+            onclk.replace("''", "'', false"));
+      } else {
+        html.push(onclk.replace("''", `'${sel.selector}'`));
+      }
+      html.push('><td class="dataset-expression"',
+          (i ? onclk.replace("''", `'${sel.selector}'`) : onclk), '>',
+          sel.expression.text, '</td></tr>');
+    }
+    return html.join('');
+  }
+  
+  showBoundLineModal() {
+    // Open modal to modify data properties of selected boundline.
+    if(!this.selected) return;
+    // Ensure that boundline does not have a selected or dragged point.
+    this.on_point = -1;
+    this.dragged_point = -1;
+    this.selected_point = -1;
+    const
+        bl = this.selected,
+        md = this.boundline_modal;
+    md.element('url').value = bl.url;
+    md.element('sel-table').innerHTML = this.boundLineSelectorTable;
+    this.stopEditing();
+    md.show();
+  }
+  
+  updateBoundLineProperties() {
+    // Change experiment run selectors of selected boundline.
+    if(this.selected) {
+      const
+          bl = this.selected,
+          md = this.boundline_modal;
+      bl.url = md.element('url').value;
+      // Restore and redraw default bound line.
+      bl.restorePoints();
+      this.draw();
+      md.hide();
+    }
+  }
+  
+  showDataBoundLine(t) {
+    // Redraw diagram with selected boundline now having its points based
+    // on data for time step t.
+    if(!this.selected) return;
+    const bl = this.selected;
+    bl.setPointsFromData(t);
+    this.draw();
+    bl.restorePoints();
   }
   
   changeShareOfCost() {
@@ -544,18 +701,19 @@ class ConstraintEditor {
     if(newx !== px || newy !== py) {
       p[0] = newx;
       p[1] = newy;
+      l.storePoints();
       this.draw();
       this.updateEquation();
     }
   }
 
   updateStatus() {    
-    // Displays cursor position as X and Y (in chart coordinates), and updates
-    // controls.
+    // Display cursor position as X and Y (in chart coordinates), and
+    // update controls.
     this.pos_x_div.innerHTML = 'X = ' + this.pos_x.toPrecision(3);
     this.pos_y_div.innerHTML = 'Y = ' + this.pos_y.toPrecision(3);
     this.point_div.innerHTML = '';
-    const blbtns = 'add-point del-bl';
+    const blbtns = 'add-point bl-data del-bl';
     if(this.selected) {
       if(this.selected_point >= 0) {
         const p = this.selected.points[this.selected_point];
@@ -568,26 +726,20 @@ class ConstraintEditor {
             .replace(/\.$/, '');
         this.point_div.innerHTML = `(${px}, ${py})`;
       }
-      // Check whether selected point is an end point
+      // Check whether selected point is an end point.
       const ep = this.selected_point === 0 ||
           this.selected_point === this.selected.points.length - 1;
-      // If so, do not allow deletion
+      // If so, do not allow deletion.
       UI.enableButtons(blbtns + (ep ? '' : ' del-point'));
       if(this.adding_point) this.add_point_btn.classList.add('activ');
       this.bl_type.value = this.selected.type;
       this.bl_type.style.color = 'black';
       this.bl_type.disabled = false;
-      this.bl_selectors.value = this.selected.selectors;
-      this.bl_selectors.style.backgroundColor = 'white';
-      this.bl_selectors.disabled = false;
     } else {
       UI.disableButtons(blbtns + ' del-point');
       this.bl_type.value = VM.EQ;
       this.bl_type.style.color = 'silver';
       this.bl_type.disabled = true;
-      this.bl_selectors.value = '';
-      this.bl_selectors.style.backgroundColor = 'inherit';
-      this.bl_selectors.disabled = true;
     }
   }
 

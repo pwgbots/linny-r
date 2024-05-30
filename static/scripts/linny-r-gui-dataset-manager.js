@@ -577,8 +577,8 @@ class GUIDatasetManager extends DatasetManager {
   }
   
   selectModifier(event, id, x=true) {
-    // Select modifier, or when double-clicked, edit its expression or the
-    // name of the modifier
+    // Select modifier, or when double-clicked, edit its expression when
+    // x = TRUE, or the name of the modifier when x = FALSE.
     this.focal_table = this.modifier_table;
     if(this.selected_dataset) {
       const m = this.selected_dataset.modifiers[UI.nameToID(id)],

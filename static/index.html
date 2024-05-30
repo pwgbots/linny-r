@@ -1429,7 +1429,7 @@ NOTE: Products directly linked to such processes should have a proportional unit
    -->
   <div id="constraint-modal" class="modal">
     <div id="constraint-dlg" class="inp-dlg">
-      <div class="dlg-title">Constraint X &DDotrahd; Y
+      <div class="dlg-title">Constraint X <span style="font-weight: normal">&#x219D;</span> Y
         <span id="constraint-group"></span>
         <div style="display: inline-block; margin-left: 219px; margin-bottom: -7px">
           <img class="cancel-btn" src="images/cancel.png">
@@ -1443,7 +1443,9 @@ NOTE: Products directly linked to such processes should have a proportional unit
         <img id="del-point-btn" class="mbtn disab"
              title="Remove selected point from bound line" src="images/remove.png">
         <img id="add-bl-btn" class="mbtn enab" title="Add new bound line"
-             style="margin-left: 10px" src="images/pwlf.png">
+             style="margin-left: 15px" src="images/pwlf.png">
+        <img id="bl-data-btn" class="mbtn enab" title="Add/modify bound line data"
+             src="images/dataset.png">
         <!-- NOTE: values correspond to constants used by Virtual Machine -->
         <select id="bl-type" title="Bound type">
           <option value="1">&le;</option>
@@ -1452,9 +1454,6 @@ NOTE: Products directly linked to such processes should have a proportional unit
         </select>
         <img id="del-bl-btn" class="mbtn disab" src="images/delete.png"
              title="Delete selected bound line">
-        <label>Selectors:</label>
-        <input id="bl-selectors" type="text" placeholder="(any)"
-               title="When specified, bound line will constrain only in matching experiment runs">
       </div>
       <div id="constraint-y-label">% range of <span id="constraint-to-name"></span></div>
       <!-- NOTE: this is the div that will contain the chart's SVG image -->
@@ -1479,6 +1478,59 @@ NOTE: Products directly linked to such processes should have a proportional unit
           </selector>
           <input id="constraint-share-of-cost" type="text" autocomplete="off"><label>%</label>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOUNDLINE DATA modal -->
+  <div id="boundline-data-modal" class="modal">
+    <div id="boundline-data-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Boundline data
+        <img class="close-btn" src="images/close.png">
+      </div>
+      <div id="boundline-data-remote">
+        <img id="boundline-data-clip" src="images/paperclip.png">
+        <input id="boundline-data-url" type="text"
+               placeholder="URL or path on local host"
+               title="Path can be absolute or relative to (Linny-R)/user/data">
+      </div>
+      <div id="boundline-data-series-lbl">Point data</div>
+      <img class="btn enab" id="boundline-data-edit-btn"
+           src="images/edit.png" title="Edit point data">
+      <img class="ok-btn off" id="boundline-data-save-btn"
+           src="images/ok.png" title="Save changes">
+      <img class="cancel-btn off" id="boundline-data-cancel-btn"
+           src="images/cancel.png" title="Discard changes">
+      <div id="boundline-data-series-area">
+      </div>
+      <textarea id="boundline-data-series" hidden="hidden" autocomplete="off"
+                autocorrect="off" autocapitalize="off" spellcheck="false"
+                title="Point coordinates must be space-separated values between 0 and 1.
+For dynamic bound lines, use semicolons to separate data per time step.">
+      </textarea>
+      <div id="boundline-data-line">
+        <span id="boundline-data-line-number"></span>
+        (<span id="boundline-data-line-count">no data</span>)
+      </div>
+      <div id="boundline-data-sel-titles" style="display: block;">
+        <span>Selector</span>
+        <span style="margin-left: 25px">Line index expression</span>
+      </div>
+      <div id="boundline-data-sel-area">
+        <table id="boundline-data-sel-table">
+        </table>
+      </div>
+      <div id="boundline-data-sel-buttons">
+        <img id="bl-add-modif-btn" class="btn enab"
+             src="images/add-selector.png" title="Add new selector">
+        <img id="bl-rename-modif-btn" class="btn disab"
+             src="images/rename.png" title="Rename selected modifier">
+        <img id="bl-edit-modif-btn" class="btn disab"
+             src="images/edit.png" title="Edit expression of selected modifier">
+        <img id="bl-delete-modif-btn" class="btn disab"
+             src="images/delete.png" title="Delete selected modifier"
+             style="margin-left: 20px">
       </div>
     </div>
   </div>
