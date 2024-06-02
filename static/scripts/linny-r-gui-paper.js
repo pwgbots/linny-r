@@ -11,7 +11,7 @@ functionality for the Linny-R model editor.
 */
 
 /*
-Copyright (c) 2017-2023 Delft University of Technology
+Copyright (c) 2017-2024 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1882,11 +1882,14 @@ class Paper {
       const
           bl = c.bound_lines[i],
           // Draw thumbnail in shades of the arrow color, but use black
-          // for regular color or the filled areas turn out too light
+          // for regular color or the filled areas turn out too light.
           clr = (stroke_color === this.palette.node_rim ? 'black' : stroke_color);
+      // Set the boundline point coordinates (TRUE indicates: also compute
+      // the thumbnail SVG).
+      bl.setPointsForAbsoluteTime(MODEL.t, true);
       el = this.newSVGElement('path');
       if(bl.type === VM.EQ) {
-        // For EQ bound lines, draw crisp line on silver background
+        // For EQ bound lines, draw crisp line on silver background.
         this.addSVGAttributes(el,
             {d: bl.contour_path, fill: 'none', stroke: clr, 'stroke-width': 30});
       } else {
@@ -1896,7 +1899,7 @@ class Paper {
       svg.appendChild(el);
     }
     // Draw the share of cost (only if relevant and non-zero) near tail
-    // (or head if Y->X) of arrow in a pale yellow filled box
+    // (or head if Y->X) of arrow in a pale yellow filled box.
     if(MODEL.infer_cost_prices && c.share_of_cost) {
       let s = VM.sig4Dig(c.share_of_cost * 100) + '%',
           bb = this.numberSize(s, 7),

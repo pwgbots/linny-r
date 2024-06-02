@@ -11,7 +11,7 @@ dialog for the Linny-R constraint editor.
 */
 
 /*
-Copyright (c) 2017-2023 Delft University of Technology
+Copyright (c) 2017-2024 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -106,8 +106,32 @@ class ConstraintEditor {
     const bls = this.boundline_modal.element('series');
     bls.addEventListener('keyup', () => CONSTRAINT_EDITOR.updateLine());
     bls.addEventListener('click', () => CONSTRAINT_EDITOR.updateLine());
+    // Make boundline selector buttons responsive.
+    this.selector_btns = 'bl-rename-sel bl-edit-sel bl-delete-sel';
+    document.getElementById('bl-add-sel-btn').addEventListener(
+        'click', () => CONSTRAINT_EDITOR.promptForSelector());
+    document.getElementById('bl-rename-sel-btn').addEventListener(
+        'click', () => CONSTRAINT_EDITOR.promptForSelector('rename'));
+    document.getElementById('bl-edit-sel-btn').addEventListener(
+        'click', () => CONSTRAINT_EDITOR.editExpression());
+    document.getElementById('bl-delete-sel-btn').addEventListener(
+        'click', () => CONSTRAINT_EDITOR.deleteSelector());
+    // Prepare boundline selector modals.
+    this.new_selector_modal = new ModalDialog('new-selector');
+    this.new_selector_modal.ok.addEventListener(
+        'click', () => CONSTRAINT_EDITOR.newSelector());
+    this.new_selector_modal.cancel.addEventListener(
+        'click', () => CONSTRAINT_EDITOR.new_selector_modal.hide());
+    this.rename_selector_modal = new ModalDialog('rename-selector');
+    this.rename_selector_modal.ok.addEventListener(
+        'click', () => CONSTRAINT_EDITOR.renameSelector());
+    this.rename_selector_modal.cancel.addEventListener(
+        'click', () => CONSTRAINT_EDITOR.rename_selector_modal.hide());
     // The chart is stored as an SVG string.
     this.svg = '';
+    // The line path and contour path SVG.
+    this.line_path_svg = '';
+    this.contour_path_svg = '';
     // Scale, origin X and Y assume a 300x300 px square chart area.
     this.scale = 3;
     this.oX = 25;
@@ -127,19 +151,23 @@ class ConstraintEditor {
     this.on_point = -1;
     this.dragged_point = -1;
     this.selected_point = -1;
+    this.selected_selector = false;
     this.last_time_clicked = 0;
     this.cursor = 'default';
     // Start in data viewing mode.
     this.stopEditing(false);
     // Properties for tracking which constraint is being edited.
-    this.edited_constraint = null;
     this.from_node = null;
     this.to_node = null;
-    // The constraint object being edited (either a new instance, or a
-    // copy of edited_constraint).
+    // The constraint (model entity) being added or modified.
+    this.edited_constraint = null;
+    // The constraint object that is being modified: either a new instance,
+    // or a *copy* of edited_constraint so changes can be ignored on "canel".
     this.constraint = null;
     // List of constraints when multiple constraints are edited.
     this.group = [];
+    // Boundline selector expression being edited.
+    this.edited_expression = null;
     // NOTE: All edits will be ignored unless the modeler clicks OK.
   }
   
@@ -352,7 +380,7 @@ class ConstraintEditor {
   }
   
   doAddPointToLine() {
-    // Actually add point to selected line
+    // Actually add point to selected line.
     if(!this.selected) return;
     const
         p = [this.pos_x, this.pos_y],
@@ -416,6 +444,7 @@ class ConstraintEditor {
     txt.selectionEnd = 0;
     md.element('line').style.display = 'block';
     this.updateLine();
+    UI.disableButtons(this.selector_btns);
   }
 
   stopEditing(save=false) {
@@ -430,7 +459,6 @@ class ConstraintEditor {
         txt = md.element('series');
     if(save) {
       bl.unpackPointDataString(txt.value);
-      bl.points_string = JSON.stringify(bl.points);
     }
     edit_btn.classList.remove('off');
     save_btn.classList.add('off');
@@ -439,6 +467,11 @@ class ConstraintEditor {
     md.element('line').style.display = 'none';
     tbl.innerHTML = this.boundLineDataTable;
     tbl.style.display = 'block';
+    if(this.selected_selector) {
+      UI.enableButtons(this.selector_btns);
+    } else {
+      UI.disableButtons(this.selector_btns);
+    }
   }  
 
   updateLine() {
@@ -454,16 +487,18 @@ class ConstraintEditor {
   
   get boundLineDataTable() {
     // Return HTML for point coordinates table.
-    let html = '<div style="margin: 60px 115px"><em>No time series data</em></div>';
+    let html = '<div style="margin: 45px 130px"><em>No line data</em></div>';
     if(!this.selected) return html;
     const bl = this.selected;
     if(bl.point_data.length > 0) {
-      const lines = [];
+      const
+          tr = '<tr class="dataset" onmouseover="CONSTRAINT_EDITOR.' +
+           'showDataBoundLine(%N)"><td class="bldnr">%N.</td><td>%D</td></tr>',
+          lines = [tr.replaceAll('%N', 0).replace('%D',
+              bl.pointsDataString + '<span class="grit">(default)</span>')];
       for(let i = 0; i < bl.point_data.length; i++) {
-        lines.push('<tr class="dataset" ',
-            'onmouseover="CONSTRAINT_EDITOR.showDataBoundLine(',
-            i + 1, ')"><td class="bldnr">', i + 1,
-            '.</td><td>', bl.point_data[i].join(' '), '</td></tr>');
+        lines.push(tr.replaceAll('%N', i + 1)
+            .replace('%D', bl.point_data[i].join(' ')));
       }
       html = '<table style="width: 100%; border-collapse: collapse;' +
           'background-color: white; border: 1px solid Silver">' +
@@ -478,29 +513,191 @@ class ConstraintEditor {
     const
         bl = this.selected,
         html = [],
-        onclk = ` onclick="CONSTRAINT_EDITOR.selectModifier(event, '');"`;
+        onclk = ` onclick="CONSTRAINT_EDITOR.selectSelector(event, '');"`;
     for(let i = 0; i < bl.selectors.length; i++) {
-      const sel = bl.selectors[i];
-      html.push(`<tr id="blstr${i}" class="dataset-modif">`,
+      const
+          sel = bl.selectors[i],
+          ocr = onclk.replace("''", `'${sel.selector}'`),
+          ss = (sel.selector === this.selected_selector ? ' sel-set' : '');
+      html.push(`<tr id="blstr${i}" class="dataset-modif${ss}">`,
           '<td class="dataset-selector"');
       if(i === 0) {
-        html.push(' style="background-color: #e0e0e0" title="Default',
-            'line index will be used when no experiment is running"',
-            onclk.replace("''", "'', false"));
-      } else {
-        html.push(onclk.replace("''", `'${sel.selector}'`));
+        html.push(' style="background-color: #e0e0e0; font-style: italic" ',
+            'title="Default line index will be used when no experiment is running"');
       }
-      html.push('><td class="dataset-expression"',
-          (i ? onclk.replace("''", `'${sel.selector}'`) : onclk), '>',
-          sel.expression.text, '</td></tr>');
+      let ls = '',
+          rs = '';
+      if(sel.grouping) {
+        ls = '<span class="blpoints">';
+        rs = '</span>';
+      }
+      if(!sel.expression.isStatic) {
+        ls += '<em>';
+        rs = '</em>' + rs;
+      }
+      html.push(ocr.replace("');", "', false);"), '>', sel.selector,
+          '</td><td class="dataset-expression"', ocr, '>',
+          ls, sel.expression.text, rs, '</td></tr>');
     }
     return html.join('');
   }
   
+  selectSelector(event, id, x=true) {
+    // Select selector, or when double-clicked, edit its expression when
+    // x = TRUE, or the name of the selector when x = FALSE.
+    if(!this.selected) return;
+    const
+        now = Date.now(),
+        dt = now - this.last_time_clicked,
+        // Consider click to be "double" if it occurred less than 300 ms ago.
+        dbl = (dt < 300 && id === this.selected_selector),
+        edit = event.altKey || dbl;
+    this.last_time_clicked = now;
+    this.selected_selector = id;
+    if(edit) {
+      this.last_time_clicked = 0;
+      if(x) {
+        this.editExpression();
+      } else {
+        this.promptForSelector('rename');
+      }
+      return;
+    }
+    this.updateSelectorTable();
+    UI.enableButtons(this.selector_btns);
+    // Do not permit deleting the default selector. 
+    if(id === '(default)') UI.disableButtons('bl-delete-sel');
+  }
+  
+  promptForSelector(dlg) {
+    let ms = '',
+        md = this.new_selector_modal;
+    if(dlg === 'rename') {
+      if(this.selected_selector) ms = this.selected_selector;
+      md = this.rename_selector_modal;
+    }
+    md.element('type').innerText = 'boundline selector';
+    md.element('name').value = ms;
+    md.show('name');
+  }
+
+  newSelector() {
+    if(!this.selected) return;
+    const md = this.new_selector_modal;
+    // NOTE: Selector modal is also used by constraint editor.
+    if(md.element('type').innerText !== 'boundline selector') return;
+    const
+        bl = this.selected,
+        sel = md.element('name').value.trim(),
+        bls = bl.addSelector(sel);
+    if(bls) {
+      this.selected_selector = bls.selector;
+      // NOTE: Update dimensions only if boundline now has 2 or more
+      // selectors.
+      const sl = bl.selectorList;
+      if(sl.length > 1) MODEL.expandDimension(sl);
+      md.hide();
+      this.updateSelectorTable();
+    }
+  }
+  
+  renameSelector() {
+    if(!this.selected) return;
+    const md = this.rename_selector_modal;
+    // NOTE: Selector modal is also used by constraint editor.
+    if(md.element('type').innerText !== 'boundline selector') return;
+    const
+        bl = this.selected,
+        sel = MODEL.validSelector(md.element('name').value.trim()),
+        bls = bl.selectorByName(this.selected_selector);
+    if(bls && sel) {
+      bls.selector = sel;
+      bl.selectors.sort((a, b) => compareSelectors(a.selector, b.selector));
+    }
+    md.hide();
+    this.updateSelectorTable();
+  }
+  
+  editExpression() {
+    if(!this.selected) return;
+    const
+        bl = this.selected,
+        bls = bl.selectorByName(this.selected_selector);
+    if(bls) {
+      this.edited_expression = bls.expression;
+      const md = UI.modals.expression;
+      md.element('property').innerHTML = 'boundline selector';
+      md.element('text').value = bls.expression.text;
+      document.getElementById('variable-obj').value = 0;
+      X_EDIT.updateVariableBar();
+      X_EDIT.clearStatusBar();
+      md.show('text');
+    }
+  }
+
+  modifyExpression(x, grouping) {
+    // Update boundline index expression.
+    if(!this.selected) return;
+    const
+        bl = this.selected,
+        bls = bl.selectorByName(this.selected_selector);
+    if(!bls) return;
+    const blsx = bls.expression;
+    // Double-check that selector expression is indeed being edited.
+    if(blsx !== this.edited_expression) {
+      console.log('ERROR: boundline selector expression mismatch',
+          x, bls, this.edited_expression);
+      return;
+    }
+    bls.grouping = grouping;
+    // Update and compile expression only if it has been changed.
+    if(x != blsx.text) {
+      blsx.text = x;
+      blsx.compile();
+      if(grouping && blsx.isStatic) {
+        // Check whether the point coordinates are valid.
+        const
+            r1 = blsx.result(1),
+            r2 = r1.slice();
+        bls.boundline.validatePoints(r2);
+        if(r1.join(';') !== r2.join(';')) {
+          UI.warn('Points expression for <tt>' + bls.selector +
+              '</tt> will evaluate as ' + r2.join('; '));
+        }
+      }
+    }
+    // Clear expression results, just to be neat.
+    blsx.reset();
+    // Clear the `selected_expression` property of the constraint editor.
+    this.edited_expression = null;
+    this.updateSelectorTable();
+  }
+
+  deleteSelector() {
+    // Delete modifier from selected dataset
+    if(!this.selected) return;
+    const
+        bl = this.selected,
+        bls = this.selected.selectorByName(this.selected_selector);
+    if(bls && bls.selector) {
+      // If it is not the default selector, simply remove it from the list.
+      const i = bl.selectors.indexOf(bls);
+      if(i > 0) bl.selectors.splice(i, 1);
+      this.selected_selector = false;
+      this.updateSelectorTable();
+      MODEL.updateDimensions();
+    }
+  }
+
+  updateSelectorTable() {  
+    this.boundline_modal.element('sel-table')
+        .innerHTML = this.boundLineSelectorTable;
+  }
+
   showBoundLineModal() {
     // Open modal to modify data properties of selected boundline.
     if(!this.selected) return;
-    // Ensure that boundline does not have a selected or dragged point.
+    // Ensure that bound line does not have a selected or dragged point.
     this.on_point = -1;
     this.dragged_point = -1;
     this.selected_point = -1;
@@ -508,7 +705,7 @@ class ConstraintEditor {
         bl = this.selected,
         md = this.boundline_modal;
     md.element('url').value = bl.url;
-    md.element('sel-table').innerHTML = this.boundLineSelectorTable;
+    this.updateSelectorTable();
     this.stopEditing();
     md.show();
   }
@@ -527,12 +724,12 @@ class ConstraintEditor {
     }
   }
   
-  showDataBoundLine(t) {
+  showDataBoundLine(index) {
     // Redraw diagram with selected boundline now having its points based
-    // on data for time step t.
+    // on data for the given index.
     if(!this.selected) return;
     const bl = this.selected;
-    bl.setPointsFromData(t);
+    bl.setPointsFromData(index);
     this.draw();
     bl.restorePoints();
   }
@@ -688,7 +885,7 @@ class ConstraintEditor {
         l = this.selected,
         pi = this.dragged_point,
         lpi = l.points.length - 1;
-    // Check -- just in case
+    // Check -- just in case.
     if(!l || pi < 0 || pi > lpi) return;
     let p = l.points[pi],
         px = p[0],
@@ -697,7 +894,7 @@ class ConstraintEditor {
         maxx = (pi === 0 ? 0 : (pi === lpi ? 100 : l.points[pi + 1][0])),
         newx = Math.min(maxx, Math.max(minx, x)),
         newy = Math.min(100, Math.max(0, y));
-    // No action needed unless point has been moved 
+    // No action needed unless point has been moved.
     if(newx !== px || newy !== py) {
       p[0] = newx;
       p[1] = newy;
@@ -837,11 +1034,18 @@ class ConstraintEditor {
       '100</text>']);
   }
   
-  drawContour(l) {
-    // Draws infeasible area for bound line `l`
+  setContourPath(l) {
+    // Computes the contour path (which is the line path for EQ bounds)
+    // without drawing them in the chart -- used when drawing thumbnails.
+    this.drawContour(l, false);
+    this.drawLine(l, false);
+  }
+
+  drawContour(l, display=true) {
+    // Draws infeasible area for bound line `l`.
     let cp;
     if(l.type === VM.EQ) {
-      // Whole area is infeasible except for the bound line itself
+      // Whole area is infeasible except for the bound line itself.
       cp = ['M', this.point(0, 0), 'L', this.point(100 ,0), 'L',
           this.point(100, 100), 'L', this.point(0, 100), 'z'].join('');
     } else {
@@ -852,9 +1056,10 @@ class ConstraintEditor {
         cp += `L${this.point(p[0], p[1])}`;
       }
       cp += 'L' + this.point(100, base_y) + 'z';
+      // Save the contour for rapid display of thumbnails.
+      l.contour_path = cp;
     }
-    // Save the contour for rapid display of thumbnails
-    l.contour_path = cp;
+    if(!display) return;
     // NOTE: the selected bound lines have their infeasible area filled
     // with a *colored* line pattern
     const sel = l === this.selected;
@@ -863,7 +1068,7 @@ class ConstraintEditor {
         (sel ? 1 : 0.4), '"></path>']);
   }
   
-  drawLine(l) {
+  drawLine(l, display=true) {
     let color,
         width,
         pp = [],
@@ -893,6 +1098,7 @@ class ConstraintEditor {
     // For EQ bound lines, the line path is the contour; this will be
     // drawn in miniature black against a silver background
     if(l.type === VM.EQ) l.contour_path = cp;
+    if(!display) return;
     this.addSVG(['<path fill="none" stroke="', color, '" d="', cp,
       '" stroke-width="', width, '"></path>', dots]);
   }

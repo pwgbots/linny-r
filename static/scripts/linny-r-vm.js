@@ -12,7 +12,7 @@ executed by the VM, construct the Simplex tableau that can be sent to the
 MILP solver.
 */
 /*
-Copyright (c) 2017-2023 Delft University of Technology
+Copyright (c) 2017-2024 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -2025,7 +2025,18 @@ class ExpressionParser {
       } else if(this.sym_stack > 1) {
         this.error = 'Missing operator';
       } else if(this.concatenating) {
-        this.error = 'Invalid parameter list';
+        if(this.owner instanceof BoundLine) {
+          // Check whether grouping comprises an even number of values,
+          // and at least 4.
+          const n = this.expr.split(';').length;
+          if(n < 4) {
+            this.error = 'Fewer than 4 boundline point coordinates';
+          } else if (n % 2) {
+            this.error = `Uneven number of boundline point coordinates (${n})`;
+          }
+        } else {
+          this.error = 'Invalid parameter list';
+        }
       }
     }
     // When compiling a method, check for all eligible prefixes whether
@@ -2399,9 +2410,10 @@ class VirtualMachine {
     // Reset the virtual machine so that it can execute the model again.
     // First reset the expression attributes of all model entities.
     MODEL.resetExpressions();
-    // Clear slack use information for all constraints.
+    // Clear slack use information and boundline point coordinates for all
+    // constraints.
     for(let k in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(k)) {
-      MODEL.constraints[k].slack_info = {};
+      MODEL.constraints[k].reset();
     }
     // Likewise, clear slack use information for all clusters.
     for(let k in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(k)) {
@@ -2968,7 +2980,7 @@ class VirtualMachine {
     // For constraint bound lines, add as many SOS variables as there
     // are points on the bound line.
     if(type === 'W1' && obj instanceof BoundLine) {
-      const n = obj.points.length;
+      const n = obj.maxPoints;
       for(let i = 2; i <= n; i++) {
         this.variables.push(['W' + i, obj]);
       }
@@ -3390,7 +3402,7 @@ class VirtualMachine {
         for(l = 0; l < c.bound_lines.length; l++) {
           const bl = c.bound_lines[l];
           bl.sos_var_indices = [];
-          if(bl.isActive && bl.constrainsY) {
+          if(bl.constrainsY) {
             // Define SOS2 variables w[i] (plus associated binaries if
             // solver does not support special ordered sets).
             // NOTE: `addVariable` will add as many as there are points!
@@ -4505,7 +4517,7 @@ class VirtualMachine {
       }
     }
   
-    // NEXT: Add constraints.
+    // NEXT: Add composite constraints.
     // NOTE: As of version 1.0.10, constraints are implemented using special
     // ordered sets (SOS2). This is effectuated with a dedicated VM instruction
     // for each of its "active" bound lines. This instruction requires these
@@ -4513,10 +4525,6 @@ class VirtualMachine {
     // - variable indices for the constraining node X, the constrained node Y
     // - expressions for the LB and UB of X and Y
     // - the bound line object, as this provides all further information
-    // NOTE: For efficiency, the useBinaries flag is also passed, as it can
-    // be determined at compile time whether a SOS constraint is needed
-    // (bound lines are static), and whether the solver does not support
-    // SOS, in which case binary variables must be used.
     for(i = 0; i < constraint_keys.length; i++) {
       k = constraint_keys[i];
       if(!MODEL.ignored_entities[k]) {
@@ -4526,15 +4534,10 @@ class VirtualMachine {
            x = c.from_node,
            y = c.to_node;
         for(j = 0; j < c.bound_lines.length; j++) {
-          const bl = c.bound_lines[j];
-          // Only add constrains for bound lines that are "active" for the
-          // current run, and do constrain Y in some way.
-          if(bl.isActive && bl.constrainsY) {
-            this.code.push([VMI_add_bound_line_constraint,
-                [x.level_var_index, x.lower_bound, x.upper_bound,
-                    y.level_var_index, y.lower_bound, y.upper_bound,
-                    bl, this.noSupportForSOS && !bl.needsNoSOS]]);
-          }
+          this.code.push([VMI_add_bound_line_constraint,
+              [x.level_var_index, x.lower_bound, x.upper_bound,
+                  y.level_var_index, y.lower_bound, y.upper_bound,
+                  c.bound_lines[j]]]);
         }
       }
     } // end FOR all constraints
@@ -5740,7 +5743,6 @@ class VirtualMachine {
     } else {
       this.lines += '\n/* Variable bounds */\n';
     }
-console.log()
     n = abl * this.cols;
     for(p = 1; p <= n; p++) {
       let lb = null,
@@ -8992,10 +8994,7 @@ function VMI_add_kirchhoff_constraints(cb) {
 function VMI_add_bound_line_constraint(args) {
   // `args`: [variable index for X, LB expression for X, UB expression for X,
   //          variable index for Y, LB expression for Y, UB expression for Y,
-  //          boundline object, useBinaries]
-  // The `use_binaries` flag can be determined at compile time, as bound
-  // lines are not dynamic. When use_binaries = TRUE, additional constraints
-  // on binary variables are needed (see below).
+  //          boundline object]
   const
       vix = args[0],
       vx = VM.variables[vix - 1],  // `variables` is zero-based!
@@ -9006,13 +9005,21 @@ function VMI_add_bound_line_constraint(args) {
       objy= vy[1],
       uby = args[5].result(VM.t),
       bl = args[6],
-      use_binaries = args[7],
       n = bl.points.length,
       x = new Array(n),
       y = new Array(n),
       w = new Array(n);
+  // Set bound line point coordinates for current run and time step.
+  bl.setPointsForAbsoluteTime(MODEL.start_period + VM.t - 1);
   if(DEBUGGING) {
     console.log('add_bound_line_constraint:', bl.displayName);
+  }
+  // Do not add constraints for bound lines that set no infeasible area.
+  if(!bl.constrainsY) {
+    if(DEBUGGING) {
+      console.log('SKIP because bound line does not constrain');
+    }
+    return;
   }
   // NOTE: For semi-continuous processes, lower bounds > 0 should to be
   // adjusted to 0, as then 0 is part of the process level range.
@@ -9037,6 +9044,11 @@ function VMI_add_bound_line_constraint(args) {
   // (3)  Y - y[1]*w[1] - ... - y[N]*w[N] + GE slack - LE slack = 0
   // For LE and GE type bound lines, one slack variable suffices, and = 0 must
   // be, respectively, <= 0 or >= 0
+
+  // Since version 2.0.0, the `use_binaries` flag can no longer be determined
+  // at compile time, as bound lines may be dynamic. When use_binaries = TRUE,
+  // additional constraints on binary variables are needed (see below).
+  let use_binaries = VM.noSupportForSOS && !bl.needsNoSOS;
 
   // Scale X and Y and compute the block indices of w[i]
   let wi = VM.offset + bl.first_sos_var_index;
@@ -9095,8 +9107,7 @@ function VMI_add_bound_line_constraint(args) {
   // and then to ensure that at most 2 binaries can be 1:
   //   b[1] + ... + b[N] <= 2
   // NOTE: These additional variables and constraints are not needed
-  // when a bound line defines a convex feasible area. The `use_binaries`
-  // parameter takes this into account.
+  // when a bound line defines a convex feasible area.
   if(use_binaries) {
     // Add the constraints mentioned above. The index of b[i] is the
     // index of w[i] plus the number of points on the boundline N.

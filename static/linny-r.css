@@ -10,7 +10,7 @@ file that implements the graphical user interface for Linny-R.
 */
 
 /*
-Copyright (c) 2017-2023 Delft University of Technology
+Copyright (c) 2017-2024 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1366,11 +1366,11 @@ td.export {
 }
 
 td.import {
-  color: #b00000;
+  color: #b00;
 }
 
 td.export {
-  color: #0000b0;
+  color: #00b;
 }
 
 /* styles for the SERVER dialog */
@@ -2312,7 +2312,7 @@ div.menu-item:hover {
 }
 
 /* the BOUNDLINE POINT DIALOG allows entering precise coordinates */
-#boundline-data-modal {
+#boundline-point-modal {
   z-index: 101;
 }
 
@@ -2435,6 +2435,12 @@ td.bldnr {
   font-weight: bold;  
 }
 
+span.grit {
+  color: #a05090;
+  font-style: italic;
+  margin-left: 8px;
+}
+
 #boundline-data-line {
   position: absolute;
   top: 52px;
@@ -2444,17 +2450,18 @@ td.bldnr {
 
 #boundline-data-sel-titles {
   position: absolute;
-  top: 195px;
-  left: 2px;
+  top: 189px;
+  left: 4px;
 }
 
 #boundline-data-sel-area {
   position: absolute;
-  top: 208px;
-  left: 2px;
+  top: 205px;
+  left: 3px;
   overflow: scroll;
   width: calc(100% - 6px);
-  height: 100px;
+  height: 120px;
+  border-top: 1px solid Silver;
 }
 
 #boundline-data-sel-buttons {
@@ -2594,6 +2601,7 @@ div.io-box {
 #finder-table,
 #finder-item-table,
 #finder-expression-table,
+#boundline-data-sel-table,
 #restore-table {
   width: 100%;
   max-width: 100%;
@@ -2667,7 +2675,7 @@ div.io-box {
   top: 60px;
   left: calc(40% + 4px);
   width: calc(60% - 6px);
-  height: calc(100% - 122px);
+  height: calc(100% - 85px);
   overflow-y: auto;
   border-top: 1px solid Silver;
 }
@@ -2722,7 +2730,7 @@ div.ds-indent {
 }
 
 div.tree-btn {
-  color: #909090;
+  color: #999;
   margin-right: 3px;
   cursor: pointer;
   margin-left: -13px;
@@ -2730,86 +2738,98 @@ div.tree-btn {
 
 div.modif::before {
   content: ' \2045';
-  color: #b00080;
+  color: #b08;
   margin-right: 2px;
+}
+
+span.blpoints {
+  color: #82a;
+  text-shadow: #b9c 0.5px 0.5px;
+}
+
+span.blpoints::before {
+  content: ' \2234';
+  color: #b08;
+  font-weight: bolder;
+  margin-right: 2px;  
 }
 
 div.outcome::before,
 span.outcome::before {
   content: ' \25C8';
-  color: #b00080;
+  color: #b08;
   margin-right: 1px;
   font-style: normal;
 }
 
 div.array::before {
   content: ' \2263';
-  color: #b00080;
+  color: #b08;
   margin-right: 1px;
 }
 
 div.series::before {
   content: ' \28B8';
-  color: #b00080;
+  color: #b08;
   margin-left: -4px;
 }
 
 div.outcome.modif::before {
   content: ' \25C8\2045';
-  color: #b00080;
+  color: #b08;
   margin-right: 2px;
 }
 
 div.array.modif::before {
   content: ' \2263\2045';
-  color: #b00080;
+  color: #b08;
   margin-right: 1px;
 }
 
 div.series.modif::before {
   content: ' \28B8\2045';
-  color: #b00080;
+  color: #b08;
   margin-left: -4px;
 }
 
 div.blackbox::before {
   content: ' \25FC';
-  color: #b00080;
+  color: #b08;
 }
 
 div.blackbox.series::before {
   content: ' \25FC\28B8';
-  color: #b00080;
+  color: #b08;
 }
 
 div.blackbox.array::before {
   content: ' \25FC\2263';
-  color: #b00080;
+  color: #b08;
 }
 
 div.blackbox.outcome::before {
   content: ' \25FC\25C8';
-  color: #b00080;
+  color: #b08;
 }
 
 div.blackbox.modif::before {
   content: ' \25FC\2045';
-  color: #b00080;
+  color: #b08;
 }
 
 div.blackbox.series.modif::before {
   content: ' \25FC\28B8\2045';
-  color: #b00080;
+  color: #b08;
 }
 
 div.blackbox.array.modif::before {
   content: ' \25FC\2263\2045';
-  color: #b00080;
+  color: #b08;
 }
 
 div.blackbox.outcome.modif::before {
   content: ' \25FC\25C8\2045';
-  color: #b00080;
+  color: #b08;
 }
 
 td.dataset-selector {
@@ -2958,6 +2978,12 @@ td.equation-expression-multi {
   bottom: 2px;
   left: 2px;
   width: calc(100% - 6px);
+}
+
+/* NOTE: New and Rename modals must be above boundline data modal */
+#new-selector-modal,
+#rename-selector-modal {
+  z-index: 102;
 }
 
 #new-selector-dlg,
@@ -3303,13 +3329,13 @@ td.vbl-desc-lead {
 td.vbl-asc::after,
 td.vbl-asc-lead::after {
   content: ' \2B67';
-  color: #b00080;
+  color: #b08;
 }
 
 td.vbl-desc::after,
 td.vbl-desc-lead::after {
   content: ' \2B68';
-  color: #b00080;
+  color: #b08;
 }
 
 
@@ -3653,7 +3679,7 @@ td.sa-ds-sel {
 }
 
 td.sa-ds-sel:hover {
-  text-decoration: underline solid #b00090;
+  text-decoration: underline solid #b08;
   text-decoration-thickness: 1.5px;
 }
 
@@ -5500,6 +5526,10 @@ div.call-stack-expr {
 }
 
 /* the CHECK UPDATE modal asks for permission to update the software */
+#check-update-modal {
+  z-index: 150;
+}
+
 #check-update-dlg {
   width: 500px;
   height: min-content;

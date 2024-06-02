@@ -10,7 +10,7 @@ the Linny-R project.
 */
 
 /*
-Copyright (c) 2017-2023 Delft University of Technology
+Copyright (c) 2017-2024 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -840,8 +840,25 @@ class LinnyRModel {
     return -1;
   }
   
+  validSelector(name) {
+    // Return sanitized selector name, or empty string if invalid.
+    const s = name.replace(/[^a-zA-Z0-9\+\-\%\_\*\?]/g, '');
+    let msg = '';
+    if(s !== name) {
+      msg = UI.WARNING.SELECTOR_SYNTAX;
+    } else if(name.indexOf('*') !== name.lastIndexOf('*')) {
+      // A selector can only contain 1 star.
+      msg = UI.WARNING.SINGLE_WILDCARD;
+    }
+    if(msg) {
+      UI.warn(msg);
+      return '';
+    }
+    return s;    
+  }
+  
   isDimensionSelector(s) {
-    // Returns TRUE if `s` is a dimension selector in some experiment
+    // Return TRUE if `s` is a dimension selector in some experiment.
     for(let i = 0; i < this.experiments.length; i++) {
       if(this.experiments[i].isDimensionSelector(s)) return true;
     }
@@ -9558,6 +9575,10 @@ class Dataset {
       }
       // Reduce inner spaces to one, and trim outer spaces.
       s = s.replace(/\s+/g, ' ').trim();
+      if(!s) {
+        UI.warn(`Invalid equation name "${selector}"`);
+        return null;
+      }
       if(s.startsWith(':')) {
         // Methods must have no spaces directly after their leading colon,
         // and must not contain other colons.
@@ -9581,21 +9602,9 @@ class Dataset {
         return null;
       }
     } else {
-      // Standard dataset modifier selectors are much more restricted, but
-      // to be user-friendly, special chars are removed automatically.
-      s = s.replace(/[^a-zA-Z0-9\+\-\%\_\*\?]/g, '');
-      let msg = '';
-      if(s !== selector) msg = UI.WARNING.SELECTOR_SYNTAX;
-      // A selector can only contain 1 star.
-      if(s.indexOf('*') !== s.lastIndexOf('*')) msg = UI.WARNING.SINGLE_WILDCARD;
-      if(msg) {
-        UI.warn(msg);
-        return null;
-      }
-    }
-    if(s.trim().length === 0) {
-      UI.warn(UI.WARNING.INVALID_SELECTOR);
-      return null;
+      // Standard dataset modifier selectors are much more restricted.
+      s = MODEL.validSelector(s);
+      if(!s) return;
     }
     // Then add a dataset modifier to this dataset.
     const id = UI.nameToID(s);
@@ -12592,21 +12601,24 @@ class Experiment {
 
 // CLASS BoundlineSelector
 class BoundlineSelector {
-  constructor(boundline, selector, x='') {
+  constructor(boundline, selector, x='', g=false) {
     this.boundline = boundline;
     this.selector = selector;
     this.expression = new Expression(boundline, selector, x);
+    this.grouping = g;
   }
   
   get asXML() {
     // Prevent saving unidentified selectors.
     if(this.selector.trim().length === 0) return '';
-    return ['<boundline-selector><selector>', xmlEncoded(this.selector),
+    return ['<boundline-selector', (this.grouping ? ' points-x="1"' : ''),
+      '><selector>', xmlEncoded(this.selector),
       '</selector><expression>', xmlEncoded(this.expression.text),
       '</expression></boundline-selector>'].join('');
   }
 
   initFromXML(node) {
+    this.grouping = nodeParameterValue(node, 'points-x') === '1';
     this.expression.text = xmlDecoded(nodeContentByTag(node, 'expression'));
     if(IO_CONTEXT) {
       // Contextualize the included expression.
@@ -12625,6 +12637,7 @@ class BoundLine {
     this.points = [[0, 0], [100, 0]];
     this.storePoints();
     this.type = VM.GE;
+    // SVG string for contour of this bound line (to reduce computation).
     this.contour_path = '';
     this.point_data = [];
     this.url = '';
@@ -12633,20 +12646,17 @@ class BoundLine {
   }
   
   get displayName() {
-    return this.constraint.displayName + ': ' +
-        VM.constraint_codes[this.type] + ' bound line #' +
+    return this.constraint.displayName + ' [' +
+        VM.constraint_codes[this.type] + '] bound line #' +
         this.constraint.bound_lines.indexOf(this);
   }
 
   get copy() {
     // Return a "clone" of this bound line.
     let bl = new BoundLine(this.constraint);
-    bl.points.length = 0;
-    for(let i = 0; i < this.points.length; i++) {
-      const p = this.points[i];
-      bl.points.push([p[0], p[1]]);
-    }
-    bl.points_string = JSON.stringify(this.points);
+    bl.points_string = this.points_string;
+    // NOTE: Reset boundline to its initial "as edited" state.
+    bl.restorePoints();
     bl.type = this.type;
     bl.contour_path = this.contour_path;
     bl.url = this.url;
@@ -12658,23 +12668,105 @@ class BoundLine {
     for(let i = 0; i < this.selectors.length; i++) {
       const s = this.selectors[i];
       bl.selectors.push(new BoundlineSelector(s.boundline, s.selector,
-          s.expression.text));
+          s.expression.text, s.grouping));
     }
     return bl;
   }
   
-  setPointsFromData(t) {
-    // Get point coordinates from time series data at time step t.
-    if(t > 0 && t <= this.point_data.length) {
-      const pd = this.point_data[t - 1];
+  get staticLine() {
+    // Return TRUE if bound line has only the default selector, and this
+    // evaluates as default index = 0.
+    return this.selectors.length < 2 &&
+        this.selectors[0].expression.text === '0';
+  }
+  
+  get selectorList() {
+    // Return list of selector names only.
+    const sl = [];
+    for(let i = 0; i < this.selectors.length; i++) {
+      sl.push(this.selectors[i].selector);
+    }
+    return sl;
+  }
+
+  selectorByName(name) {
+    // Return index of selector `n` in the list, or null if not found.
+    for(let i = 0; i < this.selectors.length; i++) {
+      if(this.selectors[i].selector === name) return this.selectors[i];
+    }
+    return null;
+  }
+  
+  addSelector(name, x='') {
+    // Add selector if new, and return the named selector.
+    const s = this.selectorByName(name);
+    if(s) return s;
+    name = MODEL.validSelector(name);
+    if(name.indexOf('*') >= 0 || name.indexOf('?') >= 0) {
+      UI.warn('Bound line selector cannot contain wildcards');
+      return null;
+    }
+    if(name) {
+      const s = new BoundlineSelector(this, name, x);
+      this.selectors.push(s);
+      this.selectors.sort((a, b) => compareSelectors(a.selector, b.selector));
+      return s;
+    }
+    return null;
+  }
+
+  setPointsFromData(index) {
+    // Get point coordinates from bound line series data at index.
+    if(index > 0 && index <= this.point_data.length) {
+      const pd = this.point_data[index - 1];
       this.points.length = 0;
       for(let i = 0; i < pd.length; i += 2) {
         this.points.push([pd[i] * 100, pd[i + 1] * 100]);
       }
     } else {
-      // For now, no "periodic" data => default to original coordinates.
+      // Data is seen as 1-based array => default to original coordinates.
       this.restorePoints();
     }
+  }
+  
+  get activeSelectorIndex() {
+    // Return the number of the first boundline selector that matches the
+    // selector combination of the current experiment. Defaults to 0.
+    if(this.selectors.length < 2) return 0;
+    const x = MODEL.running_experiment;
+    if(!x) return 0;
+    for(let i = 1; i < this.selectors.length; i++) {
+      if(x.active_combination.indexOf(this.selectors[i].selector) >= 0) {
+        return i;
+      }
+    }
+    return 0;
+  }
+  
+  setPointsForAbsoluteTime(t, draw=false) {
+    // Adapt bound line point coordinates for the current time step
+    // (absolute, not relative to the optimization period start)
+    // for the running experiment (if any).
+    // NOTE: For speed, first perform the quick check whether this line
+    // is static, as then the points do not change.
+    if(this.staticLine) return;
+    const
+        bls = this.selectors[this.activeSelectorIndex],
+        r = bls.expression.result(t);
+    if(r <= VM.ERROR || r >= VM.EXCEPTION) {
+      console.log('ERROR: exception in boundline selector expression', bls, r);
+    // NOTE: Double-check whether result is a grouping.
+    } else if(bls.grouping || Array.isArray(r)) {
+      this.validatePoints(r);
+      this.points.length = 0;
+      for(let i = 0; i < r.length; i += 2) {
+        this.points.push([r[i] * 100, r[i + 1] * 100]);
+      }
+    } else {
+      this.setPointsFromData(r);
+    }
+    // Compute and store SVG for thumbnail only when needed.
+    if(draw) CONSTRAINT_EDITOR.setContourPath(this);
   }
   
   restorePoints() {
@@ -12687,50 +12779,43 @@ class BoundLine {
     this.points_string = JSON.stringify(this.points);
   }
   
-  get asXML() {
-    const xml = ['<bound-line type="', this.type,
-        '"><points>', JSON.stringify(this.points),
-        '</points><contour>', this.contour_path,
-        '</contour><url>', xmlEncoded(this.url),
-        '</url><point-data>', xmlEncoded(this.pointDataString),
-        '</point-data><selectors>'];
-    for(let i = 0; i < this.selectors.length; i++) {
-      xml.push(this.selectors[i].asXML);
+  get pointsDataString() {
+    // Return point coordinates in data format (space-separated numbers).
+    const pd = [];
+    for(let i = 0; i < this.points.length; i++) {
+      const p = this.points[i];
+      pd.push(p[0], p[1]);
     }
-    xml.push('</selectors></bound-line>');
-    return xml.join('');
+    return pd.join(' ');
   }
-  
-  initFromXML(node) {
-    this.type = safeStrToInt(nodeParameterValue(node, 'type'), VM.EQ);
-    this.points_string = nodeContentByTag(node, 'points');
+
+  get maxPoints() {
+    // Return the highest number of points that this boundline can have.
     this.restorePoints();
-    this.contour_path = nodeContentByTag(node, 'contour');
-    this.url = xmlDecoded(nodeContentByTag(node, 'url'));
-    if(this.url) {
-      FILE_MANAGER.getRemoteData(this, this.url);
-    } else {
-      this.unpackPointDataString(
-          xmlDecoded(nodeContentByTag(node, 'point-data')));
+    let n = this.points.length;
+    for(let i = 0; i < this.point_data.length; i++) {
+      n = Math.max(n, this.point_data[i].length);
     }
-    const n = childNodeByTag(node, 'selectors');
-    if(n && n.childNodes) {
-      // NOTE: Only overwrite default selector if XML specifies selectors.
-      this.selectors.length = 0;
-      for(let i = 0; i < n.childNodes.length; i++) {
-        const c = n.childNodes[i];
-        if(c.nodeName === 'boundline-selector') {
-          const
-              s = xmlDecoded(nodeContentByTag(c, 'selector')),
-              bls = new BoundlineSelector(this, s);
-          bls.initFromXML(c);
-          this.selectors.push(bls);
+    const bls = this.selectors[this.activeSelectorIndex];
+    if(bls.grouping) {
+      const x = bls.expression;
+      if(x.isStatic) {
+        n = Math.max(n, x.result(1).length);
+      } else {
+        // For dynamic expressions, the grouping length may vary, so
+        // we must check for the complete run length.
+        for(let t = MODEL.start_period; t <= MODEL.end_period; t++) {
+          n = Math.max(n, x.result(t).length);
         }
       }
     }
+    return n;
   }
-  
+
   validatePoints(pd) {
+    if(!Array.isArray(pd)) {
+      console.log(pd); throw "Not an array";
+    }
     // Ensure that array `pd` is a valid series of point coordinates.
     if(pd.length) {
       // Ensure that number of point coordinates is even (Y defaults to 0).
@@ -12803,24 +12888,49 @@ class BoundLine {
     }
   }
 
-  get isActive() {
-    // Return TRUE if this line has no selectors, or if its selectors match
-    // with the selectors of the current experiment run. OBSOLETE!
-    return true;
+  get asXML() {
+    // NOTE: Save boundline always with points-as-last-edited.
+    this.restorePoints();
+    const xml = ['<bound-line type="', this.type,
+        '"><points>', JSON.stringify(this.points),
+        '</points><contour>', this.contour_path,
+        '</contour><url>', xmlEncoded(this.url),
+        '</url><point-data>', xmlEncoded(this.pointDataString),
+        '</point-data><selectors>'];
+    for(let i = 0; i < this.selectors.length; i++) {
+      xml.push(this.selectors[i].asXML);
+    }
+    xml.push('</selectors></bound-line>');
+    return xml.join('');
   }
   
-  get activeSelectorIndex() {
-    // Return the number of the first boundline selector that matches the
-    // selector combination of the current experiment. Defaults to 0.
-    if(this.selectors.length < 2) return 0;
-    const x = MODEL.running_experiment;
-    if(!x) return 0;
-    for(let i = 1; i < this.selectors.length; i++) {
-      if(x.active_combination.indexOf(this.selectors[i].selector) >= 0) {
-        return i;
+  initFromXML(node) {
+    this.type = safeStrToInt(nodeParameterValue(node, 'type'), VM.EQ);
+    this.points_string = nodeContentByTag(node, 'points');
+    this.restorePoints();
+    this.contour_path = nodeContentByTag(node, 'contour');
+    this.url = xmlDecoded(nodeContentByTag(node, 'url'));
+    if(this.url) {
+      FILE_MANAGER.getRemoteData(this, this.url);
+    } else {
+      this.unpackPointDataString(
+          xmlDecoded(nodeContentByTag(node, 'point-data')));
+    }
+    const n = childNodeByTag(node, 'selectors');
+    if(n && n.childNodes && n.childNodes.length) {
+      // NOTE: Only overwrite default selector if XML specifies selectors.
+      this.selectors.length = 0;
+      for(let i = 0; i < n.childNodes.length; i++) {
+        const c = n.childNodes[i];
+        if(c.nodeName === 'boundline-selector') {
+          const
+              s = xmlDecoded(nodeContentByTag(c, 'selector')),
+              bls = new BoundlineSelector(this, s);
+          bls.initFromXML(c);
+          this.selectors.push(bls);
+        }
       }
     }
-    return 0;
   }
   
   get needsNoSOS() {
@@ -12977,7 +13087,15 @@ class Constraint {
     this.bottom_y = 0;
     this.from_offset = 0;
     this.to_offset = 0;
-    // Slack information is a "sparse vector" that is filled after solving
+    this.reset();
+  }
+  
+  reset() {
+    // Reset run-dependent properties.
+    for(let i = 0; i < this.bound_lines.length; i++) {
+      this.bound_lines[i].current = -1;
+    }
+    // Slack information is a "sparse vector" that is filled after solving.
     this.slack_info = {};
   }
   
@@ -13056,7 +13174,7 @@ class Constraint {
     // ... and then check whether (%X, %Y) lies on the boundline
     for(let i = 0; i < this.bound_lines.length; i++) {
       const bl = this.bound_lines[i];
-      if(bl.isActive && bl.pointOnLine(x, y)) return 1;
+      if(bl.pointOnLine(x, y)) return 1;
     }
     return 0;
   }
@@ -13261,6 +13379,7 @@ if(NODE) module.exports = {
   BlockMessages: BlockMessages,
   ExperimentRun: ExperimentRun,
   Experiment: Experiment,
+  BoundlineSelector: BoundlineSelector,
   BoundLine: BoundLine,
   Constraint: Constraint
 };

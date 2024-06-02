@@ -11,7 +11,7 @@ functionality for the Linny-R Expression Editor dialog.
 */
 
 /*
-Copyright (c) 2017-2023 Delft University of Technology
+Copyright (c) 2017-2024 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -263,6 +263,9 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
     } else if(!this.edited_input_id && EQUATION_MANAGER.edited_expression) {
       own = MODEL.equations_dataset;
       sel = EQUATION_MANAGER.selected_modifier.selector;
+    } else if(!this.edited_input_id && CONSTRAINT_EDITOR.edited_expression) {
+      own = CONSTRAINT_EDITOR.selected;
+      sel = CONSTRAINT_EDITOR.selected_selector;
     } else {
       own = UI.edited_object;
       sel = this.edited_input_id.split('-').pop();
@@ -292,6 +295,9 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
         DATASET_MANAGER.modifyExpression(xp.expr);
       } else if(EQUATION_MANAGER.edited_expression) {
         EQUATION_MANAGER.modifyEquation(xp.expr);
+      } else if(CONSTRAINT_EDITOR.edited_expression) {
+        // NOTE: Boundline selector expressions may result in a grouping.
+        CONSTRAINT_EDITOR.modifyExpression(xp.expr, xp.concatenating);
       }
       UI.modals.expression.hide();
       return true;

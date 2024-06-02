@@ -11,7 +11,7 @@ for the Linny-R Dataset Manager dialog.
 */
 
 /*
-Copyright (c) 2017-2023 Delft University of Technology
+Copyright (c) 2017-2024 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -781,13 +781,17 @@ class GUIDatasetManager extends DatasetManager {
       if(this.selected_modifier) ms = this.selected_modifier.selector;
       md = this.rename_selector_modal;
     }
+    md.element('type').innerText = 'dataset modifier';
     md.element('name').value = ms;
     md.show('name');
   }
 
   newModifier() {
+    const md = this.new_selector_modal;
+    // NOTE: Selector modal is also used by constraint editor.
+    if(md.element('type').innerText !== 'dataset modifier') return;
     const
-        sel = this.new_selector_modal.element('name').value,
+        sel = md.element('name').value,
         m = this.selected_dataset.addModifier(sel);
     if(m) {
       this.selected_modifier = m;
@@ -795,16 +799,19 @@ class GUIDatasetManager extends DatasetManager {
       // (ignoring those with wildcards)
       const sl = this.selected_dataset.plainSelectors;
       if(sl.length > 1) MODEL.expandDimension(sl);
-      this.new_selector_modal.hide();
+      md.hide();
       this.updateModifiers();
     }
   }
   
   renameModifier() {
     if(!this.selected_modifier) return;
+    const md = this.rename_selector_modal;
+    // NOTE: Selector modal is also used by constraint editor.
+    if(md.element('type').innerText !== 'dataset modifier') return;
     const
         wild = this.selected_modifier.hasWildcards,
-        sel = this.rename_selector_modal.element('name').value,
+        sel = md.element('name').value,
         // NOTE: Normal dataset selector, so remove all invalid characters.
         clean_sel = sel.replace(/[^a-zA-z0-9\%\+\-\?\*]/g, ''),
         // Keep track of old name
@@ -822,7 +829,7 @@ class GUIDatasetManager extends DatasetManager {
     if(m === oldm) {
       m.selector = clean_sel;
       this.updateDialog();
-      this.rename_selector_modal.hide();
+      md.hide();
       return;
     }
     // Rest is needed only when a new modifier has been added.
@@ -861,7 +868,7 @@ class GUIDatasetManager extends DatasetManager {
     // (ignoring those with wildcards).
     const sl = this.selected_dataset.plainSelectors;
     if(sl.length > 1) MODEL.expandDimension(sl);
-    this.rename_selector_modal.hide();
+    md.hide();
     this.updateModifiers();
   }
   
