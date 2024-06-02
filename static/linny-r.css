@@ -2426,13 +2426,19 @@ div.menu-item:hover {
   overflow: auto;
 }
 
-td.bldnr {
+td.bl-odnr {
   text-align: right;
   padding-left: 3px;
   padding-right: 6px;
   width: 1px;
   color: #a05090;
   font-weight: bold;  
+}
+
+td.bl-od {
+  width: 100%;
+  border-left: 1px solid silver;
+  padding-left: 6px;
 }
 
 span.grit {
@@ -2601,6 +2607,7 @@ div.io-box {
 #finder-table,
 #finder-item-table,
 #finder-expression-table,
+#boundline-data-series-table,
 #boundline-data-sel-table,
 #restore-table {
   width: 100%;

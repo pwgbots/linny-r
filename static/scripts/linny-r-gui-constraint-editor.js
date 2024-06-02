@@ -431,7 +431,7 @@ class ConstraintEditor {
         edit_btn = md.element('edit-btn'),
         save_btn = md.element('save-btn'),
         cancel_btn = md.element('cancel-btn'),
-        tbl = md.element('series-area'),
+        tbl = md.element('series-table'),
         txt = md.element('series');
     edit_btn.classList.add('off');
     save_btn.classList.remove('off');
@@ -455,7 +455,7 @@ class ConstraintEditor {
         edit_btn = md.element('edit-btn'),
         save_btn = md.element('save-btn'),
         cancel_btn = md.element('cancel-btn'),
-        tbl = md.element('series-area'),
+        tbl = md.element('series-table'),
         txt = md.element('series');
     if(save) {
       bl.unpackPointDataString(txt.value);
@@ -486,25 +486,20 @@ class ConstraintEditor {
   }
   
   get boundLineDataTable() {
-    // Return HTML for point coordinates table.
-    let html = '<div style="margin: 45px 130px"><em>No line data</em></div>';
-    if(!this.selected) return html;
-    const bl = this.selected;
-    if(bl.point_data.length > 0) {
-      const
-          tr = '<tr class="dataset" onmouseover="CONSTRAINT_EDITOR.' +
-           'showDataBoundLine(%N)"><td class="bldnr">%N.</td><td>%D</td></tr>',
-          lines = [tr.replaceAll('%N', 0).replace('%D',
-              bl.pointsDataString + '<span class="grit">(default)</span>')];
-      for(let i = 0; i < bl.point_data.length; i++) {
-        lines.push(tr.replaceAll('%N', i + 1)
-            .replace('%D', bl.point_data[i].join(' ')));
-      }
-      html = '<table style="width: 100%; border-collapse: collapse;' +
-          'background-color: white; border: 1px solid Silver">' +
-          lines.join('') + '</table>';
+    // Return *inner* HTML for point coordinates table.
+    if(!this.selected) return ;
+    const
+        bl = this.selected,
+        tr = '<tr class="dataset" onmouseover="CONSTRAINT_EDITOR.' +
+         'showDataBoundLine(%N)"><td class="bl-odnr">%N.</td>' +
+         '<td class="bl-od">%D</td></tr>',
+        lines = [tr.replaceAll('%N', 0).replace('%D',
+            bl.pointsDataString + '<span class="grit">(default)</span>')];
+    for(let i = 0; i < bl.point_data.length; i++) {
+      lines.push(tr.replaceAll('%N', i + 1)
+          .replace('%D', bl.point_data[i].join(' ')));
     }
-    return html;
+    return lines.join('');
   }
   
   get boundLineSelectorTable() {
