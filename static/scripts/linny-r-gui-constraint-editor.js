@@ -106,6 +106,9 @@ class ConstraintEditor {
     const bls = this.boundline_modal.element('series');
     bls.addEventListener('keyup', () => CONSTRAINT_EDITOR.updateLine());
     bls.addEventListener('click', () => CONSTRAINT_EDITOR.updateLine());
+    // NOTE: Chart should show default line when cursor is not over data.
+    this.boundline_modal.element('series-table').addEventListener(
+        'mouseout', () => CONSTRAINT_EDITOR.showDefaultBoundLine());
     // Make boundline selector buttons responsive.
     this.selector_btns = 'bl-rename-sel bl-edit-sel bl-delete-sel';
     document.getElementById('bl-add-sel-btn').addEventListener(
@@ -171,17 +174,15 @@ class ConstraintEditor {
     // NOTE: All edits will be ignored unless the modeler clicks OK.
   }
   
-  get doubleClicked() {
+  get twoClicks() {
+    // Return TRUE iff two mouse clicks occurred within 300 ms.
     const
         now = Date.now(),
         dt = now - this.last_time_clicked;
     this.last_time_clicked = now;
-    if(this.on_point === this.selected_point) {
-      // Consider click to be "double" if it occurred less than 300 ms ago
-      if(dt < 300) {
-        this.last_time_clicked = 0;
-        return true;
-      }
+    if(dt < 300) {
+      this.last_time_clicked = 0;
+      return true;
     }
     return false;
   }
@@ -208,14 +209,21 @@ class ConstraintEditor {
   
   mouseDown(e) {
     // The onMouseDown response of the constraint editor's graph area.
+    const two = this.twoClicks;
     if(this.adding_point) {
       this.doAddPointToLine();
-    } else if((e.altKey || this.doubleClicked) && this.on_point >= 0) {
-      this.positionPoint();
     } else if(this.on_line) {
+      const
+          same_line = two && this.selected === this.on_line,
+          same_point = two && this.selected_point === this.on_point;
       this.selectBoundLine(this.on_line);
       this.dragged_point = this.on_point;
       this.selected_point = this.on_point;
+      if(this.on_point >= 0 && (e.altKey || same_point)) {
+        this.positionPoint();
+      } else if(this.on_line && (e.altKey || same_line)) {
+        this.showBoundLineModal();
+      }
     } else {
       this.selected = null;
       this.dragged_point = -1;
@@ -417,9 +425,8 @@ class ConstraintEditor {
   }
   
   loadPointData() {
-    const
-        md = this.boundline_modal,
-        url = md.element('url').value.trim();
+    const md = this.boundline_modal;
+    let url = md.element('url').value.trim();
     if(this.selected && url) {
       FILE_MANAGER.getRemoteData(this.selected, url);
     }
@@ -541,16 +548,10 @@ class ConstraintEditor {
     // Select selector, or when double-clicked, edit its expression when
     // x = TRUE, or the name of the selector when x = FALSE.
     if(!this.selected) return;
-    const
-        now = Date.now(),
-        dt = now - this.last_time_clicked,
-        // Consider click to be "double" if it occurred less than 300 ms ago.
-        dbl = (dt < 300 && id === this.selected_selector),
-        edit = event.altKey || dbl;
-    this.last_time_clicked = now;
+    const edit = (event.altKey ||
+        (this.twoClicks && id === this.selected_selector));
     this.selected_selector = id;
     if(edit) {
-      this.last_time_clicked = 0;
       if(x) {
         this.editExpression();
       } else {
@@ -705,6 +706,12 @@ class ConstraintEditor {
     md.show();
   }
   
+  showDefaultBoundLine() {
+    // Restore and redraw default bound line.
+    if(this.selected) this.selected.restorePoints();
+    this.draw();    
+  }
+  
   updateBoundLineProperties() {
     // Change experiment run selectors of selected boundline.
     if(this.selected) {
@@ -712,9 +719,7 @@ class ConstraintEditor {
           bl = this.selected,
           md = this.boundline_modal;
       bl.url = md.element('url').value;
-      // Restore and redraw default bound line.
-      bl.restorePoints();
-      this.draw();
+      this.showDefaultBoundLine();
       md.hide();
     }
   }
@@ -834,6 +839,8 @@ class ConstraintEditor {
   positionPoint() {
     // Prompt modeler for precise point coordinates.
     if(this.selected_point < 0) return;
+    // Prevent that "drag point" state persists after ESC o cancel.
+    this.dragged_point = -1;
     const
         md = this.point_modal,
         pc = this.point_div.innerHTML.split(', ');

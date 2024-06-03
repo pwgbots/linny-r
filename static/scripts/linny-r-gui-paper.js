@@ -1886,7 +1886,7 @@ class Paper {
           clr = (stroke_color === this.palette.node_rim ? 'black' : stroke_color);
       // Set the boundline point coordinates (TRUE indicates: also compute
       // the thumbnail SVG).
-      bl.setPointsForAbsoluteTime(MODEL.t, true);
+      bl.setDynamicPoints(MODEL.t, true);
       el = this.newSVGElement('path');
       if(bl.type === VM.EQ) {
         // For EQ bound lines, draw crisp line on silver background.

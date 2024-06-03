@@ -2024,19 +2024,8 @@ class ExpressionParser {
         this.error = 'Missing operand';
       } else if(this.sym_stack > 1) {
         this.error = 'Missing operator';
-      } else if(this.concatenating) {
-        if(this.owner instanceof BoundLine) {
-          // Check whether grouping comprises an even number of values,
-          // and at least 4.
-          const n = this.expr.split(';').length;
-          if(n < 4) {
-            this.error = 'Fewer than 4 boundline point coordinates';
-          } else if (n % 2) {
-            this.error = `Uneven number of boundline point coordinates (${n})`;
-          }
-        } else {
-          this.error = 'Invalid parameter list';
-        }
+      } else if(this.concatenating && !(this.owner instanceof BoundLine)) {
+        this.error = 'Invalid parameter list';
       }
     }
     // When compiling a method, check for all eligible prefixes whether
@@ -9010,7 +8999,7 @@ function VMI_add_bound_line_constraint(args) {
       y = new Array(n),
       w = new Array(n);
   // Set bound line point coordinates for current run and time step.
-  bl.setPointsForAbsoluteTime(MODEL.start_period + VM.t - 1);
+  bl.setDynamicPoints(VM.t);
   if(DEBUGGING) {
     console.log('add_bound_line_constraint:', bl.displayName);
   }
