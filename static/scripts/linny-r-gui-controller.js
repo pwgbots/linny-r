@@ -2252,8 +2252,9 @@ class GUIController extends Controller {
         while(i < inp.length && inp[i].disabled) i++;
         if(i < inp.length) {
           inp[i].focus();
-        } else if('constraint-modal xp-clusters-modal'.indexOf(topmod.id) >= 0) {
-          // NOTE: Constraint modal and "ignore clusters" modal must NOT close
+        } else if(['constraint-modal', 'boundline-data-modal',
+            'xp-clusters-modal'].indexOf(topmod.id) >= 0) {
+          // NOTE: Constraint modal, boundline data modal and "ignore clusters" modal must NOT close
           // when Enter is pressed, but only de-focus the input field.
           e.target.blur();
         } else {
@@ -3862,6 +3863,8 @@ console.log('HERE name conflicts', name_conflicts, mapping);
       }
     }
     this.hideGridPlateMenu('process');
+    // Show plate "button" only when power grids option is set for model.
+    plate.style.display = (MODEL.with_power_flow ? 'block' : 'none');
   }
 
   updateProcessProperties() {

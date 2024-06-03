@@ -1011,8 +1011,8 @@ div.grid-kV-plate {
   display: inline-block;
   height: 17px;
   min-width: 30px;
-  color: white;
-  text-shadow: 1px 1px 1px black;  
+  color: White;
+  text-shadow: 1px 1px 1px Black;  
   background-color: #0000ff;
   font-size: 9px;
   text-align: center;
@@ -1023,9 +1023,9 @@ div.grid-kV-plate {
 }
 
 div.no-grid-plate {
-  color: gray;
-  border: 1px solid gray !important;
-  box-shadow: gray 0px 0px 3px 1px inset;
+  color: Gray;
+  border: 1px solid Gray !important;
+  box-shadow: Gray 0px 0px 3px 1px inset;
   margin: 1px !important;
   padding: 0px !important;
   text-shadow: none;
@@ -1068,7 +1068,7 @@ div.grid-kcl-symbol {
   height: 17px;
   font-size: 19px;
   color: #0000a0;
-  text-shadow: 0px 0px 2px #07f0f0;
+  text-shadow: 0px 0px 2px #00c0f0;
   margin-right: 3px;
   vertical-align: top;
 }
@@ -1366,11 +1366,11 @@ td.export {
 }
 
 td.import {
-  color: #b00;
+  color: #b00000;
 }
 
 td.export {
-  color: #00b;
+  color: #00000b;
 }
 
 /* styles for the SERVER dialog */
@@ -2426,6 +2426,14 @@ div.menu-item:hover {
   overflow: auto;
 }
 
+#boundline-data-series-table {
+  border-top: 1px solid Silver
+}
+
+#boundline-data-series-table tr:first-child {
+  background-color: #e0e0e0;
+}
+
 td.bl-odnr {
   text-align: right;
   padding-left: 3px;
@@ -2737,7 +2745,7 @@ div.ds-indent {
 }
 
 div.tree-btn {
-  color: #999;
+  color: #909090;
   margin-right: 3px;
   cursor: pointer;
   margin-left: -13px;
@@ -2745,18 +2753,18 @@ div.tree-btn {
 
 div.modif::before {
   content: ' \2045';
-  color: #b08;
+  color: #b00080;
   margin-right: 2px;
 }
 
 span.blpoints {
-  color: #82a;
+  color: #8020a0;
   text-shadow: #b9c 0.5px 0.5px;
 }
 
 span.blpoints::before {
   content: ' \2234';
-  color: #b08;
+  color: #b00080;
   font-weight: bolder;
   margin-right: 2px;  
 }
@@ -2764,79 +2772,79 @@ span.blpoints::before {
 div.outcome::before,
 span.outcome::before {
   content: ' \25C8';
-  color: #b08;
+  color: #b00080;
   margin-right: 1px;
   font-style: normal;
 }
 
 div.array::before {
   content: ' \2263';
-  color: #b08;
+  color: #b00080;
   margin-right: 1px;
 }
 
 div.series::before {
   content: ' \28B8';
-  color: #b08;
+  color: #b00080;
   margin-left: -4px;
 }
 
 div.outcome.modif::before {
   content: ' \25C8\2045';
-  color: #b08;
+  color: #b00080;
   margin-right: 2px;
 }
 
 div.array.modif::before {
   content: ' \2263\2045';
-  color: #b08;
+  color: #b00080;
   margin-right: 1px;
 }
 
 div.series.modif::before {
   content: ' \28B8\2045';
-  color: #b08;
+  color: #b00080;
   margin-left: -4px;
 }
 
 div.blackbox::before {
   content: ' \25FC';
-  color: #b08;
+  color: #b00080;
 }
 
 div.blackbox.series::before {
   content: ' \25FC\28B8';
-  color: #b08;
+  color: #b00080;
 }
 
 div.blackbox.array::before {
   content: ' \25FC\2263';
-  color: #b08;
+  color: #b00080;
 }
 
 div.blackbox.outcome::before {
   content: ' \25FC\25C8';
-  color: #b08;
+  color: #b00080;
 }
 
 div.blackbox.modif::before {
   content: ' \25FC\2045';
-  color: #b08;
+  color: #b00080;
 }
 
 div.blackbox.series.modif::before {
   content: ' \25FC\28B8\2045';
-  color: #b08;
+  color: #b00080;
 }
 
 div.blackbox.array.modif::before {
   content: ' \25FC\2263\2045';
-  color: #b08;
+  color: #b00080;
 }
 
 div.blackbox.outcome.modif::before {
   content: ' \25FC\25C8\2045';
-  color: #b08;
+  color: #b00080;
 }
 
 td.dataset-selector {
@@ -3336,13 +3344,13 @@ td.vbl-desc-lead {
 td.vbl-asc::after,
 td.vbl-asc-lead::after {
   content: ' \2B67';
-  color: #b08;
+  color: #b00080;
 }
 
 td.vbl-desc::after,
 td.vbl-desc-lead::after {
   content: ' \2B68';
-  color: #b08;
+  color: #b00080;
 }
 
 
@@ -3686,7 +3694,7 @@ td.sa-ds-sel {
 }
 
 td.sa-ds-sel:hover {
-  text-decoration: underline solid #b08;
+  text-decoration: underline solid #b00080;
   text-decoration-thickness: 1.5px;
 }
 

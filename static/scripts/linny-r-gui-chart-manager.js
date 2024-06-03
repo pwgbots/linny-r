@@ -977,7 +977,7 @@ class GUIChartManager extends ChartManager {
       }
     }
     if(nr == 0 || this.drawing_chart) {
-      this.table_panel.html = '<div id="no-chart-data">No data</div>';
+      this.table_panel.innerHTML = '<div id="no-chart-data">No data</div>';
       return;
     }
     // Process each of 5 columns separately
