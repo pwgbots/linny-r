@@ -49,6 +49,14 @@ class GUIFileManager {
   getRemoteData(dataset, url) {
     // Gets data from a URL, or from a file on the local host 
     if(url === '') return;
+    if(url.indexOf('%') >= 0) {
+      // Expand %i, %j and %k if used in the URL.
+      const letters = ['i', 'j', 'k'];
+      for(let i = 0; i < letters.length; i++) {
+        const l = letters[i];
+        url = url.replaceAll('%' + l, valueOfIndexVariable(l));
+      }
+    }
     // NOTE: add this dataset to the "loading" list...
     addDistinct(dataset, MODEL.loading_datasets);
     // ... and allow for 3 more seconds (6 times 500 ms) to complete

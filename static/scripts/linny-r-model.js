@@ -905,37 +905,51 @@ class LinnyRModel {
     return this.end_period - this.start_period + 1 + this.look_ahead;
   }
   
+  processSelectorList(sl) {
+    // Checke whether selector list `sl` constitutes a new dimension.
+    // Ignore lists of fewer than 2 "plain" selectors.
+    if(sl.length > 1) {
+      let newdim = true;
+      // Merge into dimension if there are shared selectors.
+      for(let i = 0; i < this.dimensions.length; i++) {
+        const c = complement(sl, this.dimensions[i]);
+        if(c.length < sl.length) {
+          if(c.length > 0) this.dimensions[i].push(...c);
+          newdim = false;
+          break;
+        }
+      }
+      // If only new selectors, add the list as a dimension.
+      if(newdim) {
+        this.dimensions.push(sl);
+      }
+    }
+  }
+  
   inferDimensions() {
     // Generate the list of dimensions for experimental design.
     // NOTE: A dimension is a list of one or more relevant selectors.
-    let newdim;
     this.dimensions.length = 0;
     // NOTE: Ignore the equations dataset.
     for(let d in this.datasets) if(this.datasets.hasOwnProperty(d) &&
         this.datasets[d] !== this.equations_dataset) {
+      // Get the selector list for this dataset.
+      const ds = this.datasets[d];
+      // NOTE: Ignore wildcard selectors!
+      this.processSelectorList(ds.plainSelectors);
+    }
+    // Analyze constraint bound lines in the same way.
+    for(let k in this.constraints) if(this.constraints.hasOwnProperty(k)) {
       // Get selector list
-      const
-          ds = this.datasets[d],
-          // NOTE: Ignore wildcard selectors!
-          sl = ds.plainSelectors;
-      // Ignore datasets with fewer than 2 "plain" selectors.
-      if(sl.length > 1) {
-        newdim = true;
-        // Merge into dimension if there are shared selectors
-        for(let i = 0; i < this.dimensions.length; i++) {
-          const c = complement(sl, this.dimensions[i]);
-          if(c.length < sl.length) {
-            if(c.length > 0) this.dimensions[i].push(...c);
-            newdim = false;
-            break;
-          }
-        }
-        // If only new selectors, add the list as a dimension
-        if(newdim) {
-          this.dimensions.push(sl);
-        }
+      const c = this.constraints[k];
+      for(let i = 0; i < c.bound_lines.length; i++) {
+        const sl = c.bound_lines[i].selectorList;
+        // NOTE: Ignore the first selector "(default)".
+        sl.shift();
+        this.processSelectorList(sl);
       }
     }
+
   }
 
   expandDimension(sl) {
@@ -12736,16 +12750,15 @@ class BoundLine {
     const x = MODEL.running_experiment;
     if(!x) return 0;
     for(let i = 1; i < this.selectors.length; i++) {
-      if(x.active_combination.indexOf(this.selectors[i].selector) >= 0) {
+      if(x.activeCombination.indexOf(this.selectors[i].selector) >= 0) {
         return i;
       }
     }
     return 0;
   }
   
-  setPointsForAbsoluteTime(t, draw=false) {
+  setDynamicPoints(t, draw=false) {
     // Adapt bound line point coordinates for the current time step
-    // (absolute, not relative to the optimization period start)
     // for the running experiment (if any).
     // NOTE: For speed, first perform the quick check whether this line
     // is static, as then the points do not change.
@@ -12753,8 +12766,9 @@ class BoundLine {
     const
         bls = this.selectors[this.activeSelectorIndex],
         r = bls.expression.result(t);
+    // Log errors on the console, but ignore them.
     if(r <= VM.ERROR || r >= VM.EXCEPTION) {
-      console.log('ERROR: exception in boundline selector expression', bls, r);
+      console.log('ERROR: Exception in boundline selector expression', bls, r);
     // NOTE: Double-check whether result is a grouping.
     } else if(bls.grouping || Array.isArray(r)) {
       this.validatePoints(r);
@@ -12763,7 +12777,12 @@ class BoundLine {
         this.points.push([r[i] * 100, r[i + 1] * 100]);
       }
     } else {
-      this.setPointsFromData(r);
+      // NOTE: Data is not a time series but "array type" data. The time
+      // step co-determines the result. If modelers provide time series
+      // data, then they shoud use `t` (absolute time) as index expression,
+      // otherwise `rt` (relative time).
+      // NOTE: Result is a floating point number, so truncate it to integer.
+      this.setPointsFromData(Math.floor(r));
     }
     // Compute and store SVG for thumbnail only when needed.
     if(draw) CONSTRAINT_EDITOR.setContourPath(this);
@@ -12780,13 +12799,13 @@ class BoundLine {
   }
   
   get pointsDataString() {
-    // Return point coordinates in data format (space-separated numbers).
+    // Return point coordinates in data format (semicolon-separated numbers).
     const pd = [];
     for(let i = 0; i < this.points.length; i++) {
       const p = this.points[i];
       pd.push(p[0], p[1]);
     }
-    return pd.join(' ');
+    return pd.join(';');
   }
 
   get maxPoints() {
@@ -12848,7 +12867,7 @@ class BoundLine {
   }
   
   get pointDataString() {
-    // Point data is stored as semicolon-separated strings of space-separated
+    // Point data is stored as separate lines of semicolon-separated
     // floating point numbers, with N-digit precision to keep model files
     // compact (default: N = 8)
     let d = [];
@@ -12865,22 +12884,24 @@ class BoundLine {
       }
       this.validatePoints(pd);
       // Push point coordinates as space-separated string.
-      d.push(pd.join(' '));
+      d.push(pd.join(';'));
     }
-    return d.join(';\n');
+    return d.join('\n');
   }
   
   unpackPointDataString(str) {
-    // Convert semicolon-separated lines of point data to a numeric array.
+    // Convert separate lines of semicolon-separated point data to a
+    // list of lists of numbers.
     this.point_data.length = 0;
+    str= str.trim();
     if(str) {
-      const lines = str.split(';');
+      const lines = str.split('\n');
       for(let i = 0; i < lines.length; i++) {
         const
-            numbers = lines[i].trim().split(/\s+/),
+            numbers = lines[i].split(';'),
             pd = [];
         for(let i = 0; i < numbers.length; i++) {
-          pd.push(parseFloat(numbers[i]));
+          pd.push(parseFloat(numbers[i].trim()));
         }
         this.validatePoints(pd);
         this.point_data.push(pd);
@@ -13108,9 +13129,10 @@ class Constraint {
   }
 
   get identifier() {
-    // NOTE: constraint IDs are based on the node codes rather than IDs, as
-    // this prevents problems when nodes are renamed; to ensure ID uniqueness,
-    // constraints have FOUR underscores between node IDs (links have three)
+    // NOTE: Constraint IDs are based on the node codes rather than IDs,
+    // as this prevents problems when nodes are renamed. To ensure ID
+    // uniqueness, constraints have FOUR underscores between node IDs
+    // (links have three).
     return this.from_node.code + '____' + this.to_node.code;
   }
   
@@ -13120,7 +13142,7 @@ class Constraint {
   }
 
   get attributes() {
-    // NOTE: this requires some thought, still!
+    // NOTE: This requires some thought, still!
     const a = {name: this.displayName};
     if(MODEL.infer_cost_prices) {
       a.SOC = this.share_of_cost * this.soc_direction;
@@ -13134,16 +13156,16 @@ class Constraint {
   }
 
   attributeValue(a) {
-    // Returns the computed result for attribute `a`: for constraints,
-    // only A (active) and SOC (share of cost)
-    if(a === 'A') return this.activeVector; // binary vector - see below
-    // NOTE: negative share indicates Y->X direction of cost sharing
-    if(a === 'SOC') return this.share_of_cost * this.soc_direction; // number
+    // Return the computed result for attribute `a`: for constraints,
+    // only A (active) and SOC (share of cost).
+    if(a === 'A') return this.activeVector; // Binary vector - see below.
+    // NOTE: Negative share indicates Y->X direction of cost sharing.
+    if(a === 'SOC') return this.share_of_cost * this.soc_direction;
     return null;
   }
   
   get setsEquality() {
-    // Returns TRUE iff this constraint has an EQ boundline
+    // Return TRUE iff this constraint has an EQ bound line.
     for(let i = 0; i < this.bound_lines.length; i++) {
       if(this.bound_lines[i].type === VM.EQ) return true;
     }
@@ -13151,35 +13173,42 @@ class Constraint {
   }
   
   active(t) {
-    // Returns 1 if (X, Y) is on the bound line, otherwise 0
+    // Return 1 if (X, Y) is on the bound line AND Y is not on its own
+    // bounds, otherwise 0.
     if(!MODEL.solved) return 0;
     const
         fn = this.from_node,
         tn = this.to_node;
     let lbx = fn.lower_bound.result(t),
         lby = tn.lower_bound.result(t);
-    // NOTE: LB of semi-continuous processes is 0 if LB > 0
+    // NOTE: LB of semi-continuous processes is 0 if LB > 0.
     if(lbx > 0 && fn instanceof Process & fn.level_to_zero) lbx = 0;
     if(lby > 0 && tn instanceof Process & tn.level_to_zero) lby = 0;
     const
         rx = fn.upper_bound.result(t) - lbx,
         ry = tn.upper_bound.result(t) - lby;
     // Prevent division by zero: when either range is 0, the constraint
-    // must be active
+    // must be active.
     if(rx < VM.NEAR_ZERO || ry < VM.NEAR_ZERO) return 1;
     // Otherwise, convert levels to % of range...
     const
         x = (fn.level[t] - lbx) / rx * 100,
         y = (tn.level[t] - lby) / ry * 100;
-    // ... and then check whether (%X, %Y) lies on the boundline
+    // ... and then check whether (%X, %Y) lies on the bound line.
     for(let i = 0; i < this.bound_lines.length; i++) {
       const bl = this.bound_lines[i];
+      // Bound line does NOT constrain when Y is on its own bound.
+      if((bl.type === VM.LE && Math.abs(y - 100) < VM.NEAR_ZERO) ||
+          (bl.type === VM.GE && Math.abs(y) < VM.NEAR_ZERO)) continue;
+      // Actualize bound line points for current time step.
+      bl.setDynamicPoints(t);
       if(bl.pointOnLine(x, y)) return 1;
     }
     return 0;
   }
   
   get activeVector() {
+    // Return active state for all time steps in the optimization period.
     const v = [];
     for(let t = 0; t < MODEL.runLength + 1; t++) v.push(this.active(t));
     return v;
