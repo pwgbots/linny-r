@@ -549,7 +549,7 @@ class GUIController extends Controller {
     this.buttons.settings.addEventListener('click',
         () => UI.showSettingsDialog(MODEL));
     this.buttons.save.addEventListener('click',
-        () => FILE_MANAGER.saveModel());
+        () => FILE_MANAGER.saveModel(event.shiftKey));
     this.buttons.actors.addEventListener('click',
         () => ACTOR_MANAGER.showDialog());
     this.buttons.diagram.addEventListener('click',
@@ -1099,10 +1099,10 @@ class GUIController extends Controller {
     // Only then try to restart.
     if(SOLVER.user_id) return;
     UI.updating_modal.show();
-    setTimeout(() => UI.tryToRestart(0), 5000);
+    setTimeout(() => UI.tryToRestart(), 5000);
   }
 
-  tryToRestart(trials) {
+  tryToRestart() {
     // Fetch the current version number from the server. This may take
     // a wile, as the server was shut down and restarts only after npm
     // has updated the Linny-R software. Typically, this takes only a few
@@ -1132,6 +1132,7 @@ class GUIController extends Controller {
                 'confirm when prompted by your browser.');
               // Hide "update" button in server dialog.
               UI.modals.server.element('update').style.display = 'none';
+              return;
             } else {
               // Inform user that install appears to have failed.
               msg.push(
@@ -1145,11 +1146,7 @@ class GUIController extends Controller {
           }
         })
       .catch((err) => {
-          if(trials < 10) {
-            setTimeout(() => UI.tryToRestart(trials + 1), 5000);
-          } else {
-            UI.warn(UI.WARNING.NO_CONNECTION, err);
-          }
+          UI.warn(UI.WARNING.NO_CONNECTION, err);
         });    
   }
 
@@ -2310,9 +2307,14 @@ class GUIController extends Controller {
       } else if(code === 'ArrowRight') {
         e.preventDefault();
         this.stepForward(e);
+      } else if(e.ctrlKey && code === 'KeyS') {
+        // Ctrl-S means: save model. Treat separately because Shift-key
+        // alters the way in which the model file is saved.
+        e.preventDefault();
+        FILE_MANAGER.saveModel(e.shiftKey);
       } else if(alt && code === 'KeyR') {
         // Alt-R means: run to diagnose infeasible/unbounded problem.
-          VM.solveModel(true);
+        VM.solveModel(true);
       } else if(alt && ['KeyC', 'KeyM'].indexOf(code) >= 0) {
         // Special shortcut keys for "clone selection" and "model settings".
         const be = new Event('click');

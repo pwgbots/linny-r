@@ -16,7 +16,7 @@ NOTE: For browser-based Linny-R, this file should NOT be loaded, as it
 */
 
 /*
-Copyright (c) 2017-2022 Delft University of Technology
+Copyright (c) 2017-2024 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -953,6 +953,7 @@ function createWorkspace() {
       callback: path.join(SETTINGS.user_dir, 'callback'),
       data: path.join(SETTINGS.user_dir, 'data'),
       diagrams: path.join(SETTINGS.user_dir, 'diagrams'),
+      models: path.join(SETTINGS.user_dir, 'models'),
       modules: path.join(SETTINGS.user_dir, 'modules'),
       reports: path.join(SETTINGS.user_dir, 'reports'),
       solver_output: path.join(SETTINGS.user_dir, 'solver'),

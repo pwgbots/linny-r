@@ -5710,6 +5710,12 @@ class NodeBox extends ObjectWithXYWH {
       UI.warningInvalidName(name);
       return false;
     }
+    // Check whether a non-node entity has this name.
+    const nne = MODEL.namedObjectByID(UI.nameToID(name));
+    if(nne && nne !== this) {
+      UI.warningEntityExists(nne);
+      return false;
+    }
     // Compose the full name.
     if(actor_name === '') actor_name = UI.NO_ACTOR;
     let fn = name;
@@ -8747,8 +8753,8 @@ class Product extends Node {
         NL = '\\\\\n',
         tex = [NL],
         x = (this.level_to_zero ? '\\hat{x}' : 'x'),
-        sub = (MODEL.start_period !== MODEL.end_period ?
-            '_{' + this.TEX_id + ',t}' : '_' + this.TEX_id),
+        dyn = (MODEL.start_period !== MODEL.end_period),
+        sub = (dyn ? '_{' + this.TEX_id + ',t}' : '_' + this.TEX_id),
         param = (x, p) => {
             if(!x.defined) return '';
             const v = safeStrToFloat(x.text, p + sub);
@@ -8780,8 +8786,7 @@ class Product extends Node {
     tex.push(x + sub, '=');
     if(this.is_buffer) {
       // Insert X[t-1]
-      tex.push(x + '_{' + this.code +
-            (MODEL.start_period !== MODEL.end_period ? ',t-1}' : ',0}'));
+      tex.push(x + '_{' + this.code + (dyn ? ',t-1}' : ',0}'));
     }
     let first = true;
     for(let i = 0; i < this.inputs.length; i++) {
@@ -8793,11 +8798,13 @@ class Product extends Node {
     for(let i = 0; i < this.outputs.length; i++) {
       let ltex = this.outputs[i].TEXcode.trim();
       if(ltex.trim().startsWith('-')) {
-        ltex = ltex.substring(1);
         if(!first) {
-          ltex = '+ ' + ltex;
+          ltex = ltex.substring(1);
+          ltex = '- ' + ltex;
           first = false;
         }
+      } else {
+        ltex = '- ' + ltex;        
       }
       tex.push(ltex);
     }
@@ -9059,15 +9066,13 @@ class Link {
     // products will take care of the sign of this term.
     const
         dyn = MODEL.start_period !== MODEL.end_period,
-        x = (this.from_node.level_to_zero ? '\\hat(x)' : 'x'),
-        fsub = (dyn ?
-            '_{' + this.from_node.TEX_id + ',t}' :
-            '_' + this.from_node.TEX_id),
+        n1 = (this.to_node instanceof Process ? this.to_node : this.from_node),
+        n2 = (n1 === this.to_node ? this.from_node: this.to_node),
+        x = (n1.level_to_zero ? '\\hat(x)' : 'x'),
+        fsub = (dyn ? '_{' + n1.TEX_id + ',t}' : '_' + n1.TEX_id),
         fsub_i = fsub.replace(',t}', ',i}'),
-        rsub = (dyn ?
-            '_{' + this.from_node.TEX_id +
-            ' \\rightarrow ' + this.to_node.TEX_id + ',t}' :
-            '_' + this.from_node.TEX_id),
+        rs = n1.TEX_id + ' \\rightarrow ' + n2.TEX_id,
+        rsub = (dyn ? '_{' + rs + ',t}' : '_' + rs),
         param = (x, p, sub) => {
             if(!x.defined) return '';
             const v = safeStrToFloat(x.text, p + sub);
@@ -10052,7 +10057,8 @@ class ChartVariable {
   }
   
   tallyVector() {
-    // Use local constants to save some time within the FOR loop
+    // Compute the histogram bin tallies for this chart variable.
+    // Use local constants to save some time within the FOR loop.
     const
         bins = this.chart.bins,
         bin1 = this.chart.first_bin,
@@ -10061,7 +10067,7 @@ class ChartVariable {
     this.bin_tallies = Array(bins).fill(0);
     for(let i = 1; i < l; i++) {
       let v = this.vector[i];
-      // NOTE: ignore exceptional values in histogram
+      // NOTE: Ignore exceptional values in histogram.
       if(v >= VM.MINUS_INFINITY && v <= VM.PLUS_INFINITY) {
         const bi = Math.min(bins,
           Math.floor((v - bin1 - VM.NEAR_ZERO) / binsize + 1));
@@ -11922,7 +11928,7 @@ class Experiment {
   }
   
   matchingCombinationIndex(sl) {
-    // Returns index of combination with most selectors in common wilt `sl`
+    // Returns index of combination with most selectors in common with `sl`
     let high = 0,
         index = false;
     // NOTE: results of current run are not available yet, hence length-1

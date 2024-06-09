@@ -253,7 +253,12 @@ class GUIFileManager {
     code.focus();
   }
   
-  saveModel() {
+  saveModel(ws=false) {
+    // Save the current model either as a download (directly from the browser),
+    // or in the user workspace (via the server) when the Save button is
+    // Shift-clicked.
+    // NOTE: The File manager keeps track of which option to use.
+    this.save_to_workspace = ws;
     MODEL.clearSelection();
     if(MODEL.encrypt) {
       const md = UI.modals.password;
@@ -270,7 +275,17 @@ class GUIFileManager {
   }
   
   pushModelToBrowser(xml) {
+    // Save model as .lnr file.
     UI.setMessage('Model file size: ' + UI.sizeInBytes(xml.length));
+    // NOTE: Since version 2.0.2, Shift-click on the Save button means
+    // that the model should be saved in the user workspace.
+    if(this.save_to_workspace) {
+      // Immediately reset the flag...
+      this.save_to_workspace = false;
+      // ... but pass is on to the auto-save routine.
+      this.storeAutoSavedModel(true);
+      return;
+    }
     const el = document.getElementById('xml-saver');
     el.href = 'data:attachment/text,' + encodeURI(xml);
     console.log('Encoded file size:', el.href.length);
@@ -281,6 +296,9 @@ class GUIFileManager {
           'If it does not download, store it in a repository');
     }
     el.click();
+    // Clear the HREF after 3 seconds or it may use a lot of memory.
+    setTimeout(
+        () => { document.getElementById('xml-saver').href = ''; }, 3000);
     UI.normalCursor();
   }
   
@@ -289,7 +307,7 @@ class GUIFileManager {
         md = UI.modals.password,
         code = md.element('code'),
         pwd = code.value;
-    // NOTE: immediately clear password field
+    // NOTE: Immediately clear password field.
     code.value = '';
     md.hide();
     if(pwd !== md.encryption_code) {
@@ -298,7 +316,7 @@ class GUIFileManager {
     }
     UI.setMessage('Encrypting...');
     UI.waitingCursor();
-    // Wait for key (NOTE: asynchronous functions defined in linny-r.js)
+    // Wait for key (NOTE: asynchronous functions defined in linny-r.js).
     encryptionKey(pwd)
       .then((key) => encryptMessage(MODEL.asXML.replace(/#/g, '%23'), key)
           .then((enc) => this.pushModelToBrowser(MODEL.asEncryptedXML(enc)))
@@ -329,8 +347,12 @@ class GUIFileManager {
       .catch((err) => UI.warn(UI.WARNING.NO_CONNECTION, err));
   }
 
-  storeAutoSavedModel() {
-    // Stores the current model in the local auto-save directory
+  storeAutoSavedModel(workspace=false) {
+    // Store the current model in the local auto-save directory, or in
+    // the local models directory when `workspace` = TRUE.
+    // NOTE: Always reset the "save to workspace" flag, because it may
+    // have not been cleared when the user canceled encryption.
+    this.save_to_workspace = false;
     const bcl = document.getElementById('autosave-btn').classList;
     if(MODEL.running_experiment) {
       console.log('No autosaving while running an experiment');
@@ -342,7 +364,8 @@ class GUIFileManager {
           file: REPOSITORY_BROWSER.asFileName(
               (MODEL.name || 'no-name') + '_by_' +
                   (MODEL.author || 'no-author')),
-          xml: MODEL.asXML
+          xml: MODEL.asXML,
+          wsd: workspace
         }))
       .then((response) => {
           if(!response.ok) {
@@ -356,6 +379,9 @@ class GUIFileManager {
             AUTO_SAVE.interval = 0;
             AUTO_SAVE.not_implemented = true;
             console.log('Auto-save disabled');
+          } else if(workspace) {
+            // Notify user where the model file has been stored.
+            UI.notify(data);
           }
           bcl.remove('stay-activ');
         })

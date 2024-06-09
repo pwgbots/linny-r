@@ -663,10 +663,23 @@ class ExpressionParser {
       this.context_number = owner.numberContext;
       // NOTE: The owner prefix includes the trailing colon+space.
       if(owner instanceof Link || owner instanceof Constraint) {
-        // For links and constraints, use the longest prefix that
-        // their nodes have in common.
-        this.owner_prefix = UI.sharedPrefix(owner.from_node.displayName,
-            owner.to_node.displayName) + UI.PREFIXER;
+        // For links and constraints, it depends:
+        const
+            fn = owner.from_node.displayName,
+            tn = owner.to_node.displayName;
+        if(fn.indexOf(UI.PREFIXER) >= 0) {
+          if(tn.indexOf(UI.PREFIXER) >= 0) {
+            // If both nodes are prefixed, use the longest prefix that these
+            // nodes have in common.
+            this.owner_prefix = UI.sharedPrefix(fn, tn) + UI.PREFIXER;
+          } else {
+            // Use the FROM node prefix.
+            this.owner_prefix = UI.completePrefix(fn);
+          }
+        } else if(tn.indexOf(UI.PREFIXER) >= 0) {
+          // Use the TO node prefix.
+          this.owner_prefix = UI.completePrefix(tn);
+        }
       } else if(owner === MODEL.equations_dataset) {
         this.owner_prefix = UI.completePrefix(attribute);
       } else {

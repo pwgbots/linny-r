@@ -416,9 +416,21 @@ function autoSaveLoad(res, sp) {
 function autoSaveStore(res, sp) {
   // Stores XML data under specified file name in the auto-save directory
   let data = 'OK';
-  const fn = sp.get('file');
+  const
+      fn = sp.get('file'),
+      wsd = sp.get('wsd'),
+      ws = (wsd ? WORKSPACE.models : WORKSPACE.autosave),
+      msg = (wsd === 'models' ? 'save to user workspace' : 'auto-save'),
+      exists = (path) => {
+          try {
+            fs.accessSync(path);
+            return true;
+          } catch(err) {
+            return false;
+          }
+        };
   if(!fn) {
-    data = 'WARNING: No name for file to auto-save';
+    data = 'WARNING: No name for file to ' + msg;
   } else {
     const xml = sp.get('xml');
     // Validate XML as a Linny-R model
@@ -429,10 +441,41 @@ function autoSaveStore(res, sp) {
           root = doc.documentElement;
       // Linny-R models have a model element as root
       if(root.nodeName !== 'model') throw 'XML document has no model element';
-      fs.writeFileSync(path.join(WORKSPACE.autosave, fn + '.lnr'), xml);
+      let fp = path.join(ws, fn + '.lnr');
+      if(wsd) {
+        // Append a version number to the file name if named file exists.
+        const re = /\(\d+\).lnr$/;
+        if(exists(fp)) {
+          const m = fp.match(re);
+          let n = 1;
+          if(m) {
+            // Replace version number (n) by (n+1).
+            n = parseInt(m[0].substring(1, m[0].length - 1)) + 1;
+            fp = fp.replace(re, `(${n}).lnr`);
+          } else {
+            // Add (1) as version number.
+            fp = fp.substring(0, fp.length - 4) + ' (1).lnr';
+          }
+          while(exists(fp)) {
+            // Iterate to find the first available version number.
+            n++;
+            fp = fp.replace(re, `(${n}).lnr`);
+          }
+        }
+      }
+      try {
+        fs.writeFileSync(fp, xml);
+        const d = `Model ${ws ? '' : 'auto-'}saved as ${fp}`;
+        console.log(d);
+        // No message (other than OK) when auto-saving.
+        if(ws) data = d;
+      } catch(err) {
+        console.log(err);
+        data = `ERROR: Failed to ${msg} to ${fp}`;
+      }
     } catch(err) {
       console.log(err);
-      data = 'ERROR: Not a Linny-R model to auto-save';
+      data = 'ERROR: Not a Linny-R model to ' + msg;
     }
   }
   servePlainText(res, data);
@@ -1687,6 +1730,7 @@ function createWorkspace() {
       callback: path.join(SETTINGS.user_dir, 'callback'),
       data: path.join(SETTINGS.user_dir, 'data'),
       diagrams: path.join(SETTINGS.user_dir, 'diagrams'),
+      models: path.join(SETTINGS.user_dir, 'models'),
       modules: path.join(SETTINGS.user_dir, 'modules'),
       reports: path.join(SETTINGS.user_dir, 'reports'),
       solver_output: path.join(SETTINGS.user_dir, 'solver')
@@ -1715,18 +1759,18 @@ function createWorkspace() {
 
 function createLaunchScript() {
   // Creates platform-specific script with Linny-R start-up command
-  const lines = [
-      '# The first line (without the comment symbol #) should be like this:',
-      '',
-      '',
-      '# Then this command to launch the Linny-R server should work:',
-      '',
-      '# After shut-down, check whether new version should be installed:'
-    ];
-  lines[2] = 'cd ' + WORKING_DIRECTORY;
-  let sp;
-  if(PLATFORM.startsWith('win')) {
-    sp = path.join(WORKING_DIRECTORY, 'linny-r.bat');
+  const
+      lines = [
+        '# The first line (without the comment symbol #) should be like this:',
+        '',
+        'cd ' + WORKING_DIRECTORY,
+        '# Then this command to launch the Linny-R server should work:',
+        '',
+        '# After shut-down, check whether new version should be installed:'
+      ],
+    windows = PLATFORM.startsWith('win'),
+    sp = path.join(WORKING_DIRECTORY, 'linny-r.' + (windows ? 'bat' : 'command'));
+  if(windows) {
     lines.push(
       ':loop',
       'if exist newer_version (',
@@ -1738,7 +1782,6 @@ function createLaunchScript() {
     lines[1] = '# cd C:\\path\\to\\main\\Linny-R\\directory';
     lines[4] = 'node node_modules\\linny-r\\server launch';
   } else {
-    sp = path.join(WORKING_DIRECTORY, 'linny-r.command'); 
     lines.push(
       'while test -f newer_version; do',
       '    unlink newer_version',
@@ -1749,22 +1792,23 @@ function createLaunchScript() {
     lines[4] = 'node node_modules/linny-r/server launch';
   }
   try {
-    let make_script = false,
-        code = lines.join(os.EOL);
-    if(PLATFORM.startsWith('win')) code = code.replaceAll('#', '::');
+    let code = lines.join(os.EOL);
+    if(windows) code = code.replaceAll('#', '::');
     try {
       fs.accessSync(sp);
-      // Only write the script content if the file has not been customized
-      // by the user...
-      const data = fs.readFileSync(sp, 'utf-8');
-      make_script = code.indexOf(data) >= 0;
+      // Do not overwrite existing script, as it may have been customized
+      // by the user. When istalling/updating Linny-R, the post-install
+      // script should have renamed it, so typically it is created the
+      // first time Linny-R is run after install/update.
     } catch(err) {
-      // ... or if it does not exist yet.
-      make_script = true;
-    }
-    if(make_script) {
       console.log('Creating launch script:', sp);
       fs.writeFileSync(sp, code, 'utf8');
+      // On macOS machines, try to make the script executable.
+      if(!windows) try {
+        fs.chmodSync(sp, '+x');
+      } catch(err) {
+        console.log('WARNING: Failed to make script executable -- please check');
+      }
     }
   } catch(err) {
     console.log('WARNING: Failed to create launch script');
