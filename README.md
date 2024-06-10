@@ -234,7 +234,7 @@ as this is where Linny-R will look for it when it does not find one of the
 other solvers.
 
 On a macOS machine, you must then make the file `lp_solve` executable.
-Open Terminal and change to your Linny-R directory, and then type:
+Open `Terminal` and change to your Linny-R directory, and then type:
 
 ``chmod +x lp_solve``
 
@@ -243,9 +243,9 @@ When you then type:
 ``./lp_solve -h``
 
 a window may appear that warns you that the software may be malicious.
-To allow running LP_solve, you must then go to Security & Privacy (via
-System Preferences) and there click the Open Anyway button in the General
-pane to confirm that you wish to use LP_solve. Then return to Terminal
+To allow running LP_solve, you must then go to _Security & Privacy_ (via
+_System Preferences_) and there click the _Open Anyway_ button in the _General_
+pane to confirm that you wish to use LP_solve. Then return to `Terminal`
 and once more type `./lp_solve -h`. The response should then be a listing
 of all the command line options of LP_solve. If you reach this stage,
 Linny-R will be able to run LP_solve.
@@ -312,18 +312,6 @@ confirming that you want to leave, and then closing your browser (tab).
 If you do not shut down the server from the browser, you can also stop the
 server by repeatedly pressing ``Ctrl+C`` in the CLI.
 
-## Command line options
-
-Optionally, you can add more arguments to the `node` command:
-
-<pre>
-dpi=[number]       to overrule the default resolution (300 dpi) for Inkscape 
-launch             to automatically launch Linny-R in your default browser
-port=[number]      to overrule the default port number (5050)
-solver=[name]      to overrule the default sequence (Gurobi, MOSEK, CPLEX, SCIP, LP_solve)
-workspace=[path]   to overrule the default path for the user directory
-</pre>
-
 ## Click-start for Linny-R
 
 When `npm` installs the Linny-R package, it creates a script file in your
@@ -335,7 +323,7 @@ script `linny-r.command`, on a Windows machine the batch script
 To facilitate start-up, you can create a shortcut icon for Linny-R on your
 desktop.
 
-On a Windows machine, open the _File Explorer_, select your Linny-R folder,
+On a Windows machine, open the `File Explorer`, select your Linny-R folder,
 right-click on the batch file `linny-r.bat`, and select the _Create shortcut_
 option. Then right-click on the shortcut file to edit its properties, and
 click the _Change Icon_ button. The dialog that then appears will allow
@@ -343,7 +331,7 @@ you to go to the sub-folder `node_modules\linny-r\static\images`, where
 you should select the file `linny-r.ico`. Finally, rename the shortcut to
 `Linny-R` and move or copy it to your desktop.
 
-On a macOS machine, open Terminal and change to your Linny-R directory,
+On a macOS machine, open `Terminal` and change to your Linny-R directory,
 and then type:
 
 ``chmod +x linny-r.command``
@@ -355,10 +343,23 @@ Then open your Linny-R folder in Finder, change to the sub-folder
 `node_modules/linny-r/static/images`, and from there drag/drop the file
 `linny-r.icns` on the icon shown in the top left corner of the _Info dialog_.
 
+## Command line options
+
+You can customize Linny-R by adding more arguments to the `node` command
+in the launch script:
+
+<pre>
+dpi=[number]       to overrule the default resolution (300 dpi) for Inkscape 
+launch             to automatically launch Linny-R in your default browser
+port=[number]      to overrule the default port number (5050)
+solver=[name]      to overrule the default sequence (Gurobi, MOSEK, CPLEX, SCIP, LP_solve)
+workspace=[path]   to overrule the default path for the user directory
+</pre>
+
 > [!NOTE]
 > When configuring Linny-R for a network environment where individual users
-> each have their personal work space (e.g., a virtual drive U:), you must
-> edit this script file, adding the argument `workspace=path/to/workspace`
+> each have their personal work space (e.g., a virtual drive U:), you **must**
+> edit the launch script file, adding the argument `workspace=path/to/workspace`
 > to the `node` command. This will instruct Linny-R to create the `user`
 > directory in this workspace directory instead of the Linny-R directory.
 
