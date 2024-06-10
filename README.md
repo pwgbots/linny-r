@@ -117,7 +117,7 @@ The `linny-r` package directory should contain this file `README.md`, the files
 
 * `index.html` (the browser-based GUI) 
 * `show-png.html` (to render SVG diagrams as PNG images)
-* `show-diff.html` (to display differences betwee two Linny-R models)
+* `show-diff.html` (to display differences between two Linny-R models)
 
 It should also contain the style sheet `linny-r.css` required by the GUI.
 
@@ -130,6 +130,20 @@ by the script `server.js` when it is running in Node.js.
 > does not work, remove _all_ Linny-R software from your machine, and then
 > install it anew, following the procedure described above.
 
+#### Updating to the latest version of Linny-R
+
+When a newer version has beeh released, Linny-R will prompt you to update
+automatically. Click on the link in this prompt to see the release notes
+on GitHub and find out about new features and bug fixes.
+
+> [!NOTE]
+> The built-in updating function of Linny-R will _not_ automatically upgrade
+> to a new major version. To update from a version like 1.9.x to a version
+> like 2.0.x, you have to open a command line interface (`Command Prompt`
+> or `Terminal`), change to your Linny-R directory, and then type
+> `npm install linny-r@2`. This should perform the upgrade. You can then
+> launch Linny-R as usual by typing `linny-r` (Windows) or `./linny-r.command`
+> (macOS).
 
 #### Installing and using an earlier version of Linny-R
 
