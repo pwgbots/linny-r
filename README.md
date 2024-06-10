@@ -134,16 +134,20 @@ by the script `server.js` when it is running in Node.js.
 
 When a newer version has beeh released, Linny-R will prompt you to update
 automatically. Click on the link in this prompt to see the release notes
-on GitHub and find out about new features and bug fixes.
+on GitHub and find out about new features and bug fixes. When you click on
+the _OK_ button, Linny-R will shut down its local server script, and then
+the launch script should perform the `npm update` command and then restart
+the server script. Your browser will prompt you close its current tab,
+and then Linny-R should reappear in a new browser tab or window.
 
 > [!NOTE]
-> The built-in updating function of Linny-R will _not_ automatically upgrade
-> to a new major version. To update from a version like 1.9.x to a version
-> like 2.0.x, you have to open a command line interface (`Command Prompt`
-> or `Terminal`), change to your Linny-R directory, and then type
-> `npm install linny-r@2`. This should perform the upgrade. You can then
-> launch Linny-R as usual by typing `linny-r` (Windows) or `./linny-r.command`
-> (macOS).
+> The built-in updating function of Linny-R will _**not**_ automatically
+> upgrade to a new _major_ version. To update from a version like 1.9.x to
+> a version like 2.0.x, you have to open a command line interface
+> (`Command Prompt` or `Terminal`), change to your Linny-R directory, and
+> then type `npm install linny-r@2`. This should perform the upgrade.
+> You can then launch Linny-R as usual by typing `linny-r` (Windows) or
+> `./linny-r.command` (macOS).
 
 #### Installing and using an earlier version of Linny-R
 
