@@ -137,7 +137,7 @@ automatically. Click on the link in this prompt to see the release notes
 on GitHub and find out about new features and bug fixes. When you click on
 the _OK_ button, Linny-R will shut down its local server script, and then
 the launch script should perform the `npm update` command and then restart
-the server script. Your browser will prompt you close its current tab,
+the server script. Your browser will prompt you to close its current tab,
 and then Linny-R should reappear in a new browser tab or window.
 
 > [!NOTE]
