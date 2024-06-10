@@ -122,7 +122,14 @@ The `linny-r` package directory should contain this file `README.md`, the files
 It should also contain the style sheet `linny-r.css` required by the GUI.
 
 The sub-directories of `static` contain files that are served to the browser
-by the script `server.js` when it is running in Node.js. 
+by the script `server.js` when it is running in Node.js.
+
+> [!IMPORTANT]
+> Unless you _really_ know what you are doing, do **not** move or rename
+> your Linny-R directory or change its contents. If for some reason Linny-R
+> does not work, remove _all_ Linny-R software from your machine, and then
+> install it anew, following the procedure described above.
+
 
 #### Installing and using an earlier version of Linny-R
 
