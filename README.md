@@ -315,13 +315,13 @@ server by repeatedly pressing ``Ctrl+C`` in the CLI.
 ## Click-start for Linny-R
 
 When `npm` installs the Linny-R package, it creates a script file in your
-Linny-R directory that will allow you to start Linny-R by clicking its
-icon on your machine. On a macOS machine, this will will be the shell
-script `linny-r.command`, on a Windows machine the batch script
-`linny-r.bat`.
+Linny-R directory that launches Linny-R. On a macOS machine, this will be
+the shell script `linny-r.command`, on a Windows machine the batch script
+`linny-r.bat`. When you create a desktop shortcut to this script, this will
+allow you to click-start Linny-R. 
 
-To facilitate start-up, you can create a shortcut icon for Linny-R on your
-desktop.
+How you can create a shortcut icon for Linny-R on your desktop depends on
+the type of computer you use.
 
 On a Windows machine, open the `File Explorer`, select your Linny-R folder,
 right-click on the batch file `linny-r.bat`, and select the _Create shortcut_
@@ -336,10 +336,10 @@ and then type:
 
 ``chmod +x linny-r.command``
 
-to make the script file executable. To set the icon, use Finder to open
+to make the script file executable. To set the icon, use `Finder` to open
 the folder that contains the file `linny-r.command`, click on its icon
 (which still is plain) and open the _Info dialog_ by pressing ``Cmd+I``.
-Then open your Linny-R folder in Finder, change to the sub-folder
+Then open your Linny-R folder in `Finder`, change to the sub-folder
 `node_modules/linny-r/static/images`, and from there drag/drop the file
 `linny-r.icns` on the icon shown in the top left corner of the _Info dialog_.
 
