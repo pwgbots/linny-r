@@ -252,28 +252,27 @@ Linny-R will be able to run LP_solve.
 
 ## Running Linny-R
 
-Open the Command Line Interface (CLI) of your computer, change to your
-Linny-R directory and type:
+On a Windows machine, open `Command Prompt`, change to your Linny-R
+directory and type:
 
-``node node_modules/linny-r/server launch``
+``linny-r``
 
-This response should be something similar to:
+On a macOS machine, open `Terminal`, change to your Linny-R directory
+and type:
 
-<pre>
-Node.js server for Linny-R version 2.0.0
-Node.js version: v22.2.0
-... etc.
-</pre>
+``./linny-r.command``
 
+This should run the launch script for Linny-R, which will start the
+local server script that connects your browser with the solver. 
 Meanwhile, your default web browser should have opened a tab for the local
 server URL, which by default will be http://127.0.0.1:5050.
 The Linny-R GUI should show in your browser window, while in the CLI you
 should see a long series of server log messages like:
 
 <pre>
-[2023-11-19 22:55:17] Static file: /index.html
-[2023-11-19 22:55:17] Static file: /scripts/iro.min.js
-[2023-11-19 22:55:17] Static file: /images/open.png
+[2024-06-11 22:55:17] Static file: /index.html
+[2024-06-11 22:55:17] Static file: /scripts/iro.min.js
+[2024-06-11 22:55:17] Static file: /images/open.png
 ... etc.
 </pre>
 
@@ -281,7 +280,7 @@ should see a long series of server log messages like:
 > Do **not** close the CLI. If you do, the Linny-R GUI may still be
 > visible in your browser, but you will be warned that it cannot connect
 > to the server (at 127.0.0.1:5050). This means that you have to restart
-> Linny-R from a new CLI.
+> Linny-R as described above.
 
 After loading into the browser, Linny-R will try to connect to the solver.
 If successful, a notification (blue background) will appear on the status
@@ -327,15 +326,9 @@ workspace=[path]   to overrule the default path for the user directory
 
 ## Click-start for Linny-R
 
-The first time you start Linny-R after a fresh install or an update,
-you will have to open the Command Line Interface (CLI) of your computer,
-change to your Linny-R directory and type:
-
-``node node_modules/linny-r/server launch``
-
-This will not only start Linny-R, but also create a script file in your
+When `npm` installs the Linny-R package, it creates a script file in your
 Linny-R directory that will allow you to start Linny-R by clicking its
-icon on your machine. On a macOS machine, this fill will be the shell
+icon on your machine. On a macOS machine, this will will be the shell
 script `linny-r.command`, on a Windows machine the batch script
 `linny-r.bat`.
 
@@ -380,6 +373,8 @@ The sub-directories of this directory `user` are used by Linny-R to store files.
   a path has been specified
 * `diagrams` will be used to render Scalable Vector Graphics (SVG) files as
   Portable Network Graphics (PNG) using Inkscape (if installed)
+* `models` will contain models that you saved by Shift-clicking on the
+  _Save_ button, or using the keyboard shortcut Ctrl-Shift-S
 * `modules` will contain models stored in the `local host` _repository_
 * `reports` will contain text files with time series data and statistics in
   tab-separated format that can be imported or copy/pasted into Excel

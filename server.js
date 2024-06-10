@@ -255,22 +255,24 @@ function clearNewerVersion() {
 }
 
 // HTML page to show when the server is shut down by the user.
-// NOTE: on a macOS machine, this is slightly more work
-const OS_TEXT = {close: '', reopen: ''};
-if(PLATFORM === 'darwin') {
-  OS_TEXT.close =
-`<p>You can close the <em>Terminal</em> window that shows
-  <tt>[Process Terminated]</tt> at the bottom.
-</p>`;
-  OS_TEXT.reopen =
-`open <em>Terminal</em> again, change to your Linny-R directory by typing:
+// Parts of the text are platform-specific.
+const
+    macOS = (PLATFORM === 'darwin'),
+    close = (macOS ?
+        `<p>You can now close the <em>Terminal</em> window that shows
+         <tt>[Process Terminated]</tt> at the bottom.</p>` :
+        `<p>The <em>Command Prompt</em> window where the server was
+         running will be closed automatically.</p>`),
+    cli = (macOS ? 'Terminal' : 'Command Prompt'),
+    ext = (macOS ? '.command' : ''),
+    chmod = (!macOS ? '' : `
+<p>If launch fails, you may still need to make the script executable.</p>
+<p>
+  You can do this by typing <code>chmod +x linny-r.command</code>
+  at the command prompt.
 </p>
-<p><code>cd ${WORKING_DIRECTORY}</code></p>
-<p>`;
-} else {
-  OS_TEXT.reopen = 'switch to your <em>Command Prompt</em> window ';
-}
-const SHUTDOWN_MESSAGE = `<!DOCTYPE html>
+<p>Then retype <code>linny-r.command</code> to launch Linny-R.</p>`),
+    SHUTDOWN_MESSAGE = `<!DOCTYPE html>
 <html lang="en-US">
 <head>
   <meta http-equiv="content-type" content="text/html; charset=UTF-8">
@@ -290,16 +292,18 @@ const SHUTDOWN_MESSAGE = `<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <h3>Linny-R server (127.0.0.1) is shutting down</h3>${OS_TEXT.close}
-  <p>To restart Linny-R, ${OS_TEXT.reopen} and then at the prompt type:</p>
-  <p><code>node node_modules${path.sep}linny-r${path.sep}server</code></p>
+  <h3>Linny-R server (127.0.0.1) is shutting down</h3>${close}
   <p>
-    Then switch back to this window, and click this
-    <button type="button"
-      onclick="window.location.href = 'http://127.0.0.1:${SETTINGS.port}';">
-      Restart
-    </button> button.
+    To restart Linny-R, open <em>${cli}</em> again, change to
+    your Linny-R directory by typing:
   </p>
+  <p><code>cd ${WORKING_DIRECTORY}</code></p>
+  <p>and then type:</p>
+  <p><code>linny-r${ext}</code></p>
+  <p>
+    This should launch Linny-R in a new browser window or tab, so you
+    can close this one.
+  </p>${chmod}
 </body>
 </html>`;
 
