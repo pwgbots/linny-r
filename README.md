@@ -56,7 +56,7 @@ in a cloud.
 
 In this installation guide, the path to this directory is denoted by `Linny-R`,
 so in all commands you should replace this with the actual directory path.
-On a Windows machine the suggested path is `C:\Users\(your user name)\Documents\Linny-R`,
+On a Windows machine the suggested path is `C:\Users\(your user name)\Linny-R`,
 and on a macOS machine `/Users/(your user name)/Linny-R`.
 
 To install Linny-R in this directory, first change to the parent directory
@@ -104,11 +104,16 @@ Linny-R
 
 `Linny-R` should contain two JSON files `package.json` and `package-lock.json`
 that should **not** be removed, or you will have to re-install Linny-R.
+It should also contain the launch script.  On a macOS machine, this will be
+the shell script `linny-r.command`, on a Windows machine the batch script
+`linny-r.bat`.
 
-The `linny-r` directory should also contain this file `README.md`,
-the files `server.js` and `console.js` that will be run by Node.js,
-and the sub-directory `static`. This `static` directory should contain three
-HTML files: 
+All other software is contained in the `node_modules` directory. It comprises
+two Node.js packages: `@xlmdom` and `linny-r`. 
+
+The `linny-r` package directory should contain this file `README.md`, the files
+`server.js` and `console.js` that will be run by Node.js, and the sub-directory
+`static`. This `static` directory should contain three HTML files: 
 
 * `index.html` (the browser-based GUI) 
 * `show-png.html` (to render SVG diagrams as PNG images)
