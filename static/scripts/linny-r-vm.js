@@ -9006,13 +9006,15 @@ function VMI_add_bound_line_constraint(args) {
       vy = VM.variables[viy - 1],
       objy= vy[1],
       uby = args[5].result(VM.t),
-      bl = args[6],
+      bl = args[6];
+  // Set bound line point coordinates for current run and time step.
+  bl.setDynamicPoints(VM.t);
+  // Then use the actualized points.
+  const
       n = bl.points.length,
       x = new Array(n),
       y = new Array(n),
       w = new Array(n);
-  // Set bound line point coordinates for current run and time step.
-  bl.setDynamicPoints(VM.t);
   if(DEBUGGING) {
     console.log('add_bound_line_constraint:', bl.displayName);
   }
