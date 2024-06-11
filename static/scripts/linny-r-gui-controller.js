@@ -1132,7 +1132,6 @@ class GUIController extends Controller {
                 'confirm when prompted by your browser.');
               // Hide "update" button in server dialog.
               UI.modals.server.element('update').style.display = 'none';
-              return;
             } else {
               // Inform user that install appears to have failed.
               msg.push(
@@ -1142,7 +1141,8 @@ class GUIController extends Controller {
             }
             md.element('msg').innerHTML = msg.join('<br>');
             // Reload `index.html`. This will start Linny-R anew.
-            window.open('./', '_self');
+            // NOTE: Wait for 2 seconds so the message can be read.
+            setTimeout(() => { window.open('./', '_self'); }, 2000);
           }
         })
       .catch((err) => {
