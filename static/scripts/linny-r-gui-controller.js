@@ -418,7 +418,7 @@ class GUIController extends Controller {
     // Initialize controller buttons.
     this.node_btns = ['process', 'product', 'link', 'constraint',
         'cluster', 'module', 'note'];
-    this.edit_btns = ['clone', 'paste', 'delete', 'undo', 'redo'];
+    this.edit_btns = ['replace', 'clone', 'paste', 'delete', 'undo', 'redo'];
     this.model_btns = ['settings', 'save', 'repository', 'actors',
         'dataset', 'equation', 'chart', 'sensitivity', 'experiment',
         'diagram', 'savediagram', 'finder', 'monitor', 'tex', 'solve'];
@@ -599,6 +599,8 @@ class GUIController extends Controller {
             UI.copySelection();
           }
         });
+    this.buttons.replace.addEventListener('click',
+        () => UI.replaceSelectedProduct());
     this.buttons.paste.addEventListener('click',
         () => UI.pasteSelection());
     this.buttons['delete'].addEventListener('click',
@@ -827,7 +829,7 @@ class GUIController extends Controller {
     this.modals.move.cancel.addEventListener('click',
         () => UI.doNotMoveNode());
     
-    // The REPLACE dialog appears when a product is Ctrl-clicked.
+    // The REPLACE dialog appears when a product is Shift-Alt-clicked.
     this.modals.replace.ok.addEventListener('click',
         () => UI.replaceProduct()); 
     this.modals.replace.cancel.addEventListener('click',
@@ -925,6 +927,9 @@ class GUIController extends Controller {
     UNDO_STACK.clear();
     // Autosaving should start anew.
     AUTO_SAVE.setAutoSaveInterval();
+    // Finder dialog is closed, but  may still display results for
+    // previous model.
+    FINDER.updateDialog();
     // Signal success or failure.
     return loaded;
   }
@@ -1591,7 +1596,7 @@ class GUIController extends Controller {
     // Updates the buttons on the main GUI toolbars
     const
         node_btns = 'process product link constraint cluster note ',
-        edit_btns = 'clone paste delete undo redo ',
+        edit_btns = 'replace clone paste delete undo redo ',
         model_btns = 'settings save actors dataset equation chart ' +
             'diagram savediagram finder monitor solve';
     if(MODEL === null) {
@@ -1617,9 +1622,30 @@ class GUIController extends Controller {
     this.enableButtons(node_btns + model_btns);
     this.active_button = this.stayActiveButton;
     this.disableButtons(edit_btns);
-    if(MODEL.selection.length > 0) this.enableButtons('clone delete');
+    if(MODEL.selection.length > 0) {
+      this.enableButtons('clone delete');
+      // Replace applies only to a single product.
+      if(MODEL.selection.length === 1) {
+        const p = MODEL.selection[0];
+        if(p instanceof Product) {
+          const
+              b = this.buttons.replace,
+              t = 'Replace selected product by some other product (Alt-P)';
+          // Differentiate between product types, as products can be
+          // replaced only by products of the same type.
+          if(p.is_data) {
+            b.title = t.replaceAll('product', 'data product');
+            b.src = 'images/replace-data-product.png';
+          } else {
+            b.title = t;
+            b.src = 'images/replace-product.png';            
+          }
+          this.enableButtons('replace');
+        }
+      }
+    }
     if(this.canPaste) this.enableButtons('paste');
-    // Only allow target seeking when some target or process constraint is defined
+    // Only allow soling when some target or process constraint is defined.
     if(MODEL.hasTargets) this.enableButtons('solve');
     var u = UNDO_STACK.canUndo;
     if(u) {
@@ -2315,13 +2341,16 @@ class GUIController extends Controller {
       } else if(alt && code === 'KeyR') {
         // Alt-R means: run to diagnose infeasible/unbounded problem.
         VM.solveModel(true);
-      } else if(alt && ['KeyC', 'KeyM'].indexOf(code) >= 0) {
-        // Special shortcut keys for "clone selection" and "model settings".
+      } else if(alt && ['KeyC', 'KeyM', 'KeyP'].indexOf(code) >= 0) {
+        // Special shortcut keys for "clone selection", "model settings"
+        // and "replace product".
         const be = new Event('click');
         if(code === 'KeyC') {
           this.buttons.clone.dispatchEvent(be);
-        } else {
+        } else if(code === 'KeyM') {
           this.buttons.settings.dispatchEvent(be);
+        } else if(code === 'KeyP') {
+          this.buttons.replace.dispatchEvent(be);
         }
       } else if(!e.shiftKey && !alt &&
           (!topmod || ['KeyA', 'KeyC', 'KeyV'].indexOf(code) < 0)) {
@@ -2333,7 +2362,9 @@ class GUIController extends Controller {
             CONSTRAINT_EDITOR.deleteBoundLine();
           } else if(!this.hidden('variable-modal')) {
             CHART_MANAGER.deleteVariable();
-          } else {
+          } else if(!topmod) {
+            // Do not delete entity from model diagram when some modal
+            // is showing. 
             this.buttons['delete'].dispatchEvent(new Event('click'));
           }
         } else if (code === 'Period' && (e.ctrlKey || e.metaKey)) {
@@ -4307,9 +4338,17 @@ console.log('HERE name conflicts', name_conflicts, mapping);
         'constraint-to-name').innerHTML = c.to_node.displayName;
     CONSTRAINT_EDITOR.showDialog();
   }
+  
+  replaceSelectedProduct() {
+    // Check whether selection contains one product, and if so, prompt
+    // for replacement.
+    if(MODEL.selection.length !== 1) return;
+    const p = MODEL.selection[0];
+    if(p instanceof Product) this.showReplaceProductDialog(p);
+  }
 
   showReplaceProductDialog(p) {
-    // Prompts for a product (different from `p`) by which `p` should be
+    // Prompt for a product (different from `p`) by which `p` should be
     // replaced for the selected product position
     const pp = MODEL.focal_cluster.indexOfProduct(p);
     if(pp >= 0) {

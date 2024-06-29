@@ -4076,16 +4076,24 @@ class LinnyRModel {
   replaceProduct(p, r, global) {
     const
        ppi = this.focal_cluster.indexOfProduct(p),
-       // NOTE: record whether `r` is show in focal cluster 
+       // NOTE: Record whether `r` is shown in focal cluster.
        rshown = this.focal_cluster.indexOfProduct(r) >= 0;
     // NOTE: since `ppi` should always be >= 0
     if(ppi >= 0) {
-      // Build list of information needed for "undo"
-      const undo_info = {p: p.displayName, r: r.displayName, g: global,
-          lf: [], lt: [], cf: [], ct: [], cl: []};
-      // Keep track of redirected links
+      // Build list of information needed for "undo".
+      const undo_info = {
+          p: p.displayName,
+          r: r.displayName,
+          g: global,
+          lf: [],
+          lt: [],
+          cf: [],
+          ct: [],
+          cl: []
+        };
+      // Keep track of redirected links.
       const rl = [];
-      // First replace product in (local) links
+      // First replace product in (local) links.
       for(let i = p.inputs.length - 1; i >= 0; i--) {
         const l = p.inputs[i];
         if(global || l.hasArrow) {
@@ -4093,7 +4101,7 @@ class LinnyRModel {
           ml.copyPropertiesFrom(l);
           this.deleteLink(l);
           rl.push(ml);
-          // NOTE: push identifier of *modified* link
+          // NOTE: push identifier of *modified* link.
           undo_info.lt.push(ml.identifier);
         }
       }
@@ -4107,7 +4115,7 @@ class LinnyRModel {
         }
       }
       // Then also replace product in (local) constraints
-      // (also keeping track of affected constraints)
+      // (also keeping track of affected constraints).
       const rc = [];
       for(let k in this.constraints) {
         if(this.constraints.hasOwnProperty(k)) {
@@ -4125,26 +4133,26 @@ class LinnyRModel {
           }
         }
       }
-      // Replace `p` by `r` as the positioned product
+      // Replace `p` by `r` as the positioned product.
       const pp = this.focal_cluster.product_positions[ppi];
       undo_info.x = pp.x;
       undo_info.y = pp.y;
       pp.product = r;
-      // Change coordinates only if `r` is also shown in the focal cluster
+      // Change coordinates only if `r` is also shown in the focal cluster.
       if(rshown) {
         pp.x = r.x;
         pp.y = r.y;
       }
-      // Likewise replace product of other placeholders of `p` by `r`
+      // Likewise replace product of other placeholders of `p` by `r`.
       for(let k in this.clusters) if(this.clusters.hasOwnProperty(k)) {
         const
             c = this.clusters[k],
             ppi = c.indexOfProduct(p);
-        // NOTE: when local, replace only if sub-cluster is in view
+        // NOTE: When local, replace only if sub-cluster is in view...
         if(ppi >= 0 && (global || this.focal_cluster.containsCluster(c))) {
           const pp = c.product_positions[ppi];
-          // And then it MAY be that within this sub-cluster, the local
-          // links to `p` were NOT redirected
+          // ... and then it MAY be that within this sub-cluster, the local
+          // links to `p` were NOT redirected.
           const ll = [];
           for(let i = 0; i < p.inputs.length; i++) {
             const l = p.inputs[i];
@@ -4169,7 +4177,7 @@ class LinnyRModel {
       }
       // Now prepare for undo, so that deleteNode can add its XML 
       UNDO_STACK.push('replace', undo_info);
-      // Delete original product `p` if it has no more product positions
+      // Delete original product `p` if it has no more product positions.
       if(!this.top_cluster.containsProduct(p)) this.deleteNode(p);
     }
     // Prepare for redraw
