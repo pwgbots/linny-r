@@ -2157,6 +2157,10 @@ class VirtualMachine {
     // diagnostic purposes -- see below.
     this.PLUS_INFINITY = 1e+25;
     this.MINUS_INFINITY = -1e+25;
+    // Expression results having an infinite term may be less than infinity,
+    // but still exceptionally high, and this should be shown.
+    this.NEAR_PLUS_INFINITY = this.PLUS_INFINITY / 200;
+    this.NEAR_MINUS_INFINITY = this.MINUS_INFINITY / 200;
     // As of version 1.8.0, Linny-R imposes no +INF bounds on processes
     // unless diagnosing an unbounded problem. For such diagnosis, the
     // (relatively) low value 9.999999999e+9 is used.
@@ -2218,11 +2222,12 @@ class VirtualMachine {
     this.LM_FIRST_COMMIT = 9; // Symbol: hollow asterisk
     this.LM_SHUTDOWN = 10; // Symbol: thick chevron down
     this.LM_PEAK_INC = 11; // Symbol: plus inside triangle ("peak-plus")
+    this.LM_AVAILABLE_CAPACITY = 12; // Symbol: up-arrow with baseline
     // List of link multipliers that require binary ON/OFF variables
     this.LM_NEEDING_ON_OFF = [5, 6, 7, 8, 9, 10];
     this.LM_SYMBOLS = ['', '\u21C9', '\u0394', '\u03A3', '\u03BC', '\u25B2',
-        '+', '0', '\u2934', '\u2732', '\u25BC', '\u2A39'];
-    this.LM_LETTERS = ' TDSMU+0RFDP';
+        '+', '0', '\u2934', '\u2732', '\u25BC', '\u2A39', '\u21A5'];
+    this.LM_LETTERS = ' TDSMU+0RFDPA';
     
     // VM max. expression stack size.
     this.MAX_STACK = 200;
@@ -2560,14 +2565,14 @@ class VirtualMachine {
     if(n <= this.CYCLIC) return [true, '#CYCLE!'];
     // Any other number less than or equal to 10^30 is considered as
     // minus infinity.
-    if(n <= this.MINUS_INFINITY) return [true, '-\u221E'];
+    if(n <= this.NEAR_MINUS_INFINITY) return [true, '-\u221E'];
     // Other special values are very big POSITIVE numbers, so start
     // comparing `n` with the highest value.
     if(n >= this.COMPUTING) return [true, '\u25A6']; // Checkered square
     // NOTE: The prettier circled bold X 2BBF does not display on macOS !!
     if(n >= this.NOT_COMPUTED) return [true, '\u2297']; // Circled X
     if(n >= this.UNDEFINED) return [true, '\u2047']; // Double question mark ??
-    if(n >= this.PLUS_INFINITY) return [true, '\u221E'];
+    if(n >= this.NEAR_PLUS_INFINITY) return [true, '\u221E'];
     if(n === this.NO_COST) return [true, '\u00A2']; // c-slash (cent symbol)
     return [false, n];
   }
@@ -3693,6 +3698,15 @@ class VirtualMachine {
                       VM.PRODUCE, VM.SPIN_RES, p.on_off_var_index,
                       l.flow_delay, vi, l.from_node.upper_bound, tnpx,
                       l.relative_rate]]);
+                } else if(l.multiplier === VM.LM_REMAINING_CAPACITY) {
+                  // "remaining capacity" equals UB - level. This is a
+                  // simpler version of "spinning reserve". We signal this
+                  // by passing -1 as the index of the secondary variable,
+                  // and the level variable index as the primary variable.
+                  this.code.push([VMI_update_cash_coefficient, [
+                      VM.PRODUCE, VM.SPIN_RES, vi, // <-- now as primary
+                      l.flow_delay, -1, // <-- signal that it is "REM_CAP"
+                      l.from_node.upper_bound, tnpx, l.relative_rate]]);
                 } else if(l.multiplier === VM.LM_PEAK_INC) {
                   // NOTE: "peak increase" may be > 0 only in the first
                   // time step of the block being optimized, and in the
@@ -4035,6 +4049,12 @@ class VirtualMachine {
                 // NOTE: no delay on this type of link
                 this.code.push([VMI_add_peak_increase_at_t_0,
                     [vi, l.relative_rate]]);
+              } else if(l.multiplier === VM.LM_AVAILABLE_CAPACITY) {
+                // The "available capacity" equals UB - level, so subtract
+                // UB * rate from RHS, while considering the delay.
+                // NOTE: New instruction style that passes pointers to
+                // model entities instead of their properties.
+                this.code.push([VMI_add_available_capacity, l]);
               } else if(l.relative_rate.isStatic) {
                 // Static rates permit simpler VM instructions
                 c = l.relative_rate.result(0);
@@ -4311,7 +4331,7 @@ class VirtualMachine {
                 hub = ub;
             if(ub > VM.MEGA_UPPER_BOUND) {
               hub = p.highestUpperBound([]);
-              // If UB still very high, warn modeler on infoline and in monitor
+              // If UB still very high, warn modeler on infoline and in monitor.
               if(hub > VM.MEGA_UPPER_BOUND) {
                 const msg = 'High upper bound (' + this.sig4Dig(hub) +
                     ') for <strong>' + p.displayName + '</strong>' +
@@ -5005,6 +5025,8 @@ class VirtualMachine {
         } else if(l.multiplier === VM.LM_SHUTDOWN) {
           // Similar to STARTUP, but now look in the shut-down list.
           pl = (p.shut_downs.indexOf(bt) < 0 ? 0 : 1);
+        } else if(l.multiplier === VM.LM_AVAILABLE_CAPACITY) {
+          pl = p.upper_bound.result(bt) - pl;
         } else if(l.multiplier === VM.LM_INCREASE) {
           const ppl = p.actualLevel(bt - 1);
           pl = this.severestIssue([pl, ppl], pl - ppl);
@@ -6423,6 +6445,8 @@ Solver status = ${json.status}`);
       this.MINUS_INFINITY = this.SOLVER_MINUS_INFINITY;
       console.log('DIAGNOSIS OFF');
     }
+    this.NEAR_PLUS_INFINITY = this.PLUS_INFINITY / 200;
+    this.NEAR_MINUS_INFINITY = this.MINUS_INFINITY / 200;
     // The "propt to diagnose" flag is set when some block posed an
     // infeasible or unbounded problem.
     this.prompt_to_diagnose = false;
@@ -8538,9 +8562,12 @@ function VMI_update_cash_coefficient(args) {
     // The ON/OFF variable index is passed as third argument, hence `plvi`
     // (process level variable index) as first extra parameter, plus three
     // expressions (UB, price, rate).
+    // NOTE: This type is also used to compute "available capacity".
     const
-        plvi = args[4],
-        // NOTE: Column of second variable will be relative to same offset.
+        // args[4] = -1 signals that the remaining capacity should be
+        // computed, which means that ON/OFF should be disregarded.
+        plvi = (args[4] < 0 ? vi : args[4]),
+        // Column of second variable will be relative to same offset.
         plk = k + plvi - vi,
         ub = args[5].result(VM.t),
         price_rate = args[6].result(VM.t) * args[7].result(VM.t);
@@ -9197,6 +9224,44 @@ function VMI_add_peak_increase_at_t_0(args) {
   // NOTE: no "add constraint" as this instruction is only part of the
   // series of coefficient-setting instructions
 }
+
+function VMI_add_available_capacity(link) {
+  // Adds the "available capacity" of the FROM node (process) to the
+  // level of the TO node (data product) while considering the delay.
+  // NOTE: New instruction style that passes pointers to model entities
+  // instead of their properties.
+  const
+      d = link.actualDelay(VM.t),
+      fnvi = link.from_node.level_var_index,
+      // Column number in the tableau.
+      fnk = VM.offset + fnvi - d * VM.cols,
+      // Use flow rate and upper bound for t minus delay.
+      t = VM.t - d,
+      r = link.relative_rate.result(t),
+      u = link.from_node.upper_bound.result(t);
+  if(DEBUGGING) {
+    console.log('VMI_add_available_capacity (t = ' + VM.t + ')',
+        link.displayName, 'UB', u, 'rate', r);
+  }
+  // Available capacity equals UB - level, so subtract UB * rate
+  // from RHS...
+  VM.rhs -= u * r;
+  // ... and subtract rate from FROM node coefficient. 
+  if(fnk <= 0) {
+    // NOTE: If `fnk` falls PRIOR to the start of the block being solved,
+    // this means that the value of the decision variable X for which the
+    // coefficient C is to be set by this instruction has been calculated
+    // while solving a previous block. Since the value of X is known,
+    // adding X*rate to C is implemented as subtracting X*rate from the
+    // right hand side of the constraint.
+    VM.rhs += knownValue(fnvi, t) * r;
+  } else if(fnk in VM.coefficients) {
+    VM.coefficients[fnk] -= r;
+  } else {
+    VM.coefficients[fnk] = -r;
+  }
+}
+
 
 // NOTE: the global constants below are not defined in linny-r-globals.js
 // because some comprise the identifiers of functions for VM instructions

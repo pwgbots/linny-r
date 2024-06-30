@@ -4307,6 +4307,15 @@ console.log('HERE name conflicts', name_conflicts, mapping);
       soc = 0; 
       this.warn('Cost can only be attributed to level-based links');
     }
+    // For multipliers requiring a binary variable, and also for those
+    // based on the node's upper bound, warn the modeler when the UB for
+    // this node is infinite or unspecified.
+    if(VM.LM_NEEDING_ON_OFF.indexOf(m) >= 0 || m === VM.LM_AVAILABLE_CAPACITY) {
+      if(!l.from_node.upper_bound.text) {
+        UI.warn('Infinite upper bound of <strong>' + l.from_node.displayName +
+                `</strong> will cause issues for ${VM.LM_SYMBOLS[m]} link`);
+      }
+    }
     // NOTE: share of cost is input as a percentage, but stored as a floating
     // point value between 0 and 1
     l.share_of_cost = soc / 100;
