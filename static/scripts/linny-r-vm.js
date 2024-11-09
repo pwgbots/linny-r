@@ -4763,14 +4763,16 @@ class VirtualMachine {
         a.cash_out[b] = this.checkForInfinity(
             x[a.cash_out_var_index + j] * this.cash_scalar);
         a.cash_flow[b] = a.cash_in[b] - a.cash_out[b];
-        // Count occurrences of a negative cash flow (threshold -0.5 cent).
-        if(b <= this.nr_of_time_steps && a.cash_in[b] < -0.005) {
-          this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
-              a.displayName + ' cash IN = ' + a.cash_in[b].toPrecision(2));
-        }
-        if(b <= this.nr_of_time_steps && a.cash_out[b] < -0.005) {
-          this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
-              a.displayName + ' cash OUT = ' + a.cash_out[b].toPrecision(2));
+        if(!MODEL.ignore_negative_flows) {
+          // Count occurrences of a negative cash flow (threshold -0.5 cent).
+          if(b <= this.nr_of_time_steps && a.cash_in[b] < -0.005) {
+            this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
+                a.displayName + ' cash IN = ' + a.cash_in[b].toPrecision(2));
+          }
+          if(b <= this.nr_of_time_steps && a.cash_out[b] < -0.005) {
+            this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
+                a.displayName + ' cash OUT = ' + a.cash_out[b].toPrecision(2));
+          }
         }
         // Advance column offset in tableau by the # cols per time step.
         j += this.cols;
@@ -4785,8 +4787,7 @@ class VirtualMachine {
           p = MODEL.processes[o],
           has_OO = (p.on_off_var_index >= 0),
           has_SU = (p.start_up_var_index >= 0),
-          has_SD = (p.shut_down_var_index >= 0),
-          grid = p.grid;
+          has_SD = (p.shut_down_var_index >= 0);
       // Clear all start-ups and shut-downs at t >= bb.
       if(has_SU) p.resetStartUps(bb);
       if(has_SD) p.resetShutDowns(bb);
@@ -5193,11 +5194,11 @@ class VirtualMachine {
       MODEL.products_with_negative_delays = {};
       b = bb;
       for(let i = 0; i < cbl; i++) {
-        // NOTE: Issues with cost price calculation beyond simulation
-        // period need not be reported.
         if(b <= this.nr_of_time_steps && !MODEL.calculateCostPrices(b)) {
-          this.logMessage(block, `${this.WARNING}(t=${b}) ` +
-              'Invalid cost prices due to negative flow(s)');
+        // NOTE: Issues with cost price calculation beyond simulation
+        // period need not be reported unless model is set to ignore this.
+          if(!MODEL.ignore_negative_flows) this.logMessage(block,
+              `${this.WARNING}(t=${b}) Invalid cost prices due to negative flow(s)`);
         }
         // Move on to the next time step of the block.
         b++;

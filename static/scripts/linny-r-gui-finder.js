@@ -458,6 +458,19 @@ class Finder {
           xol.push(l.identifier);
         }
       }
+      // Check all constraint boundline index expressions.
+      for(let k in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(k)) {
+        const c = MODEL.constraints[k];
+        for(let i = 0; i < c.bound_lines.length; i++) {
+          const bl = c.bound_lines[i];
+          for(let j = 0; j < bl.selectors.length; j++) {
+            if(re.test(bl.selectors[j].expression.text)) {
+              xal.push('I' + (i + 1));
+              xol.push(c.identifier);
+            }
+          }
+        }
+      }
       // Check all dataset modifier expressions.
       for(let k in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(k)) {
         const ds = MODEL.datasets[k];

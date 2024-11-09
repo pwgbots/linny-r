@@ -99,6 +99,7 @@ class LinnyRModel {
     this.align_to_grid = true;
     this.with_power_flow = false;
     this.infer_cost_prices = false;
+    this.ignore_negative_flows = false;
     this.report_results = false;
     this.show_block_arrows = true;
     this.last_zoom_factor = 1;
@@ -2585,6 +2586,15 @@ class LinnyRModel {
       const l = this.links[k];
       xl.push(l.relative_rate, l.flow_delay);
     }
+    for(let k in this.constraints) if(this.constraints.hasOwnProperty(k)) {
+      const c = this.constraints[k];
+      for(let i = 0; i < c.bound_lines.length; i++) {
+        const bl = c.bound_lines[i];
+        for(let j = 0; j < bl.selectors.length; j++) {
+          xl.push(bl.selectors[j].expression);
+        }
+      }
+    }
     return xl;
   }
 
@@ -2736,6 +2746,7 @@ class LinnyRModel {
       this.align_to_grid = nodeParameterValue(node, 'align-to-grid') === '1';
       this.with_power_flow = nodeParameterValue(node, 'power-flow') === '1';
       this.infer_cost_prices = nodeParameterValue(node, 'cost-prices') === '1';
+      this.ignore_negative_flows = nodeParameterValue(node, 'negative-flows') === '1';
       this.report_results = nodeParameterValue(node, 'report-results') === '1';
       this.show_block_arrows = nodeParameterValue(node, 'block-arrows') === '1';
       // NOTE: Diagnosis option should default to TRUE unless *set* to FALSE.
@@ -3106,6 +3117,7 @@ class LinnyRModel {
     if(this.align_to_grid) p += ' align-to-grid="1"';
     if(this.with_power_flow) p += ' power-flow="1"';
     if(this.infer_cost_prices) p += ' cost-prices="1"';
+    if(this.ignore_negative_flows) p += ' negative-flows="1"';
     if(this.report_results) p += ' report-results="1"';
     if(this.show_block_arrows) p += ' block-arrows="1"';
     if(this.show_notices) p += ' show-notices="1"';
@@ -3521,6 +3533,15 @@ class LinnyRModel {
         }
       }
       this.cleanVector(l.actual_flow, p * l.relative_rate.result(0));
+    }
+    for(let k in this.constraints) if(this.constraints.hasOwnProperty(k)) {
+      const c = this.constraints[k];
+      for(let i = 0; i < c.bound_lines.length; i++) {
+        const bl = c.bound_lines[i];
+        for(let j = 0; j < bl.selectors.length; j++) {
+          bl.selectors[j].expression.reset(0);
+        }
+      }
     }
     for(obj in this.datasets) if(this.datasets.hasOwnProperty(obj)) {
       const ds = this.datasets[obj];
@@ -12969,11 +12990,12 @@ class BoundLine {
   }
   
   get needsNoSOS() {
-    // Return 1 if boundline is NOT of type <= and line segments have an
-    // increasing slope, -1 if boundline is NOT of type >= and line segments
+    // Return 1 if boundline is of type >= and line segments have an
+    // increasing slope, -1 if boundline is of type <= and line segments
     // have a decreasing slope, and otherwise 0 (FALSE). If non-zero (TRUE),
     // the constraint can be implemented without the SOS2 constraint that
     // only two consecutive SOS variables may be non-zero.
+    if(this.type === VM.EQ) return 0;
     if(this.type !== VM.LE) {
       let slope = 0,
           pp = this.points[0];

@@ -330,28 +330,34 @@ function asFileName(s) {
 }
 
 function autoSave(res, sp) {
-  // Processes all auto-save & restore commands
-  const action = sp.get('action').trim();
-  logAction('Auto-save action: ' + action);
+  // Process all auto-save & restore commands.
+  // NOTE: To prevent duplicate code, this routine is also called when
+  // the modeler SHIFT-clicks on the "Save model" button. This option
+  // has been added to permit saving files larger than the 25 MB that
+  // some browsers impose as limit for saving a string to disk.
+  const
+      action = sp.get('action').trim(),
+      saving = (sp.get('wsd') === 'true' ? 'Save' : 'Auto-save');
+    logAction(saving + ' action: ' + action);
   if(['purge', 'load', 'store'].indexOf(action) < 0) {
-    // Invalid action => report error
+    // Invalid action => report error.
     return servePlainText(res, `ERROR: Invalid auto-save action: "${action}"`);
   }
   // Always purge the auto-save files before further action; this returns
-  // the list with model data objects
+  // the list with model data objects.
   const data = autoSavePurge(res, sp);
-  // NOTE: if string instead of array, this string is an error message 
+  // NOTE: If string instead of array, this string is an error message.
   if(typeof data === 'string') return servePlainText(res, data);
-  // Perform load or store actions if requested
+  // Perform load or store actions if requested.
   if(action === 'load') return autoSaveLoad(res, sp);
   if(action === 'store') return autoSaveStore(res, sp);
-  // Otherwise, action was 'purge' => return the auto-saved model list
+  // Otherwise, action was 'purge' => return the auto-saved model list.
   serveJSON(res, data);
 }
 
 function autoSavePurge(res, sp) {
-  // Deletes specified file(s) (if any) as well as all expired files,
-  // and returns list with data on remaining files as JSON string
+  // Delete specified file(s) (if any) as well as all expired files,
+  // and return list with data on remaining files as JSON string.
   const
       now = new Date(),
       p = sp.get('period'),
@@ -359,7 +365,7 @@ function autoSavePurge(res, sp) {
       df = sp.get('to_delete'),
       all = df === '/*ALL*/';
   
-  // Get list of data on Linny-R models in `autosave` directory
+  // Get list of data on Linny-R models in `autosave` directory.
   data = [];
   try {
     const flist = fs.readdirSync(WORKSPACE.autosave);
@@ -368,7 +374,7 @@ function autoSavePurge(res, sp) {
           pp = path.parse(flist[i]),
           md = {name: pp.name},
           fp = path.join(WORKSPACE.autosave, flist[i]);
-      // NOTE: only consider Linny-R model files (extension .lnr)
+      // NOTE: Only consider Linny-R model files (extension .lnr).
       if(pp.ext === '.lnr') {
         let dodel = all || pp.name === df;
         if(!dodel) {
@@ -376,11 +382,11 @@ function autoSavePurge(res, sp) {
           const fstat = fs.statSync(fp);
           md.size = fstat.size;
           md.date = fstat.mtime;
-          // Also delete if file has expired
+          // Also delete if file has expired.
           dodel = now - fstat.mtimeMs > period;
         }
         if(dodel) {
-          // Delete model file
+          // Delete model file.
           try {
             fs.unlinkSync(fp);
           } catch(err) {
@@ -388,7 +394,7 @@ function autoSavePurge(res, sp) {
             console.log(err);
           }
         } else {
-          // Add model data to the list
+          // Add model data to the list.
           data.push(md);
         }
       }
@@ -401,7 +407,7 @@ function autoSavePurge(res, sp) {
 }
 
 function autoSaveLoad(res, sp) {
-  // Return XML content of specified file
+  // Return XML content of specified file".
   const fn = sp.get('file');
   if(fn) {
     const fp = path.join(WORKSPACE.autosave, fn + '.lnr');
@@ -418,13 +424,15 @@ function autoSaveLoad(res, sp) {
 }
 
 function autoSaveStore(res, sp) {
-  // Stores XML data under specified file name in the auto-save directory
+  // Store XML data under specified file name in the auto-save directory,
+  // or in the models directory if the "Save model button was SHIFT-clicked.
   let data = 'OK';
   const
       fn = sp.get('file'),
-      wsd = sp.get('wsd'),
+      // NOTE: Booleans are passed as strings.
+      wsd = sp.get('wsd') === 'true',
       ws = (wsd ? WORKSPACE.models : WORKSPACE.autosave),
-      msg = (wsd === 'models' ? 'save to user workspace' : 'auto-save'),
+      msg = (wsd ? 'save to user workspace' : 'auto-save'),
       exists = (path) => {
           try {
             fs.accessSync(path);
