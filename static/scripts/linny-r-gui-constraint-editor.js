@@ -283,7 +283,8 @@ class ConstraintEditor {
           i = this.selected_point,
           pts = this.selected.points,
           li = pts.length - 1,
-          p = pts[this.selected_point],
+          // NOTE: Use a copy of the selected point, or it will not be updated.
+          p = pts[this.selected_point].slice(),
           minx = (i === 0 ? 0 : (i === li ? 100 : pts[i - 1][0])),
           maxx = (i === 0 ? 0 : (i === li ? 100 : pts[i + 1][0]));
       let cx = false,
@@ -317,6 +318,9 @@ class ConstraintEditor {
           p[1] = Math.round(3 * p[1]) / 3;
         }
       }
+      this.dragged_point = this.selected_point;
+      this.movePoint(p[0], p[1]);
+      this.dragged_point = -1;
       this.draw();
       this.updateEquation();
     }
@@ -670,7 +674,7 @@ class ConstraintEditor {
   }
 
   deleteSelector() {
-    // Delete modifier from selected dataset
+    // Delete modifier from selected dataset.
     if(!this.selected) return;
     const
         bl = this.selected,
@@ -1156,7 +1160,7 @@ class ConstraintEditor {
   }
 
   updateConstraint() {
-    // Updates the edited constraint, or adds a new constraint to the model
+    // Update the edited constraint, or add a new constraint to the model.
     // TO DO: prepare for undo
     if(this.edited_constraint === null) {
       this.edited_constraint = MODEL.addConstraint(this.from_node, this.to_node);

@@ -12699,6 +12699,10 @@ class BoundLine {
         VM.constraint_codes[this.type] + '] bound line #' +
         this.constraint.bound_lines.indexOf(this);
   }
+  
+  get name() {
+    return this.displayName;
+  }
 
   get copy() {
     // Return a "clone" of this bound line.
