@@ -11,7 +11,7 @@ functionality for the Linny-R model editor.
 */
 
 /*
-Copyright (c) 2017-2024 Delft University of Technology
+Copyright (c) 2017-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -909,16 +909,17 @@ class Paper {
   }
   
   //
-  // Diagram-drawing method draws the diagram for the focal cluster
+  // Diagram-drawing method draws the diagram for the focal cluster.
   //
   
   drawModel(mdl) {
-    // Draw the diagram for the focal cluster
+    // Draw the diagram for the focal cluster.
     this.clear();
-    // Prepare to draw all elements in the focal cluster
+    // Prepare to draw all elements in the focal cluster.
     const fc = mdl.focal_cluster;
     fc.categorizeEntities();
-    // NOTE: product positions must be updated before links are drawn
+    // NOTE: Product positions must be updated before links are drawn, so
+    // that links arrows will be drawn over their shapes.
     fc.positionProducts();
     for(let i = 0; i < fc.processes.length; i++) {
       fc.processes[i].clearHiddenIO();
@@ -926,10 +927,10 @@ class Paper {
     for(let i = 0; i < fc.sub_clusters.length; i++) {
       fc.sub_clusters[i].clearHiddenIO();
     }
-    // NOTE: also ensure that notes will update their fields
+    // NOTE: Also ensure that notes will update their fields.
     fc.resetNoteFields();
     // Draw link arrows and constraints first, as all other entities are
-    // slightly transparent so they cannot completely hide these lines
+    // slightly transparent so they cannot completely hide these lines.
     for(let i = 0; i < fc.arrows.length; i++) {
       this.drawArrow(fc.arrows[i]);
     }
@@ -945,25 +946,25 @@ class Paper {
     for(let i = 0; i < fc.sub_clusters.length; i++) {
       this.drawCluster(fc.sub_clusters[i]);
     }
-    // Draw notes last, as they are semi-transparent (and can be quite small)
+    // Draw notes last, as they are semi-transparent (and can be quite small).
     for(let i = 0; i < fc.notes.length; i++) {
       this.drawNote(fc.notes[i]);
     }
-    // Resize paper if necessary
+    // Resize paper if necessary.
     this.extend();
-    // Display model name in browser
+    // Display model name in browser.
     document.title = mdl.name || 'Linny-R';
   }
   
   drawSelection(mdl, dx=0, dy=0) {
     // NOTE: Clear this global, as Bezier curves move from under the cursor
-    // without a mouseout event 
+    // without a mouseout event.
     this.constraint_under_cursor = null;
-    // Draw the selected entities and associated links, and also constraints
+    // Draw the selected entities and associated links, and also constraints.
     for(let i = 0; i < mdl.selection.length; i++) {
       const obj = mdl.selection[i];
       // Links and constraints are drawn separately, so do not draw those
-      // contained in the selection 
+      // contained in the selection.
       if(!(obj instanceof Link || obj instanceof Constraint)) {
         if(obj instanceof Note) obj.parsed = false;
         UI.drawObject(obj, dx, dy);
@@ -972,12 +973,12 @@ class Paper {
     if(mdl.selection_related_arrows.length === 0) {
       mdl.selection_related_arrows = mdl.focal_cluster.selectedArrows();
     }
-    // Only draw the arrows that relate to the selection
+    // Only draw the arrows that relate to the selection.
     for(let i = 0; i < mdl.selection_related_arrows.length; i++) {
       this.drawArrow(mdl.selection_related_arrows[i]);
     }
     // As they typically are few, simply redraw all constraints that relate to
-    // the focal cluster
+    // the focal cluster.
     for(let i = 0; i < mdl.focal_cluster.related_constraints.length; i++) {
       this.drawConstraint(mdl.focal_cluster.related_constraints[i]);
     }
@@ -990,23 +991,23 @@ class Paper {
   //
 
   drawArrow(arrw, dx=0, dy=0) {
-    // Draws an arrow from FROM nodebox to TO nodebox
-    // NOTE: first erase previously drawn arrow
+    // Draw an arrow from FROM nodebox to TO nodebox.
+    // NOTE: First erase previously drawn arrow.
     arrw.shape.clear();
     arrw.hidden_nodes.length = 0;
-    // Use local variables so as not to change any "real" attribute values
+    // Use local variables so as not to change any "real" attribute values.
     let cnb, proc, prod, fnx, fny, fnw, fnh, tnx, tny, tnw, tnh,
         cp, rr, aa, bb, dd, nn, af, l, s, w, tw, th, bpx, bpy, epx, epy,
         sda, stroke_color, stroke_width, arrow_start, arrow_end,
         font_color, font_weight, luc = null, grid = null;
-    // Get the main arrow attributes
+    // Get the main arrow attributes.
     const
         from_nb = arrw.from_node,
         to_nb = arrw.to_node;
-    // Use "let" because `ignored` may also be set later on (for single link)
+    // Use "let" because `ignored` may also be set later on (for single link).
     let ignored = (from_nb && MODEL.ignored_entities[from_nb.identifier]) ||
         (to_nb && MODEL.ignored_entities[to_nb.identifier]);
-    // First check if this is a block arrow (ONE node being null)
+    // First check if this is a block arrow (ONE node being null).
     if(!from_nb) {
       cnb = to_nb;
     } else if(!to_nb) {
@@ -1014,22 +1015,22 @@ class Paper {
     } else {
       cnb = null;
     }
-    // If not NULL `cnb` is the cluster or node box (product or process) having
+    // If not NULL, `cnb` is the cluster or node box (product or process) having
     // links to entities outside the focal cluster. Such links are summarized
     // by "block arrows": on the left edge of the box to indicate inflows,
     // on the right edge to indicate outflows, and two-headed on the top edge
     // to indicate two-way flows. When the cursor is moved over a block arrow,
     // the Documentation dialog will display the list of associated nodes
-    // (with their actual flows if non-zero)
+    // (with their actual flows if non-zero).
     if(cnb) {
-      // Distinguish between input, output and io products
+      // Distinguish between input, output and io products.
       let ip = [], op = [], iop = [];
       if(cnb instanceof Cluster) {
         for(let i = 0; i < arrw.links.length; i++) {
           const lnk = arrw.links[i];
-          // determine which product is involved
+          // Determine which product is involved.
           prod = (lnk.from_node instanceof Product ? lnk.from_node : lnk.to_node);
-          // NOTE: clusters "know" their input/output products
+          // NOTE: Clusters "know" their input/output products.
           if(cnb.io_products.indexOf(prod) >= 0) {
             addDistinct(prod, iop);
           } else if(cnb.consumed_products.indexOf(prod) >= 0) {
@@ -1039,7 +1040,7 @@ class Paper {
           }
         }
       } else {
-        // cnb is process or product => knows its inputs and outputs
+        // `cnb` is process or product => knows its inputs and outputs.
         for(let i = 0; i < arrw.links.length; i++) {
           const lnk = arrw.links[i];
           if(lnk.from_node === cnb) {
@@ -1047,7 +1048,7 @@ class Paper {
           } else {
             addDistinct(lnk.from_node, ip);
           }
-          // NOTE: for processes, products cannot be BOTH input and output
+          // NOTE: For processes, products cannot be BOTH input and output.
         }
       }
       cnb.hidden_inputs = ip;

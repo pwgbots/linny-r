@@ -12,7 +12,7 @@ dialogs, the main drawing canvas, and event handler functions.
 */
 
 /*
-Copyright (c) 2017-2024 Delft University of Technology
+Copyright (c) 2017-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -165,7 +165,7 @@ class ModelAutoSaver {
       html += ['<tr class="dataset" style="color: gray" ',
           'onclick="FILE_MANAGER.loadAutoSavedModel(\'',
           m.name,'\');"><td class="restore-name">', m.name, '</td><td>',
-          m.date.substring(1, 16).replace('T', ' '),
+          m.date.substring(0, 16).replace('T', ' '),
           '</td><td style="text-align: right">',
           bytes[0], '</td><td>', bytes[1], '</td><td style="width:15px">',
           '<img class="del-asm-btn" src="images/delete.png" ',

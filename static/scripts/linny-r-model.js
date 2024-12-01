@@ -10,7 +10,7 @@ the Linny-R project.
 */
 
 /*
-Copyright (c) 2017-2024 Delft University of Technology
+Copyright (c) 2017-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -5801,7 +5801,7 @@ class NodeBox extends ObjectWithXYWH {
   }
   
   resize() {
-    // Resizes this node; returns TRUE iff size has changed.
+    // Resize this node; returns TRUE iff size has changed.
     // Therefore, keep track of original width and height.
     const
         ow = this.width,
@@ -5814,7 +5814,7 @@ class NodeBox extends ObjectWithXYWH {
       w = Math.max(w, UI.textSize(`[${this.scale_unit}]`).width);
     }
     this.frame_width = w + 7;
-    // Add 17 pixels height for actor name
+    // Add 17 pixels height for actor name.
     this.height = Math.max(50, this.bbox.height + 17);
     if(this instanceof Process) {
       this.width = Math.max(90, this.frame_width + 20);
@@ -5822,11 +5822,11 @@ class NodeBox extends ObjectWithXYWH {
     } else if(this instanceof Cluster) {
       this.width = Math.max(
           CONFIGURATION.min_cluster_size, this.frame_width + 20);
-      // Clusters have a square shape
+      // Clusters have a square shape.
       this.height = Math.max(this.width, this.height); 
     } else {
       this.height += 8;
-      // Reserve some extra space for UB/LB if defined
+      // Reserve some extra space for UB/LB if defined.
       if(this.lower_bound.defined || this.upper_bound.defined) {
         this.frame_width += 16;
       }

@@ -12,7 +12,7 @@ executed by the VM, construct the Simplex tableau that can be sent to the
 MILP solver.
 */
 /*
-Copyright (c) 2017-2024 Delft University of Technology
+Copyright (c) 2017-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1849,14 +1849,14 @@ class ExpressionParser {
       if(this.then_stack.length < 1) {
         this.error = 'Unexpected :';
       } else {
-        // Similar to above: when a : operator is "coded", the ELSE part
+        // Similar to above: When a : operator is "coded", the ELSE part
         // has been coded, so the end of the code array is the target for
-        // the most recently added JUMP
+        // the most recently added JUMP.
         this.code[this.then_stack.pop()][1] = this.code.length;
       }
     } else {
       // All other operations require VM instructions that operate on the
-      // expression stack
+      // expression stack.
       this.code.push([op, null]);
       if(op === VMI_concat) {
         this.concatenating = true;
@@ -1864,8 +1864,8 @@ class ExpressionParser {
         const randcode = RANDOM_CODES.indexOf(op) >= 0;
         if(REDUCING_CODES.indexOf(op) >= 0) {
           if(randcode && !this.concatenating) {
-            // NOTE: probability distributions MUST have a parameter list but
-            // MIN and MAX will also accept a single argument
+            // NOTE: Probability distributions MUST have a parameter list but
+            // MIN and MAX will also accept a single argument.
             console.log('OPERATOR:', op);
             this.error = 'Missing parameter list';
           }
@@ -7581,6 +7581,108 @@ function VMI_ge(x) {
   }
 }
 
+function VMI_at(x) {
+  // Pop the top number on the stack, and use its integer part as index i
+  // to replace the new top element (which must be a dataset or a grouping)
+  // by its i-th element.
+  let d = x.pop();
+  if(d !== false) {
+    if(DEBUGGING) console.log('AT (' + d.join(', ') + ')');
+    let a,
+        from = false,
+        to = false,
+        step = 1,
+        group = false,
+        period = false,
+        range = [],
+        ok = true;
+    // Check whether the first argument (d[0]) is indexable.
+    if(d[0] instanceof Array) {
+      a = d[0];
+      group = true;
+    } else if(d[0].entity instanceof Dataset) {
+      a = d[0].entity.vector;
+      period = d[0].periodic;
+    } else {
+      x.retop(VM.ARRAY_INDEX);
+      return;
+    }
+    // Check whether the second argument (d[1]) is a number or a pair.
+    if(d[1] instanceof Array) {
+      if(d[1].length > 3 || typeof d[1][0] !== 'number') {
+        ok = false;
+      } else if(d[1].length === 3) {
+        // Optional third index argument is range index increment.
+        if(typeof d[1][2] === 'number') {
+          step = Math.floor(d[1][2]);
+          // Ignore increment if it truncates to zero.
+          if(!step) step = 1;
+          // Get the range end.
+          if(typeof d[1][1] === 'number') {
+            to = Math.floor(d[1][1]);
+          } else {
+            ok = false;
+          }
+        } else {
+          ok = false;
+        }
+      } else if(d[1].length === 2) {
+        // Optional second argument is range index end.
+        if(typeof d[1][1] === 'number') {
+          to = Math.floor(d[1][1]);
+        } else {
+          ok = false;
+        }
+      }
+      if(ok) {
+        from = Math.floor(d[1][0]);
+        // Groupings are 0-based arrays but indexed as 1-based.
+        if(group) {
+          from--;
+          to--;
+        }
+        // Check whether from, to and step are feasible.
+        if(to !== false) {
+          if(to <= from && step < 0) {
+            for(let i = from; i >= to; i += step) range.push(i);
+          } else if(to >= from && step > 0) {
+            for(let i = from; i <= to; i += step) range.push(i);
+          } else {
+            ok = false;
+          }
+        }
+      }
+    }
+    if(ok && !range.length && typeof d[1] === 'number') {
+      range = [Math.floor(d[1]) - (group ? 1 : 0)];
+    } else if(!range.length) {
+      ok = false;
+    }
+    if(!ok) {
+      x.retop(VM.ARRAY_INDEX);
+      return;
+    }
+    const
+        n = range.length,
+        r = [];
+    for(let i = 0; i < n; i++) {
+      const index = range[i];
+      if(index < 0) {
+        r.push(VM.UNDEFINED);
+      } else if(period) {
+        r.push(a[index % a.length]);
+      } else {
+        r.push(a[index]);
+      }
+    }
+    if(n === 1) {
+      x.retop(r[0]);
+    } else {
+      x.retop(r);
+    }
+  }
+}
+
 function VMI_add(x) {
   // Pop the top number on the stack, and add it to the new top number.
   const d = x.pop();
@@ -9270,7 +9372,7 @@ function VMI_add_available_capacity(link) {
 const
   // Valid symbols in expressions
   PARENTHESES = '()',
-  OPERATOR_CHARS = ';?:+-*/%=!<>^|',
+  OPERATOR_CHARS = ';?:+-*/%=!<>^|@',
   // Opening bracket, space and single quote indicate a separation
   SEPARATOR_CHARS = PARENTHESES + OPERATOR_CHARS + "[ '",
   COMPOUND_OPERATORS = ['!=', '<>', '>=', '<='],
@@ -9302,13 +9404,13 @@ const
       VMI_weibull, VMI_npv],
   DYADIC_OPERATORS = [
       ';', '?', ':', 'or', 'and',
-      '=', '<>', '!=',
-      '>', '<', '>=', '<=', '+', '-', '*', '/',
+      '=', '<>', '!=', '>', '<', '>=', '<=',
+      '@', '+', '-', '*', '/',
       '%', '^', 'log', '|'],
   DYADIC_CODES = [
       VMI_concat, VMI_if_then, VMI_if_else, VMI_or, VMI_and,
       VMI_eq, VMI_ne, VMI_ne, VMI_gt, VMI_lt, VMI_ge, VMI_le,
-      VMI_add, VMI_sub, VMI_mul, VMI_div, VMI_mod,
+      VMI_at, VMI_add, VMI_sub, VMI_mul, VMI_div, VMI_mod,
       VMI_power, VMI_log, VMI_replace_undefined],
 
   // Compiler checks for random codes as they make an expression dynamic
@@ -9316,7 +9418,7 @@ const
       VMI_triangular, VMI_weibull],
   
   // Compiler checks for reducing codes to unset its "concatenating" flag
-  REDUCING_CODES = [VMI_min, VMI_max, VMI_binomial, VMI_normal,
+  REDUCING_CODES = [VMI_at, VMI_min, VMI_max, VMI_binomial, VMI_normal,
       VMI_triangular, VMI_weibull, VMI_npv],
   
   // Custom operators may make an expression level-based
@@ -9324,7 +9426,7 @@ const
   
   OPERATORS = DYADIC_OPERATORS.concat(MONADIC_OPERATORS), 
   OPERATOR_CODES = DYADIC_CODES.concat(MONADIC_CODES),
-  PRIORITIES = [1, 2, 2, 3, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 7, 7, 7, 8, 8, 10,
+  PRIORITIES = [1, 2, 2, 3, 4, 5, 5, 5, 5, 5, 5, 5, 5.5, 6, 6, 7, 7, 7, 8, 8, 10,
       9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9],
   ACTUAL_SYMBOLS = CONSTANT_SYMBOLS.concat(OPERATORS),
   SYMBOL_CODES = CONSTANT_CODES.concat(OPERATOR_CODES);

@@ -13,7 +13,7 @@ handler functions.
 */
 
 /*
-Copyright (c) 2017-2024 Delft University of Technology
+Copyright (c) 2017-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -3673,7 +3673,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
       UI.notify('To diagnose unbounded problems, values beyond 1e+10 ' +
           'are considered as infinite (\u221E)');
     }
-    // Some changes may necessitate redrawing the diagram
+    // Some changes may necessitate redrawing the diagram.
     let cb = UI.boxChecked('settings-align-to-grid'),
         redraw = !model.align_to_grid && cb;
     model.align_to_grid = cb;
@@ -3688,7 +3688,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     cb = UI.boxChecked('settings-block-arrows');
     redraw = redraw || cb !== model.show_block_arrows;
     model.show_block_arrows = cb;
-    // Changes affecting run length (hence vector lengths) require a model reset
+    // Changes affecting run length (hence vector lengths) require a model reset.
     let reset = false;
     reset = reset || (ts != model.time_scale);
     model.time_scale = ts;
@@ -4283,7 +4283,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     const
         md = this.modals.link,
         l = this.edited_object;
-    // Check whether all input fields are valid
+    // Check whether all input fields are valid.
     if(!this.updateExpressionInput('link-R', 'rate', l.relative_rate)) {
       return false;
     }
@@ -4318,8 +4318,10 @@ console.log('HERE name conflicts', name_conflicts, mapping);
                 `</strong> will cause issues for ${VM.LM_SYMBOLS[m]} link`);
       }
     }
-    // NOTE: share of cost is input as a percentage, but stored as a floating
-    // point value between 0 and 1
+    // NOTE: Share of cost is input as a percentage, but stored as a floating
+    // point value between 0 and 1.
+    // If SoC is changed, *all* output links must be redrawn.
+    const soc_change = (l.share_of_cost !== soc / 100);
     l.share_of_cost = soc / 100;
     if(md.group.length > 1) {
       // NOTE: Special care must be taken to not set special multipliers
@@ -4330,10 +4332,15 @@ console.log('HERE name conflicts', name_conflicts, mapping);
       MODEL.focal_cluster.clearAllProcesses();
       UI.drawDiagram(MODEL);
     } else {
-      // Redraw the arrow shape that represents the edited link
-      this.paper.drawArrow(this.on_arrow);
-      // Redraw the FROM node if link has become (or no longer is) "first commit"
-      if(redraw) this.drawObject(this.on_arrow.from_node);
+      if(soc_change) {
+        // Redraw process with its links so that all SoC labels are updated.
+        this.on_arrow.from_node.drawWithLinks();
+      } else {
+        // Only redraw the arrow shape that represents the edited link.
+        this.paper.drawArrow(this.on_arrow);
+        // Redraw the FROM node if link has become (or no longer is) "first commit".
+        if(redraw) this.drawObject(this.on_arrow.from_node);
+      }
     }
     md.hide();
   }
