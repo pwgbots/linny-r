@@ -2120,6 +2120,8 @@ class VirtualMachine {
     this.numeric_issue = '';
     // Warnings are stored in a list to permit browsing through them.
     this.issue_list = [];
+    // Bound issues (UB < LB) are recorded to permit compact warnings.
+    this.bound_issues = {};
     // The call stack tracks evaluation of "nested" expression variables.
     this.call_stack = [];
     this.block_count = 0;
@@ -2468,6 +2470,8 @@ class VirtualMachine {
     // block).
     this.error_count = 0;
     this.block_issues = 0;
+    // Clear bound issue dictionary.
+    this.bound_issues = {};
     // Clear issue list with warnings and hide issue panel.
     this.issue_list.length = 0;
     this.issue_index = -1;
@@ -4338,7 +4342,7 @@ class VirtualMachine {
                     ' will compromise computation of its binary variables';
                 UI.warn(msg);
                 this.logMessage(this.block_count,
-                    'WARNING: ' + msg.replace(/<\/?strong>/g, '"'));
+                    this.WARNING + msg.replace(/<\/?strong>/g, '"'));
               }
             }
             if(hub !== ub) {
@@ -4620,8 +4624,8 @@ class VirtualMachine {
             high_rate) + 1);
     if(this.slack_penalty > VM.MAX_SLACK_PENALTY) {
       this.slack_penalty = VM.MAX_SLACK_PENALTY;
-      this.logMessage(this.block_count,
-        'WARNING: Max. slack penalty reached; try to scale down your model coefficients');
+      this.logMessage(this.block_count, this.WARNING +
+          'Max. slack penalty reached; try to scale down your model coefficients');
     }
     const m = Math.max(
         Math.abs(this.low_coefficient), Math.abs(this.high_coefficient));
@@ -5696,7 +5700,6 @@ class VirtualMachine {
             return ` +${c} ${v}`; // Prefix coefficient with +
             // NOTE: This may return  +0 X001.
           };
-
     this.numeric_issue = '';
     // First add the objective (always MAXimize).
     if(cplex) {
@@ -6160,7 +6163,9 @@ class VirtualMachine {
   }
 
   stopSolving() {
+    // Wrap-up after solving is completed or aborted.    
     this.stopTimer();
+    // Stop rotating the Linny-R icon, and update buttons.
     UI.stopSolving();
   }
   
@@ -6312,7 +6317,7 @@ Solver status = ${json.status}`);
     }
     // If negative delays require "fixating" variables for some number
     // of time steps, this must be logged in the monitor.
-    const keys = Object.keys(this.variables_to_fixate);
+    let keys = Object.keys(this.variables_to_fixate);
     if(keys.length) {
       const msg = ['NOTE: Due to negative link delays, levels for ' +
             pluralS(keys.length, 'variable') + ' are pre-set:'];
@@ -6341,6 +6346,27 @@ Solver status = ${json.status}`);
       }
       this.logMessage(this.block_count, msg.join('\n'));
     }
+    // Convert bound issues to warnings in the Monitor.
+    keys = Object.keys(this.bound_issues).sort();
+    const n = keys.length;
+    if(n) {
+      let vlist = '',
+          first = 1e20;
+      for(let i = 0; i < n; i++) {
+        const
+            k = keys[i],
+            bit = this.bound_issues[k];
+        vlist += `\n   - ${k} (t=${listToRange(bit)})`;
+        first = Math.min(first, bit[0]);
+      }
+      const msg = `Lower bound exceeds upper bound for ${n} processes`;
+      this.logMessage(this.block_count,
+          `${this.WARNING}(t=${first}) ${msg}:${vlist}`);
+      UI.warn(msg + ' - check Monitor for details');
+      // Clear bound issue dictionary, so next block starts anew.
+      this.bound_issues = {};
+    }
+    // Create the input file for the solver.
     this.logMessage(this.block_count,
         'Creating model for block #' + this.blockWithRound);
     this.cbl = CONFIGURATION.progress_needle_interval * 200;
@@ -8319,6 +8345,13 @@ function VMI_set_bounds(args) {
     console.log(['set_bounds [', k, '] ', vbl.displayName, '[',
       VM.variables[vi - 1][0],'] t = ', VM.t, ' LB = ', VM.sig4Dig(l),
       ', UB = ', VM.sig4Dig(u), fixed].join(''), l, u, inf_val);
+  } else if(u < l) {
+    // Warn that "impossible" bounds would have been set...
+    const vk = vbl.displayName;
+    if(!VM.bound_issues[vk]) VM.bound_issues[vk] = [];
+    VM.bound_issues[vk].push(VM.t);
+    // ... and set LB to UB, so that lowest value is bounding.
+    l = u;
   }
   // NOTE: Since the VM vectors for lower bounds and upper bounds are
   // initialized with default values (0 for LB, +INF for UB), the bounds

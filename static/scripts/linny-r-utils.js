@@ -9,7 +9,7 @@ This JavaScript file (linny-r-utils.js) defines a variety of "helper" functions
 that are used in other Linny-R modules.
 */
 /*
-Copyright (c) 2017-2024 Delft University of Technology
+Copyright (c) 2017-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -74,16 +74,16 @@ function safeStrToFloat(str, val=0) {
 }
 
 function safeStrToInt(str, val=0) {
-  // Returns numeric value of integer string, IGNORING decimals after
+  // Return numeric value of integer string, IGNORING decimals after
   // point or comma.
-  // NOTE: returns default value `val` if `str` is empty, null or undefined
+  // NOTE: Return default value `val` if `str` is empty, null or undefined.
   const n = (str ? parseInt(str) : val);
   return (isNaN(n) ? val : n);
 }
 
 function rangeToList(str, max=0) {
-  // Parses ranges "n-m/i" into a list of integers
-  // Returns FALSE if range is not valid according to the convention below
+  // Parse ranges "n-m/i" into a list of integers
+  // Return FALSE if range is not valid according to the convention below
   // The part "/i" is optional and denotes the increment; by default, i = 1.
   // The returned list will contain all integers starting at n and up to
   // at most (!) m, with increments of i, so [n, n+i, n+2i, ...]
@@ -110,6 +110,33 @@ function rangeToList(str, max=0) {
   // Create the range number list
   for(let i = first; i <= last; i += incr) list.push(i);
   return list;
+}
+
+function listToRange(list) {
+  // Return a string that represents the given list of integers as a series
+  // of subranges, e.g., [0,1,2,3,5,6,9,11] results in "0-3, 5-6, 9, 11".
+  const
+      n = list.length,
+      subs = [];
+  if(!n) return '';
+  let i = 0,
+      from = list[0],
+      to = from;
+  while(i < n) {
+    i++;
+    if(list[i] === to + 1) {
+      to++;
+    } else {
+      if(from === to) {
+        subs.push(from);
+      } else {
+        subs.push(`${from}-${to}`);
+      }
+      from = list[i];
+      to = from;
+    }
+  }
+  return subs.join(', ');
 }
 
 function dateToString(d) {
@@ -1098,6 +1125,7 @@ if(NODE) module.exports = {
   safeStrToFloat: safeStrToFloat,
   safeStrToInt: safeStrToInt,
   rangeToList: rangeToList,
+  listToRange: listToRange,
   dateToString: dateToString,
   msecToTime: msecToTime,
   compactClockTime: compactClockTime,
