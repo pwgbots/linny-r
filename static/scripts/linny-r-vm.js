@@ -444,17 +444,21 @@ class Expression {
     // expression).
     if(t < 0 || this.isStatic) t = 0;
     if(t >= v.length) return VM.UNDEFINED;
-    // NOTE: When VM is setting up a tableau, values computed for the
-    // look-ahead period must be recomputed.
-    if(v[t] === VM.NOT_COMPUTED || v[t] === VM.COMPUTING ||
+    // NOTES:
+    // (1) When VM is setting up a tableau, values computed for the
+    //     look-ahead period must be recomputed.
+    // (2) Always recompute value for sensitivity analysis parameter, as
+    //     otherwise the vector value will be scaled cumulatively.
+    const sap = (this === MODEL.active_sensitivity_parameter);
+    if(sap || v[t] === VM.NOT_COMPUTED || v[t] === VM.COMPUTING ||
       (!this.isStatic && VM.inLookAhead(t))) {
       v[t] = VM.NOT_COMPUTED;
       this.compute(t, number);
     }
-    // NOTE: when this expression is the "active" parameter for sensitivity
-    // analysis, the result is multiplied by 1 + delta %
-    if(this === MODEL.active_sensitivity_parameter) {
-      // NOTE: do NOT scale exceptional values
+    // NOTE: When this expression is the "active" parameter for sensitivity
+    // analysis, the result is multiplied by 1 + delta %.
+    if(sap) {
+      // NOTE: Do NOT scale exceptional values.
       if(v[t] > VM.MINUS_INFINITY && v[t] < VM.PLUS_INFINITY) {
         v[t] *= (1 + MODEL.sensitivity_delta * 0.01);
       }
@@ -2585,6 +2589,7 @@ class VirtualMachine {
     // Return number `n` formatted so as to show 2-3 significant digits
     // NOTE: as `n` should be a number, a warning sign will typically
     // indicate a bug in the software.
+    if(typeof n === 'string') n = parseFloat(n);
     if(n === undefined || isNaN(n)) return '\u26A0'; // Warning sign
     const sv = this.specialValue(n);
     // If `n` has a special value, return its representation.
@@ -2612,6 +2617,7 @@ class VirtualMachine {
     // Return number `n` formatted so as to show 4-5 significant digits.
     // NOTE: As `n` should be a number, a warning sign will typically
     // indicate a bug in the software.
+    if(typeof n === 'string') n = parseFloat(n);
     if(n === undefined || isNaN(n)) return '\u26A0';
     const sv = this.specialValue(n); 
     // If `n` has a special value, return its representation.
@@ -3208,8 +3214,8 @@ class VirtualMachine {
   
   setBoundConstraints(p) {
     // Set LB and UB constraints for product `p`.
-    // NOTE: This method affects the VM coefficient vector, so save it
-    // (if needed) before calling this method.
+    // NOTE: This method affects the VM coefficient vector, so this vector
+    // should be saved (using a VM instruction) if it is needed later.
     const
         vi = p.level_var_index,
         lesvi = p.stock_LE_slack_var_index,

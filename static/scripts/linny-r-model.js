@@ -8282,20 +8282,20 @@ class Product extends Node {
     // By default, processes have the letter p, products the letter q.
     this.TEX_id = 'p';
     // For products, the default bounds are [0, 0], and modeler-defined bounds
-    // typically are equal
+    // typically are equal.
     this.equal_bounds = true;
-    // In addition to LB, UB and IL, products has 1 input attribute: P
+    // In addition to LB, UB and IL, products has 1 input attribute: P.
     this.price = new Expression(this, 'P', '');
-    // Products have a highest cost price, and may have a stock price (if storage)
+    // Products have a highest cost price, and may have a stock price (if storage).
     this.highest_cost_price = [];
     this.stock_price = [];
     // Stock level changing from 0 to positive counts as "start up", while
-    // changing from positive to 0 counts as a "shut-down"
-    // NOTE: being relatively rare, start_ups and shut_downs are not vectors,
-    // but store the numbers of the time steps in which they occurred
+    // changing from positive to 0 counts as a "shut-down".
+    // NOTE: Being relatively rare, start_ups and shut_downs are not vectors,
+    // but store the numbers of the time steps in which they occurred.
     this.start_ups = [];
     this.shut_downs = [];
-    // Modeler may set explicit properties
+    // Modeler may set explicit properties.
     this.is_source = false;
     this.is_sink = false;
     this.is_buffer = false;
@@ -8650,13 +8650,13 @@ class Product extends Node {
   }
 
   get defaultAttribute() {
-    // Products have their level as default attribute 
+    // Products have their level as default attribute.
     return 'L';
   }
 
   attributeValue(a) {
-    // Returns the computed result for attribute `a`
-    // (for products, this is always a vector except IL)
+    // Return the computed result for attribute `a`.
+    // NOTE: For products, this is always a vector except IL.
     if(a === 'L') return this.level;
     if(a === 'CP') return this.cost_price;
     if(a === 'HCP') return this.highest_cost_price;
@@ -8664,7 +8664,7 @@ class Product extends Node {
   }
 
   attributeExpression(a) {
-    // Products have four expression attributes
+    // Products have four expression attributes.
     if(a === 'LB') return this.lower_bound;
     if(a === 'UB') {
       return (this.equal_bounds ? this.lower_bound : this.upper_bound);
@@ -8748,7 +8748,7 @@ class Product extends Node {
   }
 
   copyPropertiesFrom(p) {
-    // Set properties to be identical to those of product `p`
+    // Set properties to be identical to those of product `p`.
     this.x = p.x;
     this.y = p.y;
     this.comments = p.comments;
@@ -8765,11 +8765,11 @@ class Product extends Node {
     this.initial_level.text = p.initial_level.text;
     this.integer_level = p.integer_level;
     this.TEX_id = p.TEX_id;
-    // NOTE: do not copy the `no_links` property, nor the import/export status
+    // NOTE: Do not copy the `no_links` property, nor the import/export status.
   }
 
   differences(p) {
-    // Return "dictionary" of differences, or NULL if none
+    // Return "dictionary" of differences, or NULL if none.
     const d = differences(this, p, UI.MC.PRODUCT_PROPS);
     if(Object.keys(d).length > 0) return d;
     return null;

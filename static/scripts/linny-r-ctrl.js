@@ -875,9 +875,9 @@ class ChartManager {
 // CLASS SensitivityAnalysis provides the sensitivity analysis functionality
 class SensitivityAnalysis {
   constructor() {
-    // Initialize main dialog properties
+    // Initialize main dialog properties.
     this.reset();
-    // Sensitivity analysis creates & disposes an experiment and a chart
+    // Sensitivity analysis creates & disposes an experiment and a chart.
     this.experiment_title = '___SENSITIVITY_ANALYSIS___';
     this.chart_title = '___SENSITIVITY_ANALYSIS_CHART___';
   }
@@ -912,7 +912,7 @@ class SensitivityAnalysis {
     // a dummy chart is created that includes all these outcomes as *chart*
     // variables.
     if(!this.experiment) {
-      // Clear results from previous analysis
+      // Clear results from previous analysis.
       this.clearResults();
       this.parameters = [];
       for(let i = 0; i < MODEL.sensitivity_parameters.length; i++) {
@@ -924,7 +924,7 @@ class SensitivityAnalysis {
         if(oax) {
           this.parameters.push(oax);
         } else if(vn.length === 1 && obj instanceof Dataset) {
-          // Dataset without selector => push the dataset vector
+          // Dataset without selector => push the dataset vector.
           this.parameters.push(obj.vector);
         } else {
           UI.alert(`Parameter ${p} is not a dataset or expression`);
@@ -938,23 +938,24 @@ class SensitivityAnalysis {
       this.experiment = new Experiment(this.experiment_title);
       this.experiment.charts = [this.chart];
       this.experiment.inferVariables();
-      // This experiment always uses the same combination: the base selectors
+      // This experiment always uses the same combination: the base selectors.
       const bs = MODEL.base_case_selectors.split(' ');
       this.experiment.combinations = [];
-      // Add this combination N+1 times for N parameters
+      // Add this combination N+1 times for N parameters.
       for(let i = 0; i <= this.parameters.length; i++) {
         this.experiment.combinations.push(bs);
       }
-      // NOTE: model settings will not be changed, but nevertheless restored
+      // NOTE: Model settings will not be changed, but will be restored after
+      // each run => store the original settings.
       this.experiment.original_model_settings = MODEL.settingsString;
       this.experiment.original_round_sequence = MODEL.round_sequence;
     }
-    // Change the button (GUI only -- console will return FALSE)
+    // Change the button (GUI only -- console will return FALSE).
     const paused = this.resumeButtons();
     if(!paused) {
       this.experiment.time_started = new Date().getTime();
       this.experiment.active_combination_index = 0;
-      // NOTE: start with base case run, hence no active parameter yet
+      // NOTE: Start with base case run, hence no active parameter yet.
       MODEL.running_experiment = this.experiment;
     }
     // Let the experiment manager do the work!!
@@ -962,31 +963,31 @@ class SensitivityAnalysis {
   }
   
   processRestOfRun() {   
-    // This method is called by the experiment manager after an SA run
+    // This method is called by the experiment manager after a SA run.
     const x = MODEL.running_experiment;
     if(!x) return;
-    // Double-check that indeed the SA experiment is running 
+    // Double-check that indeed the SA experiment is running.
     if(x !== this.experiment) {
       UI.alert('ERROR: Expected SA experiment run, but got ' + x.title);
       return;
     } 
     const aci = x.active_combination_index;
-    // Always add solver messages
+    // Always add solver messages.
     x.runs[aci].addMessages();
-    // NOTE: use a "dummy experiment object" to ensure proper XML saving and
-    // loading , as the actual experiment is not stored
+    // NOTE: Use a "dummy experiment object" to ensure proper XML saving and
+    // loading , as the actual experiment is not stored.
     x.runs.experiment = {title: SENSITIVITY_ANALYSIS.experiment_title};
-    // Add run to the sensitivity analysis
+    // Add run to the sensitivity analysis.
     MODEL.sensitivity_runs.push(x.runs[aci]);
     this.showProgress('Run #' + aci);
-    // See if more runs should be done
+    // See if more runs should be done.
     const n = x.combinations.length;
     if(!VM.halted && aci < n - 1) {
       if(this.must_pause) {
         this.pausedButtons(aci);
         UI.setMessage('');
       } else {
-        // NOTE: use aci because run #0 is the base case w/o active parameter
+        // NOTE: Use aci because run #0 is the base case w/o active parameter.
         MODEL.active_sensitivity_parameter = this.parameters[aci];
         x.active_combination_index++;
         setTimeout(() => EXPERIMENT_MANAGER.runModel(), 5);
@@ -1001,31 +1002,31 @@ class SensitivityAnalysis {
       } else {
         this.showCheckmark(msecToTime(x.time_stopped - x.time_started));
       }
-      // No more runs => perform wrap-up
-      // Restore original model settings
+      // No more runs => perform wrap-up.
+      // (1) Restore original model settings.
       MODEL.running_experiment = null;
       MODEL.active_sensitivity_parameter = null;
       MODEL.parseSettings(x.original_model_settings);
       MODEL.round_sequence = x.original_round_sequence;
-      // Reset the Virtual Machine so t=0 at the status line,
-      // and ALL expressions are reset as well
+      // (2) Reset the Virtual Machine so t=0 at the status line, and ALL
+      // expressions are reset as well.
       VM.reset();
-      // Free the SA experiment and SA chart
+      // Free the SA experiment and SA chart.
       this.experiment = null;
       this.chart = null;
-      // Reset buttons (GUI only)
+      // Reset buttons (GUI only).
       this.readyButtons();
     }
     this.updateDialog();
-    // Reset the model, as results of last run will be showing still
+    // Reset the model, as results of last run will be showing still.
     UI.resetModel();
     CHART_MANAGER.resetChartVectors();
-    // NOTE: clear chart only when done (charts do not update during experiment)
+    // NOTE: Clear chart only when done (charts do not update during experiment).
     if(!MODEL.running_experiment) CHART_MANAGER.updateDialog();
   }
 
   stop() {
-    // Interrupt solver but retain data on server (and no resume)
+    // Interrupt solver but retain data on server (and no resume).
     VM.halt();
     this.readyButtons();
     this.showProgress('');
@@ -1033,13 +1034,13 @@ class SensitivityAnalysis {
   }
   
   clearResults() {
-    // Clear results and reset control buttons
+    // Clear results, and reset control buttons.
     MODEL.sensitivity_runs.length = 0;
     this.selected_run = -1;
   }
   
   computeData(sas) {
-    // Compute data value or status for statistic `sas`
+    // Compute data value or status for statistic `sas`.
     this.perc = {};
     this.shade = {};
     this.data = {};
@@ -1047,12 +1048,12 @@ class SensitivityAnalysis {
         ol = MODEL.sensitivity_outcomes.length,
         rl = MODEL.sensitivity_runs.length;
     if(ol === 0) return;
-    // Always find highest relative change
+    // Always find highest relative change.
     let max_dif = 0;
     for(let i = 0; i < ol; i++) {
       this.data[i] = [];
       for(let j = 0; j < rl; j++) {
-        // Get the selected statistic for each run to get an array of numbers
+        // Get the selected statistic for each run to get an array of numbers.
         const rr = MODEL.sensitivity_runs[j].results[i];
         if(!rr) {
           this.data[i].push(VM.UNDEFINED);
@@ -1076,7 +1077,7 @@ class SensitivityAnalysis {
           this.data[i].push(rr.last);
         }
       }
-      // Compute relative change
+      // Compute the relative change.
       let bsv = this.data[i][0];
       if(Math.abs(bsv) < VM.NEAR_ZERO) bsv = 0;
       this.perc[i] = [];
@@ -1097,26 +1098,26 @@ class SensitivityAnalysis {
         for(let j = 1; j < this.data[i].length; j++) this.perc[i].push('-');
       }
     }
-    // Now use max_dif to compute shades
+    // Now use max_dif to compute shades.
     for(let i = 0; i < ol; i++) {      
       this.shade[i] = [];
-      // Color scale range is -max ... +max (0 in center => white)
+      // Color scale range is -max ... +max (0 in center => white).
       for(let j = 0; j < this.perc[i].length; j++) {
         const p = this.perc[i][j];
         this.shade[i].push(p === VM.UNDEFINED || max_dif < VM.NEAR_ZERO ?
             0.5 : (p / max_dif + 1) / 2);
       }
-      // Convert to sig4Dig
+      // Convert to sig4Dig.
       for(let j = 0; j < this.data[i].length; j++) {
         this.data[i][j] = VM.sig4Dig(this.data[i][j]);
       }
-      // Format data such that they all have same number of decimals
+      // Format data such that they all have same number of decimals.
       if(this.relative_scale && this.perc[i][0] !== '-') {
         for(let j = 0; j < this.perc[i].length; j++) {
           this.perc[i][j] = VM.sig4Dig(this.perc[i][j]);
         }
         uniformDecimals(this.perc[i]);
-        // NOTE: only consider data of base scenario
+        // NOTE: Only consider data of base scenario.
         this.data[i][0] = VM.sig4Dig(this.data[i][0]);
       } else {
         uniformDecimals(this.data[i]);
@@ -1125,11 +1126,11 @@ class SensitivityAnalysis {
   }
   
   resumeButtons() {
-    // Console experiments cannot be paused, and hence not resumed
+    // Console experiments cannot be paused, and hence not resumed.
     return false;
   }
 
-  // Dummy methods: actions that are meaningful only for the graphical UI
+  // Dummy methods: actions that are meaningful only for the graphical UI.
   updateDialog() {}
   showCheckmark() {}
   showProgress() {}
@@ -1143,7 +1144,7 @@ class SensitivityAnalysis {
 // Class ExperimentManager controls the collection of experiments of the model
 class ExperimentManager {
   constructor() {
-    // NOTE: the properties below are relevant only for the GUI
+    // NOTE: The properties below are relevant only for the GUI.
     this.experiment_table = null;
     this.focal_table = null;
   }
