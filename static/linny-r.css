@@ -794,6 +794,7 @@ div.checked.not-same-not-changed {
 
 /* LOAD modal dialog */
 #load-dlg,
+#load-csv-dlg,
 #comparison-dlg {
   width: 430px;
   height: min-content;
@@ -801,6 +802,7 @@ div.checked.not-same-not-changed {
 }
 
 #load-xml-file,
+#load-csv-file,
 #comparison-xml-file {
   padding: 2px;
   max-width: 375px;

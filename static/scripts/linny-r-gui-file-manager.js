@@ -391,6 +391,19 @@ class GUIFileManager {
         });
   }
 
+  loadCSVFile() {
+    document.getElementById('load-csv-modal').style.display = 'none';
+    try {
+      const file = document.getElementById('load-csv-file').files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => DATASET_MANAGER.readCSVData(event.target.result);
+      reader.readAsText(file);
+    } catch(err) {
+      UI.alert('Error while reading file: ' + err);
+    }
+  }
+  
   renderDiagramAsPNG(tight) {
     // When `tight` is TRUE, add no whitespace around the diagram.
     window.localStorage.removeItem('png-url');

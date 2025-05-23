@@ -1843,6 +1843,8 @@ Each line should represent the points of a different bound line.">
            title="Rename selected dataset">
       <img id="ds-clone-btn" class="btn disab" src="images/clone.png"
            title="Clone selected dataset">
+      <img id="ds-load-btn" class="btn enab" src="images/open.png"
+           title="Load dataset(s) from CSV file">
       <img id="ds-delete-btn" class="btn disab" src="images/delete.png"
            title="Delete selected dataset"
            style="position: absolute; right: 2px">
@@ -1938,6 +1940,19 @@ Start with = to find exact match, with ~ to match first characters">
         <img class="ok-btn" src="images/ok.png">
       </div>
       <input id="rename-dataset-name" type="text" autocomplete="off">
+    </div>
+  </div>
+  
+  <!-- the LOAD CSV dialog prompts the user for a CSV file on disk
+       to be loaded -->
+  <div id="load-csv-modal" class="modal">
+    <div id="load-csv-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Load datasets from CSV file
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="load-csv-file" type="file">
     </div>
   </div>
 
@@ -2495,7 +2510,7 @@ NOTE: * and ? will be interpreted as wildcards"
       <div id="experiment-separator"></div>
       <div id="experiment-default-message">
         To define a meaningful experiment, a model must feature at least
-        one outcome dataset, or a graph having one or more variables.
+        one outcome dataset, or a chart having one or more variables.
       </div>
       <div id="experiment-params-header">(no experiment selected)</div>
       <div id="experiment-params-div">

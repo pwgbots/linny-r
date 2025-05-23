@@ -52,6 +52,8 @@ class GUIDatasetManager extends DatasetManager {
         'click', () => DATASET_MANAGER.promptForName());
     document.getElementById('ds-clone-btn').addEventListener(
         'click', () => DATASET_MANAGER.cloneDataset());
+    document.getElementById('ds-load-btn').addEventListener(
+        'click', () => DATASET_MANAGER.load_csv_modal.show());
     document.getElementById('ds-delete-btn').addEventListener(
         'click', () => DATASET_MANAGER.deleteDataset());
     document.getElementById('ds-filter-btn').addEventListener(
@@ -97,6 +99,11 @@ class GUIDatasetManager extends DatasetManager {
         'click', () => DATASET_MANAGER.renameDataset());
     this.rename_modal.cancel.addEventListener(
         'click', () => DATASET_MANAGER.rename_modal.hide());
+    this.load_csv_modal = new ModalDialog('load-csv');
+    this.load_csv_modal.ok.addEventListener(
+        'click', () => FILE_MANAGER.loadCSVFile());
+    this.load_csv_modal.cancel.addEventListener(
+        'click', () => DATASET_MANAGER.load_csv_modal.hide());
     this.conversion_modal = new ModalDialog('convert-modifiers');
     this.conversion_modal.ok.addEventListener(
         'click', () => DATASET_MANAGER.convertModifiers());
@@ -1147,6 +1154,129 @@ class GUIDatasetManager extends DatasetManager {
     }
     this.series_modal.hide();
     this.updateDialog();
+  }
+  
+  readCSVData(text) {
+    // Parse text from uploaded file and create or overwrite datasets.
+    const
+        lines = text.trim().split(/\n/),
+        n = lines.length;
+    if(n < 2) {
+      UI.warn('Data must have at least 2 lines: dataset names and default values');
+      return false;
+    }
+    // Infer most likely delimiter.
+    const
+        tabs = text.split('\t').length - 1,
+        tab0 = lines[0].split('\t').length - 1,
+        tab1 = lines[1].split('\t').length - 1,
+        semic0 = lines[0].split(';').length - 1,
+        semics = text.split(';').length - 1 - semic0;
+    let sep = '\t';
+    if(!tabs || tab0 !== tab1) {
+      // Tab is most likely NOT the separator.
+      sep = (semics ? ';' : ',');
+    }
+    const
+        parts = lines[0].split(sep),
+        dsn = [];
+    let quoted = false;
+    for(let i = 0; i < parts.length; i++) {
+      const
+          p = parts[i],
+          swq = /^\"(\"\")*($|[^\"])/.test(p),
+          ewq = p.endsWith('"');
+      if(!quoted && swq && !ewq) {
+        dsn.push(p);
+        quoted = true;
+      } else if(quoted) {
+        dsn[dsn.length - 1] += sep + p;
+        quoted = !ewq;
+      } else {
+        dsn.push(p);
+      }
+    }
+    for(let i = 0; i < dsn.length; i++) {
+      const n = unquoteCSV(dsn[i].trim());
+      if(!UI.validName(n)) {
+        UI.warn(`Invalid dataset name "${n}" in column ${i}`);
+        return false;
+      }
+      dsn[i] = n;
+    }
+    const
+        ncol = dsn.length,
+        dsa = [],
+        dsdv = lines[1].split(sep);
+    if(dsdv.length !== ncol) {
+      UI.warn(`Number of default values (${dsdv.length}) does not match number of dataset names (${ncol})`);
+      return false;
+    }
+    for(let i = 0; i < dsdv.length; i++) {
+      const
+          v = dsdv[i].trim(),
+          sf = safeStrToFloat(v, NaN);
+      if(isNaN(sf)) {
+        UI.warn(`Invalid default value "${v}" in column ${i}`);
+        return false;
+      } else {
+        dsa.push([sf]);
+      }
+    }
+    for(let i = 2; i < n; i++) {
+      const dsv = lines[i].trim().split(sep);
+      if(dsv.length !== ncol) {
+        UI.warn(`Number of values (${dsv.length}) on line ${i} does not match number of dataset names (${ncol})`);
+        return false;
+      }
+      for(let j = 0; j < dsv.length; j++) {
+        const
+            v = dsv[j].trim(),
+            sf = safeStrToFloat(v, '');
+        if(sf === '' && v !== '') {
+          UI.warn(`Invalid numerical value "${v}" for <strong>${dsn[j]}</strong> on line ${i}`);
+          return false;
+        } else {
+          dsa[j].push(sf);
+        }
+      }
+    }
+    // Add or update datasets.
+    let added = 0,
+        updated = 0;
+    for(let i = 0; i < dsn.length; i++) {
+      const
+          n = dsn[i],
+          id = UI.nameToID(n),
+          ods = MODEL.namedObjectByID(id),
+          ds = ods || MODEL.addDataset(n);
+      // NOTE: `ds` will now be either a new dataset or an existing one.
+      if(ds) {
+        // Keep track of added/updated datasets.
+        const
+            odv = ds.default_value,
+            odata = ds.dataString;
+        ds.default_value = safeStrToFloat(dsdv[i], 0);
+        ds.data = dsa[i];
+        if(ods) {
+          if(ds.default_value !== odv || odata !== ds.dataString) updated++;
+        } else {
+          added++;
+        }
+        ds.computeStatistics();
+      }
+    }
+    // Notify modeler of changes (if any).
+    let msg = 'No datasets added or updated';
+    if(added) {
+      msg = pluralS(added, 'dataset') + ' added';
+      if(updated) msg += ', ' + pluralS(updated, 'dataset') + ' updated';
+    } else if(updated) {
+      msg = pluralS(updated, 'dataset') + ' updated';
+    }
+    UI.notify(msg);
+    this.updateDialog();
+    return true;
   }
   
 } // END of class GUIDatasetManager

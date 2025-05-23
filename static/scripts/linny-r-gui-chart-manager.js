@@ -1003,10 +1003,13 @@ class GUIChartManager extends ChartManager {
       if(v.visible) {
         // NOTE: while still solving, display t-1 as N
         const n = Math.max(0, v.N);
-        html.push('<tr><td class="v-name">',
-            [v.displayName, n, data[nr][0], data[nr][1], data[nr][2],
-                data[nr][3], data[nr][4],
-                v.non_zero_tally, v.exceptions].join('</td><td>'),
+        html.push('<tr><td class="v-name">', v.displayName, '</td><td>', n,
+            '</td><td title="', v.minimum.toPrecision(8), '">', data[nr][0],
+            '</td><td title="', v.maximum.toPrecision(8), '">', data[nr][1],
+            '</td><td title="', v.mean.toPrecision(8), '">', data[nr][2],
+            '</td><td title="', Math.sqrt(v.variance).toPrecision(8), '">', data[nr][3],
+            '</td><td title="', v.sum.toPrecision(8), '">', data[nr][4],
+            '</td><td>', v.non_zero_tally, '</td><td>', v.exceptions,
             '</td></tr>');
         nr++;
       }

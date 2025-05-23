@@ -446,7 +446,8 @@ class Controller {
     }
     // NOTE: Replace single quotes by Unicode apostrophe so that they
     // cannot interfere with JavaScript strings delimited by single quotes.
-    return name.toLowerCase().replace(/\s/g, '_').replace("'", '\u2019');
+    return name.toLowerCase().replace(/\s/g, '_')
+        .replace("'", '\u2019').replace('"', '\uff02');
   }
   
   htmlEquationName(n) {

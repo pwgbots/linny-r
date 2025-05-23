@@ -444,6 +444,12 @@ class Expression {
     // expression).
     if(t < 0 || this.isStatic) t = 0;
     if(t >= v.length) return VM.UNDEFINED;
+    // Check for recursive calls.
+    if(v[t] === VM.COMPUTING) {
+      console.log('Already computing expression for', this.variableName);
+      console.log(this.text);
+      return VM.CYCLIC;
+    }
     // NOTES:
     // (1) When VM is setting up a tableau, values computed for the
     //     look-ahead period must be recomputed.

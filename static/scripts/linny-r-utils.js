@@ -225,6 +225,13 @@ function ellipsedText(text, n=50, m=10) {
   return text.slice(0, n) + ' \u2026 ' + text.slice(text.length - m);
 }
 
+function unquoteCSV(s) {
+  // Returns a double-quoted string `s` without its quotes, and with
+  // quote pairs "" replaced by single " quotes.
+  if(!s.startsWith('"') || !s.endsWith('"')) return s;
+  return s.slice(1, -1).replaceAll('""', '"');
+}
+
 //
 // Functions used when comparing two Linny-R models
 //
@@ -1132,6 +1139,7 @@ if(NODE) module.exports = {
   uniformDecimals: uniformDecimals,
   capitalized: capitalized,
   ellipsedText: ellipsedText,
+  unquoteCSV: unquoteCSV,
   earlierVersion: earlierVersion,
   differences: differences,
   markFirstDifference: markFirstDifference,
