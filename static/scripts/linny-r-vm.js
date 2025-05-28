@@ -236,12 +236,12 @@ class Expression {
     // Returns XML-encoded expression after replacing "black-boxed" entities. 
     let text = this.text;
     if(MODEL.black_box) {
-      // Get all entity names that occur in this expression
+      // Get all entity names that occur in this expression.
       const vl = text.match(/\[[^\[]+\]/g);
-      if(vl) for(let i = 0; i < vl.length; i++) {
-        // Trim enclosing brackets and remove the "tail" (attribute or offset) 
+      if(vl) for(const v of vl) {
+        // Trim enclosing brackets and remove the "tail" (attribute or offset).
         let tail = '',
-            e = vl[i].substring(1, vl[i].length - 1).split(UI.OA_SEPARATOR);
+            e = v.substring(1, v.length - 1).split(UI.OA_SEPARATOR);
         if(e.length > 1) {
           tail = UI.OA_SEPARATOR + e.pop();
           e = e.join(UI.OA_SEPARATOR);
@@ -254,21 +254,29 @@ class Expression {
             e = e[0];
           }
         }
-        // Link names comprise two entities; if so, process both
-        e = e.split(UI.LINK_ARROW);
-        const enl = [];
-        let n = 0;
-        for(let j = 0; j < e.length; j++) {
-          const id = UI.nameToID(e[j]);
-          if(MODEL.black_box_entities.hasOwnProperty(id)) {
-            enl.push(MODEL.black_box_entities[id]);
-            n++;
-          } else {
-            enl.push(e[j]);
-          }
+        // Link names and constraint names comprise two entities.
+        // If so, process both entity names.
+        let arrow = UI.LINK_ARROW,
+            parts = e.split(arrow);
+        if(parts.length === 1) {
+          arrow = UI.CONSTRAINT_ARROW;
+          parts = e.split(arrow);
         }
-        if(n > 0) {
-          text = text.replace(vl[i], '[' + enl.join(UI.LINK_ARROW) + tail + ']');
+        if(parts.length > 1) {
+          let n = 0;
+          const enl = [];
+          for(const en of parts) {
+            const id = UI.nameToID(en);
+            if(MODEL.black_box_entities.hasOwnProperty(id)) {
+              enl.push(MODEL.black_box_entities[id]);
+              n++;
+            } else {
+              enl.push(en);
+            }
+          }
+          if(n > 0) {
+            text = text.replace(v, '[' + enl.join(arrow) + tail + ']');
+          }
         }
       }
     }
@@ -301,11 +309,7 @@ class Expression {
     if(DEBUGGING) {
       // Show the "time step stack" for --START and --STOP
       if(action.startsWith('--') || action.startsWith('"')) {
-        const s = [];
-        for(let i = 0; i < this.step.length; i++) {
-          s.push(this.step[i]); 
-        }
-        action = `[${s.join(', ')}] ${action}`;
+        action = `[${step.join(', ')}] ${action}`;
       }
       console.log(action);
     }
@@ -580,12 +584,11 @@ class Expression {
     if(matches) {
       // Match is case-insensitive, so check each for matching case of
       // attribute.
-      for(let i = 0; i < matches.length; i++) {
+      for(const m of matches) {
         const
-            m = matches[i],
-            e = m.split('|');
-        // Let `ao` be attribute + offset (if any) without right bracket.
-        let ao = e.pop().slice(0, -1),
+            e = m.split('|'),
+            // Let `ao` be attribute + offset (if any) without right bracket.
+            ao = e.pop().slice(0, -1),
             // Then also trim offset and spaces.
             a = ao.split('@')[0].trim();
         // Check whether `a` (without bracket and without spaces) indeed
@@ -952,12 +955,12 @@ class ExpressionParser {
         // prefix should be added.
         name = UI.colonPrefixedName(name, this.owner_prefix);
         if(x.x) {
-          // Look up name in experiment outcomes list
+          // Look up name in experiment outcomes list.
           x.v = x.x.resultIndex(name);
           if(x.v < 0 && name.indexOf('#') >= 0 &&
              typeof this.context_number === 'number') {
             // Variable name may be parametrized with #, but not in
-            // expressions for wildcard selectors
+            // expressions for wildcard selectors.
             name = name.replace('#', this.context_number);
             x.v = x.x.resultIndex(name);
           }
@@ -966,24 +969,24 @@ class ExpressionParser {
               x.x.displayName, '"'].join('');
           }
         } else {
-          // Check outcome list of ALL experiments
-          for(let i = 0; i < MODEL.experiments.length; i++) {
-            let xri = MODEL.experiments[i].resultIndex(name);
+          // Check outcome list of ALL experiments.
+          for(const mx of MODEL.experiments) {
+            let xri = mx.resultIndex(name);
             if(xri < 0 && name.indexOf('#') >= 0 &&
                typeof this.context_number === 'number') {
               // Variable name may be parametrized with #, but not in
               // expressions for wildcard selectors.
               name = name.replace('#', this.context_number);
-              xri = MODEL.experiments[i].resultIndex(name);
+              xri = mx.resultIndex(name);
             }
             if(xri >= 0) {
-              // If some match is found, the name specifies a variable
+              // If some match is found, the name specifies a variable.
               x.v = xri;
               break;
             }
           }
         }
-        // NOTE: experiment may still be FALSE, as this will be interpreted
+        // NOTE: Experiment may still be FALSE, as this will be interpreted
         // as "use current experiment", but run number should be specified.
         if(!msg) {
           if(x.r === false && x.t === false) {
@@ -1106,8 +1109,7 @@ class ExpressionParser {
       // narrowing the selection at run time, based on the expression's
       // wildcard number.
       const wdict = {};
-      for(let i = 0; i < ewa.length; i++) {
-        const e = ewa[i];
+      for(const e of ewa) {
         if(patternMatch(e.displayName, pat)) {
           const mnr = matchingWildcardNumber(e.displayName, pat);
           // NOTE: Attribute may be a single value, a vector, or an expression.
@@ -1251,8 +1253,7 @@ class ExpressionParser {
             mep = method.expression.eligible_prefixes,
             prefs = Object.keys(mep);
         // NOTE: Prefix keys will always be in lower case.
-        for(let i = 0; i < prefs.length; i++) {
-          const pref = prefs[i];
+        for(const pref of prefs) {
           if(this.eligible_prefixes === null || this.eligible_prefixes[pref]) {
             ep[pref] = true;
           }
@@ -1277,11 +1278,10 @@ class ExpressionParser {
       // This should not be empty when a method reference is parsed.
       const
           tail = UI.PREFIXER + name.substring(1).trim(),
-          ee = MODEL.entitiesEndingOn(tail, attr),
           ep = {};
-      for(let i = 0; i < ee.length; i++) {
+      for(const e of MODEL.entitiesEndingOn(tail, attr)) {
         const
-            en = ee[i].displayName,
+            en = e.displayName,
             pref = en.substring(0, en.length - tail.length).toLowerCase();
         if(this.eligible_prefixes === null || this.eligible_prefixes[pref]) {
           ep[pref] = true;
@@ -1720,11 +1720,11 @@ class ExpressionParser {
       } else {
         v = this.expr.substring(this.pit + 1, i);
         this.pit = i + 1;
-        // NOTE: Enclosing quotes are also part of this symbol
+        // NOTE: Enclosing quotes are also part of this symbol.
         this.los = v.length + 2;
         v = UI.cleanName(v);
         if(MODEL.scale_units.hasOwnProperty(v)) {
-          // Symbol is a scale unit => use its multiplier as numerical value
+          // Symbol is a scale unit => use its multiplier as numerical value.
           this.sym = MODEL.scale_units[v].multiplier;
         } else {
           this.error = `Unknown scale unit "${v}"`;
@@ -1736,8 +1736,8 @@ class ExpressionParser {
       this.pit++;
     } else if(OPERATOR_CHARS.indexOf(c) >= 0) {
       this.pit++;
-      // Check for compound operators (!=, <>, <=, >=) and if so, append
-      // the second character
+      // Check for compound operators (!=, <>, <=, >=, //) and if so, append
+      // the second character.
       if(this.pit <= this.eot &&
           COMPOUND_OPERATORS.indexOf(c + this.expr.charAt(this.pit)) >= 0) {
         c += this.expr.charAt(this.pit);
@@ -1745,18 +1745,18 @@ class ExpressionParser {
       }
       this.los = c.length;
       // Instead of the operator symbol, the corresponding VM instruction
-      // should be pushed onto the symbol stack
+      // should be pushed onto the symbol stack.
       this.sym = OPERATOR_CODES[OPERATORS.indexOf(c)];
     } else {
       // Take any text up to the next operator, parenthesis,
-      // opening bracket, quote or space
+      // opening bracket, quote or space.
       this.los = 0;
       let pl = this.pit + this.los,
           cpl = this.expr.charAt(pl),
           pcpl = '',
           digs = false;
       // NOTE: + and - operators are special case, since they may also
-      // be part of a floating point number, hence the more elaborate check
+      // be part of a floating point number, hence the more elaborate check.
       while(pl <= this.eot && (SEPARATOR_CHARS.indexOf(cpl) < 0 ||
           ('+-'.indexOf(cpl) >= 0 && digs && pcpl.toLowerCase() === 'e'))) {
         digs = digs || '0123456789'.indexOf(cpl) >= 0;
@@ -1770,15 +1770,15 @@ class ExpressionParser {
           this.expr.charAt(this.pit + this.los) === ' ') {
         this.los++;
       }
-      // ... but trim spaces from the symbol
+      // ... but trim spaces from the symbol.
       v = this.expr.substring(this.pit, this.pit + this.los).trim();
-      // Ignore case
+      // Ignore case.
       l = v.toLowerCase();
       if(l === '#') {
         // # symbolizes the numeric part of a dataset selector, so check
         // whether the expression being parsed is a dataset modifier with
         // a selector that has a numeric wildcard OR whether # can be inferred
-        // from the owner
+        // from the owner.
         if(this.selector.indexOf('*') >= 0 ||
             this.selector.indexOf('?') >= 0 ||
             this.owner.numberContext) {
@@ -1797,18 +1797,20 @@ class ExpressionParser {
         if(isNaN(f) || !isFinite(f)) {
           this.error = `Invalid number "${v}"`;
         } else {
-          // If a valid number, keep it within the +/- infinity range
+          // If a valid number, keep it within the +/- infinity range.
           this.sym = Math.max(VM.MINUS_INFINITY, Math.min(VM.PLUS_INFINITY, f));
         }
-      } else if(MODEL.scale_units.hasOwnProperty(v)) {
-        // Symbol is a scale unit => use its multiplier as numerical value
-        this.sym = MODEL.scale_units[v].multiplier;
       } else {
-        // Symbol does not start with a digit
-        // NOTE: distinguish between run length N and block length n
+        // Symbol does not start with a digit.
+        // NOTE: Distinguish between run length N and block length n.
         i = ACTUAL_SYMBOLS.indexOf(l === 'n' ? v : l);
         if(i < 0) {
-          this.error = `Invalid symbol "${v}"`;
+          if(MODEL.scale_units.hasOwnProperty(v)) {
+            // Symbol is a scale unit => use its multiplier as numerical value.
+            this.sym = MODEL.scale_units[v].multiplier;
+          } else {
+            this.error = `Invalid symbol "${v}"`;
+          }
         } else {
           this.sym = SYMBOL_CODES[i];
           // NOTE: Using time symbols or `random` makes the expression dynamic! 
@@ -1820,7 +1822,7 @@ class ExpressionParser {
     // A minus is monadic if at the start of the expression, or NOT preceded
     // by a "constant symbol", a number, or a closing parenthesis `)`.
     // Constant symbols are time 't', block start 'b', block length 'n',
-    // look-ahead 'l', 'random', 'true', 'false', 'pi', and 'infinity'
+    // look-ahead 'l', 'random', 'true', 'false', 'pi', and 'infinity'.
     if(DYADIC_CODES.indexOf(this.sym) === DYADIC_OPERATORS.indexOf('-') &&
         (this.prev_sym === null ||
             !(Array.isArray(this.prev_sym) ||
@@ -2054,11 +2056,9 @@ class ExpressionParser {
     // When compiling a method, check for all eligible prefixes whether
     // they might make the expression dynamic.
     if(this.is_static && this.eligible_prefixes) {
-      const epl = Object.keys(this.eligible_prefixes);
-      for(let i = 0; i < epl.length; i++) {
-        const ep = epl[i];
-        for(let j = 0; j < ep.length; j++) {
-          if(ep[j] instanceof Dataset && ep[j].mayBeDynamic) {
+      for(const ep of Object.keys(this.eligible_prefixes)) {
+        for(const p of ep) {
+          if(p instanceof Dataset && p.mayBeDynamic) {
             this.is_static = false;
             this.log('dynamic because some modifiers of eligible datasets are dynamic');
             break;
@@ -2371,14 +2371,10 @@ class VirtualMachine {
       Q: this.product_attr
     };
     this.entity_attribute_names = {};
-    for(let i = 0; i < this.entity_letters.length; i++) {
-      const
-          el = this.entity_letters.charAt(i),
-          ac = this.attribute_codes[el];
+    for(const el of this.entity_letters) {
+      const ac = this.attribute_codes[el];
       this.entity_attribute_names[el] = [];
-      for(let j = 0; j < ac.length; j++) {
-        this.entity_attribute_names[el].push(ac[j]);
-      }
+      for(const a of ac) this.entity_attribute_names[el].push(a);
     }
     // Level-based attributes are computed only AFTER optimization.
     this.level_based_attr = ['L', 'CP',  'HCP', 'CF', 'CI', 'CO', 'F', 'A'];
@@ -2886,8 +2882,7 @@ class VirtualMachine {
     const
         vlist = [],
         xlist = [];
-    for(let i = 0; i < csl; i++) {
-      const x = this.call_stack[i];
+    for(const x of this.call_stack) {
       vlist.push(x.object.displayName + '|' + x.attribute);
       // Trim spaces around all object-attribute separators in the
       // expression as entered by the modeler.
@@ -2900,8 +2895,8 @@ class VirtualMachine {
     // Then iterate upwards over the call stack.
     for(let i = 0; i < vlist.length - 1; i++) {
       // Log the expression, followed by the next computed variable.
-      console.log(pad + xlist[i] + '\u279C' + vlist[i+1]);
-      // Increase indentation
+      console.log(pad + xlist[i] + '\u279C' + vlist[i + 1]);
+      // Increase indentation.
       pad += '   ';
     }
     // Log the last expression.
@@ -2947,11 +2942,9 @@ class VirtualMachine {
       this.nr_of_blocks = 0;
       this.block_count = 0;
       MONITOR.clearProgressBar();
-      for(let i = 0; i < r.block_messages.length; i++) {
-        const
-            bm = r.block_messages[i],
-            err = (bm.messages.indexOf('Solver status = 0') < 0 ||
-                bm.messages.indexOf(this.WARNING) >= 0);
+      for(const bm of r.block_messages) {
+        const err = (bm.messages.indexOf('Solver status = 0') < 0 ||
+            bm.messages.indexOf(this.WARNING) >= 0);
         this.solver_times.push(bm.solver_time);
         this.messages.push(bm.messages);
         this.variables.push(this.no_variables);
@@ -3325,7 +3318,7 @@ class VirtualMachine {
     // NOTE: The setupProblem() function implements the essential idea of
     // Linny-R! It sets up the VM variable list, and then generates VM code
     // that that, when executed, creates the MILP tableau for a chunk.
-    let i, j, k, l, vi, p, c, lbx, ubx;
+    
     // Reset variable arrays and code array.
     this.variables.length = 0;
     this.chunk_variables.length = 0;
@@ -3338,9 +3331,7 @@ class VirtualMachine {
     this.slack_variables = [[], [], []];
     this.code.length = 0;
     // Initialize fixed variable array: 1 list per round.
-    for(i = 0; i < MODEL.rounds; i++) {
-      this.fixed_var_indices.push([]);
-    }
+    for(let i = 0; i < MODEL.rounds; i++) this.fixed_var_indices.push([]);
     
     // Log if run is performed in "diagnosis" mode.
     if(this.diagnose) {
@@ -3378,24 +3369,22 @@ class VirtualMachine {
 
     // Each actor has a variable to compute its cash in and its cash out.
     const actor_keys = Object.keys(MODEL.actors).sort();
-    for(i = 0; i < actor_keys.length; i++) {
-      const a = MODEL.actors[actor_keys[i]];
+    for(const k of actor_keys) {
+      const a = MODEL.actors[k];
       a.cash_in_var_index = this.addVariable('CI', a);
       a.cash_out_var_index = this.addVariable('CO', a);
     }
-    // Define variable indices for all processes
+    // Define variable indices for all processes.
     const process_keys = Object.keys(MODEL.processes).sort();
-    for(i = 0; i < process_keys.length; i++) {
-      k = process_keys[i];
-      p = MODEL.processes[k];
+    for(const k of process_keys) {
+      const p = MODEL.processes[k];
       this.resetVariableIndices(p);
       if(!MODEL.ignored_entities[k]) this.addNodeVariables(p);
     }
-    // Do likewise for all products
+    // Do likewise for all products.
     const product_keys = Object.keys(MODEL.products).sort();
-    for(i = 0; i < product_keys.length; i++) {
-      k = product_keys[i];
-      p = MODEL.products[k];
+    for(const k of product_keys) {
+      const p = MODEL.products[k];
       this.resetVariableIndices(p);
       if(!MODEL.ignored_entities[k]) this.addNodeVariables(p);
     }
@@ -3418,29 +3407,25 @@ class VirtualMachine {
     // NOTE: Slack variables are omitted when the "no slack" property
     // of the constraint is set.
     const constraint_keys = Object.keys(MODEL.constraints).sort();
-    for(i = 0; i < constraint_keys.length; i++) {
-      k = constraint_keys[i];
-      if(!MODEL.ignored_entities[k]) {
-        c = MODEL.constraints[k];
-        for(l = 0; l < c.bound_lines.length; l++) {
-          const bl = c.bound_lines[l];
-          bl.sos_var_indices = [];
-          if(bl.constrainsY) {
-            // Define SOS2 variables w[i] (plus associated binaries if
-            // solver does not support special ordered sets).
-            // NOTE: `addVariable` will add as many as there are points!
-            bl.first_sos_var_index = this.addVariable('W1', bl);
-            if(this.diagnose && !c.no_slack) {
-              // Define the slack variable(s) for bound line constraints.
-              // NOTE: Category [2] means: highest slack penalty.
-              if(bl.type !== VM.GE) {
-                bl.LE_slack_var_index = this.addVariable('CLE', bl);
-                this.slack_variables[2].push(bl.LE_slack_var_index);
-              }
-              if(bl.type !== VM.LE) {
-                bl.GE_slack_var_index = this.addVariable('CGE', bl);
-                this.slack_variables[2].push(bl.GE_slack_var_index);
-              }
+    for(const k of constraint_keys) if(!MODEL.ignored_entities[k]) {
+      const c = MODEL.constraints[k];
+      for(const bl of c.bound_lines) {
+        bl.sos_var_indices = [];
+        if(bl.constrainsY) {
+          // Define SOS2 variables w[i] (plus associated binaries if
+          // solver does not support special ordered sets).
+          // NOTE: `addVariable` will add as many as there are points!
+          bl.first_sos_var_index = this.addVariable('W1', bl);
+          if(this.diagnose && !c.no_slack) {
+            // Define the slack variable(s) for bound line constraints.
+            // NOTE: Category [2] means: highest slack penalty.
+            if(bl.type !== VM.GE) {
+              bl.LE_slack_var_index = this.addVariable('CLE', bl);
+              this.slack_variables[2].push(bl.LE_slack_var_index);
+            }
+            if(bl.type !== VM.LE) {
+              bl.GE_slack_var_index = this.addVariable('CGE', bl);
+              this.slack_variables[2].push(bl.GE_slack_var_index);
             }
           }
         }
@@ -3451,10 +3436,9 @@ class VirtualMachine {
     // been defined; next step is to add "chunk variables".
     let cvi = 0;
     // Add *two* chunk variables for processes having a peak increase link.
-    for(i = 0; i < process_keys.length; i++) {
-      k = process_keys[i];
-      p = MODEL.processes[k];
-      if(!MODEL.ignored_entities[k] && p.needsMaximumData) {
+    for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
+      const p = MODEL.processes[k];
+      if(p.needsMaximumData) {
         // First variable: "peak increase" for block.
         p.peak_inc_var_index = cvi;
         this.chunk_variables.push(['b-peak', p]);
@@ -3467,10 +3451,9 @@ class VirtualMachine {
       }
     }
     // Do likewise for such products.
-    for(i = 0; i < product_keys.length; i++) {
-      k = product_keys[i];
-      p = MODEL.products[k];
-      if(!MODEL.ignored_entities[k] && p.needsMaximumData) {
+    for(const k of product_keys) if(!MODEL.ignored_entities[k]) {
+      const p = MODEL.products[k];
+      if(p.needsMaximumData) {
         p.peak_inc_var_index = cvi;
         this.chunk_variables.push(['b-peak', p]);
         cvi++;
@@ -3491,8 +3474,8 @@ class VirtualMachine {
     // However, Linny-R does not prohibit negative bounds on processes, nor
     // negative rates on links. To be consistently permissive, cash IN and
     // cash OUT of all actors are both allowed to become negative.
-    for(i = 0; i < actor_keys.length; i++) {
-      const a = MODEL.actors[actor_keys[i]];
+    for(const k of actor_keys) {
+      const a = MODEL.actors[k];
       // NOTE: Add fourth parameter TRUE to signal that the SOLVER's
       // infinity constants should be used, as this is likely to be more
       // efficient, while cash flows are inferred properties and will not
@@ -3508,73 +3491,67 @@ class VirtualMachine {
     // NEXT: Define the bounds for all production level variables.
     // NOTE: The VM instructions check dynamically whether the variable
     // index is listed as "fixed" for the round that is being solved.
-    for(i = 0; i < process_keys.length; i++) {
-      k = process_keys[i];
-      if(!MODEL.ignored_entities[k]) {
-        p = MODEL.processes[k];
-        lbx = p.lower_bound;
-        // NOTE: If UB = LB, set UB to LB only if LB is defined,
-        // because LB expressions default to -INF while UB expressions
-        // default to +INF.
-        ubx = (!p.grid && p.equal_bounds && lbx.defined ? lbx : p.upper_bound);
-        if(lbx.isStatic) lbx = lbx.result(0);
-        if(ubx.isStatic) {
-          ubx = ubx.result(0);
-          if(p.grid) lbx = -ubx;
-        } else if (p.grid) {
-          // When UB is dynamic, pass NULL as LB; the VM instruction will
-          // interpret this as "LB = -UB".
-          lbx = null;
-        }
-        // NOTE: When semic_var_index is set, the lower bound must be
-        // zero, as the semi-continuous lower bound is implemented with
-        // a binary variable.
-        if(p.semic_var_index >= 0) lbx = 0;
-        // NOTE: Pass TRUE as fourth parameter to indicate that +INF
-        // and -INF can be coded as the infinity values used by the
-        // solver, rather than the Linny-R values used to detect
-        // unbounded problems.
-        this.code.push([VMI_set_bounds, [p.level_var_index, lbx, ubx, true]]);
-        // Add level variable index to "fixed" list for specified rounds.
-        const rf = p.actor.round_flags;
-        if(rf != 0) {
-          // Note: 32-bit integer `b` is used for bit-wise AND
-          let b = 1;
-          for(j = 0; j < MODEL.rounds; j++) {
-            if((rf & b) != 0) {
-              this.fixed_var_indices[j][p.level_var_index] = true;
-              // @@ TO DO: fix associated binary variables if applicable!
-            }
-            b *= 2;
+    for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
+      const p = MODEL.processes[k];
+      let lbx = p.lower_bound;
+      // NOTE: If UB = LB, set UB to LB only if LB is defined,
+      // because LB expressions default to -INF while UB expressions
+      // default to +INF.
+      let ubx = (!p.grid && p.equal_bounds && lbx.defined ? lbx : p.upper_bound);
+      if(lbx.isStatic) lbx = lbx.result(0);
+      if(ubx.isStatic) {
+        ubx = ubx.result(0);
+        if(p.grid) lbx = -ubx;
+      } else if (p.grid) {
+        // When UB is dynamic, pass NULL as LB; the VM instruction will
+        // interpret this as "LB = -UB".
+        lbx = null;
+      }
+      // NOTE: When semic_var_index is set, the lower bound must be
+      // zero, as the semi-continuous lower bound is implemented with
+      // a binary variable.
+      if(p.semic_var_index >= 0) lbx = 0;
+      // NOTE: Pass TRUE as fourth parameter to indicate that +INF
+      // and -INF can be coded as the infinity values used by the
+      // solver, rather than the Linny-R values used to detect
+      // unbounded problems.
+      this.code.push([VMI_set_bounds, [p.level_var_index, lbx, ubx, true]]);
+      // Add level variable index to "fixed" list for specified rounds.
+      const rf = p.actor.round_flags;
+      if(rf != 0) {
+        // Note: 32-bit integer `b` is used for bit-wise AND
+        let b = 1;
+        for(j = 0; j < MODEL.rounds; j++) {
+          if((rf & b) != 0) {
+            this.fixed_var_indices[j][p.level_var_index] = true;
+            // @@ TO DO: fix associated binary variables if applicable!
           }
+          b *= 2;
         }
       }
     }
 
     // NEXT: Define the bounds for all stock level variables.
-    for(i = 0; i < product_keys.length; i++) {
-      k = product_keys[i];
-      if(!MODEL.ignored_entities[k]) {
-        p = MODEL.products[k];
-        // Get index of variable that is constrained by LB and UB.
-        vi = p.level_var_index;
-        if(p.no_slack || !this.diagnose) {
-          // If no slack, the bound constraints can be set on the
-          // variables themselves.
-          lbx = p.lower_bound;
-          // NOTE: If UB = LB, set UB to LB only if LB is defined,
-          // because LB expressions default to -INF while UB expressions
-          // default to + INF.
-          ubx = (p.equal_bounds && lbx.defined ? lbx : p.upper_bound);
-          if(lbx.isStatic) lbx = lbx.result(0);
-          if(ubx.isStatic) ubx = ubx.result(0);
-          this.code.push([VMI_set_bounds, [vi, lbx, ubx]]);
-        } else {
-          // Otherwise, set bounds of stock variable to -INF and +INF,
-          // as product constraints will be added later on.
-          this.code.push([VMI_set_bounds,
-              [vi, VM.MINUS_INFINITY, VM.PLUS_INFINITY]]);
-        }
+    for(const k of product_keys) if(!MODEL.ignored_entities[k]) {
+      const p = MODEL.products[k];
+      // Get index of variable that is constrained by LB and UB.
+      const vi = p.level_var_index;
+      if(p.no_slack || !this.diagnose) {
+        // If no slack, the bound constraints can be set on the
+        // variables themselves.
+        let lbx = p.lower_bound;
+        // NOTE: If UB = LB, set UB to LB only if LB is defined,
+        // because LB expressions default to -INF while UB expressions
+        // default to + INF.
+        let ubx = (p.equal_bounds && lbx.defined ? lbx : p.upper_bound);
+        if(lbx.isStatic) lbx = lbx.result(0);
+        if(ubx.isStatic) ubx = ubx.result(0);
+        this.code.push([VMI_set_bounds, [vi, lbx, ubx]]);
+      } else {
+        // Otherwise, set bounds of stock variable to -INF and +INF,
+        // as product constraints will be added later on.
+        this.code.push([VMI_set_bounds,
+            [vi, VM.MINUS_INFINITY, VM.PLUS_INFINITY]]);
       }
     }
     
@@ -3616,158 +3593,150 @@ class VirtualMachine {
     this.no_cash_flows = true;
     
     // Iterate over all actors to add the cash flow computation constraints.
-    for(let ai = 0; ai < actor_keys.length; ai++) {
-      const a = MODEL.actors[actor_keys[ai]];
+    for(const k of actor_keys) {
+      const a = MODEL.actors[k];
       // NOTE: No need for VMI_clear_coefficients because the cash flow
       // coefficients operate on two special "registers" of the VM.
-      for(i = 0; i < process_keys.length; i++) {
-        k = process_keys[i];
-        if(!MODEL.ignored_entities[k]) {
-          const p = MODEL.processes[k];
-          // Only consider processes owned by this actor.
-          if(p.actor === a) {
-            if(p.grid) {
-              // Grid processes are a special case, as they can have a
-              // negative level and potentially multiple slopes. Hence a
-              // special VM instruction.
-              this.code.push([VMI_update_grid_process_cash_coefficients, p]);
-            } else {
-              // Iterate over links IN, but only consider consumed products
-              // having a market price.
-              for(j = 0; j < p.inputs.length; j++) {
-                l = p.inputs[j];
-                if(!MODEL.ignored_entities[l.identifier] &&
-                    l.from_node.price.defined) {
-                  if(l.from_node.price.isStatic && l.relative_rate.isStatic) {
-                    k = l.from_node.price.result(0) * l.relative_rate.result(0);
-                    // NOTE: VMI_update_cash_coefficient has at least 4 arguments:
-                    // flow (CONSUME or PRODUCE), type (specifies the number and
-                    // type of arguments), the level_var_index of the process,
-                    // and the delay.
-                    // NOTE: Input links cannot have delay, so then delay = 0.
-                    if(Math.abs(k) > VM.NEAR_ZERO) {
-                      // Consumption rate & price are static: pass one constant.
-                      this.code.push([VMI_update_cash_coefficient,
-                        [VM.CONSUME, VM.ONE_C, p.level_var_index, 0, k]]);
-                    }
-                  } else {
-                    // No further optimization: assume two dynamic expressions.
-                    this.code.push([VMI_update_cash_coefficient,
-                      [VM.CONSUME, VM.TWO_X, p.level_var_index, 0,
-                       l.from_node.price, l.relative_rate]]);
-                  }
+      for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
+        const p = MODEL.processes[k];
+        // Only consider processes owned by this actor.
+        if(p.actor === a) {
+          if(p.grid) {
+            // Grid processes are a special case, as they can have a
+            // negative level and potentially multiple slopes. Hence a
+            // special VM instruction.
+            this.code.push([VMI_update_grid_process_cash_coefficients, p]);
+          } else {
+            // Iterate over links IN, but only consider consumed products
+            // having a market price.
+            for(const l of p.inputs) if(!MODEL.ignored_entities[l.identifier] &&
+                l.from_node.price.defined) {
+              if(l.from_node.price.isStatic && l.relative_rate.isStatic) {
+                const c = l.from_node.price.result(0) * l.relative_rate.result(0);
+                // NOTE: VMI_update_cash_coefficient has at least 4 arguments:
+                // flow (CONSUME or PRODUCE), type (specifies the number and
+                // type of arguments), the level_var_index of the process,
+                // and the delay.
+                // NOTE: Input links cannot have delay, so then delay = 0.
+                if(Math.abs(c) > VM.NEAR_ZERO) {
+                  // Consumption rate & price are static: pass one constant.
+                  this.code.push([VMI_update_cash_coefficient,
+                    [VM.CONSUME, VM.ONE_C, p.level_var_index, 0, c]]);
                 }
-              } // END of FOR ALL input links
-            }
-            // Now iterate over links OUT, but only consider produced
-            // products having a (non-zero) market price.
-            // NOTE: Grid processes can have output links to *data* products,
-            // so do NOT skip this iteration...
-            for(j = 0; j < p.outputs.length; j++) {
-              l = p.outputs[j];
-              const
-                  tnpx = l.to_node.price,
-                  // ... but DO skip links from grid processes to regular products.
-                  skip = p.grid && !l.to_node.is_data;
-              if(!(skip || MODEL.ignored_entities[l.identifier]) && tnpx.defined &&
-                  !(tnpx.isStatic && Math.abs(tnpx.result(0)) < VM.NEAR_ZERO)) {
-                // By default, use the process level as multiplier.
-                vi = p.level_var_index;
-                // For "binary data links", use the correct binary variable
-                // instead of the level.
-                if(l.multiplier === VM.LM_STARTUP) {
-                  vi = p.start_up_var_index;
-                } else if(l.multiplier === VM.LM_FIRST_COMMIT) {
-                  vi = p.first_commit_var_index;
-                } else if(l.multiplier === VM.LM_SHUTDOWN) {
-                  vi = p.shut_down_var_index;
-                } else if(l.multiplier === VM.LM_POSITIVE) {
-                  vi = p.on_off_var_index;
-                } else if(l.multiplier === VM.LM_ZERO) {
-                  vi = p.is_zero_var_index;
+              } else {
+                // No further optimization: assume two dynamic expressions.
+                this.code.push([VMI_update_cash_coefficient,
+                  [VM.CONSUME, VM.TWO_X, p.level_var_index, 0,
+                   l.from_node.price, l.relative_rate]]);
+              }
+            } // END of FOR ALL input links
+          }
+          // Now iterate over links OUT, but only consider produced
+          // products having a (non-zero) market price.
+          // NOTE: Grid processes can have output links to *data* products,
+          // so do NOT skip this iteration...
+          for(const l of p.outputs) {
+            const
+                tnpx = l.to_node.price,
+                // ... but DO skip links from grid processes to regular products.
+                skip = p.grid && !l.to_node.is_data;
+            if(!(skip || MODEL.ignored_entities[l.identifier]) && tnpx.defined &&
+                !(tnpx.isStatic && Math.abs(tnpx.result(0)) < VM.NEAR_ZERO)) {
+              // By default, use the process level as multiplier.
+              let vi = p.level_var_index;
+              // For "binary data links", use the correct binary variable
+              // instead of the level.
+              if(l.multiplier === VM.LM_STARTUP) {
+                vi = p.start_up_var_index;
+              } else if(l.multiplier === VM.LM_FIRST_COMMIT) {
+                vi = p.first_commit_var_index;
+              } else if(l.multiplier === VM.LM_SHUTDOWN) {
+                vi = p.shut_down_var_index;
+              } else if(l.multiplier === VM.LM_POSITIVE) {
+                vi = p.on_off_var_index;
+              } else if(l.multiplier === VM.LM_ZERO) {
+                vi = p.is_zero_var_index;
+              }
+              // NOTE: "throughput", "spinning reserve" and "peak increase"
+              // are special cases that send a different parameter list.
+              if(l.multiplier === VM.LM_THROUGHPUT) {
+                // When throughput is read from process Y, calculation
+                // is simple: no delays, so the flow over link `l`
+                // equals the (sum of all Ri) times the level of Y
+                // times the rate of `l`.
+                for(const ll of l.from_node.inputs) {
+                  // NOTE: No attempt for efficiency -- assume that
+                  // price and both rates are dynamic.
+                  this.code.push([VMI_update_cash_coefficient, [
+                      VM.PRODUCE, VM.THREE_X, vi, l.flow_delay, tnpx,
+                      l.relative_rate, ll.relative_rate]]);
                 }
-                // NOTE: "throughput", "spinning reserve" and "peak increase"
-                // are special cases that send a different parameter list.
-                if(l.multiplier === VM.LM_THROUGHPUT) {
-                  // When throughput is read from process Y, calculation
-                  // is simple: no delays, so the flow over link `l`
-                  // equals the (sum of all Ri) times the level of Y
-                  // times the rate of `l`.
-                  for(k = 0; k < l.from_node.inputs.length; j++) {
-                    ll = l.from_node.inputs[k];
-                    // NOTE: No attempt for efficiency -- assume that
-                    // price and both rates are dynamic.
-                    this.code.push([VMI_update_cash_coefficient, [
-                        VM.PRODUCE, VM.THREE_X, vi, l.flow_delay, tnpx,
-                        l.relative_rate, ll.relative_rate]]);
-                  }
-                } else if(l.multiplier === VM.LM_SPINNING_RESERVE) {
-                  // "spinning reserve" equals UB - level if level > 0,
-                  // and otherwise 0. The cash flow then equals
-                  // ON/OFF * UB * price * rate MINUS level * price * rate,
-                  // hence a special instruction type.
-                  // NOTE: Only the ON/OFF variable determines whether
-                  // there will be any cash flow, hence it is passed as
-                  // the primary variable, and the process level as the
-                  // secondary variable.
-                  this.code.push([VMI_update_cash_coefficient, [
-                      VM.PRODUCE, VM.SPIN_RES, p.on_off_var_index,
-                      l.flow_delay, vi, l.from_node.upper_bound, tnpx,
-                      l.relative_rate]]);
-                } else if(l.multiplier === VM.LM_REMAINING_CAPACITY) {
-                  // "remaining capacity" equals UB - level. This is a
-                  // simpler version of "spinning reserve". We signal this
-                  // by passing -1 as the index of the secondary variable,
-                  // and the level variable index as the primary variable.
-                  this.code.push([VMI_update_cash_coefficient, [
-                      VM.PRODUCE, VM.SPIN_RES, vi, // <-- now as primary
-                      l.flow_delay, -1, // <-- signal that it is "REM_CAP"
-                      l.from_node.upper_bound, tnpx, l.relative_rate]]);
-                } else if(l.multiplier === VM.LM_PEAK_INC) {
-                  // NOTE: "peak increase" may be > 0 only in the first
-                  // time step of the block being optimized, and in the
-                  // first step of the look-ahead period (if peak rises
-                  // in that period), and will be 0 in all other time steps.
-                  // The VM instruction handles this.
-                  // NOTE: Delay is always 0 for this link flow.
-                  this.code.push([VMI_update_cash_coefficient, [
-                      VM.PRODUCE, VM.PEAK_INC, p.peak_inc_var_index, 0,
-                      tnpx, l.relative_rate]]);
-                } else if(tnpx.isStatic && l.relative_rate.isStatic) {
-                  // If link rate and product price are static, only add
-                  // the variable if rate*price is non-zero (and then pass
-                  // the constant rate*price to the VM instruction.
-                  k = tnpx.result(0) * l.relative_rate.result(0);
-                  if(Math.abs(k) > VM.NEAR_ZERO) {
-                    // Production rate & price are static: pass one constant.
-                    this.code.push([VMI_update_cash_coefficient,
-                        [VM.PRODUCE, VM.ONE_C, vi, l.flow_delay, k]]);
-                    // When multiplier is Delta, subtract level in previous t
-                    // (so add 1 to flow delay, and consume, rather than
-                    // produce).
-                    if(l.multiplier === VM.LM_INCREASE) {
-                      this.code.push([VMI_update_cash_coefficient,
-                          // NOTE: 6th argument = 1 indicates "delay + 1".
-                          [VM.CONSUME, VM.ONE_C, vi, l.flow_delay, k, 1]]);
-                    }
-                  }
-                } else {
-                  // Production rate or price are dynamic: pass two expressions.
-                  this.code.push([VMI_update_cash_coefficient, [
-                      VM.PRODUCE, VM.TWO_X, vi, l.flow_delay,
-                      tnpx, l.relative_rate]]);
-                  // When multiplier is Delta, consume level in previous t.
+              } else if(l.multiplier === VM.LM_SPINNING_RESERVE) {
+                // "spinning reserve" equals UB - level if level > 0,
+                // and otherwise 0. The cash flow then equals
+                // ON/OFF * UB * price * rate MINUS level * price * rate,
+                // hence a special instruction type.
+                // NOTE: Only the ON/OFF variable determines whether
+                // there will be any cash flow, hence it is passed as
+                // the primary variable, and the process level as the
+                // secondary variable.
+                this.code.push([VMI_update_cash_coefficient, [
+                    VM.PRODUCE, VM.SPIN_RES, p.on_off_var_index,
+                    l.flow_delay, vi, l.from_node.upper_bound, tnpx,
+                    l.relative_rate]]);
+              } else if(l.multiplier === VM.LM_REMAINING_CAPACITY) {
+                // "remaining capacity" equals UB - level. This is a
+                // simpler version of "spinning reserve". We signal this
+                // by passing -1 as the index of the secondary variable,
+                // and the level variable index as the primary variable.
+                this.code.push([VMI_update_cash_coefficient, [
+                    VM.PRODUCE, VM.SPIN_RES, vi, // <-- now as primary
+                    l.flow_delay, -1, // <-- signal that it is "REM_CAP"
+                    l.from_node.upper_bound, tnpx, l.relative_rate]]);
+              } else if(l.multiplier === VM.LM_PEAK_INC) {
+                // NOTE: "peak increase" may be > 0 only in the first
+                // time step of the block being optimized, and in the
+                // first step of the look-ahead period (if peak rises
+                // in that period), and will be 0 in all other time steps.
+                // The VM instruction handles this.
+                // NOTE: Delay is always 0 for this link flow.
+                this.code.push([VMI_update_cash_coefficient, [
+                    VM.PRODUCE, VM.PEAK_INC, p.peak_inc_var_index, 0,
+                    tnpx, l.relative_rate]]);
+              } else if(tnpx.isStatic && l.relative_rate.isStatic) {
+                // If link rate and product price are static, only add
+                // the variable if rate*price is non-zero (and then pass
+                // the constant rate*price to the VM instruction.
+                const c = tnpx.result(0) * l.relative_rate.result(0);
+                if(Math.abs(c) > VM.NEAR_ZERO) {
+                  // Production rate & price are static: pass one constant.
+                  this.code.push([VMI_update_cash_coefficient,
+                      [VM.PRODUCE, VM.ONE_C, vi, l.flow_delay, c]]);
+                  // When multiplier is Delta, subtract level in previous t
+                  // (so add 1 to flow delay, and consume, rather than
+                  // produce).
                   if(l.multiplier === VM.LM_INCREASE) {
-                    this.code.push([VMI_update_cash_coefficient, [
-                        VM.CONSUME, VM.TWO_X, vi, l.flow_delay,
-                        // NOTE: Now 7th argument indicates "delay + 1".
-                        tnpx, l.relative_rate, 1]]);
+                    this.code.push([VMI_update_cash_coefficient,
+                        // NOTE: 6th argument = 1 indicates "delay + 1".
+                        [VM.CONSUME, VM.ONE_C, vi, l.flow_delay, c, 1]]);
                   }
+                }
+              } else {
+                // Production rate or price are dynamic: pass two expressions.
+                this.code.push([VMI_update_cash_coefficient, [
+                    VM.PRODUCE, VM.TWO_X, vi, l.flow_delay,
+                    tnpx, l.relative_rate]]);
+                // When multiplier is Delta, consume level in previous t.
+                if(l.multiplier === VM.LM_INCREASE) {
+                  this.code.push([VMI_update_cash_coefficient, [
+                      VM.CONSUME, VM.TWO_X, vi, l.flow_delay,
+                      // NOTE: Now 7th argument indicates "delay + 1".
+                      tnpx, l.relative_rate, 1]]);
                 }
               }
             }
           } // END of FOR ALL output links
-        } // END of IF process not ignored
+        } // END of IF process "owned" by actor a
       } // END of FOR ALL processes
 
       // Check whether any VMI_update_cash_coefficient instructions have
@@ -3792,27 +3761,25 @@ class VirtualMachine {
     // considered, no cash flows have been detected, the solver should aim
     // for minimal effort, i.e., lowest weighted sum of process levels.
     if(this.no_cash_flows) {
-      for(i = 0; i < process_keys.length; i++) {
-        k = process_keys[i];
-        if(!MODEL.ignored_entities[k]) {
-          p = MODEL.processes[k];
-          const a = p.actor;
-          if(a.weight.defined) {
-            if(a.weight.isStatic) {
-              this.code.push([VMI_subtract_const_from_coefficient,
-                  [p.level_var_index, a.weight.result(0)]]);
-            } else {
-              this.code.push([VMI_subtract_var_from_coefficient,
-                  [p.level_var_index, a.weight]]);
-            }
+      for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
+        const
+            p = MODEL.processes[k],
+            a = p.actor;
+        if(a.weight.defined) {
+          if(a.weight.isStatic) {
+            this.code.push([VMI_subtract_const_from_coefficient,
+                [p.level_var_index, a.weight.result(0)]]);
+          } else {
+            this.code.push([VMI_subtract_var_from_coefficient,
+                [p.level_var_index, a.weight]]);
           }
         }
       }
     } else {
       // If cash flows HAVE been detected, use actor weights as coefficients:
       // positive for their cash IN, and negative for their cash OUT
-      for(let ai = 0; ai < actor_keys.length; ai++) {
-        const a = MODEL.actors[actor_keys[ai]];
+      for(const k of actor_keys) {
+        const a = MODEL.actors[k];
         // Ignore actors with undefined weights (should not occur since
         // default weight = 1)
         if(a.weight.defined) {
@@ -3837,12 +3804,9 @@ class VirtualMachine {
     // been added (by looking at the last VM instruction added to the code)
     if(this.code[this.code.length - 1][0] === VMI_clear_coefficients) {
       // If not, set the coefficients for ALL processes to -1
-      for(i = 0; i < process_keys.length; i++) {
-        k = process_keys[i];
-        if(!MODEL.ignored_entities[k]) {
-          this.code.push([VMI_add_const_to_coefficient,
-              [MODEL.processes[k].level_var_index, -1]]);
-        }
+      for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
+        this.code.push([VMI_add_const_to_coefficient,
+            [MODEL.processes[k].level_var_index, -1]]);
       }
     }
 
@@ -3858,73 +3822,65 @@ class VirtualMachine {
     // (2) Slack variables have different penalties: type 0 = market demands,
     //     i.e., EQ constraints on stocks, 1 = GE and LE constraints on product
     //     levels, 2 = strongest constraints: on data, or set by boundlines.
-    let pen, hb;
-    for(i = 0; i < product_keys.length; i++) {
-      k = product_keys[i];
-      if(!MODEL.ignored_entities[k]) {
-        p = MODEL.products[k];
-        if(p.level_var_index >= 0 && !p.no_slack && this.diagnose) {
-          hb = p.hasBounds;
-          pen = (p.is_data ? 2 :
-              // NOTE: Lowest penalty also for IMPLIED sources and sinks.
-              (p.equal_bounds || (!hb && (p.isSourceNode || p.isSinkNode)) ? 0 :
-                  (hb ? 1 : 2)));
-          this.slack_variables[pen].push(
-              p.stock_LE_slack_var_index, p.stock_GE_slack_var_index);
-        }
+    for(const k of product_keys) if(!MODEL.ignored_entities[k]) {
+      const p = MODEL.products[k];
+      if(p.level_var_index >= 0 && !p.no_slack && this.diagnose) {
+        const
+            hb = p.hasBounds,
+            pen = (p.is_data ? 2 :
+                // NOTE: Lowest penalty also for IMPLIED sources and sinks.
+                (p.equal_bounds || (!hb && (p.isSourceNode || p.isSinkNode)) ? 0 :
+                    (hb ? 1 : 2)));
+        this.slack_variables[pen].push(
+            p.stock_LE_slack_var_index, p.stock_GE_slack_var_index);
       }
     }
     
     // NEXT: Add semi-continuous constraints only if not supported by solver.
     if(!this.noSemiContinuous) {
-      for(i = 0; i < process_keys.length; i++) {
-        k = process_keys[i];
-        if(!MODEL.ignored_entities[k]) {
-          p = MODEL.processes[k];
-          const svi = p.semic_var_index;
-          if(svi >= 0) {
-            const
-                vi = p.level_var_index,
-                lbx = p.lower_bound,
-                ubx = (p.equal_bounds && lbx.defined ? lbx : p.upper_bound);
-            // LB*binary - level <= 0
-            this.code.push(
-              [VMI_clear_coefficients, null],
-              [VMI_add_const_to_coefficient, [vi, -1]]
-            );
-            if(lbx.isStatic) {
-              this.code.push([VMI_add_const_to_coefficient,
-                  [svi, lbx.result(0)]]);
-            } else {
-              this.code.push([VMI_add_var_to_coefficient, [svi, lbx]]);
-            }
-            this.code.push([VMI_add_constraint, VM.LE]);          
-            // level - UB*binary <= 0
-            this.code.push(
-              [VMI_clear_coefficients, null],
-              [VMI_add_const_to_coefficient, [vi, 1]]
-            );
-            if(ubx.isStatic) {
-              this.code.push([VMI_subtract_const_from_coefficient,
-                  [svi, ubx.result(0)]]);
-            } else {
-              this.code.push([VMI_subtract_var_from_coefficient, [svi, ubx]]);
-            }
-            this.code.push([VMI_add_constraint, VM.LE]);          
+      for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
+        const
+            p = MODEL.processes[k],
+            svi = p.semic_var_index;
+        if(svi >= 0) {
+          const
+              vi = p.level_var_index,
+              lbx = p.lower_bound,
+              ubx = (p.equal_bounds && lbx.defined ? lbx : p.upper_bound);
+          // LB*binary - level <= 0
+          this.code.push(
+            [VMI_clear_coefficients, null],
+            [VMI_add_const_to_coefficient, [vi, -1]]
+          );
+          if(lbx.isStatic) {
+            this.code.push([VMI_add_const_to_coefficient,
+                [svi, lbx.result(0)]]);
+          } else {
+            this.code.push([VMI_add_var_to_coefficient, [svi, lbx]]);
           }
+          this.code.push([VMI_add_constraint, VM.LE]);          
+          // level - UB*binary <= 0
+          this.code.push(
+            [VMI_clear_coefficients, null],
+            [VMI_add_const_to_coefficient, [vi, 1]]
+          );
+          if(ubx.isStatic) {
+            this.code.push([VMI_subtract_const_from_coefficient,
+                [svi, ubx.result(0)]]);
+          } else {
+            this.code.push([VMI_subtract_var_from_coefficient, [svi, ubx]]);
+          }
+          this.code.push([VMI_add_constraint, VM.LE]);          
         }
       }
     }
     
     // NEXT: Add constraints for processes representing grid elements.
     if(MODEL.with_power_flow) {
-      for(i = 0; i < process_keys.length; i++) {
-        k = process_keys[i];
-        if(!MODEL.ignored_entities[k]) {
-          p = MODEL.processes[k];
-          if(p.grid) {
-            this.code.push([VMI_add_grid_process_constraints, p]);
-          }
+      for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
+        const p = MODEL.processes[k];
+        if(p.grid) {
+          this.code.push([VMI_add_grid_process_constraints, p]);
         }
       }
       this.code.push(
@@ -3933,270 +3889,256 @@ class VirtualMachine {
 
     // NEXT: Add product constraints to calculate (and constrain) their stock.
 
-    for(let pi = 0; pi < product_keys.length; pi++) {
-      k = product_keys[pi];
-      if(!MODEL.ignored_entities[k]) {
-        p = MODEL.products[k];
-        // NOTE: Actor cash flow data products are a special case.
-        if(p.name.startsWith('$')) {
-          // Get the associated actor entity.
-          const parts = p.name.substring(1).split(' ');
-          parts.shift();
-          const
-              aid = UI.nameToID(parts.join(' ')),
-              a = MODEL.actorByID(aid);
-          if(a) {
-            this.code.push([VMI_clear_coefficients, null]);
-            // Use actor's cash variable indices w/o weight.
-            if(p.name.startsWith('$IN ')) {
-              // Add coefficient +1 for cash IN index.
-              this.code.push([VMI_add_const_to_coefficient,
-                  [a.cash_in_var_index, 1, 0]]);
-            } else if(p.name.startsWith('$OUT ')) {
-              // Add coefficient +1 for cash OUT index.
-              this.code.push([VMI_add_const_to_coefficient,
-                  [a.cash_out_var_index, 1, 0]]);
-            } else if(p.name.startsWith('$FLOW ')) {
-              // Add coefficient +1 for cash IN index.
-              this.code.push([VMI_add_const_to_coefficient,
-                  [a.cash_in_var_index, 1, 0]]);
-              // Add coefficient -1 for cash OUT index.
-              this.code.push([VMI_add_const_to_coefficient,
-                  [a.cash_out_var_index, -1, 0]]);
-            }
-            // Add coefficient -1 for level index variable of `p`.
-            this.code.push([VMI_add_const_to_coefficient,
-                [p.level_var_index, -1, 0]]);
-            // NOTE: Pass special constraint type parameter to indicate
-            // that this constraint must be scaled by the cash scalar.
-            this.code.push([VMI_add_constraint, VM.ACTOR_CASH]);
-          } else {
-            console.log('ANOMALY: no actor for cash flow product', p.displayName);
-          }
-        // NOTE: constants are not affected by their outgoing data (!) links
-        } else if(!p.isConstant) {
-  
-          // FIRST: add a constraint that "computes" the product stock level
-          // set coefficients vector to 0 (NOTE: this also sets RHS to 0)
+    for(const k of product_keys) if(!MODEL.ignored_entities[k]) {
+      const p = MODEL.products[k];
+      // NOTE: Actor cash flow data products are a special case.
+      if(p.name.startsWith('$')) {
+        // Get the associated actor entity.
+        const parts = p.name.substring(1).split(' ');
+        parts.shift();
+        const
+            aid = UI.nameToID(parts.join(' ')),
+            a = MODEL.actorByID(aid);
+        if(a) {
           this.code.push([VMI_clear_coefficients, null]);
-    
-          // Add inflow into product P from input nodes
-          for(i = 0; i < p.inputs.length; i++) {
-            l = p.inputs[i];
-            if(!MODEL.ignored_entities[l.identifier]) {
-              const fn = l.from_node;
-              // If data flow, use the appropriate variable
-              if(l.multiplier === VM.LM_POSITIVE) {
-                vi = fn.on_off_var_index;
-              } else if (l.multiplier === VM.LM_ZERO) {
-                vi = fn.is_zero_var_index;
-              } else if(l.multiplier === VM.LM_STARTUP) {
-                vi = fn.start_up_var_index;
-              } else if(l.multiplier === VM.LM_FIRST_COMMIT) {
-                vi = fn.first_commit_var_index;
-              } else if(l.multiplier === VM.LM_SHUTDOWN) {
-                vi = fn.shut_down_var_index;
-              } else if(l.multiplier === VM.LM_PEAK_INC) {
-                vi = fn.peak_inc_var_index;
-              } else {
-                vi = fn.level_var_index;
+          // Use actor's cash variable indices w/o weight.
+          if(p.name.startsWith('$IN ')) {
+            // Add coefficient +1 for cash IN index.
+            this.code.push([VMI_add_const_to_coefficient,
+                [a.cash_in_var_index, 1, 0]]);
+          } else if(p.name.startsWith('$OUT ')) {
+            // Add coefficient +1 for cash OUT index.
+            this.code.push([VMI_add_const_to_coefficient,
+                [a.cash_out_var_index, 1, 0]]);
+          } else if(p.name.startsWith('$FLOW ')) {
+            // Add coefficient +1 for cash IN index.
+            this.code.push([VMI_add_const_to_coefficient,
+                [a.cash_in_var_index, 1, 0]]);
+            // Add coefficient -1 for cash OUT index.
+            this.code.push([VMI_add_const_to_coefficient,
+                [a.cash_out_var_index, -1, 0]]);
+          }
+          // Add coefficient -1 for level index variable of `p`.
+          this.code.push([VMI_add_const_to_coefficient,
+              [p.level_var_index, -1, 0]]);
+          // NOTE: Pass special constraint type parameter to indicate
+          // that this constraint must be scaled by the cash scalar.
+          this.code.push([VMI_add_constraint, VM.ACTOR_CASH]);
+        } else {
+          console.log('ANOMALY: no actor for cash flow product', p.displayName);
+        }
+      // NOTE: constants are not affected by their outgoing data (!) links
+      } else if(!p.isConstant) {
+
+        // FIRST: add a constraint that "computes" the product stock level
+        // set coefficients vector to 0 (NOTE: this also sets RHS to 0)
+        this.code.push([VMI_clear_coefficients, null]);
+  
+        // Add inflow into product P from input nodes
+        for(const l of p.inputs) if(!MODEL.ignored_entities[l.identifier]) {
+          const fn = l.from_node;
+          let vi = fn.level_var_index;
+          // If data flow, use the appropriate variable
+          if(l.multiplier === VM.LM_POSITIVE) {
+            vi = fn.on_off_var_index;
+          } else if (l.multiplier === VM.LM_ZERO) {
+            vi = fn.is_zero_var_index;
+          } else if(l.multiplier === VM.LM_STARTUP) {
+            vi = fn.start_up_var_index;
+          } else if(l.multiplier === VM.LM_FIRST_COMMIT) {
+            vi = fn.first_commit_var_index;
+          } else if(l.multiplier === VM.LM_SHUTDOWN) {
+            vi = fn.shut_down_var_index;
+          } else if(l.multiplier === VM.LM_PEAK_INC) {
+            vi = fn.peak_inc_var_index;
+          }
+          // First check whether the link is a power flow.
+          if(l.multiplier === VM.LM_LEVEL && !p.is_data && fn.grid) {
+            // If so, pass the grid process to a special VM instruction
+            // that will add coefficients that account for losses.
+            // NOTES:
+            // (1) The second parameter (+1) indicates that the
+            //     coefficients of the UP flows should be positive
+            //     and those of the DOWN flows should be negative
+            //     (because it is a P -> Q link).
+            // (2) The rate and delay properties of the link are ignored.
+            this.code.push(
+                [VMI_add_power_flow_to_coefficients, [fn, 1]]);
+          // Then check for throughput links, as these are elaborate.
+          } else if(l.multiplier === VM.LM_THROUGHPUT) {
+            // Link `l` is Y-->Z and "reads" the total inflow into Y
+            // over links Xi-->Y having rate Ri and when Y is a
+            // product potentially also delay Di.
+            if(fn instanceof Process) {
+              // When throughput is read from process Y, the flow
+              // over link `l` equals the (sum of all Ri) times the
+              // level of Y times the rate of `l`
+              for(const ll of fn.inputs) {
+                this.code.push([VMI_add_throughput_to_coefficient,
+                    [vi, l.relative_rate, l.flow_delay,
+                        // Input links of processes have no delay
+                        ll.relative_rate, 0]]);
               }
-              // First check whether the link is a power flow.
-              if(l.multiplier === VM.LM_LEVEL && !p.is_data && fn.grid) {
-                // If so, pass the grid process to a special VM instruction
-                // that will add coefficients that account for losses.
-                // NOTES:
-                // (1) The second parameter (+1) indicates that the
-                //     coefficients of the UP flows should be positive
-                //     and those of the DOWN flows should be negative
-                //     (because it is a P -> Q link).
-                // (2) The rate and delay properties of the link are ignored.
-                this.code.push(
-                    [VMI_add_power_flow_to_coefficients, [fn, 1]]);
-              // Then check for throughput links, as these are elaborate.
-              } else if(l.multiplier === VM.LM_THROUGHPUT) {
-                // Link `l` is Y-->Z and "reads" the total inflow into Y
-                // over links Xi-->Y having rate Ri and when Y is a
-                // product potentially also delay Di.
-                let ll, lfn, lvi;
-                if(fn instanceof Process) {
-                  // When throughput is read from process Y, the flow
-                  // over link `l` equals the (sum of all Ri) times the
-                  // level of Y times the rate of `l`
-                  for(j = 0; j < fn.inputs.length; j++) {
-                    ll = fn.inputs[j];
-                    this.code.push([VMI_add_throughput_to_coefficient,
-                        [vi, l.relative_rate, l.flow_delay,
-                            // Input links of processes have no delay
-                            ll.relative_rate, 0]]);
-                  }
-                } else {
-                  // When read from product Y, throughput to be added to
-                  // Z equals sum of inflows of FROM node Y:
-                  //   Xi --(r2,d2)--> Y --(r1,d1)--> Z
-                  // so instead of the level of Y (having index vi), use
-                  // the level of Xi (for each input i of Y)
-                  for(j = 0; j < fn.inputs.length; j++) {
-                    ll = fn.inputs[j];
-                    lfn = ll.from_node;
-                    // here, too, use the *correct* variable index for Xi!
-                    if(ll.multiplier === VM.LM_POSITIVE || ll.multiplier === VM.LM_ZERO) {
-                      lvi = lfn.on_off_var_index;
-                    } else if(ll.multiplier === VM.LM_STARTUP) {
-                      lvi = lfn.start_up_var_index;
-                    } else if(ll.multiplier === VM.LM_FIRST_COMMIT) {
-                      lvi = lfn.first_commit_var_index;
-                    } else if(ll.multiplier === VM.LM_SHUTDOWN) {
-                      lvi = lfn.shut_down_var_index;
-                    } else {
-                      lvi = lfn.level_var_index;
-                    }
-                    // NOTE: we trade-off efficiency gain during execution
-                    // against simplicity now by not checking whether rates
-                    // are static; the VM instruction will be a bit slower
-                    // as it calls the result(t) method for both rates
-                    this.code.push([VMI_add_throughput_to_coefficient,
-                        [lvi, l.relative_rate, l.flow_delay,
-                            ll.relative_rate, ll.flow_delay]]);
-                  }
+            } else {
+              // When read from product Y, throughput to be added to
+              // Z equals sum of inflows of FROM node Y:
+              //   Xi --(r2,d2)--> Y --(r1,d1)--> Z
+              // so instead of the level of Y (having index vi), use
+              // the level of Xi (for each input i of Y)
+              for(const ll of fn.inputs) {
+                const lfn = ll.from_node;
+                let lvi = fn.level_var_index;
+                // Here, too, use the *correct* variable index for Xi!
+                if(ll.multiplier === VM.LM_POSITIVE || ll.multiplier === VM.LM_ZERO) {
+                  lvi = lfn.on_off_var_index;
+                } else if(ll.multiplier === VM.LM_STARTUP) {
+                  lvi = lfn.start_up_var_index;
+                } else if(ll.multiplier === VM.LM_FIRST_COMMIT) {
+                  lvi = lfn.first_commit_var_index;
+                } else if(ll.multiplier === VM.LM_SHUTDOWN) {
+                  lvi = lfn.shut_down_var_index;
                 }
-              } else if(l.multiplier === VM.LM_PEAK_INC) {
-                // SPECIAL instruction that adds flow only for first t of block
-                // NOTE: no delay on this type of link
-                this.code.push([VMI_add_peak_increase_at_t_0,
-                    [vi, l.relative_rate]]);
-              } else if(l.multiplier === VM.LM_AVAILABLE_CAPACITY) {
-                // The "available capacity" equals UB - level, so subtract
-                // UB * rate from RHS, while considering the delay.
-                // NOTE: New instruction style that passes pointers to
-                // model entities instead of their properties.
-                this.code.push([VMI_add_available_capacity, l]);
-              } else if(l.relative_rate.isStatic) {
-                // Static rates permit simpler VM instructions
-                c = l.relative_rate.result(0);
-                if(l.multiplier === VM.LM_SUM) {
-                  this.code.push([VMI_add_const_to_sum_coefficients,
-                      [vi, c, l.flow_delay]]);
-                } else if(l.multiplier === VM.LM_MEAN) {
-                  this.code.push([VMI_add_const_to_sum_coefficients,
-                      // NOTE: 4th parameter = 1 indicates "divide c by delay + 1"
-                      [vi, c, l.flow_delay, 1]]);
-                } else if(l.multiplier === VM.LM_SPINNING_RESERVE) {
-                  // "spinning reserve" equals UB - level if level > 0, or 0
-                  // so add ON/OFF * UB * rate ...
-                  const fnub = l.from_node.upper_bound;
-                  if(fnub.isStatic) {
-                    this.code.push([VMI_add_const_to_coefficient,
-                        [fn.on_off_var_index, fnub.result(0) * c, l.flow_delay]]);
-                  } else {
-                    // NOTE: constant `c` is passed as 5th parameter
-                    // (var multiplier) since 4th parameter = 1 indicates "delay + 1"
-                    this.code.push([VMI_add_var_to_coefficient,
-                        [fn.on_off_var_index, fnub, l.flow_delay, 0, c]]);
-                  }
-                  // ... and subtract level * rate
-                  this.code.push([VMI_subtract_const_from_coefficient,
-                      [vi, c, l.flow_delay]]);
-                } else {
-                  this.code.push([VMI_add_const_to_coefficient,
-                      [vi, c, l.flow_delay]]);
-                  if(l.multiplier === VM.LM_INCREASE) {
-                    this.code.push([VMI_subtract_const_from_coefficient,
-                        // NOTE: 4th argument indicates "delay + 1"
-                        [vi, c, l.flow_delay, 1]]);
-                  }
-                }
-              } else {
-                // NOTE: `c` is now an expression
-                c = l.relative_rate;
-                if(l.multiplier === VM.LM_SUM) {
-                  this.code.push([VMI_add_var_to_weighted_sum_coefficients,
-                      [vi, c, l.flow_delay]]);
-                } else if(l.multiplier === VM.LM_MEAN) {
-                  this.code.push([VMI_add_var_to_weighted_sum_coefficients,
-                      [vi, c, l.flow_delay, 1]]);
-                } else if(l.multiplier === VM.LM_SPINNING_RESERVE) {
-                  // "spinning reserve" equals UB - level if level > 0, or 0
-                  // so add ON/OFF * UB * rate ...
-                  this.code.push([VMI_add_var_product_to_coefficient,
-                      [fn.on_off_var_index, l.from_node.upper_bound,
-                          c, l.flow_delay]]);
-                  // ... and subtract level * rate
-                  this.code.push([VMI_subtract_var_from_coefficient,
-                      [vi, c, l.flow_delay]]);
-                } else {
-                  this.code.push([VMI_add_var_to_coefficient,
-                      [vi, c, l.flow_delay]]);
-                  if(l.multiplier === VM.LM_INCREASE) {
-                    this.code.push([VMI_subtract_var_from_coefficient,
-                        // NOTE: 4th argument indicates "delay + 1"
-                        [vi, c, l.flow_delay, 1]]);
-                  }
-                }
+                // NOTE: we trade-off efficiency gain during execution
+                // against simplicity now by not checking whether rates
+                // are static; the VM instruction will be a bit slower
+                // as it calls the result(t) method for both rates
+                this.code.push([VMI_add_throughput_to_coefficient,
+                    [lvi, l.relative_rate, l.flow_delay,
+                        ll.relative_rate, ll.flow_delay]]);
               }
-            } // END IF not ignored
-          } // END FOR all inputs
-          
-          // Subtract outflow from product P to consuming processes (outputs)
-          for(i = 0; i < p.outputs.length; i++) {
-            l = p.outputs[i];
-            if(!MODEL.ignored_entities[l.identifier]) {
-              const tn = l.to_node;
-              // NOTE: Only consider outputs to processes; data flows do
-              // not subtract from their tail nodes.
-              if(tn instanceof Process) {
-                if(tn.grid) {
-                // If the link is a power flow, pass the grid process to
-                // a special VM instruction that will add coefficients that
-                // account for losses.
-                // NOTES:
-                // (1) The second parameter (-1) indicates that the
-                //     coefficients of the UP flows should be negative
-                //     and those of the DOWN flows should be positive
-                //     (because it is a Q -> P link).
-                // (2) The rate and delay properties of the link are ignored.
-                this.code.push(
-                    [VMI_add_power_flow_to_coefficients, [tn, -1]]);
-                } else {
-                  const rr = l.relative_rate;
-                  if(rr.isStatic) {
-                    this.code.push([VMI_subtract_const_from_coefficient,
-                        [tn.level_var_index, rr.result(0), l.flow_delay]]);
-                  } else {
-                    this.code.push([VMI_subtract_var_from_coefficient,
-                        [tn.level_var_index, rr, l.flow_delay]]);
-                  }
-                }
+            }
+          } else if(l.multiplier === VM.LM_PEAK_INC) {
+            // SPECIAL instruction that adds flow only for first t of block
+            // NOTE: no delay on this type of link
+            this.code.push([VMI_add_peak_increase_at_t_0,
+                [vi, l.relative_rate]]);
+          } else if(l.multiplier === VM.LM_AVAILABLE_CAPACITY) {
+            // The "available capacity" equals UB - level, so subtract
+            // UB * rate from RHS, while considering the delay.
+            // NOTE: New instruction style that passes pointers to
+            // model entities instead of their properties.
+            this.code.push([VMI_add_available_capacity, l]);
+          } else if(l.relative_rate.isStatic) {
+            // Static rates permit simpler VM instructions
+            const c = l.relative_rate.result(0);
+            if(l.multiplier === VM.LM_SUM) {
+              this.code.push([VMI_add_const_to_sum_coefficients,
+                  [vi, c, l.flow_delay]]);
+            } else if(l.multiplier === VM.LM_MEAN) {
+              this.code.push([VMI_add_const_to_sum_coefficients,
+                  // NOTE: 4th parameter = 1 indicates "divide c by delay + 1"
+                  [vi, c, l.flow_delay, 1]]);
+            } else if(l.multiplier === VM.LM_SPINNING_RESERVE) {
+              // "spinning reserve" equals UB - level if level > 0, or 0
+              // so add ON/OFF * UB * rate ...
+              const fnub = l.from_node.upper_bound;
+              if(fnub.isStatic) {
+                this.code.push([VMI_add_const_to_coefficient,
+                    [fn.on_off_var_index, fnub.result(0) * c, l.flow_delay]]);
+              } else {
+                // NOTE: constant `c` is passed as 5th parameter
+                // (var multiplier) since 4th parameter = 1 indicates "delay + 1"
+                this.code.push([VMI_add_var_to_coefficient,
+                    [fn.on_off_var_index, fnub, l.flow_delay, 0, c]]);
+              }
+              // ... and subtract level * rate
+              this.code.push([VMI_subtract_const_from_coefficient,
+                  [vi, c, l.flow_delay]]);
+            } else {
+              this.code.push([VMI_add_const_to_coefficient,
+                  [vi, c, l.flow_delay]]);
+              if(l.multiplier === VM.LM_INCREASE) {
+                this.code.push([VMI_subtract_const_from_coefficient,
+                    // NOTE: 4th argument indicates "delay + 1"
+                    [vi, c, l.flow_delay, 1]]);
+              }
+            }
+          } else {
+            // NOTE: Rate is now an expression.
+            const rx = l.relative_rate;
+            if(l.multiplier === VM.LM_SUM) {
+              this.code.push([VMI_add_var_to_weighted_sum_coefficients,
+                  [vi, rx, l.flow_delay]]);
+            } else if(l.multiplier === VM.LM_MEAN) {
+              this.code.push([VMI_add_var_to_weighted_sum_coefficients,
+                  [vi, rx, l.flow_delay, 1]]);
+            } else if(l.multiplier === VM.LM_SPINNING_RESERVE) {
+              // "spinning reserve" equals UB - level if level > 0, or 0
+              // so add ON/OFF * UB * rate ...
+              this.code.push([VMI_add_var_product_to_coefficient,
+                  [fn.on_off_var_index, l.from_node.upper_bound,
+                      rx, l.flow_delay]]);
+              // ... and subtract level * rate
+              this.code.push([VMI_subtract_var_from_coefficient,
+                  [vi, rx, l.flow_delay]]);
+            } else {
+              this.code.push([VMI_add_var_to_coefficient,
+                  [vi, rx, l.flow_delay]]);
+              if(l.multiplier === VM.LM_INCREASE) {
+                this.code.push([VMI_subtract_var_from_coefficient,
+                    // NOTE: 4th argument indicates "delay + 1"
+                    [vi, rx, l.flow_delay, 1]]);
               }
             }
           }
-          
-          // NOTES:
-          // (1) for products with storage, set the coefficient for this product's
-          // stock IN THE PREVIOUS TIME STEP to 1
-          // (2) the VM instruction will subtract the stock level at the end of the
-          // previous block from the RHS if t=block_start, or the initial level if t=1
-          if(p.is_buffer) {
-            this.code.push([VMI_add_const_to_coefficient,
-                [p.level_var_index, 1, 1]]); // delay of 1
-          }
-          
-          // Set the coefficient for this product's stock NOW to -1 so that
-          // the EQ constraint (having RHS = 0) will effectuate that the
-          // stock variable takes on the correct value
-          // NOTE: do this only when `p` is NOT data, or `p` has links
-          // IN or OUT (meaning: 1 or more coefficients)
-          if(!p.is_data || p.inputs.length + p.outputs.length > 0) {
-            this.code.push([VMI_add_const_to_coefficient,
-                [p.level_var_index, -1]]);
-            this.code.push([VMI_add_constraint, VM.EQ]);
+        } // END FOR all inputs
+        
+        // Subtract outflow from product P to consuming processes (outputs)
+        for(const l of p.outputs) if(!MODEL.ignored_entities[l.identifier]) {
+          const tn = l.to_node;
+          // NOTE: Only consider outputs to processes; data flows do
+          // not subtract from their tail nodes.
+          if(tn instanceof Process) {
+            if(tn.grid) {
+            // If the link is a power flow, pass the grid process to
+            // a special VM instruction that will add coefficients that
+            // account for losses.
+            // NOTES:
+            // (1) The second parameter (-1) indicates that the
+            //     coefficients of the UP flows should be negative
+            //     and those of the DOWN flows should be positive
+            //     (because it is a Q -> P link).
+            // (2) The rate and delay properties of the link are ignored.
+            this.code.push(
+                [VMI_add_power_flow_to_coefficients, [tn, -1]]);
+            } else {
+              const rr = l.relative_rate;
+              if(rr.isStatic) {
+                this.code.push([VMI_subtract_const_from_coefficient,
+                    [tn.level_var_index, rr.result(0), l.flow_delay]]);
+              } else {
+                this.code.push([VMI_subtract_var_from_coefficient,
+                    [tn.level_var_index, rr, l.flow_delay]]);
+              }
+            }
           }
         }
-  
-        // Set the bound constraints on the product stock variable
-        this.setBoundConstraints(p);
-      }
-    }
+        
+        // NOTES:
+        // (1) for products with storage, set the coefficient for this product's
+        // stock IN THE PREVIOUS TIME STEP to 1
+        // (2) the VM instruction will subtract the stock level at the end of the
+        // previous block from the RHS if t=block_start, or the initial level if t=1
+        if(p.is_buffer) {
+          this.code.push([VMI_add_const_to_coefficient,
+              [p.level_var_index, 1, 1]]); // delay of 1
+        }
+        
+        // Set the coefficient for this product's stock NOW to -1 so that
+        // the EQ constraint (having RHS = 0) will effectuate that the
+        // stock variable takes on the correct value
+        // NOTE: do this only when `p` is NOT data, or `p` has links
+        // IN or OUT (meaning: 1 or more coefficients)
+        if(!p.is_data || p.inputs.length + p.outputs.length > 0) {
+          this.code.push([VMI_add_const_to_coefficient,
+              [p.level_var_index, -1]]);
+          this.code.push([VMI_add_constraint, VM.EQ]);
+        }
+      } // END of IF p not a constant
+
+      // Set the bound constraints on the product stock variable
+      this.setBoundConstraints(p);
+    } // End of FOR all products
 
     // NEXT: add constraints that will set values of binary variables
     // NOTE: This is not trivial!
@@ -4290,24 +4232,21 @@ class VirtualMachine {
     */
     // NOTE: As of 20 June 2021, binary attributes of products are also computed.
     const pp_nodes = [];
-    for(i = 0; i < process_keys.length; i++) {
-      k = process_keys[i];
-      if(!MODEL.ignored_entities[k]) pp_nodes.push(MODEL.processes[k]);
+    for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
+      pp_nodes.push(MODEL.processes[k]);
     }
-    for(i = 0; i < product_keys.length; i++) {
-      k = product_keys[i];
-      if(!MODEL.ignored_entities[k]) pp_nodes.push(MODEL.products[k]);
+    for(const k of product_keys) if(!MODEL.ignored_entities[k]) {
+      pp_nodes.push(MODEL.products[k]);
     }
 
-    for(let i = 0; i < pp_nodes.length; i++) {
-      p = pp_nodes[i];
+    for(const p of pp_nodes) {
       if(p.on_off_var_index >= 0) {
-        // NOTE: when UB is dynamic, its value may become <= 0, and in such
+        // NOTE: When UB is dynamic, its value may become <= 0, and in such
         // cases, the default constraints for computing OO, IZ and SU will fail.
         // To deal with this, the default equations will NOT be set when UB <= 0,
         // while the "exceptional" equations (q.v.) will NOT be set when UB > 0.
         // This can be realized using a special VM instruction:
-        ubx = (p.equal_bounds && p.lower_bound.defined && !p.grid ?
+        const ubx = (p.equal_bounds && p.lower_bound.defined && !p.grid ?
             p.lower_bound : p.upper_bound);
         this.code.push([VMI_set_add_constraints_flag, [ubx, '>', 0]]);
         // This instruction ensures that when UB <= 0, the constraints for
@@ -4510,7 +4449,7 @@ class VirtualMachine {
               [VMI_add_constraint, VM.EQ]
             );
         }
-        // Add constraints for start-up and first commit only if needed
+        // Add constraints for start-up and first commit only if needed.
         if(p.start_up_var_index >= 0) {
           this.code.push(
             // SU[t] = 0 
@@ -4527,7 +4466,7 @@ class VirtualMachine {
             );          
           }
         }
-        // Add constraint for shut-down only if needed
+        // Add constraint for shut-down only if needed.
         if(p.shut_down_var_index >= 0) {
           this.code.push(
             // SD[t] - OO[t-1] = 0
@@ -4539,21 +4478,22 @@ class VirtualMachine {
           );          
         }
 
-        // NOTE: the "add constraints flag" must be reset to TRUE
+        // NOTE: The "add constraints flag" must be reset to TRUE.
         this.code.push([VMI_set_add_constraints_flag, true]);
-      }
+      } // END IF product has on/off binary variable
+      
       // Check whether constraints (n) through (p) need to be added
-      // to compute the peak level for a block of time steps
-      // NOTE: this is independent of the binary variables!
+      // to compute the peak level for a block of time steps.
+      // NOTE: This is independent of the binary variables!
       if(p.peak_inc_var_index >= 0) {
         this.code.push(
           // One special instruction implements this operation, as part
-          // of it must be performed only at block time = 0
+          // of it must be performed only at block time = 0.
           [VMI_add_peak_increase_constraints,
               [p.level_var_index, p.peak_inc_var_index]]
         );          
       }
-    }
+    } // END of FOR all processes and products
   
     // NEXT: Add composite constraints.
     // NOTE: As of version 1.0.10, constraints are implemented using special
@@ -4563,22 +4503,17 @@ class VirtualMachine {
     // - variable indices for the constraining node X, the constrained node Y
     // - expressions for the LB and UB of X and Y
     // - the bound line object, as this provides all further information
-    for(i = 0; i < constraint_keys.length; i++) {
-      k = constraint_keys[i];
-      if(!MODEL.ignored_entities[k]) {
-        c = MODEL.constraints[k];
-        // Get the two associated nodes.
-        const
-           x = c.from_node,
-           y = c.to_node;
-        for(j = 0; j < c.bound_lines.length; j++) {
-          this.code.push([VMI_add_bound_line_constraint,
-              [x.level_var_index, x.lower_bound, x.upper_bound,
-                  y.level_var_index, y.lower_bound, y.upper_bound,
-                  c.bound_lines[j]]]);
-        }
+    for(const k of constraint_keys) if(!MODEL.ignored_entities[k]) {
+      const
+         c = MODEL.constraints[k],
+         x = c.from_node,
+         y = c.to_node;
+      for(const bl of c.bound_lines) {
+        this.code.push([VMI_add_bound_line_constraint,
+            [x.level_var_index, x.lower_bound, x.upper_bound,
+                y.level_var_index, y.lower_bound, y.upper_bound, bl]]);
       }
-    } // end FOR all constraints
+    }
     
     MODEL.set_up = true;
     this.logMessage(1,
@@ -4599,10 +4534,10 @@ class VirtualMachine {
     // Slack penalty must exceed the maximum joint utility of all processes
     // Use 1 even if highest link rate < 1
     let high_rate = 1;  
-    for(let i in MODEL.links) if(MODEL.links.hasOwnProperty(i) &&
-        !MODEL.ignored_entities[i]) {
-      for(let j = this.block_start; j < this.block_start + this.chunk_length; j++) {
-        const r = MODEL.links[i].relative_rate.result(j);
+    for(let k in MODEL.links) if(MODEL.links.hasOwnProperty(k) &&
+        !MODEL.ignored_entities[k]) {
+      for(let t = this.block_start; t < this.block_start + this.chunk_length; t++) {
+        const r = MODEL.links[k].relative_rate.result(t);
         // NOTE: ignore errors and "undefined" (chunk Length may exceed actual block length)
         if(r <= VM.PLUS_INFINITY) {
           high_rate = Math.max(high_rate, Math.abs(r));
@@ -4612,15 +4547,15 @@ class VirtualMachine {
     // Similar to links, composite constraints X-->Y can act as multipliers:
     // since CC map the range (UB - LB) of node X to range (UB - LB) of node Y,
     // the multiplier is rangeY / rangeX:
-    for(let i in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(i) &&
-        !MODEL.ignored_entities[i]) {
-      const c = MODEL.constraints[i];
-      for(let j = this.block_start; j < this.block_start + this.chunk_length; j++) {
+    for(let k in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(k) &&
+        !MODEL.ignored_entities[k]) {
+      const c = MODEL.constraints[k];
+      for(let t = this.block_start; t < this.block_start + this.chunk_length; t++) {
         const
-            fnlb = c.from_node.lower_bound.result(j),
-            fnub = c.from_node.upper_bound.result(j),
-            tnlb = c.to_node.lower_bound.result(j),
-            tnub = c.to_node.upper_bound.result(j),
+            fnlb = c.from_node.lower_bound.result(t),
+            fnub = c.from_node.upper_bound.result(t),
+            tnlb = c.to_node.lower_bound.result(t),
+            tnub = c.to_node.upper_bound.result(t),
             fnrange = (fnub > fnlb + VM.NEAR_ZERO ? fnub - fnlb : fnub),
             tnrange = (tnub > tnlb + VM.NEAR_ZERO ? tnub - tnlb : tnub),
             // Divisor near 0 => multiplier
@@ -4641,14 +4576,12 @@ class VirtualMachine {
     }
     const m = Math.max(
         Math.abs(this.low_coefficient), Math.abs(this.high_coefficient));
-    // Scaling is useful if m is larger than 2
+    // Scaling is useful if m is larger than 2.
     if(m > 2 && m < VM.PLUS_INFINITY) {
-      // Use reciprocal because multiplication is faster than division
+      // Use reciprocal because multiplication is faster than division.
       const scalar = 2 / m;
       this.scaling_factor = 0.5 * m;
-      for(let i in this.objective) {
-        if(Number(i)) this.objective[i] *= scalar;
-      }
+      for(let i in this.objective) if(Number(i)) this.objective[i] *= scalar;
       this.low_coefficient *= scalar;
       this.high_coefficient *= scalar;
     } else {
@@ -4669,8 +4602,8 @@ class VirtualMachine {
     // Use reciprocal as multiplier to scale the constraint coefficients.
     const m = 1 / this.cash_scalar;
     let cv;
-    for(let i = 0; i < this.cash_constraints.length; i++) {
-      const cc = this.matrix[this.cash_constraints[i]];
+    for(const k of this.cash_constraints) {
+      const cc = this.matrix[k];
       for(let ci in cc) if(cc.hasOwnProperty(ci)) {
         if(ci < this.chunk_offset) {
           // NOTE: Subtract 1 as variables array is zero-based.
@@ -4687,8 +4620,8 @@ class VirtualMachine {
     // cash flow, the coefficients of the constraint that equates the
     // product level to the cash flow must be *multiplied* by the cash
     // scalar so that they equal the cash flow in the model's monetary unit.
-    for(let i = 0; i < this.actor_cash_constraints.length; i++) {
-      const cc = this.matrix[this.actor_cash_constraints[i]];
+    for(const k of this.actor_cash_constraints) {
+      const cc = this.matrix[k];
       for(let ci in cc) if(cc.hasOwnProperty(ci)) {
         if(ci < this.chunk_offset) {
           // NOTE: Subtract 1 as variables array is zero-based.
@@ -4765,8 +4698,8 @@ class VirtualMachine {
     // but since Linny-R permits negative lower bounds on processes, and also
     // negative link rates, cash flows may become negative. If that occurs,
     // the modeler should be warned.
-    for(let o in MODEL.actors) if(MODEL.actors.hasOwnProperty(o)) {
-      const a = MODEL.actors[o];
+    for(let k in MODEL.actors) if(MODEL.actors.hasOwnProperty(k)) {
+      const a = MODEL.actors[k];
       // NOTE: `b` is the index to be used for the vectors.
       let b = bb;
       // Iterate over all time steps in this block.
@@ -4797,10 +4730,10 @@ class VirtualMachine {
       }
     }
     // Set production levels and start-up moments for all processes.
-    for(let o in MODEL.processes) if(MODEL.processes.hasOwnProperty(o) &&
-        !MODEL.ignored_entities[o]) {
+    for(let k in MODEL.processes) if(MODEL.processes.hasOwnProperty(k) &&
+        !MODEL.ignored_entities[k]) {
       const
-          p = MODEL.processes[o],
+          p = MODEL.processes[k],
           has_OO = (p.on_off_var_index >= 0),
           has_SU = (p.start_up_var_index >= 0),
           has_SD = (p.shut_down_var_index >= 0);
@@ -4837,10 +4770,10 @@ class VirtualMachine {
       }
     }
     // Set stock levels for all products.
-    for(let o in MODEL.products) if(MODEL.products.hasOwnProperty(o) &&
-        !MODEL.ignored_entities[o]) {
+    for(let k in MODEL.products) if(MODEL.products.hasOwnProperty(k) &&
+        !MODEL.ignored_entities[k]) {
       const
-          p = MODEL.products[o],
+          p = MODEL.products[k],
           has_OO = (p.on_off_var_index >= 0),
           has_SU = (p.start_up_var_index >= 0),
           has_SD = (p.shut_down_var_index >= 0);
@@ -4891,32 +4824,28 @@ class VirtualMachine {
       // Iterate over all time steps in this block.
       let j = -1;
       for(let i = 0; i < abl; i++) {
-        // Index `svt` iterates over types of slack variable (0 - 2).
-        for(let svt = 0; svt <= 2; svt++) {
-          const
-              svl = this.slack_variables[svt],
-              l = svl.length;
-          for(let k = 0; k < l; k++) {
+        // Iterates over 3 types of slack variable.
+        for(const svi_list of this.slack_variables) {
+          // Each list contains indices of slack variables
+          for(const vi of svi_list) {
             const
-                vi = svl[k],
                 slack = parseFloat(x[vi + j]),
                 absl = Math.abs(slack);
             if(absl > VM.NEAR_ZERO) {
               const v = this.variables[vi - 1];
-              // NOTE: for constraints, add 'UB' or 'LB' to its vector for
+              // NOTE: For constraints, add 'UB' or 'LB' to its vector for
               // the time step where slack was used.
-              if(v[1] instanceof BoundLine) {
-                v[1].constraint.slack_info[b] = v[0];
-              }
+              if(v[1] instanceof BoundLine) v[1].constraint.slack_info[b] = v[0];
               if(b <= this.nr_of_time_steps && absl > VM.ON_OFF_THRESHOLD) {
                 this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
                     `${v[1].displayName} ${v[0]} slack = ` +
                     // NOTE: TRUE denotes "show tiny values with precision".
                     this.sig4Dig(slack, true));
                 if(v[1] instanceof Product) {
-                  const ppc = v[1].productPositionClusters;
-                  for(let ci = 0; ci < ppc.length; ci++) {
-                    ppc[ci].usesSlack(b, v[1], v[0]);
+                  // Ensure that clusters containing this product "know" that
+                  // slack is used so that they will be drawn in color.
+                  for(const ppc of v[1].productPositionClusters) {
+                    ppc.usesSlack(b, v[1], v[0]);
                   }
                 }
               } else if(MODEL.show_notices) {
@@ -4930,10 +4859,10 @@ class VirtualMachine {
         if(this.diagnose) {
           // Iterate over all processes, and set the "slack use" flag
           // for their cluster so that these clusters will be highlighted.
-          for(let o in MODEL.processes) if(MODEL.processes.hasOwnProperty(o) &&
-              !MODEL.ignored_entities[o]) {
+          for(let k in MODEL.processes) if(MODEL.processes.hasOwnProperty(k) &&
+              !MODEL.ignored_entities[k]) {
             const
-                p = MODEL.processes[o],
+                p = MODEL.processes[k],
                 l = p.level[b];
             if(l >= VM.PLUS_INFINITY) {
               this.logMessage(block,
@@ -4958,11 +4887,11 @@ class VirtualMachine {
     // Returns severest exception code or +/- INFINITY in `list`, or the
     // result of the computation that involves the elements of `list`.
     let issue = 0;
-    for(let i = 0; i < list.length; i++) {
-      if(list[i] <= VM.MINUS_INFINITY) {
-        issue = Math.min(list[i], issue);
-      } else if(list[i] >= VM.PLUS_INFINITY) {
-        issue = Math.max(list[i], issue);
+    for(const ec of list) {
+      if(ec <= VM.MINUS_INFINITY) {
+        issue = Math.min(ec, issue);
+      } else if(ec >= VM.PLUS_INFINITY) {
+        issue = Math.max(ec, issue);
       }
     }
     if(issue) return issue;
@@ -4985,22 +4914,22 @@ class VirtualMachine {
     // Start with an empty list of variables to "fixate" in the next block.
     this.variables_to_fixate = {};
     // FIRST: Calculate the actual flows on links.
-    let b, bt, p, pl, ld, ci;
-    for(let g in MODEL.power_grids) if(MODEL.power_grids.hasOwnProperty(g)) {
-      MODEL.power_grids[g].total_losses = 0;
+    for(let k in MODEL.power_grids) if(MODEL.power_grids.hasOwnProperty(k)) {
+      MODEL.power_grids[k].total_losses = 0;
     }
-    for(let l in MODEL.links) if(MODEL.links.hasOwnProperty(l) &&
-        !MODEL.ignored_entities[l]) {
-      l = MODEL.links[l];
+    for(let k in MODEL.links) if(MODEL.links.hasOwnProperty(k) &&
+        !MODEL.ignored_entities[k]) {
+      const l = MODEL.links[k];
       // NOTE: Flow is determined by the process node, or in case
       // of a P -> P data link by the FROM product node.
-      p = (l.to_node instanceof Process ? l.to_node : l.from_node);
-      b = bb;
+      const p = (l.to_node instanceof Process ? l.to_node : l.from_node);
       // Iterate over all time steps in this chunk.
       for(let i = 0; i < cbl; i++) {
         // NOTE: Flows may have a delay (but will be 0 for grid processes).
-        ld = l.actualDelay(b);
-        bt = b - ld;
+        const
+            b = bb + i,
+            ld = l.actualDelay(b),
+            bt = b - ld;
         latest_time_step = Math.max(latest_time_step, bt);
         // If delay < 0 AND this results in a block time beyond the
         // block length, this means that the level of the FROM node
@@ -5019,11 +4948,11 @@ class VirtualMachine {
               l.from_node.nonZeroLevel(bt));
         }
         // NOTE: Block index may fall beyond actual chunk length.
-        ci = i - ld;
+        const ci = i - ld;
         // NOTE: Use non-zero level here to ignore non-zero values that
         // are very small relative to the bounds on the process
         // (typically values below the non-zero tolerance of the solver).
-        pl = p.nonZeroLevel(bt);
+        let pl = p.nonZeroLevel(bt);
         if(l.multiplier === VM.LM_SPINNING_RESERVE) {
           pl = (pl > VM.NEAR_ZERO ? p.upper_bound.result(bt) - pl : 0);
         } else if(l.multiplier === VM.LM_POSITIVE) {
@@ -5082,10 +5011,10 @@ class VirtualMachine {
           // NOTE: calculate throughput on basis of levels and rates,
           // as not all actual flows may have been computed yet
           pl = 0;
-          for(let j = 0; j < p.inputs.length; j++) {
+          for(const ll of p.inputs) {
             const
-                ipl = p.inputs[j].from_node.actualLevel(bt),
-                rr =  p.inputs[j].relative_rate.result(bt); 
+                ipl = ll.from_node.actualLevel(bt),
+                rr =  ll.relative_rate.result(bt); 
             pl = this.severestIssue([pl, ipl, rr], pl + ipl * rr);
           }
         } else if(l.multiplier === VM.LM_PEAK_INC) {
@@ -5116,14 +5045,13 @@ class VirtualMachine {
         }
         const af = this.severestIssue([pl, rr], rr * pl);
         l.actual_flow[b] = (Math.abs(af) > VM.NEAR_ZERO ? af : 0);
-        b++;
       }
     }
     // Report power losses per grid, if applicable.
     if(MODEL.with_power_flow) {
       const ll = [];
-      for(let g in MODEL.power_grids) if(MODEL.power_grids.hasOwnProperty(g)) {
-        const pg = MODEL.power_grids[g];
+      for(let k in MODEL.power_grids) if(MODEL.power_grids.hasOwnProperty(k)) {
+        const pg = MODEL.power_grids[k];
         if(pg.loss_approximation > 0) {
           ll.push(`${pg.name}: ${VM.sig4Dig(pg.total_losses / cbl)} ${pg.power_unit}`);
         }
@@ -5135,26 +5063,26 @@ class VirtualMachine {
     }
 
     // THEN: Calculate cash flows one step at a time because of delays.
-    b = bb;
     for(let i = 0; i < cbl; i++) {
+      const b = bb + i;
       // Initialize cumulative cash flows for clusters.
-      for(let o in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(o) &&
-          !MODEL.ignored_entities[o]) {
-        const c = MODEL.clusters[o];
+      for(let k in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(k) &&
+          !MODEL.ignored_entities[k]) {
+        const c = MODEL.clusters[k];
         c.cash_in[b] = 0;
         c.cash_out[b] = 0;
         c.cash_flow[b] = 0;
       }
       // NOTE: Cash flows ONLY result from processes.
-      for(let o in MODEL.processes) if(MODEL.processes.hasOwnProperty(o) &&
-          !MODEL.ignored_entities[o]) {
-        const p = MODEL.processes[o];
-        let ci = 0, co = 0;
+      for(let k in MODEL.processes) if(MODEL.processes.hasOwnProperty(k) &&
+          !MODEL.ignored_entities[k]) {
+        const p = MODEL.processes[k];
+        let ci = 0,
+            co = 0;
         // INPUT links from priced products generate cash OUT...
-        for(let j = 0; j < p.inputs.length; j++) {
+        for(const l of p.inputs) {
           // NOTE: Input links do NOT have a delay.
           const
-              l = p.inputs[j],
               af = l.actual_flow[b],
               fnp = l.from_node.price;
           if(af > VM.NEAR_ZERO && fnp.defined) {
@@ -5168,10 +5096,9 @@ class VirtualMachine {
           }
         }
         // OUTPUT links to priced products generate cash IN ...
-        for(let j = 0; j < p.outputs.length; j++) {
+        for(const l of p.outputs) {
           // NOTE: actualFlows already consider delay!
           const
-              l = p.outputs[j],
               af = l.actualFlow(b),
               tnp = l.to_node.price;
           if(af > VM.NEAR_ZERO && tnp.defined) {
@@ -5198,7 +5125,6 @@ class VirtualMachine {
           c = c.cluster;
         }
       }
-      b++;
     }
     
     // THEN: If cost prices should be inferred, calculate them one step
@@ -5208,16 +5134,14 @@ class VirtualMachine {
       // Keep track of products for which CP will not be computed correctly
       // due to negative delays.
       MODEL.products_with_negative_delays = {};
-      b = bb;
       for(let i = 0; i < cbl; i++) {
+        const b = bb + i;
         if(b <= this.nr_of_time_steps && !MODEL.calculateCostPrices(b)) {
         // NOTE: Issues with cost price calculation beyond simulation
         // period need not be reported unless model is set to ignore this.
           if(!MODEL.ignore_negative_flows) this.logMessage(block,
               `${this.WARNING}(t=${b}) Invalid cost prices due to negative flow(s)`);
         }
-        // Move on to the next time step of the block.
-        b++;
       }
       // NOTE: Links with negative delays will not have correct cost
       // prices as these occur in the future. Having calculated (insofar
@@ -5235,15 +5159,13 @@ class VirtualMachine {
         // @@TO DO: Sort products in order of precedence to avoid that
         // when Q1 --> Q2 the CP of Q2 is computed first, and remains
         // "undefined" while the CP of Q1 can be known.
-        for(let j = 0; j < pwnd.length; j++) {
-          const p = pwnd[j];
+        for(const p of pwnd) {
           if(p.is_buffer) addDistinct(p, stocks);
           // Compute total cost price as sum of inflow * unit cost price.
           let tcp = 0,
               taf = 0;
-          for(let k = 0; k < p.inputs.length; k++) {
+          for(const l of p.inputs) {
             const
-                l = p.inputs[k],
                 d = l.actualDelay(t),
                 td = t - d;
             // Only compute if t lies within the optimization period.
@@ -5286,25 +5208,21 @@ class VirtualMachine {
       }
       // NOTE: Stocks require special treatment due to working backwards
       // in time.
-      for(let i = 0; i < stocks.length; i++) {
-        const p = stocks[i];
+      for(const p of stocks) {
         // Get previous stock level and stock price (prior to block start).
         let sl = p.actualLevel(bb - 1),
             psp = p.stock_price[bb - 1] || 0;
         for(let t = bb; t < bb + cbl; t++) {
           // Subtract outflows from stock level.
-          for(let k = 0; k < p.outputs.length; k++) {
-            const
-                l = p.outputs[k],
-                af = l.actualFlow(t);
+          for(const l of p.outputs) {
+            const af = l.actualFlow(t);
             if(af > VM.NEAR_ZERO) sl -= af;
           }
           // Start with total CP = remaining old stock times old price.
           let tcp = sl * psp;
           // Add inflows to both level and total CP.
-          for(let k = 0; k < p.inputs.length; k++) {
+          for(const l of p.inputs) {
             const
-                l = p.inputs[k],
                 af = l.actualFlow(t),
                 d = l.actualDelay(t);
             if(af > VM.NEAR_ZERO) {
@@ -5330,8 +5248,8 @@ class VirtualMachine {
     }
 
     // THEN: Reset all datasets that are outcomes or serve as "formulas".
-    for(let o in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(o)) {
-      const ds = MODEL.datasets[o];
+    for(let k in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(k)) {
+      const ds = MODEL.datasets[k];
       // NOTE: Assume that datasets having modifiers but no data serve as
       // "formulas", i.e., expressions to be calculated AFTER a model run.
       // This will automatically include the equations dataset.
@@ -5343,9 +5261,7 @@ class VirtualMachine {
     }
 
     // THEN: Reset the vectors of all chart variables.
-    for(let i = 0; i < MODEL.charts.length; i++) {
-      MODEL.charts[i].resetVectors();
-    }
+    for(const c of MODEL.charts) c.resetVectors();
     
     // Update the chart dialog if it is visible.
     // NOTE: Do NOT do this while an experiment is running, as this may
@@ -5359,11 +5275,9 @@ class VirtualMachine {
         `Calculating dependent variables took ${this.elapsedTime} seconds.\n`);
 
     // FINALLY: Reset the vectors of all note colors.
-    for(let o in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(o)) {
-      const c = MODEL.clusters[o];
-      for(let i = 0; i < c.notes.length; i++) {
-        c.notes[i].color.reset();
-      }
+    for(let k in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(k)) {
+      const c = MODEL.clusters[k];
+      for(const n of c.notes) n.color.reset();
     }
   }
   
@@ -5393,9 +5307,7 @@ class VirtualMachine {
           if(n) return '[' + n + ']';
           return a.constructor.name;
         }
-        let l = [];
-        for(let i = 0; i < a.length; i++) l.push(arg(a[i]));
-        return '(' + l.join(', ') + ')';
+        return '(' + a.map((x) => arg(x)).join(', ') + ')';
       };
     for(let i = 0; i < this.code.length; i++) {
       const vmi = this.code[i];
@@ -5594,15 +5506,13 @@ class VirtualMachine {
     // NOTE: penalties must become negative coefficients (solver MAXimizes!)
     let p = -1,
         hsp = 0;
-    // Index i iterates over types of slack variable: 0 = market demand (EQ),
-    // 1 = LE and GE bound constraints, 2 = highest (data, composite constraints)
-    for(let i = 0; i <= 2; i++) {
-      const svl = this.slack_variables[i];
-      let l = svl.length;
-      for(let j = 0; j < l; j++) {
+    // Three types of slack variable: market demand (EQ),
+    // LE and GE bound constraints and highest (data, composite constraints)
+    for(const svl of this.slack_variables) {
+      for(const sv of svl) {
         for(let k = 0; k < abl; k++) {
           hsp = this.slack_penalty * p;
-          this.objective[svl[j] + k*this.cols] = hsp;
+          this.objective[sv + k*this.cols] = hsp;
         }
       }
       // For the next type of slack, double the penalty 
@@ -5914,8 +5824,7 @@ class VirtualMachine {
       if(this.sos_var_indices.length > 0) {
         this.lines += 'sos\n';
         for(let j = 0; j < abl; j++) {
-          for(let i = 0; i < this.sos_var_indices.length; i++) {
-            const svi = this.sos_var_indices[i];
+          for(const svi of this.sos_var_indices) {
             v_set.length = 0;
             let vi = svi[0] + j * this.cols;
             for(let j = 1; j <= svi[1]; j++)  {
@@ -5932,11 +5841,11 @@ class VirtualMachine {
   
   rowToEquation(row, ct, rhs) {
     const eq = [];
-    for(let p in row) if (row.hasOwnProperty(p)) {
+    for(let i in row) if (isNumber(i)) {
       const
-          c = this.sig4Dig(row[p]),
-          vi = p % this.cols,
-          t = Math.floor(p / this.cols);
+          c = this.sig4Dig(row[i]),
+          vi = i % this.cols,
+          t = Math.floor(i / this.cols);
       eq.push(c + ' ' + this.variables[vi][1].displayName + ' ' +
         this.variables[vi][0] + ' [' + t + ']');
     }
@@ -6333,18 +6242,17 @@ Solver status = ${json.status}`);
     if(keys.length) {
       const msg = ['NOTE: Due to negative link delays, levels for ' +
             pluralS(keys.length, 'variable') + ' are pre-set:'];
-      for(let i = 0; i < keys.length; i++) {
+      for(const k of keys) {
         const
-            vi = parseInt(keys[i]),
+            vi = parseInt(k),
             // NOTE: Subtract 1 because variable list is zero-based.
             vbl = this.variables[vi - 1], 
             fv = this.variables_to_fixate[vi],
             fvk = Object.keys(fv),
             fvl = [];
         // Add constraints that fixate the levels directly to the tableau.
-        for(let i = 0; i < fvk.length; i++) {
+        for(const bt of fvk) {
           const
-              bt = fvk[i],
               pl = fv[bt],
               k = (bt - 1) * VM.cols + vi,
               row = {};
@@ -6364,10 +6272,8 @@ Solver status = ${json.status}`);
     if(n) {
       let vlist = '',
           first = 1e20;
-      for(let i = 0; i < n; i++) {
-        const
-            k = keys[i],
-            bit = this.bound_issues[k];
+      for(const k of keys) {
+        const bit = this.bound_issues[k];
         vlist += `\n   - ${k} (t=${listToRange(bit)})`;
         first = Math.min(first, bit[0]);
       }
@@ -6503,9 +6409,7 @@ Solver status = ${json.status}`);
       } else {
         // Wait no longer, but warn user that data may be incomplete.
         const dsl = [];
-        for(let i = 0; i < MODEL.loading_datasets.length; i++) {
-          dsl.push(MODEL.loading_datasets[i].displayName);
-        }
+        for(const ds of MODEL.loading_datasets) dsl.push(ds.displayName);
         UI.warn('Loading of ' + pluralS(dsl.length, 'dataset') + ' (' +
             dsl.join(', ') + ') takes too long');
       }
@@ -6709,11 +6613,8 @@ function valueOfIndexVariable(v) {
   // Return the value of the iterator index variable for the current
   // experiment.
   if(MODEL.running_experiment) {
-    const
-        lead = v + '=',
-        combi = MODEL.running_experiment.activeCombination;
-    for(let i = 0; i < combi.length; i++) {
-      const sel = combi[i] ;
+    const lead = v + '=';
+    for(const sel of MODEL.running_experiment.activeCombination) {
       if(sel.startsWith(lead)) return parseInt(sel.substring(2));
     }
   }
@@ -7086,8 +6987,9 @@ function VMI_push_wildcard_entity(x, args) {
           MODEL.running_experiment.activeCombination, x.attribute);
     }
     nn = nn.replace('#', x.wildcard_vector_index);
-    for(let i = 0; !obj && i < el.length; i++) {
-      if(el[i].name === nn) obj = el[i];
+    for(const e of el) {
+      if(e.name === nn) obj = e;
+      break;
     }
     // If no match, then this indicates a bad reference.
     if(!obj) {
@@ -7436,10 +7338,9 @@ function VMI_push_statistic(x, args) {
   let obj,
       vlist = [];
   for(let t = t1; t <= t2; t++) {
-    // Get the list of values
-    // NOTE: variables may be vectors or expressions
-    for(let i = 0; i < list.length; i++) {
-      obj = list[i];
+    // Get the list of values.
+    // NOTE: Variables may be vectors or expressions.
+    for(const obj of list) {
       if(Array.isArray(obj)) {
         // Object is a vector
         if(t < obj.length) {
@@ -7448,11 +7349,11 @@ function VMI_push_statistic(x, args) {
           v = VM.UNDEFINED;
         }
       } else {
-        // Object is an expression
+        // Object is an expression.
         v = obj.result(t);
       }
       // Push value unless it is zero and NZ is TRUE, or if it is undefined
-      // (this will occur when a variable has been deleted)
+      // (this will occur when a variable has been deleted).
       if(v <= VM.PLUS_INFINITY && (!nz || Math.abs(v) > VM.NEAR_ZERO)) {
         vlist.push(v);
       }
@@ -7460,18 +7361,18 @@ function VMI_push_statistic(x, args) {
   }
   const
       n = vlist.length,
-      // NOTE: count is the number of values used in the statistic 
+      // NOTE: count is the number of values used in the statistic.
       count = (nz ? n : list.length * (t2 - t1 + 1));
   if(stat === 'N') {
     x.push(count);
     return;
   }
-  // If no non-zero values remain, all statistics are zero (as ALL values were zero)
+  // If no non-zero values remain, all statistics are zero (as ALL values were zero).
   if(n === 0) {
     x.push(0);
     return;          
   }
-  // Check which statistic, starting with the most likely to be used
+  // Check which statistic, starting with the most likely to be used.
   if(stat === 'MIN') {
     x.push(Math.min(...vlist));
     return;
@@ -7480,7 +7381,7 @@ function VMI_push_statistic(x, args) {
     x.push(Math.max(...vlist));
     return;
   }
-  // For all remaining statistics, the sum must be calculated
+  // For all remaining statistics, the sum must be calculated.
   let sum = 0;
   for(let i = 0; i < n; i++) {
     sum += vlist[i];
@@ -7758,6 +7659,21 @@ function VMI_div(x) {
     if(DEBUGGING) console.log('DIV (' + d.join(', ') + ')');
     if(Math.abs(d[1]) <= VM.NEAR_ZERO) {
       x.retop(VM.DIV_ZERO);
+    } else {
+      x.retop(d[0] / d[1]);
+    }
+  }
+}
+
+function VMI_div_zero(x) {
+  // Implements the "robust" division operator A // B.
+  // Pop the top number B from the stack. If B = 0, retain the new
+  // top number A; otherwise replace the top by A/B.
+  const d = x.pop();
+  if(d !== false) {
+    if(DEBUGGING) console.log('DIV-ZERO (' + d.join(', ') + ')');
+    if(Math.abs(d[1]) <= VM.NEAR_ZERO) {
+      x.retop(d[0]);
     } else {
       x.retop(d[0] / d[1]);
     }
@@ -8779,16 +8695,14 @@ function VMI_update_grid_process_cash_coefficients(p) {
   // VMI_update_cash_coefficient).
   let fn = null,
       tn = null;
-  for(let i = 0; i <= p.inputs.length; i++) {
-    const l = p.inputs[i];
+  for(const l of p.inputs) {
     if(l.multiplier === VM.LM_LEVEL &&
         !MODEL.ignored_entities[l.identifier]) {
       fn = l.from_node;
       break;
     }
   }
-  for(let i = 0; i <= p.outputs.length; i++) {
-    const l = p.outputs[i];
+  for(const l of p.outputs) {
     if(l.multiplier === VM.LM_LEVEL &&
         !MODEL.ignored_entities[l.identifier]) {
       tn = l.to_node;
@@ -9148,15 +9062,14 @@ function VMI_add_kirchhoff_constraints(cb) {
   // Add Kirchhoff's voltage law constraint for each cycle in `cb`.
   // NOTE: Do not add a constraint for cyles that have been "broken"
   // because one or more of its processes have UB = 0.
-  for(let i = 0; i < cb.length; i++) {
-    const c = cb[i];
+  for(const c of cb) {
     let not_broken = true;
     VMI_clear_coefficients();
-    for(let j = 0; j < c.length; j++) {
+    for(const e of c) {
       const
-          p = c[j].process,
+          p = e.process,
           x = p.length_in_km * p.grid.reactancePerKm,
-          o = c[j].orientation,
+          o = e.orientation,
           ub = p.upper_bound.result(VM.t);
       if(ub <= VM.NEAR_ZERO) {
         not_broken = false;
@@ -9242,9 +9155,7 @@ function VMI_add_bound_line_constraint(args) {
   }
   // Add constraint (1):
   VMI_clear_coefficients();
-  for(let i = 0; i < n; i++) {
-    VM.coefficients[w[i]] = 1;
-  }
+  for(const wi of w) VM.coefficients[wi] = 1;
   VM.rhs = 1;
   VMI_add_constraint(VM.EQ);
   // Add constraint (2):
@@ -9270,9 +9181,9 @@ function VMI_add_bound_line_constraint(args) {
   VMI_add_constraint(bl.type);
   // NOTE: SOS variables w[i] have bounds [0, 1], but these have not been
   // set yet.
-  for(let i = 0; i < w.length; i++) {
-    VM.lower_bounds[w[i]] = 0; 
-    VM.upper_bounds[w[i]] = 1;
+  for(const wi of w) {
+    VM.lower_bounds[wi] = 0; 
+    VM.upper_bounds[wi] = 1;
   }
   // NOTE: Some solvers do not support SOS. To ensure that only 2
   // adjacent w[i]-variables can be non-zero (they range from 0 to 1),
@@ -9308,9 +9219,7 @@ function VMI_add_bound_line_constraint(args) {
     VMI_add_constraint(VM.LE);  // w[N] - b[N] <= 0
     // Add last constraint: sum of binaries must be <= 2.
     VMI_clear_coefficients();
-    for(let i = 0; i < n; i++) {
-      VM.coefficients[w[i] + n] = 1;
-    }
+    for(const wi of w) VM.coefficients[wi + n] = 1;
     VM.rhs = 2;
     VMI_add_constraint(VM.LE);
   }
@@ -9420,7 +9329,7 @@ const
   OPERATOR_CHARS = ';?:+-*/%=!<>^|@',
   // Opening bracket, space and single quote indicate a separation
   SEPARATOR_CHARS = PARENTHESES + OPERATOR_CHARS + "[ '",
-  COMPOUND_OPERATORS = ['!=', '<>', '>=', '<='],
+  COMPOUND_OPERATORS = ['!=', '<>', '>=', '<=', '//'],
   CONSTANT_SYMBOLS = [
       't', 'rt', 'bt', 'ct', 'b', 'N', 'n', 'l', 'r', 'lr', 'nr', 'x', 'nx',
       'random', 'dt', 'true', 'false', 'pi', 'infinity', '#',
@@ -9450,13 +9359,13 @@ const
   DYADIC_OPERATORS = [
       ';', '?', ':', 'or', 'and',
       '=', '<>', '!=', '>', '<', '>=', '<=',
-      '@', '+', '-', '*', '/',
+      '@', '+', '-', '*', '/', '//',
       '%', '^', 'log', '|'],
   DYADIC_CODES = [
       VMI_concat, VMI_if_then, VMI_if_else, VMI_or, VMI_and,
       VMI_eq, VMI_ne, VMI_ne, VMI_gt, VMI_lt, VMI_ge, VMI_le,
-      VMI_at, VMI_add, VMI_sub, VMI_mul, VMI_div, VMI_mod,
-      VMI_power, VMI_log, VMI_replace_undefined],
+      VMI_at, VMI_add, VMI_sub, VMI_mul, VMI_div, VMI_div_zero,
+      VMI_mod, VMI_power, VMI_log, VMI_replace_undefined],
 
   // Compiler checks for random codes as they make an expression dynamic
   RANDOM_CODES = [VMI_binomial, VMI_exponential, VMI_normal, VMI_poisson,
@@ -9471,7 +9380,10 @@ const
   
   OPERATORS = DYADIC_OPERATORS.concat(MONADIC_OPERATORS), 
   OPERATOR_CODES = DYADIC_CODES.concat(MONADIC_CODES),
-  PRIORITIES = [1, 2, 2, 3, 4, 5, 5, 5, 5, 5, 5, 5, 5.5, 6, 6, 7, 7, 7, 8, 8, 10,
+  PRIORITIES = [1, 2, 2, 3, 4, 5, 5, 5, 5, 5, 5, 5,
+      // NOTE: The new @ operator has higher priority than comparisons,
+      // and lower than arithmetic operators.
+      5.5, 6, 6, 7, 7, 7, 7, 8, 8, 10,
       9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9],
   ACTUAL_SYMBOLS = CONSTANT_SYMBOLS.concat(OPERATORS),
   SYMBOL_CODES = CONSTANT_CODES.concat(OPERATOR_CODES);
@@ -9688,7 +9600,7 @@ function VMI_highest_cumulative_consecutive_deviation(x) {
       
       // NOTE: HCCD is not time-dependent => result is stored in cache
       // As expressions may contain several HCCD operators, create a unique key
-      // based on its parameters
+      // based on its parameters.
       const cache_key = ['hccd', e.identifier, a, block_size, first, last].join('_');
       if(x.cache[cache_key]) {
         x.retop(x.cache[cache_key]);
@@ -9697,14 +9609,14 @@ function VMI_highest_cumulative_consecutive_deviation(x) {
       
       if(DEBUGGING) console.log(`*${vmi} for ${name}`);
       
-      // Compute the aggregated vector and sum
+      // Compute the aggregated vector and sum.
       let sum = 0,
           b = 0,
           n = 0,
           av = [];
       for(let i = first; i <= last; i++) {
         const v = vector[i];
-        // Handle exceptional values in vector
+        // Handle exceptional values in vector.
         if(v <= VM.BEYOND_MINUS_INFINITY || v >= VM.BEYOND_PLUS_INFINITY) {
           x.retop(v);
           return;
@@ -9717,34 +9629,33 @@ function VMI_highest_cumulative_consecutive_deviation(x) {
           b = 0;
         }
       }
-      // Always push the remaining block sum, even if it is 0
+      // Always push the remaining block sum, even if it is 0.
       av.push(b);
       // Compute the mean (per block)
       const mean = sum / av.length;
       let hccd = 0,
           positive = av[0] > mean;
       sum = 0;
-      // Iterate over the aggregated vector
-      for(let i = 0; i < av.length; i++) {
-        const v = av[i];
+      // Iterate over the aggregated vector.
+      for(const v of av) {
         if((positive && v < mean) || (!positive && v > mean)) {
           hccd = Math.max(hccd, Math.abs(sum));
           sum = v;
           positive = !positive;
         } else {
-          // No sign change => add deviation
+          // No sign change => add deviation.
           sum += v;
         }
       }
       hccd = Math.max(hccd, Math.abs(sum));
-      // Store the result in the expression's cache
+      // Store the result in the expression's cache.
       x.cache[cache_key] = hccd;
-      // Push the result onto the stack
+      // Push the result onto the stack.
       x.retop(hccd);
       return;
     }
   }
-  // Fall-trough indicates error
+  // Fall-trough indicates error.
   if(DEBUGGING) console.log(vmi + ': invalid parameter(s)\n', d);
   x.retop(VM.PARAMS);
 }
