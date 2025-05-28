@@ -114,3 +114,6 @@ linny-r.command
 
 # Desktop and other .ini files
 *.ini
+
+# NodeJS lock file
+package-lock.json
