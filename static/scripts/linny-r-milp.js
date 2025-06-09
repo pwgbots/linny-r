@@ -96,12 +96,12 @@ module.exports = class MILPSolver {
         windows = os.platform().startsWith('win'),
         path_list = process.env.PATH.split(path.delimiter);
     // Iterate over all seprate paths in environment variable PATH. 
-    for(let i = 0; i < path_list.length; i++) {
+    for(const p of path_list) {
       // Assume that path is not a solver path.
       sp = '';
       // Check whether it is a Gurobi path.
-      match = path_list[i].match(/gurobi(\d+)/i);
-      if(match) sp = path_list[i];
+      match = p.match(/gurobi(\d+)/i);
+      if(match) sp = p;
       // If so, ensure that it has a higher version number.
       if(sp && parseInt(match[1]) > max_vn) {
         // Check whether command line version is executable.
@@ -119,10 +119,10 @@ module.exports = class MILPSolver {
       }
       if(sp) continue;
       // If no Gurobi path, check whether it is a MOSEK path.
-      match = path_list[i].match(/[\/\\]mosek.*[\/\\]bin/i);
+      match = p.match(/[\/\\]mosek.*[\/\\]bin/i);
       if(match) {
         // Check whether mosek(.exe) exists in its directory
-        sp = path.join(path_list[i], 'mosek' + (windows ? '.exe' : ''));
+        sp = path.join(p, 'mosek' + (windows ? '.exe' : ''));
         try {
           fs.accessSync(sp, fs.constants.X_OK);
           console.log('Path to MOSEK:', sp);
@@ -134,17 +134,18 @@ module.exports = class MILPSolver {
       }
       if(sp) continue;
       // If no MOSEK path, check whether it is a CPLEX path.
-      match = path_list[i].match(/[\/\\]cplex[\/\\]bin/i);
+      match = p.match(/[\/\\]cplex[\/\\]bin/i);
       if(match) {
-        sp = path_list[i];
+        sp = p;
       } else {
         // CPLEX may create its own environment variable for its paths.
-        match = path_list[i].match(/%(.*cplex.*)%/i);
+        match = p.match(/%(.*cplex.*)%/i);
         if(match) {
-          const cpl = process.env[match[1]].split(path.delimiter);
-          for(let i = 0; i < cpl.length && !sp; i++) {
-            match = cpl[i].match(/[\/\\]cplex[\/\\]bin/i);
-            if(match) sp = cpl[i];
+          for(const cp of process.env[match[1]].split(path.delimiter)) {
+            if(cp.match(/[\/\\]cplex[\/\\]bin/i)) {
+              sp = cp;
+              break;
+            }
           }
         }
       }
@@ -162,10 +163,10 @@ module.exports = class MILPSolver {
         continue;
       }
       // If no CPLEX path, check whether it is a SCIP path.
-      match = path_list[i].match(/[\/\\]scip[^\/\\]+[\/\\]bin/i);
+      match = p.match(/[\/\\]scip[^\/\\]+[\/\\]bin/i);
       if(match) {
         // Check whether scip(.exe) exists in its directory
-        sp = path.join(path_list[i], 'scip' + (windows ? '.exe' : ''));
+        sp = path.join(p, 'scip' + (windows ? '.exe' : ''));
         try {
           fs.accessSync(sp, fs.constants.X_OK);
           console.log('Path to SCIP:', sp);
@@ -569,11 +570,9 @@ module.exports = class MILPSolver {
           const vlist = Object.keys(x_dict).sort();
           // Start with column 1.
           let col = 1;
-          for(let i = 0; i < vlist.length; i++) {
-            const
-                v = vlist[i],
-                // Variable names have zero-padded column numbers, e.g. "X001".
-                vnr = parseInt(v.substring(1));
+          for(const v of vlist) {
+            // Variable names have zero-padded column numbers, e.g. "X001".
+            const vnr = parseInt(v.substring(1));
             // Add zeros for unreported variables until column number matches.
             while(col < vnr) {
               x_values.push(0);
@@ -631,9 +630,7 @@ module.exports = class MILPSolver {
           // Values of solution vector.
           if(sol.Vars) {
             // Fill dictionary with variable name: value entries.
-            for(let i = 0; i < sol.Vars.length; i++) {
-              x_dict[sol.Vars[i].VarName] = sol.Vars[i].X;
-            }
+            for(const sv of sol.Vars) x_dict[sv.VarName] = sv.X;
             // Fill the solution vector, adding 0 for missing columns.
             getValuesFromDict();
           }
@@ -805,8 +802,7 @@ module.exports = class MILPSolver {
           console.log('No SCIP solution file');
         }
         // Look in messages for solver status and solving time.
-        for(let i = 0; i < result.messages.length; i++) {
-          const m = result.messages[i];
+        for(const m of result.messages) {
           if(m.startsWith('SCIP Status')) {
             if(m.indexOf('problem is solved') >= 0) {
               if(m.indexOf('infeasible') >= 0) {

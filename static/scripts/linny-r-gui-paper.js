@@ -128,7 +128,7 @@ class Shape {
     el.setAttribute('x', x);
     el.setAttribute('y', cy);
     UI.paper.addSVGAttributes(el, attrs);
-    for(let i = 0; i < lines.length; i++) {
+    for(const l of lines) {
       const ts = UI.paper.newSVGElement('tspan');
       ts.setAttribute('x', x);
       ts.setAttribute('dy', fh);
@@ -136,7 +136,7 @@ class Shape {
       // to normal spaces, or they will be rendered as '&nbsp;' and this
       // will cause the SVG to break when it is inserted as picture into
       // an MS Word document.
-      ts.textContent = lines[i].replaceAll('\u00A0', ' ');
+      ts.textContent = l.replaceAll('\u00A0', ' ');
       el.appendChild(ts);
     }
     this.element.appendChild(el);
@@ -614,42 +614,42 @@ class Paper {
         fw = fh / 2;
     let w = 0, m = 0;
     // Approximate the width of the Unicode characters representing
-    // special values
+    // special values.
     if(ns === '\u2047') {
       w = 8; // undefined (??)
     } else if(ns === '\u25A6' || ns === '\u2BBF' || ns === '\u26A0') {
       w = 6; // computing, not computed, warning sign
     } else {
       // Assume that number has been rendered with fixed spacing
-      // (cf. addNumber method of class Shape)
+      // (cf. addNumber method of class Shape).
       w = ns.length * fw;
-      // Decimal point and minus sign are narrower
+      // Decimal point and minus sign are narrower.
       if(ns.indexOf('.') >= 0) w -= 0.6 * fw;
       if(ns.startsWith('-')) w -= 0.55 * fw;
-      // Add approximate extra length for =, % and special Unicode characters
+      // Add approximate extra length for =, % and special Unicode characters.
       if(ns.indexOf('=') >= 0) {
         w += 0.2 * fw;
       } else {
-        // LE, GE, undefined (??), or INF are a bit wider
+        // LE, GE, undefined (??), or INF are a bit wider.
         m = ns.match(/%|\u2264|\u2265|\u2047|\u221E/g);
         if(m) {
           w += m.length * 0.25 * fw;
         }
-        // Ellipsis (may occur between process bounds) is much wider
+        // Ellipsis (may occur between process bounds) is much wider.
         m = ns.match(/\u2026/g);
         if(m) w += m.length * 0.6 * fw;
       }
     }
-    // adjust for font weight
+    // Adjust for font weight.
     return {width: w * this.weight_factors[Math.round(fweight / 100)],
         height: fh};
   }
   
   textSize(string, fsize=8, fweight=400) {
-    // Returns the boundingbox {width: ..., height: ...} of a string (in pixels) 
-    // NOTE: uses the invisible SVG element that is defined specifically
-    // for text size computation
-    // NOTE: text size calculation tends to slightly underestimate the
+    // Return the boundingbox {width: ..., height: ...} of a string (in pixels). 
+    // NOTE: Uses the invisible SVG element that is defined specifically
+    // for text size computation.
+    // NOTE: Text size calculation tends to slightly underestimate the
     // length of the string as it is actually rendered, as font sizes
     // appear to be rounded to the nearest available size.
     const el = this.getSizingElement();
@@ -659,12 +659,11 @@ class Paper {
     el.style.fontFamily = this.font_name;
     let w = 0,
         h = 0;
-    // Consider the separate lines of the string
-    const
-        lines = ('' + string).split('\n'),  // Add '' in case string is a number
-        ll = lines.length;
-    for(let i = 0; i < ll; i++) {
-      el.textContent = lines[i];
+    // Consider the separate lines of the string.
+    // NOTE: Add '' to force conversion to string in case `string` is a number.
+    const lines = ('' + string).split('\n');
+    for(const l of lines) {
+      el.textContent = l;
       const bb = el.getBBox();
       w = Math.max(w, bb.width);
       h += bb.height;
@@ -673,7 +672,7 @@ class Paper {
   }
   
   removeInvisibleSVG() {
-    // Removes SVG elements used by the user interface (not part of the model)
+    // Remove SVG elements used by the user interface (not part of the model).
     let el = document.getElementById(this.size_box);
     if(el) this.svg.removeChild(el);
     el = document.getElementById(this.drag_line);
@@ -921,35 +920,19 @@ class Paper {
     // NOTE: Product positions must be updated before links are drawn, so
     // that links arrows will be drawn over their shapes.
     fc.positionProducts();
-    for(let i = 0; i < fc.processes.length; i++) {
-      fc.processes[i].clearHiddenIO();
-    }
-    for(let i = 0; i < fc.sub_clusters.length; i++) {
-      fc.sub_clusters[i].clearHiddenIO();
-    }
+    for(const p of fc.processes) p.clearHiddenIO();
+    for(const c of fc.sub_clusters) c.clearHiddenIO();
     // NOTE: Also ensure that notes will update their fields.
     fc.resetNoteFields();
     // Draw link arrows and constraints first, as all other entities are
     // slightly transparent so they cannot completely hide these lines.
-    for(let i = 0; i < fc.arrows.length; i++) {
-      this.drawArrow(fc.arrows[i]);
-    }
-    for(let i = 0; i < fc.related_constraints.length; i++) {
-      this.drawConstraint(fc.related_constraints[i]);
-    }
-    for(let i = 0; i < fc.processes.length; i++) {
-      this.drawProcess(fc.processes[i]);
-    }
-    for(let i = 0; i < fc.product_positions.length; i++) {
-      this.drawProduct(fc.product_positions[i].product);
-    }
-    for(let i = 0; i < fc.sub_clusters.length; i++) {
-      this.drawCluster(fc.sub_clusters[i]);
-    }
+    for(const a of fc.arrows) this.drawArrow(a);
+    for(const c of fc.related_constraints) this.drawConstraint(c);
+    for(const p of fc.processes) this.drawProcess(p);
+    for(const pp of fc.product_positions) this.drawProduct(pp.product);
+    for(const c of fc.sub_clusters) this.drawCluster(c);
     // Draw notes last, as they are semi-transparent (and can be quite small).
-    for(let i = 0; i < fc.notes.length; i++) {
-      this.drawNote(fc.notes[i]);
-    }
+    for(const n of fc.notes) this.drawNote(n);
     // Resize paper if necessary.
     this.extend();
     // Display model name in browser.
@@ -961,8 +944,7 @@ class Paper {
     // without a mouseout event.
     this.constraint_under_cursor = null;
     // Draw the selected entities and associated links, and also constraints.
-    for(let i = 0; i < mdl.selection.length; i++) {
-      const obj = mdl.selection[i];
+    for(const obj of mdl.selection) {
       // Links and constraints are drawn separately, so do not draw those
       // contained in the selection.
       if(!(obj instanceof Link || obj instanceof Constraint)) {
@@ -974,18 +956,13 @@ class Paper {
       mdl.selection_related_arrows = mdl.focal_cluster.selectedArrows();
     }
     // Only draw the arrows that relate to the selection.
-    for(let i = 0; i < mdl.selection_related_arrows.length; i++) {
-      this.drawArrow(mdl.selection_related_arrows[i]);
-    }
+    for(const a of mdl.selection_related_arrows) this.drawArrow(a);
     // As they typically are few, simply redraw all constraints that relate to
     // the focal cluster.
-    for(let i = 0; i < mdl.focal_cluster.related_constraints.length; i++) {
-      this.drawConstraint(mdl.focal_cluster.related_constraints[i]);
-    }
+    for(const c of mdl.focal_cluster.related_constraints) this.drawConstraint(c);
     this.extend(); 
   }
 
-  
   //
   // Shape-drawing methods for model entities
   //
@@ -1026,8 +1003,7 @@ class Paper {
       // Distinguish between input, output and io products.
       let ip = [], op = [], iop = [];
       if(cnb instanceof Cluster) {
-        for(let i = 0; i < arrw.links.length; i++) {
-          const lnk = arrw.links[i];
+        for(const lnk of arrw.links) {
           // Determine which product is involved.
           prod = (lnk.from_node instanceof Product ? lnk.from_node : lnk.to_node);
           // NOTE: Clusters "know" their input/output products.
@@ -1041,8 +1017,7 @@ class Paper {
         }
       } else {
         // `cnb` is process or product => knows its inputs and outputs.
-        for(let i = 0; i < arrw.links.length; i++) {
-          const lnk = arrw.links[i];
+        for(const lnk of arrw.links) {
           if(lnk.from_node === cnb) {
             addDistinct(lnk.to_node, op);
           } else {
@@ -1069,9 +1044,8 @@ class Paper {
         to_p = to_nb instanceof Process;
     let data_flows = 0;
     if(arrw.links.length > 1 || (from_c && to_p) || (from_p && to_c)) {
-      for(let i = 0; i < arrw.links.length; i++) {
+      for(const lnk of arrw.links) {
         const
-            lnk = arrw.links[i],
             fn = lnk.from_node,
             tn = lnk.to_node;
         if(fn instanceof Product && fn != from_nb && fn != to_nb) {
@@ -1879,12 +1853,10 @@ class Paper {
             stroke: stroke_color, 'stroke-width': stroke_width});
     svg.appendChild(el);
     // Add the bound line contours
-    for(let i = 0; i < c.bound_lines.length; i++) {
-      const
-          bl = c.bound_lines[i],
-          // Draw thumbnail in shades of the arrow color, but use black
-          // for regular color or the filled areas turn out too light.
-          clr = (stroke_color === this.palette.node_rim ? 'black' : stroke_color);
+    for(const bl of c.bound_lines) {
+      // Draw thumbnail in shades of the arrow color, but use black
+      // for regular color or the filled areas turn out too light.
+      const clr = (stroke_color === this.palette.node_rim ? 'black' : stroke_color);
       // Set the boundline point coordinates (TRUE indicates: also compute
       // the thumbnail SVG).
       bl.setDynamicPoints(MODEL.t, true);
@@ -2811,7 +2783,7 @@ class Paper {
         'v', h - shadow_width, 'h-', w - shadow_width, 'z'],
         {fill: fill_color, stroke: stroke_color, 'stroke-width': stroke_width});
     if(clstr.ignore) {
-      // Draw diagonal cross
+      // Draw diagonal cross.
       clstr.shape.addPath(['m', x - hw + 6, ',', y - hh + 6,
           'l', w - 12 - shadow_width, ',', h - 12 - shadow_width,
           'm', 12 - w + shadow_width, ',0',
@@ -2820,7 +2792,7 @@ class Paper {
               'stroke-linecap': 'round'});
     }
     if(!clstr.collapsed) {
-      // Draw text
+      // Draw text.
       const
           lcnt = clstr.name_lines.split('\n').length,
           cy = (clstr.hasActor ? y - 12 / (lcnt + 1) : y);
@@ -2835,14 +2807,14 @@ class Paper {
                 {'font-size': 12, fill: this.palette.actor_font,
                     'font-style': 'italic'});
         let any = cy + th/2 + 7;
-        for(let i = 0; i < anl.length; i++) {
-          clstr.shape.addText(x, any, anl[i], format);
+        for(const an of anl) {
+          clstr.shape.addText(x, any, an, format);
           any += 12;
         }
       }
     }
     if(MODEL.show_block_arrows && !ignored) {
-      // Add block arrows for hidden IO links
+      // Add block arrows for hidden IO links.
       clstr.shape.addBlockArrow(x - hw + 3, y - hh + 15, UI.BLOCK_IN,
           clstr.hidden_inputs.length);
       clstr.shape.addBlockArrow(x + hw - 4, y - hh + 15, UI.BLOCK_OUT,

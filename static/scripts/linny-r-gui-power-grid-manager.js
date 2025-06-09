@@ -38,7 +38,7 @@ class PowerGridManager {
     // Add the power grids modal
     this.dialog = new ModalDialog('power-grids');
     this.dialog.close.addEventListener('click',
-        () => POWER_GRID_MANAGER.dialog.hide());
+        () => POWER_GRID_MANAGER.closeDialog());
     // Make the add, edit and delete buttons of this modal responsive
     this.dialog.element('new-btn').addEventListener('click',
         () => POWER_GRID_MANAGER.promptForPowerGrid());
@@ -96,8 +96,8 @@ class PowerGridManager {
       html.push('<div id="', modal, '-gm-none" class="no-grid-plate" ',
           'title="No grid element" onclick="UI.setGridPlate(event.target)">',
           '(&#x21AF;)</div>');
-      for(let i = 0; i < grids.length; i++) {
-        const pg = MODEL.power_grids[grids[i]];
+      for(const g of grids) {
+        const pg = MODEL.power_grids[g];
         html.push('<div id="', modal, '-gm-', pg.id,
             '"class="menu-plate" style="background-color: ', pg.color,
             '" title="Element of grid &ldquo;', pg.name,
@@ -147,7 +147,7 @@ class PowerGridManager {
             pg.color, '">', pg.voltage, '</div>',
             '<div class="grid-watts">', pg.power_unit, '</div>',
             (pg.kirchhoff ?
-                '<div class="grid-kcl-symbol">&#x27F3;</div>': ''),
+                '<div class="grid-kvl-symbol">&#x27F3;</div>': ''),
             (pg.loss_approximation ?
                 '<div class="grid-loss-symbol">L&sup' +
                 pg.loss_approximation + ';</div>' : ''),
@@ -155,6 +155,9 @@ class PowerGridManager {
       }
     }
     this.table.innerHTML = sl.join('');
+    UI.setBox('power-grids-capacity', MODEL.ignore_grid_capacity);
+    UI.setBox('power-grids-KVL', MODEL.ignore_KVL);
+    UI.setBox('power-grids-losses', MODEL.ignore_power_losses);
     if(ss) UI.scrollIntoView(document.getElementById(ssid));
     const btns = 'power-grids-edit power-grids-delete';
     if(ss) {
@@ -162,6 +165,14 @@ class PowerGridManager {
     } else {
       UI.disableButtons(btns);
     }
+  }
+  
+  closeDialog() {
+    // Save checkbox status and hide the dialog.
+    MODEL.ignore_grid_capacity = UI.boxChecked('power-grids-capacity');
+    MODEL.ignore_KVL = UI.boxChecked('power-grids-KVL');
+    MODEL.ignore_power_losses = UI.boxChecked('power-grids-losses');
+    this.dialog.hide();
   }
 
   selectPowerGrid(event, id, focus) {
@@ -261,7 +272,7 @@ class PowerGridManager {
   }
   
   checkLengths() {
-    // Calculate lengt statistics for all grid processes.
+    // Calculate length statistics for all grid processes.
     this.min_length = 1e+10;
     this.max_length = 0;
     this.total_length = 0;
@@ -294,8 +305,7 @@ class PowerGridManager {
         const mlmsg = [];
         let fn = null,
             tn = null;
-        for(let i = 0; i < p.inputs.length; i++) {
-          const l = p.inputs[i];
+        for(const l of p.inputs) {
           if(l.multiplier === VM.LM_LEVEL &&
               !MODEL.ignored_entities[l.identifier]) {
             if(fn) {
@@ -306,8 +316,7 @@ class PowerGridManager {
           }
         }
         if(!fn) mlmsg.push('no inputs');
-        for(let i = 0; i < p.outputs.length; i++) {
-          const l = p.outputs[i];
+        for(const l of p.outputs) {
           if(l.multiplier === VM.LM_LEVEL &&
               !MODEL.ignored_entities[l.identifier]) {
             if(tn) {
@@ -405,9 +414,7 @@ class PowerGridManager {
     // from `fn` to `tn` in the spanning tree of this grid.
     // If edge connects path with TO node, `path` is complete.
     if(fn === tn) return true;
-    const elist = this.tree_incidence[fn];
-    for(let i = 0; i < elist.length; i++) {
-      const e = elist[i];
+    for(const e of this.tree_incidence[fn]) {
       // Ignore edges already in the path.
       if(path.indexOf(e) < 0) {
         // NOTE: Edges are directed, but should not be considered as such.
@@ -426,10 +433,8 @@ class PowerGridManager {
     if(!(MODEL.with_power_flow && MODEL.powerGridsWithKVL.length)) return;
     this.inferNodesAndEdges();
     this.inferSpanningTree();
-    for(let i = 0; i < this.cycle_edges.length; i++) {
-      const
-          edge = this.cycle_edges[i],
-          path = [];
+    for(const edge of this.cycle_edges) {
+      const path = [];
       if(this.pathInSpanningTree(edge.from_node, edge.to_node, path)) {
         // Add flags that indicate whether the edge on the path is reversed.
         // The closing edge determines the orientation.
@@ -460,11 +465,10 @@ class PowerGridManager {
       const
           c = this.cycle_basis[i],
           l = [];
-      for(let j = 0; j < c.length; j++) {
-        l.push(c[j].process.displayName +
-            ` [${c[j].orientation > 0 ? '+' : '-'}]`);
+      for(const e of c) {
+        l.push(`${e.process.displayName} [${e.orientation > 0 ? '+' : '-'}]`);
       }
-      ll.push(`(${i+1}) ${l.join(', ')}`);
+      ll.push(`(${i + 1}) ${l.join(', ')}`);
     }
     return ll.join('\n');
   }
@@ -477,9 +481,8 @@ class PowerGridManager {
         '<th title="Reactance"><em>x</em></th><th title="Power">P</th>' +
         '<th><em>x</em>P</th></tr>'];
     let sum = 0;
-    for(let i = 0; i < c.length; i++) {
+    for(const edge of c) {
       const
-          edge = c[i],
           p = edge.process,
           x = p.length_in_km * p.grid.reactancePerKm,
           l = p.actualLevel(MODEL.t);
@@ -498,15 +501,11 @@ class PowerGridManager {
 
   inCycle(p) {
     // Return TRUE if process `p` is an edge in some cycle in the cycle basis.
-    for(let i = 0; i < this.cycle_basis.length; i++) {
-      const c = this.cycle_basis[i];
-      for(let j = 0; j < c.length; j++) {
-        if(c[j].process === p) return true;
-      }
+    for(const c of this.cycle_basis) {
+      for(const e of c) if(e.process === p) return true;
     }
     return false;
   }
-  
   
   allCycleFlows(p) {
     // Return power flows for each cycle that `p` is part of as an HTML
@@ -515,12 +514,10 @@ class PowerGridManager {
     const flows = [];
     for(let i = 0; i < this.cycle_basis.length; i++) {
       const c = this.cycle_basis[i];
-      for(let j = 0; j < c.length; j++) {
-        if(c[j].process === p) {
-          flows.push(`<h3>Flows through cycle (${i}):</h3>`,
-              this.cycleFlowTable(c));
-          break;
-        }
+      for(const e of c) if(e.process === p) {
+        flows.push(`<h3>Flows through cycle (${i}):</h3>`,
+            this.cycleFlowTable(c));
+        break;
       }
     }
     return flows.join('\n');

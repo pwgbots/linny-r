@@ -321,8 +321,7 @@ class Finder {
     if(n > 0) {
       const ft = this.filtered_types[0];
       if(this.filtered_types.length === 1 && 'DE'.indexOf(ft) < 0) {
-        for(let i = 0; i < n; i++) {
-          const e = this.entities[i];
+        for(const e of this.entities) {
           // Exclude "no actor" and top cluster.
           if(e.name && e.name !== '(no_actor)' && e.name !== '(top_cluster)' &&
               // Also exclude actor cash flow data products because
@@ -352,10 +351,7 @@ class Finder {
         if(se.cluster) occ.push(se.cluster.identifier);
       } else if(se instanceof Product) {
         // Products "occur" in clusters where they have a position.
-        const cl = se.productPositionClusters;
-        for(let i = 0; i < cl.length; i++) {
-          occ.push(cl[i].identifier);
-        }
+        for(const c of se.productPositionClusters) occ.push(c.identifier);
       } else if(se instanceof Actor) {
         // Actors "occur" in clusters where they "own" processes or clusters.
         for(let k in MODEL.processes) if(MODEL.processes.hasOwnProperty(k)) {
@@ -374,13 +370,12 @@ class Finder {
       // NOTE: No "occurrence" of datasets or equations.
       // @@TO DO: identify MODULES (?)
       // All entities can also occur as chart variables.
-      for(let j = 0; j < MODEL.charts.length; j++) {
-        const c = MODEL.charts[j];
-        for(let k = 0; k < c.variables.length; k++) {
-          const v = c.variables[k];
+      for(let ci = 0; ci < MODEL.charts.length; ci++) {
+        const c = MODEL.charts[ci];
+        for(const v of c.variables) {
           if(v.object === se || (se instanceof DatasetModifier &&
               se.identifier === UI.nameToID(v.attribute))) {
-            occ.push(MODEL.chart_id_prefix + j);
+            occ.push(MODEL.chart_id_prefix + ci);
             break;
           }
         }
@@ -437,9 +432,8 @@ class Finder {
       // Check all notes in clusters for their color expressions and field.
       for(let k in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(k)) {
         const c = MODEL.clusters[k];
-        for(let i = 0; i < c.notes.length; i++) {
-          const n = c.notes[i];
-          // Look for entity in both note contents and note color expression
+        for(const n of c.notes) {
+          // Look for entity in both note contents and note color expression.
           if(re.test(n.color.text) || re.test(n.contents)) {
             xal.push('NOTE');
             xol.push(n.identifier);
@@ -463,11 +457,9 @@ class Finder {
         const c = MODEL.constraints[k];
         for(let i = 0; i < c.bound_lines.length; i++) {
           const bl = c.bound_lines[i];
-          for(let j = 0; j < bl.selectors.length; j++) {
-            if(re.test(bl.selectors[j].expression.text)) {
-              xal.push('I' + (i + 1));
-              xol.push(c.identifier);
-            }
+          for(const sel of bl.selectors) if(re.test(sel.expression.text)) {
+            xal.push('I' + (i + 1));
+            xol.push(c.identifier);
           }
         }
       }
@@ -720,28 +712,25 @@ class Finder {
   
   copyAttributesToClipboard(shift) {
     // Copy relevant entity attributes as tab-separated text to clipboard.
-    // NOTE: All entity types have "get" `attributes` that returns an
+    // NOTE: All entity types have "get" method `attributes` that returns an
     // object that for each defined attribute (and if model has been
     // solved also each inferred attribute) has a property with its value.
-    // For dynamic expressions, the expression text is used
+    // For dynamic expressions, the expression text is used.
     const ea_dict = {A: [], B: [], C: [], D: [], E: [], L: [], P: [], Q: []};
-    let e = this.selected_entity;
+    const e = this.selected_entity;
     if(shift && e) {
       ea_dict[e.typeLetter].push(e.attributes);
     } else {
-      for(let i = 0; i < this.entities.length; i++) {
-        e = this.entities[i];
-        ea_dict[e.typeLetter].push(e.attributes);
-      }
+      for(const e of this.entities) ea_dict[e.typeLetter].push(e.attributes);
     }
     const
       seq = ['A', 'B', 'C', 'D', 'E', 'P', 'Q', 'L'],
       text = [],
       attr = [];
-    for(let i = 0; i < seq.length; i++) {
+    for(const etl of seq) {
       const
-          etl = seq[i],
-          ead = ea_dict[etl];
+          ead = ea_dict[etl],
+          atcodes = VM.attribute_codes[etl];
       if(ead && ead.length > 0) {
         // No blank line before first entity type.
         if(text.length > 0) text.push('');
@@ -755,14 +744,9 @@ class Finder {
         }
         text.push(ah);
         attr.length = 0;
-        for(let i = 0; i < ead.length; i++) {
-          const
-              ea = ead[i],
-              ac = VM.attribute_codes[etl],
-              al = [ea.name];
-          for(let j = 0; j < ac.length; j++) {
-            if(ea.hasOwnProperty(ac[j])) al.push(ea[ac[j]]);
-          }
+        for(const ea of ead) {
+          const al = [ea.name];
+          for(const ac of atcodes) if(ea.hasOwnProperty(ac)) al.push(ea[ac]);
           attr.push(al.join('\t'));
         }
         attr.sort();

@@ -41,7 +41,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     UI.resizableDialog('sensitivity', 'SENSITIVITY_ANALYSIS');
     this.close_btn = document.getElementById('sensitivity-close-btn');
     this.close_btn.addEventListener('click', (e) => UI.toggleDialog(e));
-    // Control panel accepts drag/drop of entities
+    // Control panel accepts drag/drop of entities.
     this.control_panel = document.getElementById('sensitivity-control-panel');
     this.control_panel.addEventListener(
         'dragover', (event) => SENSITIVITY_ANALYSIS.dragOver(event));
@@ -61,12 +61,12 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     this.delta.addEventListener(
         'blur', () => SENSITIVITY_ANALYSIS.setDelta());
     
-    // NOTE: both the base selectors and the delta input blur on Enter  
+    // NOTE: Both the base selectors and the delta input blur on Enter. 
     const blurf = (event) => { if(event.key === 'Enter') event.target.blur(); };
     this.base_selectors.addEventListener('keyup', blurf);
     this.delta.addEventListener('keyup', blurf);
     
-    // Make parameter buttons responsive
+    // Make parameter buttons responsive.
     document.getElementById('sa-p-add-btn').addEventListener(
         'click', () => SENSITIVITY_ANALYSIS.promptForParameter());
     document.getElementById('sa-p-up-btn').addEventListener(
@@ -75,7 +75,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
         'click', () => SENSITIVITY_ANALYSIS.moveParameter(1));
     document.getElementById('sa-p-delete-btn').addEventListener(
         'click', () => SENSITIVITY_ANALYSIS.deleteParameter());
-    // Make outcome buttons responsive
+    // Make outcome buttons responsive.
     document.getElementById('sa-o-add-btn').addEventListener(
         'click', () => SENSITIVITY_ANALYSIS.promptForOutcome());
     document.getElementById('sa-o-up-btn').addEventListener(
@@ -84,12 +84,12 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
         'click', () => SENSITIVITY_ANALYSIS.moveOutcome(1));
     document.getElementById('sa-o-delete-btn').addEventListener(
         'click', () => SENSITIVITY_ANALYSIS.deleteOutcome());
-    // The toggle button to hide/show the control panel
+    // The toggle button to hide/show the control panel.
     this.toggle_chevron = document.getElementById('sa-toggle-chevron');
     this.toggle_chevron.addEventListener(
         'click', () => SENSITIVITY_ANALYSIS.toggleControlPanel());
 
-    // The display panel and its buttons
+    // The display panel and its buttons.
     this.display_panel = document.getElementById('sensitivity-display-panel');
     this.start_btn = document.getElementById('sa-start-btn');
     this.start_btn.addEventListener(
@@ -107,12 +107,12 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     this.statistic = document.getElementById('sensitivity-statistic');
     this.statistic.addEventListener(
         'change', () => SENSITIVITY_ANALYSIS.setStatistic());
-    // Scroll area for the outcomes table
+    // Scroll area for the outcomes table.
     this.scroll_area = document.getElementById('sa-scroll-area');
     this.scroll_area.addEventListener(
         'mouseover', (event) => SENSITIVITY_ANALYSIS.showOutcome(event, ''));
     this.table = document.getElementById('sa-table');
-    // Buttons at panel bottom
+    // Buttons at panel bottom.
     this.abs_rel_btn = document.getElementById('sa-abs-rel');
     this.abs_rel_btn.addEventListener(
         'click', () => SENSITIVITY_ANALYSIS.toggleAbsoluteRelative());
@@ -129,19 +129,19 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
         'click', () => SENSITIVITY_ANALYSIS.copyDataToClipboard());
     this.outcome_name = document.getElementById('sa-outcome-name');
 
-    // The add variable modal
+    // The add variable modal.
     this.variable_modal = new ModalDialog('add-sa-variable');
     this.variable_modal.ok.addEventListener(
         'click', () => SENSITIVITY_ANALYSIS.addVariable());
     this.variable_modal.cancel.addEventListener(
         'click', () => SENSITIVITY_ANALYSIS.variable_modal.hide());
-    // NOTE: the modal calls methods of the Expression Editor dialog
+    // NOTE: The modal calls methods of the Expression Editor dialog.
     this.variable_modal.element('obj').addEventListener(
       'change', () => X_EDIT.updateVariableBar('add-sa-'));
     this.variable_modal.element('name').addEventListener(
       'change', () => X_EDIT.updateAttributeSelector('add-sa-'));
 
-    // Initialize main dialog properties
+    // Initialize main dialog properties.
     this.reset();
   }
 
@@ -152,8 +152,8 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
   
   updateControlPanel() {
-    // Shows the control panel, or when the analysis is running the
-    // legend to the outcomes (also to prevent changes to parameters) 
+    // Show the control panel, or when the analysis is running the
+    // legend to the outcomes (also to prevent changes to parameters).
     this.base_selectors.value = MODEL.base_case_selectors;
     this.delta.value = VM.sig4Dig(MODEL.sensitivity_delta);
     const tr = [];
@@ -182,7 +182,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     document.getElementById('sa-o-table').innerHTML = tr.join('');
     this.updateControlButtons('p');
     this.updateControlButtons('o');
-    // NOTE: allow run without parameters, but not without outcomes
+    // NOTE: Allow run without parameters, but not without outcomes.
     if(MODEL.sensitivity_outcomes.length > 0) {
       this.start_btn.classList.remove('disab');
       this.start_btn.classList.add('enab');
@@ -190,7 +190,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
       this.start_btn.classList.remove('enab');
       this.start_btn.classList.add('disab');
     }
-    // Show the "clear results" button only when selected experiment has run
+    // Show the "clear results" button only when selected experiment has run.
     if(MODEL.sensitivity_runs.length > 0) {
       this.reset_btn.classList.remove('off');
     } else {
@@ -199,7 +199,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     }
     this.variable_modal.element('obj').value = 0;
     // Update variable dropdown list of the "add SA variable" modal using
-    // a method of the Expression Editor dialog
+    // a method of the Expression Editor dialog.
     X_EDIT.updateVariableBar('add-sa-');
   }
 
@@ -245,35 +245,32 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
 
   showSelectorInfo(shift) {
-    // Called when cursor is moved over the base selectors input field
+    // Called when cursor is moved over the base selectors input field.
     if(shift && MODEL.base_case_selectors.length > 0) {
       // When selector(s) are specified and shift is pressed, show info on
-      // what the selectors constitute as base scenario
+      // what the selectors constitute as base scenario.
       this.showBaseCaseInfo();
       return;
     }
-    // Otherwise, display list of all dataset selectors in docu-viewer
+    // Otherwise, display list of all dataset selectors in docu-viewer.
     if(DOCUMENTATION_MANAGER.visible) {
       const
           ds_dict = MODEL.listOfAllSelectors,
           html = [],
           sl = Object.keys(ds_dict).sort((a, b) => UI.compareFullNames(a, b, true));
-      for(let i = 0; i < sl.length; i++) {
+      for(const s of sl) {
         const
-            s = sl[i],
             dl = ds_dict[s],
             dnl = [],
             bs = (dl.length > 1 ?
                 ' style="border: 0.5px solid #a080c0; border-right: none"' : '');
-        for(let j = 0; j < dl.length; j++) {
-          dnl.push(dl[j].displayName);
-        }
+        for(const d of dl) dnl.push(d.displayName);
         html.push('<tr><td class="sa-ds-sel" ',
             'onclick="SENSITIVITY_ANALYSIS.toggleSelector(this);">',
             s, '</td><td', bs, '>', dnl.join('<br>'), '</td></tr>');
       }
       if(html.length > 0) {
-        // Display information as read-only HTML
+        // Display information as read-only HTML.
         DOCUMENTATION_MANAGER.title.innerText = 'Dataset selectors';
         DOCUMENTATION_MANAGER.viewer.innerHTML =
             '<table><tr><td><strong>Selector</strong></td>' +
@@ -287,7 +284,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   
   showBaseCaseInfo() {
     // Display information on the base case selectors combination if docu-viewer
-    // is visible and cursor is moved over base case input field
+    // is visible and cursor is moved over base case input field.
     const combi = MODEL.base_case_selectors.split(' ');
     if(combi.length > 0 && DOCUMENTATION_MANAGER.visible) {
       const
@@ -298,7 +295,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
       for(let i = 0; i < combi.length; i++) {
         const sel = combi[i];
         html.push('<h3>Selector <tt>', sel, '</tt></h3>');
-        // List associated datasets (if any)
+        // List associated datasets (if any).
         list.length = 0;
         for(let id in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(id)) {
           const ds = MODEL.datasets[id];
@@ -315,7 +312,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
           html.push('<em>Datasets:</em> <ul>', list.join(''), '</ul>');
         }
         info.html = html.join('');
-        // Display information as read-only HTML
+        // Display information as read-only HTML.
         DOCUMENTATION_MANAGER.title.innerHTML = info.title;
         DOCUMENTATION_MANAGER.viewer.innerHTML = info.html;
         DOCUMENTATION_MANAGER.edit_btn.classList.remove('enab');
@@ -339,21 +336,19 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
   
   editBaseSelectors() {
-    // Give visual feedback by setting background color to white
+    // Give visual feedback by setting background color to white.
     this.base_selectors.style.backgroundColor = 'white';
   }
   
   setBaseSelectors() {
-    // Sanitize string before accepting it as space-separated selector list
+    // Sanitize string before accepting it as space-separated selector list.
     const
         sl = this.base_selectors.value.replace(/[\;\,]/g, ' ').trim().replace(
             /[^a-zA-Z0-9\+\-\%\_\s]/g, '').split(/\s+/),
         bs = sl.join(' '),
         sd = MODEL.listOfAllSelectors,
         us = [];
-    for(let i = 0; i < sl.length; i++) {
-      if(sl[i].length > 0 && !(sl[i] in sd)) us.push(sl[i]);
-    }
+    for(const s of sl) if(s.length > 0 && !(s in sd)) us.push(s);
     if(us.length > 0) {
       UI.warn('Base contains ' + pluralS(us.length, 'unknown selector') +
           ': "' + us.join('", "') + '"');
@@ -367,7 +362,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
   
   editDelta() {
-    // Give visual feedback by setting background color to white
+    // Give visual feedback by setting background color to white.
     this.delta.backgroundColor = 'white';
   }
   
@@ -438,24 +433,24 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
   
   promptForParameter() {
-    // Open dialog for adding new parameter
+    // Open dialog for adding new parameter.
     const md = this.variable_modal;
     md.element('type').innerText = 'parameter';
-    // NOTE: clusters have no suitable attributes, and equations are endogenous
+    // NOTE: Clusters have no suitable attributes, and equations are endogenous.
     md.element('cluster').style.display = 'none';
     md.element('equation').style.display = 'none';
-    // NOTE: update to ensure that valid attributes are selectable
+    // NOTE: Update to ensure that valid attributes are selectable.
     X_EDIT.updateVariableBar('add-sa-');
     md.show();
   }
 
   promptForOutcome() {
-    // Open dialog for adding new outcome
+    // Open dialog for adding new outcome.
     const md = this.variable_modal;
     md.element('type').innerText = 'outcome';
     md.element('cluster').style.display = 'block';
     md.element('equation').style.display = 'block';
-    // NOTE: update to ensure that valid attributes are selectable
+    // NOTE: Update to ensure that valid attributes are selectable.
     X_EDIT.updateVariableBar('add-sa-');
     md.show();
   }
@@ -470,7 +465,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
   
   handleDrop(ev) {
-    // Prompt for attribute if dropped object is a suitable entity
+    // Prompt for attribute if dropped object is a suitable entity.
     ev.preventDefault();
     const
         tid = ev.target.id,
@@ -510,13 +505,13 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
         }
       }
       s.value = i;
-      // NOTE: use method of the Expression Editor, specifying the SA prefix
+      // NOTE: Use method of the Expression Editor, specifying the SA prefix.
       X_EDIT.updateAttributeSelector('add-sa-'); 
     }  
   }
 
   addVariable() {
-    // Add parameter or outcome to the respective list
+    // Add parameter or outcome to the respective list.
     const
         md = this.variable_modal,
         t = md.element('type').innerText,
@@ -525,13 +520,13 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
         a = md.selectedOption('attr').text;
     let n = '';
     if(e === 'Equation' && a) {
-      // For equations, the attribute denotes the name
+      // For equations, the attribute denotes the name.
       n = a;
     } else if(o && a) {
       // Most variables are defined by name + attribute ...
       n = o + UI.OA_SEPARATOR + a;
     } else if(e === 'Dataset' && o) {
-      // ... but for datasets the selector is optional
+      // ... but for datasets the selector is optional.
       n = o;
     }
     if(n) {
@@ -546,21 +541,21 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
   
   deleteParameter() {
-    // Remove selected parameter from the analysis
+    // Remove selected parameter from the analysis.
     MODEL.sensitivity_parameters.splice(this.selected_parameter, 1);
     this.selected_parameter = -1;
     this.updateDialog();
   }
 
   deleteOutcome() {
-    // Remove selected outcome from the analysis
+    // Remove selected outcome from the analysis.
     MODEL.sensitivity_outcomes.splice(this.selected_outcome, 1);
     this.selected_outcome = -1;
     this.updateDialog();
   }
 
   pause() {
-    // Interrupt solver but retain data on server and allow resume
+    // Interrupt solver but retain data on server and allow resume.
     UI.notify('Run sequence will be suspended after the current run');
     this.pause_btn.classList.add('blink');
     this.stop_btn.classList.remove('off');
@@ -568,7 +563,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
 
   resumeButtons() {
-    // Changes buttons to "running" state, and return TRUE if state was "paused"
+    // Change buttons to "running" state, and return TRUE if state was "paused".
     const paused = this.start_btn.classList.contains('blink');
     this.start_btn.classList.remove('blink');
     this.start_btn.classList.add('off');
@@ -579,7 +574,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
 
   readyButtons() {
-    // Sets experiment run control buttons in "ready" state
+    // Set experiment run control buttons in "ready" state.
     this.pause_btn.classList.add('off');
     this.stop_btn.classList.add('off');
     this.start_btn.classList.remove('off', 'blink');
@@ -587,17 +582,17 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
   
   pausedButtons(aci) {
-    // Sets experiment run control buttons in "paused" state
+    // Set experiment run control buttons in "paused" state.
     this.pause_btn.classList.remove('blink');
     this.pause_btn.classList.add('off');
     this.start_btn.classList.remove('off');
-    // Blinking start button indicates: paused -- click to resume
+    // Blinking start button indicates: paused -- click to resume.
     this.start_btn.classList.add('blink');
     this.progress.innerHTML = `Run ${aci} PAUSED`;
   }
   
   clearResults() {
-    // Clears results, and resets control buttons
+    // Clear results, and resets control buttons.
     MODEL.sensitivity_runs.length = 0;
     this.readyButtons();
     this.reset_btn.classList.add('off');
@@ -608,18 +603,18 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
 
   setProgress(msg) {
-    // Shows `msg` in the progress field of the dialog
+    // Show `msg` in the progress field of the dialog.
     this.progress.innerHTML = msg;
   }
   
   showCheckmark(t) {
-    // Shows green checkmark (with elapsed time `t` as title) in progress field
+    // Show green checkmark (with elapsed time `t` as title) in progress field.
     this.progress.innerHTML =
         `<span class="x-checked" title="${t}">&#10004;</span>`;
   }
 
   drawTable() {
-    // Draws sensitivity analysis as table
+    // Draw sensitivity analysis as table.
     const
         html = [],
         pl = MODEL.sensitivity_parameters.length,
@@ -678,15 +673,15 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
   
   updateData() {
-    // Fills table cells with their data value or status
+    // Fill table cells with their data value or status.
     const
         pl = MODEL.sensitivity_parameters.length,
         ol = MODEL.sensitivity_outcomes.length,
         rl = MODEL.sensitivity_runs.length;
     if(ol === 0) return;
-    // NOTE: computeData is a parent class method
+    // NOTE: computeData is a parent class method.
     this.computeData(this.selected_statistic);
-    // Draw per row (i) where i=0 is the base case
+    // Draw per row (i) where i=0 is the base case.
     for(let i = 0; i <= pl; i ++) {
       if(i < 1 || !this.checked_parameters[MODEL.sensitivity_parameters[i-1]]) {
         for(let j = 0; j < ol; j++) {
@@ -706,7 +701,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
               }
               if(i > 0 && this.relative_scale) {
                 let p = this.perc[j][i - 1];
-                // Replace warning sign by dash
+                // Replace warning sign by dash.
                 if(p === '\u26A0') p = '-';
                 c.innerText = p + (p !== '-' ? '%' : '');
               } else {
@@ -720,16 +715,15 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
 
   showOutcome(event, o) {
-    // Displays outcome `o` (the name of the variable) below the table
+    // Display outcome `o` (the name of the variable) below the table.
     event.stopPropagation();
     this.outcome_name.innerHTML = o;
   }
   
   selectRun(n) {
-    // Selects run `n`, or toggles if already selected
-    const rows = this.scroll_area.getElementsByClassName('sa-p-sel');
-    for(let i = 0; i < rows.length; i++) {
-      rows.item(i).classList.remove('sa-p-sel');
+    // Select run `n`, or toggles if already selected.
+    for(const row of this.scroll_area.getElementsByClassName('sa-p-sel')) {
+      row.classList.remove('sa-p-sel');
     }
     if(n === this.selected_run) {
       this.selected_run = -1;
@@ -742,20 +736,20 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   }
 
   setStatistic() {
-    // Update view for selected variable
+    // Update view for selected variable.
     this.selected_statistic = this.statistic.value;
     this.updateData();
   }
   
   toggleAbsoluteRelative() {
-    // Toggles between # (absolute) and % (relative) display of outcome values
+    // Toggle between # (absolute) and % (relative) display of outcome values.
     this.relative_scale = !this.relative_scale;
     this.abs_rel_btn.innerText = (this.relative_scale ? '%' : '#');
     this.updateData();
   }
 
   setColorScale(event) {
-    // Infers clicked color scale button from event, and selects it
+    // Infer clicked color scale button from event, and select it.
     if(event) {
       const cs = event.target.id.split('-')[1];
       this.color_scale.set(cs);

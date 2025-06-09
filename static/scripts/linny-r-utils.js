@@ -542,8 +542,8 @@ function matchingNumber(m, s) {
 function matchingNumberInList(ml, s) {
   // Traverses list `ml` and returns the first matching number, or FALSE
   // if no match is found.
-  for(let i = 0; i < ml.length; i++) {
-    const n = matchingNumber(ml[i], s);
+  for(const m of ml) {
+    const n = matchingNumber(m, s);
     if(n !== false) return n;
   }
   return false;
@@ -680,19 +680,17 @@ function compareCombinations(c1, c2) {
 //
 
 function addDistinct(e, list) {
-  // Adds element `e` to `list` only if it does not already occur in `list`
+  // Add element `e` to `list` only if it does not already occur in `list`.
   if(list.indexOf(e) < 0) list.push(e);
 }
 
 function mergeDistinct(list, into) {
-  // Adds elements of `list` to `into` if not already in `into`
-  for(let i = 0; i < list.length; i++) {
-    addDistinct(list[i], into);
-  }
+  // Add elements of `list` to `into` if not already in `into`.
+  for(const e of list) addDistinct(e, into);
 }
 
 function iteratorSet(list) {
-  // Returns TRUE iff list is something like ['i=1', 'i=2', 'i=3'].
+  // Return TRUE iff list is something like ['i=1', 'i=2', 'i=3'].
   if(list.length === 0) return false;
   // Analyze the first element: must start with i=, j= or k=.
   const
@@ -722,9 +720,7 @@ function iteratorSet(list) {
 function integerSet(list) {
   // Returns TRUE iff all elements in list evaluate as integer numbers.
   if(list.length === 0) return false;
-  for(let i = 0; i < list.length; i++) {
-    if(list[i] - 0 != list[i]) return false;
-  }
+  for(const n of list) if(n - 0 != n) return false;
   return true;
 }
 
@@ -757,20 +753,18 @@ function tupelString(sl) {
 }
 
 function tupelSetString(ssl) {
-  // Returns string of stringlists `sll` as set of tuples
+  // Return string of stringlists `sll` as set of tuples.
   const tl = [];
-  for(let i = 0; i < ssl.length; i++) {
-    tl.push(tupelString(ssl[i]));
-  }
+  for(const ss of ssl) tl.push(tupelString(ss));
   return setString(tl);
 }
 
 function tupelIndex(sl, ssl) {
-  // Returns index of stringlist `sl` if it exists in `ssl`, otherwise -1
+  // Return index of stringlist `sl` if it exists in `ssl`, otherwise -1.
   for(let i = 0; i < ssl.length; i++) {
     let n = 0;
-    for(let j = 0; j < sl.length; j++) {
-      if(ssl[i].indexOf(sl[j]) < 0) break;
+    for(const s of sl) {
+      if(ssl[i].indexOf(s) < 0) break;
       n++;
     }
     if(n == sl.length) return i;
@@ -779,26 +773,31 @@ function tupelIndex(sl, ssl) {
 }
 
 function intersection(sl1, sl2) {
-  // Returns the list of common elements of stringlists `l1` and `l2`
+  // Return the list of common elements of stringlists `l1` and `l2`.
   const shared = [];
-  for(let i = 0; i < sl1.length; i++) {
-    if(sl2.indexOf(sl1[i]) >= 0) shared.push(sl1[i]);
-  }
+  for(const s of sl1) if(sl2.indexOf(s) >= 0) shared.push(s);
   return shared;
 }
   
 function complement(sl1, sl2) {
   // Returns the list of elements of stringlist `l1` that are NOT in `l2`
   const cmplmnt = [];
-  for(let i = 0; i < sl1.length; i++) {
-    if(sl2.indexOf(sl1[i]) < 0) cmplmnt.push(sl1[i]);
-  }
+  for(const s of sl1) if(sl2.indexOf(s) < 0) cmplmnt.push(s);
   return cmplmnt;
 }
 
 //
 // Functions that support loading and saving data and models
 //
+
+function asFileName(s) {
+  // Return string `s` with whitespace converted to a single dash, and
+  // special characters converted to underscores.
+  return s.normalize('NFKD').trim()
+      .replace(/[\s\-]+/g, '-')
+      .replace(/[^A-Za-z0-9_\-]/g, '_')
+      .replace(/^[\-\_]+|[\-\_]+$/g, '');
+}
 
 function xmlEncoded(str) {
   // Replaces &, <, >, ' and " by their HTML entity code
@@ -843,8 +842,8 @@ function customizeXML(str) {
 }
 
 function cleanXML(node) {
-  // Removes all unnamed text nodes and comment nodes from the XML
-  // subtree under node
+  // Remove all unnamed text nodes and comment nodes from the XML
+  // subtree under node.
   const cn = node.childNodes;
   if(cn) {
     for(let i = cn.length - 1; i >= 0; i--) {
@@ -1169,6 +1168,7 @@ if(NODE) module.exports = {
   tupelIndex: tupelIndex,
   intersection: intersection,
   complement: complement,
+  asFileName: asFileName,
   xmlEncoded: xmlEncoded,
   xmlDecoded: xmlDecoded,
   customizeXML: customizeXML,

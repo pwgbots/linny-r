@@ -148,7 +148,7 @@ class EquationManager {
   }
   
   updateDialog() {
-    // Updates equation list, highlighting selected equation (if any)
+    // Updates equation list, highlighting selected equation (if any).
     const
         ed = MODEL.equations_dataset,
         ml = [],
@@ -160,34 +160,36 @@ class EquationManager {
       this.outcome_btn.classList.add('not-selected'); 
     }
     let smid = 'eqmtr';
+    // NOTE> Selector list `msl` contains names, not IDs.
     for(let i = 0; i < msl.length; i++) {
       const
-          m = ed.modifiers[UI.nameToID(msl[i])],
-          wild = (m.selector.indexOf('??') >= 0),
-          method = m.selector.startsWith(':'),
+          id = UI.nameToID(msl[i]),
+          m = ed.modifiers[id],
+          sel = safeDoubleQuotes(m.selector),
+          expr = m.expression,
+          wild = (sel.indexOf('??') >= 0),
+          method = sel.startsWith(':'),
           multi = (this.multi_line ? '-multi' : ''),
-          issue = (m.expression.compile_issue ? ' compile-issue' :
-              (m.expression.compute_issue ? ' compute-issue' : '')),
-          clk = '" onclick="EQUATION_MANAGER.selectModifier(event, \'' +
-              escapedSingleQuotes(m.selector) + '\'',
-          mover = (method ? ' onmouseover="EQUATION_MANAGER.showInfo(\'' +
-              m.identifier + '\', event.shiftKey);"' : '');
+          issue = (expr.compile_issue ? ' compile-issue' :
+              (expr.compute_issue ? ' compute-issue' : '')),
+          clk = `" onclick="EQUATION_MANAGER.selectModifier(event, '${id}'`,
+          mover = (!method ? '' :
+              `onmouseover="EQUATION_MANAGER.showInfo('${id}', event.shiftKey);"`);
       if(m === sm) smid += i;
       ml.push(['<tr id="eqmtr', i, '" class="dataset-modif',
           (m === sm ? ' sel-set' : ''),
           '"><td class="equation-selector',
           (method ? ' method' : ''),
           // Display in gray when method cannot be applied.
-          (m.expression.noMethodObject ? ' no-object' : ''),
-          (m.expression.isStatic ? '' : ' it'), issue,
+          (expr.noMethodObject ? ' no-object' : ''),
+          (expr.isStatic ? '' : ' it'), issue,
           (wild ? ' wildcard' : ''), clk, ', false);"', mover, '>',
           (m.outcome_equation ? '<span class="outcome"></span>' : ''),
-          (wild ? wildcardFormat(m.selector) : m.selector),
+          (wild ? wildcardFormat(sel) : sel),
           '</td><td class="equation-expression', multi, issue,
           (issue ? '"title="' +
-              safeDoubleQuotes(m.expression.compile_issue ||
-                  m.expression.compute_issue) : ''),
-          clk, ');">', m.expression.text, '</td></tr>'].join(''));
+              safeDoubleQuotes(expr.compile_issue || expr.compute_issue) : ''),
+          clk, ');">', expr.text, '</td></tr>'].join(''));
     }
     this.table.innerHTML = ml.join('');
     this.scroll_area.style.display = 'block';
@@ -208,10 +210,10 @@ class EquationManager {
   
   selectModifier(event, id, x=true) {
     // Select modifier, or when Alt- or double-clicked, edit its expression
-    // or the equation name (= name of the modifier)
+    // or the equation name (= name of the modifier).
     if(MODEL.equations_dataset) {
       const
-          m = MODEL.equations_dataset.modifiers[UI.nameToID(id)] || null,
+          m = MODEL.equations_dataset.modifiers[id] || null,
           edit = event.altKey || this.doubleClicked(m);
       this.selected_modifier = m;
       if(m && edit) {
@@ -327,10 +329,8 @@ class EquationManager {
     }
     // Update all chartvariables referencing this dataset + old selector
     let cv_cnt = 0;
-    for(let i = 0; i < MODEL.charts.length; i++) {
-      const c = MODEL.charts[i];
-      for(let j = 0; j < c.variables.length; j++) {
-        const v = c.variables[j];
+    for(const c of MODEL.charts) {
+      for(const v of c.variables) {
         if(v.object === MODEL.equations_dataset && v.attribute === olds) {
           v.attribute = m.selector;
           cv_cnt++;

@@ -47,13 +47,11 @@ class GUIFileManager {
   // buttons on the top menu.
 
   getRemoteData(dataset, url) {
-    // Gets data from a URL, or from a file on the local host 
+    // Gets data from a URL, or from a file on the local host.
     if(url === '') return;
     if(url.indexOf('%') >= 0) {
       // Expand %i, %j and %k if used in the URL.
-      const letters = ['i', 'j', 'k'];
-      for(let i = 0; i < letters.length; i++) {
-        const l = letters[i];
+      for(const l of ['i', 'j', 'k']) {
         url = url.replaceAll('%' + l, valueOfIndexVariable(l));
       }
     }
@@ -361,9 +359,8 @@ class GUIFileManager {
     }
     fetch('autosave/', postData({
           action: 'store',
-          file: REPOSITORY_BROWSER.asFileName(
-              (MODEL.name || 'no-name') + '_by_' +
-                  (MODEL.author || 'no-author')),
+          file: asFileName((MODEL.name || 'no-name') +
+              '_by_' + (MODEL.author || 'no-author')),
           xml: MODEL.asXML,
           wsd: workspace
         }))
@@ -404,48 +401,9 @@ class GUIFileManager {
     }
   }
   
-  renderDiagramAsPNG(tight) {
-    // When `tight` is TRUE, add no whitespace around the diagram.
-    window.localStorage.removeItem('png-url');
-    if(tight) {
-      // First align to grid and then fit to size.
-      MODEL.alignToGrid();      
-      UI.paper.fitToSize(1);
-    } else {
-      UI.paper.fitToSize();
-      MODEL.alignToGrid();      
-    }
-    this.renderSVGAsPNG(UI.paper.opaqueSVG);
-  }
-  
-  renderSVGAsPNG(svg) {
-    // Sends SVG to the server, which will convert it to PNG using Inkscape;
-    // if successful, the server will return the URL to the PNG file location;
-    // this URL is passed via the browser's local storage to the newly opened
-    // browser tab that awaits this URL and then loads it
-    const form = {
-            action: 'png',
-            user: VM.solver_user,
-            token: VM.solver_token,
-            data: btoa(encodeURI(svg))
-          };
-    fetch('solver/', postData(form))
-      .then((response) => {
-          if(!response.ok) {
-            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
-          }
-          return response.text();
-        })
-      .then((data) => {
-          // Pass URL of image to the newly opened browser window
-          window.localStorage.setItem('png-url', data);
-        })
-      .catch((err) => UI.warn(UI.WARNING.NO_CONNECTION, err));
-  }
-  
-  saveDiagramAsSVG(tight) {
+  saveDiagramAsSVG(event) {
     // Output SVG as string with nodes and arrows 100% opaque.
-    if(tight) {
+    if(event.altKey) {
       // First align to grid and then fit to size.
       MODEL.alignToGrid();      
       UI.paper.fitToSize(1);
@@ -453,10 +411,15 @@ class GUIFileManager {
       UI.paper.fitToSize();
       MODEL.alignToGrid();      
     }
-    this.pushOutSVG(UI.paper.opaqueSVG);
+    if(event.shiftKey) {
+      this.pushOutSVG(UI.paper.opaqueSVG);
+    } else {
+      this.pushOutPNG(UI.paper.opaqueSVG);
+    }
   }
   
   pushOutSVG(svg) {
+    // Output SVG to browser as SVG image file download.
     const blob = new Blob([svg], {'type': 'image/svg+xml'});
     const e = document.getElementById('svg-saver');
     e.download = 'model.svg';
@@ -464,5 +427,36 @@ class GUIFileManager {
     e.href = (window.URL || webkitURL).createObjectURL(blob);
     e.click();
   }  
+
+  pushOutPNG(svg) {
+    // Output SVG to browser as PNG image file download.
+    const
+        bytes = new TextEncoder().encode(svg),
+        binstr = Array.from(bytes, (b) => String.fromCodePoint(b)).join(''),
+        uri = 'data:image/svg+xml;base64,' + window.btoa(binstr),
+        img = new Image();
+    img.onload = () => {
+        const
+            cvs = document.createElement('canvas'),
+            ctx = cvs.getContext('2d');
+        cvs.width = img.width * 4;
+        cvs.height = img.height * 4;
+        ctx.scale(4, 4);
+        ctx.drawImage(img, 0, 0);
+        cvs.toBlob(blob => {
+            const
+                e = document.getElementById('svg-saver'),
+                url = (window.URL || webkitURL).createObjectURL(blob),
+                name = asFileName(MODEL.focal_cluster.parent ?
+                    MODEL.focal_cluster.displayName : MODEL.name) ||
+                'Linny-R-model';
+            e.download = name + '.png';
+            e.type = 'image/png';
+            e.href = url;
+            e.click();
+          });
+    };
+    img.src = uri;      
+  }
  
 } // END of class GUIFileManager

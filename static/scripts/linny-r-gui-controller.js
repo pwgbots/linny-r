@@ -298,8 +298,7 @@ class GroupPropertiesDialog extends ModalDialog {
       const
           propname = this.fields[name],
           prop = obj[propname];
-      for(let i = 0; i < this.group.length; i++) {
-        const ge = this.group[i];
+      for(const ge of this.group) {
         // NOTE: For links, special care must be taken.
         if(!(ge instanceof Link) ||
             this.validLinkProperty(ge, propname, prop)) {
@@ -332,12 +331,9 @@ class GUIController extends Controller {
             ['chrome', 'Chrome'],
             ['firefox', 'Firefox'],
             ['safari', 'Safari']];
-    for(let i = 0; i < browsers.length; i++) {
-      const b = browsers[i];
-      if(ua.indexOf(b[0]) >= 0) {
-        this.browser_name = b[1];
-        break;
-      }
+    for(const b of browsers) if(ua.indexOf(b[0]) >= 0) {
+      this.browser_name = b[1];
+      break;
     }
     // Display version number as clickable link just below the Linny-R logo.
     this.version_number = LINNY_R_VERSION;
@@ -363,12 +359,22 @@ class GUIController extends Controller {
     this.mouse_y = 0;
     this.mouse_down_x = 0;
     this.mouse_down_y = 0;
+    // When clicking on a node, difference between cursor coordinates
+    // and node coordinates is recorded.
     this.move_dx = 0;
     this.move_dy = 0;
-    this.start_sel_x = -1;
-    this.start_sel_y = -1;
+    // When moving the cursor, the cumulative movement since the last
+    // mouse DOWN or UP event is recorded.
+    this.net_move_x = 0;
+    this.net_move_y = 0;
+    // When mouse button is pressed while some add button is active,
+    // the coordinates of the cursor are recorded.
     this.add_x = 0;
     this.add_y = 0;
+    // When mouse button is pressed while no node is under the cursor,
+    // cursor coordinates are recorded as origin of the drag rectangle. 
+    this.start_sel_x = -1;
+    this.start_sel_y = -1;
     this.on_node = null;
     this.on_arrow = null;
     this.on_link = null;
@@ -393,7 +399,6 @@ class GUIController extends Controller {
       'D': 'dataset',
       'E': 'equation',
       'F': 'finder',
-      'G': 'savediagram', // G for "Graph" (as Scalable Vector Graphics image)
       'H': 'receiver',  // activate receiver (H for "Host")
       'I': 'documentation',
       'J': 'sensitivity', // J for "Jitter"
@@ -421,7 +426,7 @@ class GUIController extends Controller {
     this.edit_btns = ['replace', 'clone', 'paste', 'delete', 'undo', 'redo'];
     this.model_btns = ['settings', 'save', 'repository', 'actors',
         'dataset', 'equation', 'chart', 'sensitivity', 'experiment',
-        'diagram', 'savediagram', 'finder', 'monitor', 'tex', 'solve'];
+        'savediagram', 'finder', 'monitor', 'tex', 'solve'];
     this.other_btns = ['new', 'load', 'receiver', 'documentation',
         'parent', 'lift', 'solve', 'stop', 'reset', 'zoomin', 'zoomout',
         'stepback', 'stepforward', 'autosave', 'recall'];
@@ -429,8 +434,7 @@ class GUIController extends Controller {
         this.edit_btns, this.model_btns, this.other_btns);
 
     // Add all button DOM elements as controller properties.
-    for(let i = 0; i < this.all_btns.length; i++) {
-      const b = this.all_btns[i];
+    for(const b of this.all_btns) {
       this.buttons[b] = document.getElementById(b + '-btn');
     }
     this.active_button = null;
@@ -450,10 +454,9 @@ class GUIController extends Controller {
     const main_modals = ['logon', 'model', 'load', 'password', 'settings',
         'actors', 'add-process', 'add-product', 'move', 'note', 'clone', 
         'replace', 'expression', 'server', 'solver'];
-    for(let i = 0; i < main_modals.length; i++) {
-      this.modals[main_modals[i]] = new ModalDialog(main_modals[i]);
-    }
+    for(const m of main_modals) this.modals[m] = new ModalDialog(m);
     
+    // Property dialogs for entities may permit group editing.
     this.modals.cluster = new GroupPropertiesDialog('cluster', {
         'collapsed': 'collapsed',
         'ignore': 'ignore',
@@ -534,12 +537,18 @@ class GUIController extends Controller {
     this.cc.addEventListener('drop', (event) => UI.drop(event));
 
     // Disable dragging on all images.
-    const
-        imgs = document.getElementsByTagName('img'),
-        nodrag = (event) => { event.preventDefault(); return false; };
-    for(let i = 0; i < imgs.length; i++) {          
-      imgs[i].addEventListener('dragstart', nodrag);
+    const nodrag = (event) => { event.preventDefault(); return false; };
+    for(const img of document.getElementsByTagName('img')) {          
+      img.addEventListener('dragstart', nodrag);
     }
+    
+    // Moving cursor over Linny-R logo etc. should display information
+    // in Information & Documentation manager.
+    const lrf = () => DOCUMENTATION_MANAGER.clearEntity(true);
+    document.getElementById('static-icon').addEventListener('mousemove', lrf);
+    document.getElementById('linny-r-name').addEventListener('mousemove', lrf);
+    document.getElementById('linny-r-version-number')
+        .addEventListener('mousemove', lrf);
 
     // Make all buttons respond to a mouse click.
     this.buttons['new'].addEventListener('click',
@@ -552,10 +561,8 @@ class GUIController extends Controller {
         () => FILE_MANAGER.saveModel(event.shiftKey));
     this.buttons.actors.addEventListener('click',
         () => ACTOR_MANAGER.showDialog());
-    this.buttons.diagram.addEventListener('click',
-        () => FILE_MANAGER.renderDiagramAsPNG(event.shiftKey));
     this.buttons.savediagram.addEventListener('click',
-        () => FILE_MANAGER.saveDiagramAsSVG(event.shiftKey));
+        () => FILE_MANAGER.saveDiagramAsSVG(event));
     this.buttons.receiver.addEventListener('click',
         () => RECEIVER.toggle());
     // NOTE: All draggable & resizable dialogs "toggle" show/hide.
@@ -651,11 +658,9 @@ class GUIController extends Controller {
         () => AUTO_SAVE.getAutoSavedModels());
 
     // Make "stay active" buttons respond to Shift-click.
-    const
-        tbs = document.getElementsByClassName('toggle'),
-        tf = (event) => UI.toggleButton(event);
-    for(let i = 0; i < tbs.length; i++) {          
-      tbs[i].addEventListener('click', tf);
+    const tf = (event) => UI.toggleButton(event);
+    for(const tb of document.getElementsByClassName('toggle')) {          
+      tb.addEventListener('click', tf);
     }
 
     // Add listeners to OK and CANCEL buttons on main modal dialogs.
@@ -857,18 +862,16 @@ class GUIController extends Controller {
     
     // Make checkboxes respond to click.
     // NOTE: Checkbox-specific events must be bound AFTER this general setting.
-    const
-        cbs = document.getElementsByClassName('box'),
-        cbf = (event) => UI.toggleBox(event);
-    for(let i = 0; i < cbs.length; i++) {          
-      cbs[i].addEventListener('click', cbf);
+    const cbf = (event) => UI.toggleBox(event);
+    for(const cb of document.getElementsByClassName('box')) {          
+      cb.addEventListener('click', cbf);
     }
-    // Make infoline respond to `mouseenter`
+    // Make infoline respond to `mouseenter`.
     this.info_line = document.getElementById('info-line');
     this.info_line.addEventListener('mouseenter',
         (event) => DOCUMENTATION_MANAGER.showInfoMessages(event.shiftKey));
     // Ensure that all modal windows respond to ESCape
-    // (and more in general to other special keys)
+    // (and more in general to other special keys).
     document.addEventListener('keydown', (event) => UI.checkModals(event));
   }
   
@@ -993,8 +996,7 @@ class GUIController extends Controller {
 
   drawLinkArrows(cluster, link) {
     // Draw all arrows in `cluster` that represent `link`.
-    for(let i = 0; i < cluster.arrows.length; i++) {
-      const a = cluster.arrows[i];
+    for(const a of cluster.arrows) {
       if(a.links.indexOf(link) >= 0) this.paper.drawArrow(a);
     }    
   }
@@ -1011,8 +1013,7 @@ class GUIController extends Controller {
     if(VM.server === 'local host') {
       host.title = 'Linny-R directory is ' + VM.working_directory;
     }
-    for(let i = 0; i < VM.solver_list.length; i++) {
-      const s = VM.solver_list[i];
+    for(const s of VM.solver_list) {
       html.push(['<option value="', s,
           (s === VM.solver_id ? '"selected="selected' : ''),
           '">', VM.solver_names[s], '</option>'].join(''));
@@ -1562,10 +1563,10 @@ class GUIController extends Controller {
   
   reorderDialogs() {
     // Set z-index of draggable dialogs according to their order
-    // (most recently shown or clicked on top)
+    // (most recently shown or clicked on top).
     let z = 10;
-    for(let i = 0; i < this.dr_dialog_order.length; i++) {
-      this.dr_dialog_order[i].style.zIndex = z;
+    for(const dd of this.dr_dialog_order) {
+      dd.style.zIndex = z;
       z += 5;
     }
   }
@@ -1575,18 +1576,16 @@ class GUIController extends Controller {
   //
   
   enableButtons(btns) {
-    btns = btns.trim().split(/\s+/);
-    for(let i = 0; i < btns.length; i++) {
-      const b = document.getElementById(btns[i] + '-btn');
+    for(const btn of btns.trim().split(/\s+/)) {
+      const b = document.getElementById(btn + '-btn');
       b.classList.remove('disab', 'activ');
       b.classList.add('enab');
     }
   }
   
   disableButtons(btns) {
-    btns = btns.trim().split(/\s+/);
-    for(let i = 0; i < btns.length; i++) {
-      const b = document.getElementById(btns[i] + '-btn'); 
+    for(const btn of btns.trim().split(/\s+/)) {
+      const b = document.getElementById(btn + '-btn'); 
       b.classList.remove('enab', 'activ', 'stay-activ');
       b.classList.add('disab');
     }
@@ -1598,7 +1597,7 @@ class GUIController extends Controller {
         node_btns = 'process product link constraint cluster note ',
         edit_btns = 'replace clone paste delete undo redo ',
         model_btns = 'settings save actors dataset equation chart ' +
-            'diagram savediagram finder monitor solve';
+            'savediagram finder monitor solve';
     if(MODEL === null) {
       this.disableButtons(node_btns + edit_btns + model_btns);
       return;
@@ -1680,10 +1679,9 @@ class GUIController extends Controller {
   }
   
   get stayActiveButton() {
-    // Return the button that is "stay active", or NULL if none 
-    const btns = ['process', 'product', 'link', 'constraint', 'cluster', 'note'];
-    for(let i = 0; i < btns.length; i++) {
-      const b = document.getElementById(btns[i] + '-btn');
+    // Return the button that is "stay active", or NULL if none .
+    for(const btn of ['process', 'product', 'link', 'constraint', 'cluster', 'note']) {
+      const b = document.getElementById(btn + '-btn');
       if(b.classList.contains('stay-activ')) return b;
     }
     return null;
@@ -1707,12 +1705,20 @@ class GUIController extends Controller {
   //
   
   updateCursorPosition(e) {
-    // Updates the cursor coordinates and displays them on the status bar
+    // Update the cursor coordinates, and display them on the status bar.
     const cp = this.paper.cursorPosition(e.pageX, e.pageY);
+    // Keep track of the cumulative relative movement since the last
+    // mousedown event.
+    this.net_move_x += cp[0] - this.mouse_x;
+    this.net_move_y += cp[1] - this.mouse_y;
+    // Only now update the mouse coordinates.
     this.mouse_x = cp[0];
     this.mouse_y = cp[1];
+    // Show the coordinates on the status bar.
     document.getElementById('pos-x').innerHTML = 'X = ' + this.mouse_x;
-    document.getElementById('pos-y').innerHTML = 'Y = ' + this.mouse_y;    
+    document.getElementById('pos-y').innerHTML = 'Y = ' + this.mouse_y;
+    // Reset all "object under cursor detection variables" so that they
+    // will be re-established correctly by mouseMove.
     this.on_note = null;
     this.on_node = null;
     this.on_cluster = null;
@@ -1723,76 +1729,82 @@ class GUIController extends Controller {
   }
 
   mouseMove(e) {
-    // Responds to mouse cursor moving over Linny-R diagram area
+    // Respond to mouse cursor moving over Linny-R diagram area.
+    // First translate browser cursor coordinates to diagram coordinates.
     this.updateCursorPosition(e);
     
-    // NOTE: check, as MODEL might still be undefined
+    // NOTE: Prevent errors in case MODEL is still undefined.
     if(!MODEL) return;
     
     //console.log(e);
     const fc = MODEL.focal_cluster;
+    // NOTE: Proceed from last added to first added node.
     for(let i = fc.processes.length-1; i >= 0; i--) {
-      const obj = fc.processes[i];
-      if(obj.containsPoint(this.mouse_x, this.mouse_y)) {
-        this.on_node = obj;
+      const p = fc.processes[i];
+      if(p.containsPoint(this.mouse_x, this.mouse_y)) {
+        this.on_node = p;
         break;
       }
     }
     if(!this.on_node) {
       for(let i = fc.product_positions.length-1; i >= 0; i--) {
-        const obj = fc.product_positions[i].product.setPositionInFocalCluster();
-        if(obj.product.containsPoint(this.mouse_x, this.mouse_y)) {
-          this.on_node = obj.product;
+        // NOTE: Set product coordinates to its position in focal cluster.
+        const p = fc.product_positions[i].product.setPositionInFocalCluster();
+        if(p.product.containsPoint(this.mouse_x, this.mouse_y)) {
+          this.on_node = p.product;
           break;
         }
       }
     }
-    for(let i = 0; i < fc.arrows.length; i++) {
-      const arr = fc.arrows[i];
+    for(const arr of fc.arrows) {
       if(arr) {
         this.on_arrow = arr;
-        // NOTE: arrow may represent multiple links, so find out which one
-        const obj = arr.containsPoint(this.mouse_x, this.mouse_y);
-        if(obj) {
-          this.on_link = obj;
+        // NOTE: Arrow may represent multiple links, and `containsPoint`
+        // returns the link if this can be established unambiguously, or
+        // NULL otherwise.
+        const l = arr.containsPoint(this.mouse_x, this.mouse_y);
+        if(l) {
+          this.on_link = l;
           break;
         }
       }
     }
     this.on_constraint = this.constraintStillUnderCursor();
     if(fc.related_constraints != null) {
-      for(let i = 0; i < fc.related_constraints.length; i++) {
-        const obj = fc.related_constraints[i];
-        if(obj.containsPoint(this.mouse_x, this.mouse_y)) {
-          this.on_constraint = obj;
+      for(const c of fc.related_constraints) {
+        if(c.containsPoint(this.mouse_x, this.mouse_y)) {
+          this.on_constraint = c;
           break;
         }
       }
     }
     for(let i = fc.sub_clusters.length-1; i >= 0; i--) {
-      const obj = fc.sub_clusters[i];
-      // NOTE: Ignore cluster that is being dragged, so that a cluster
-      // it is being dragged over will be detected instead.
-      if(obj != this.dragged_node &&
-          obj.containsPoint(this.mouse_x, this.mouse_y)) {
-        this.on_cluster = obj;
-        this.on_cluster_edge = obj.onEdge(this.mouse_x, this.mouse_y);
-        break;
+      const c = fc.sub_clusters[i];
+      if(c.containsPoint(this.mouse_x, this.mouse_y)) {
+        // NOTE: Cluster that is being dragged is superseded by other clusters
+        // so that a cluster it is being dragged over will be detected instead.
+        if(!this.on_cluster || c !== this.dragged_node) {
+          this.on_cluster = c;
+          // NOTE: Cluster edge responds differently to doubble-click.
+          this.on_cluster_edge = c.onEdge(this.mouse_x, this.mouse_y);
+        }
       }
     }
     // Unset and redraw target cluster if cursor no longer over it.
-    if(!this.on_cluster && this.target_cluster) {
+    if(this.on_cluster !== this.target_cluster) {
       const c = this.target_cluster;
       this.target_cluster = null;
-      UI.paper.drawCluster(c);
-      // NOTE: Element is persistent, so semi-transparency must also be
-      // undone.
-      c.shape.element.setAttribute('opacity', 1);
+      if(c) {
+        UI.paper.drawCluster(c);
+        // NOTE: Element is persistent, so semi-transparency must also be
+        // undone.
+        c.shape.element.setAttribute('opacity', 1);
+      }
     }
     for(let i = fc.notes.length-1; i >= 0; i--) {
-      const obj = fc.notes[i];
-      if(obj.containsPoint(this.mouse_x, this.mouse_y)) {
-        this.on_note = obj;
+      const n = fc.notes[i];
+      if(n.containsPoint(this.mouse_x, this.mouse_y)) {
+        this.on_note = n;
         break;
       }
     }
@@ -1857,10 +1869,12 @@ class GUIController extends Controller {
           this.setMessage('');
         }
       }
-      // When dragging selection that contains a process, change cursor to
+      // When dragging a selection over a cluster, change cursor to "cell" to
       // indicate that selected process(es) will be moved into the cluster.
       if(this.dragged_node) {
-        if(this.on_cluster) {
+        // NOTE: Cursor will always be over the dragged node, so do not indicate
+        // "drop here?" unless dragged over a different cluster.
+        if(this.on_cluster &&  this.on_cluster !== this.dragged_node) {
           cr = 'cell';
           this.target_cluster = this.on_cluster;
           // Redraw the target cluster so it will appear on top (and highlighted).
@@ -1874,10 +1888,16 @@ class GUIController extends Controller {
   }
 
   mouseDown(e) {
-    // Responds to mousedown event in model diagram area.
-    // In case mouseup event occurred outside drawing area,ignore this
-    // mousedown event, so that only the mouseup will be processed.
+    // Respond to mousedown event in model diagram area.
+    // NOTE: While dragging the selection rectangle, the mouseup event will
+    // not be observed when it occurred outside the drawing area. In such
+    // cases, the mousedown event must be ignored so that only the mouseup
+    // will be processed.
     if(this.start_sel_x >= 0 && this.start_sel_y >= 0) return;
+    // Reset the cumulative movement since mousedown.
+    this.net_move_x = 0;
+    this.net_move_y = 0;
+    // Get the paper coordinates indicated by the cursor.
     const cp = this.paper.cursorPosition(e.pageX, e.pageY);
     this.mouse_down_x = cp[0];
     this.mouse_down_y = cp[1];
@@ -1891,7 +1911,7 @@ class GUIController extends Controller {
     }
     // NOTE: Only left button is detected (browser catches right menu button).
     if(e.ctrlKey) {
-      // Remove clicked item from selection
+      // Remove clicked item from selection.
       if(MODEL.selection) {
         // NOTE: First check constraints -- see mouseMove() for motivation.
         if(this.on_constraint) {
@@ -1943,37 +1963,15 @@ class GUIController extends Controller {
       UI.drawDiagram(MODEL);
     }
   
-    // If one of the top six sidebar buttons is active, prompt for new node
-    // (not link or constraint).
+    // If one of the top six sidebar buttons is active, prompt for new node.
+    // Note that this does not apply for links or constraints.
     if(this.active_button && this.active_button !== this.buttons.link &&
         this.active_button !== this.buttons.constraint) {
       this.add_x = this.mouse_x;
       this.add_y = this.mouse_y;
-      const obj = this.active_button.id.split('-')[0];
+      const ot = this.active_button.id.split('-')[0];
       if(!this.stayActive) this.resetActiveButton();
-      if(obj === 'process') {
-        setTimeout(() => {
-              const md = UI.modals['add-process'];
-              md.element('name').value = '';
-              md.element('actor').value = '';
-              md.show('name');
-            });
-      } else if(obj === 'product') {
-        setTimeout(() => {
-              const md = UI.modals['add-product'];
-              md.element('name').value = '';
-              md.element('unit').value = MODEL.default_unit;
-              UI.setBox('add-product-data', false);
-              md.show('name');
-            });            
-      } else if(obj === 'cluster') {
-        setTimeout(() => {
-              const md = UI.modals.cluster;
-              md.element('name').value = '';
-              md.element('actor').value = '';
-              md.show('name');
-            });            
-      } else if(obj === 'note') {
+      if(ot === 'note') {
         setTimeout(() => {
               const md = UI.modals.note;
               md.element('action').innerHTML = 'Add';
@@ -1981,6 +1979,33 @@ class GUIController extends Controller {
               md.element('text').value = '';
               md.show('text');
             });
+      } else {
+        // Align position to the grid.
+        this.add_x = MODEL.aligned(this.add_x);
+        this.add_y = MODEL.aligned(this.add_y);
+        if(ot === 'process') {
+          setTimeout(() => {
+                const md = UI.modals['add-process'];
+                md.element('name').value = '';
+                md.element('actor').value = '';
+                md.show('name');
+              });
+        } else if(ot === 'product') {
+          setTimeout(() => {
+                const md = UI.modals['add-product'];
+                md.element('name').value = '';
+                md.element('unit').value = MODEL.default_unit;
+                UI.setBox('add-product-data', false);
+                md.show('name');
+              });            
+        } else if(ot === 'cluster') {
+          setTimeout(() => {
+                const md = UI.modals.cluster;
+                md.element('name').value = '';
+                md.element('actor').value = '';
+                md.show('name');
+              });            
+        }
       }
       return;
     }
@@ -2020,7 +2045,7 @@ class GUIController extends Controller {
     } else if(this.on_node) {
       if(this.active_button === this.buttons.link) {
         this.linking_node = this.on_node;
-        // NOTE: return without updating buttons
+        // NOTE: Return without updating buttons.
         return;
       } else if(this.active_button === this.buttons.constraint) {
         // Allow constraints only on nodes having upper bounds defined.
@@ -2031,6 +2056,7 @@ class GUIController extends Controller {
         }
       } else {
         this.dragged_node = this.on_node;
+        // NOTE: Keep track of relative movement of the dragged node.
         this.move_dx = this.mouse_x - this.on_node.x;
         this.move_dy = this.mouse_y - this.on_node.y;
         if(MODEL.selection.indexOf(this.on_node) < 0) MODEL.select(this.on_node);
@@ -2055,6 +2081,10 @@ class GUIController extends Controller {
   mouseUp(e) {
     // Responds to mouseup event.
     const cp = this.paper.cursorPosition(e.pageX, e.pageY);
+    // Keep track of the cumulative relative movement since the last
+    // mousedown event.
+    this.net_move_x += cp[0] - this.mouse_x;
+    this.net_move_y += cp[1] - this.mouse_y;
     this.mouse_up_x = cp[0];
     this.mouse_up_y = cp[1];
     // First check whether user is selecting a rectangle.
@@ -2071,44 +2101,32 @@ class GUIController extends Controller {
       // If rectangle has size greater than 2x2 pixels, select all elements
       // having their center inside the selection rectangle.
       if(brx - tlx > 2 && bry - tly > 2) {
-        const ol = [], fc = MODEL.focal_cluster;
-        for(let i = 0; i < fc.processes.length; i++) {
-          const obj = fc.processes[i];
-          if(obj.x >= tlx && obj.x <= brx && obj.y >= tly && obj.y < bry) {
-            ol.push(obj);
+        const
+            ol = [],
+            fc = MODEL.focal_cluster;
+        for(const p of fc.processes) {
+          if(p.x >= tlx && p.x <= brx && p.y >= tly && p.y < bry) ol.push(p);
+        }
+        for(const pp of fc.product_positions) {
+          if(pp.x >= tlx && pp.x <= brx && pp.y >= tly && pp.y < bry) {
+            ol.push(pp.product);
           }
         }
-        for(let i = 0; i < fc.product_positions.length; i++) {
-          const obj = fc.product_positions[i];
-          if(obj.x >= tlx && obj.x <= brx && obj.y >= tly && obj.y < bry) {
-            ol.push(obj.product);
-          }
+        for(const c of fc.sub_clusters) {
+          if(c.x >= tlx && c.x <= brx && c.y >= tly && c.y < bry) ol.push(c);
         }
-        for(let i = 0; i < fc.sub_clusters.length; i++) {
-          const obj = fc.sub_clusters[i];
-          if(obj.x >= tlx && obj.x <= brx && obj.y >= tly && obj.y < bry) {
-            ol.push(obj);
-          }
+        for(const n of fc.notes) {
+          if(n.x >= tlx && n.x <= brx && n.y >= tly && n.y < bry) ol.push(n);
         }
-        for(let i = 0; i < fc.notes.length; i++) {
-          const obj = fc.notes[i];
-          if(obj.x >= tlx && obj.x <= brx && obj.y >= tly && obj.y < bry) {
-            ol.push(obj);
-          }
-        }
-        for(let i in MODEL.links) if(MODEL.links.hasOwnProperty(i)) {
-          const obj = MODEL.links[i];
+        for(let k in MODEL.links) if(MODEL.links.hasOwnProperty(k)) {
+          const l = MODEL.links[k];
           // Only add a link if both its nodes are selected as well.
-          if(fc.linkInList(obj, ol)) {
-            ol.push(obj);
-          }
+          if(fc.linkInList(l, ol)) ol.push(l);
         }
-        for(let i in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(i)) {
-          const obj = MODEL.constraints[i];
+        for(let k in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(k)) {
+          const c = MODEL.constraints[k];
           // Only add a constraint if both its nodes are selected as well.
-          if(fc.linkInList(obj, ol)) {
-            ol.push(obj);
-          }
+          if(fc.linkInList(c, ol)) ol.push(c);
         }
         // Having compiled the object list, actually select them.
         MODEL.selectList(ol);
@@ -2123,9 +2141,9 @@ class GUIController extends Controller {
     } else if(this.linking_node) {
       // If so, check whether the cursor is over a node of the appropriate type.
       if(this.on_node && MODEL.canLink(this.linking_node, this.on_node)) {
-        const obj = MODEL.addLink(this.linking_node, this.on_node);
-        UNDO_STACK.push('add', obj);
-        MODEL.select(obj);
+        const l = MODEL.addLink(this.linking_node, this.on_node);
+        UNDO_STACK.push('add', l);
+        MODEL.select(l);
         this.paper.drawModel(MODEL);
       }
       this.linking_node = null;
@@ -2149,31 +2167,25 @@ class GUIController extends Controller {
     // Then check whether the user is moving a node (possibly part of a
     // larger selection).
     } else if(this.dragged_node) {
-      // Always perform the move operation (this will do nothing if the
-      // cursor did not move).
-      MODEL.moveSelection(
-          this.mouse_up_x - this.mouse_x, this.mouse_up_y - this.mouse_y);
-      // Set cursor to pointer, as it should be on some node while dragging.
-      this.paper.container.style.cursor = 'pointer';
-      // @@TO DO: if on top of a cluster, move it there.
-      // NOTE: Cursor will always be over the selected cluster (while dragging).
-      if(this.on_cluster && !this.on_cluster.selected) {
-        UNDO_STACK.push('drop', this.on_cluster);
-        MODEL.dropSelectionIntoCluster(this.on_cluster);
-        this.on_node = null;
-        this.on_note = null;
-        this.target_cluster = null;
-        // Redraw cluster to erase its orange "target corona".
-        UI.paper.drawCluster(this.on_cluster);
-      }
-  
-      // Check wether the cursor has been moved.
+      // NOTE: When double-clicking with a sensitive mouse, the cursor
+      // may move a few pixels, and then this should NOT be considered
+      // as an intentional move. Hence, check wether the cursor has been
+      // moved *significantly* since the mouseDown event.
       const
-          absdx = Math.abs(this.mouse_down_x - this.mouse_x),
-          absdy = Math.abs(this.mouse_down_y - this.mouse_y);
-      // If no *significant* move made, remove the move undo.
-      if(absdx + absdy === 0) UNDO_STACK.pop('move');
-      if(this.doubleClicked && absdx + absdy < 3) {
+          mdx = this.mouse_down_x - this.mouse_x,
+          mdy = this.mouse_down_y - this.mouse_y,
+          absdx = Math.abs(this.net_move_x),
+          absdy = Math.abs(this.net_move_y),
+          sigmv = (MODEL.align_to_grid ? MODEL.grid_pixels / 4 : 2.5);
+      if(this.doubleClicked) {
+        // Ignore insignificant move.
+        if(absdx < sigmv && absdy < sigmv) {
+          // Undo the move and remove the action from the UNDO-stack.
+          // NOTE: Do not use the regular `undo` routine as this would
+          // make the action redoable.
+          MODEL.moveSelection(mdx, mdy);
+          UNDO_STACK.pop('move');
+        }
         // Double-clicking opens properties dialog, except for clusters;
         // then "drill down", i.e., make the double-clicked cluster focal.
         if(this.dragged_node instanceof Cluster) {
@@ -2197,6 +2209,30 @@ class GUIController extends Controller {
         } else {
           this.showNotePropertiesDialog(this.dragged_node);
         }
+      } else {
+        // Move the selection, even if the movement is very small, because the
+        // final movement since last mouse event may make the *cumulative*
+        // movement since the last mouseDown significant.
+        MODEL.moveSelection(
+            this.mouse_up_x - this.mouse_x, this.mouse_up_y - this.mouse_y);
+        if(this.net_move_x < 0.5 && this.net_move_y < 0.5) {
+          // No effective move of the selection => remove the UNDO.
+          UNDO_STACK.pop('move');
+        }
+        // Set cursor to pointer, as it should be on some node while dragging.
+        this.paper.container.style.cursor = 'pointer';
+        // NOTE: Cursor will always be over the selected cluster (while dragging).
+        if(this.on_cluster && !this.on_cluster.selected) {
+          UNDO_STACK.push('drop', this.on_cluster);
+          MODEL.dropSelectionIntoCluster(this.on_cluster);
+          this.on_node = null;
+          this.on_note = null;
+          this.target_cluster = null;
+          // Redraw cluster to erase its orange "target corona".
+          UI.paper.drawCluster(this.on_cluster);
+        }
+        // Only now align to grid.
+        MODEL.alignToGrid();
       }
       this.dragged_node = null;
   
@@ -2210,6 +2246,8 @@ class GUIController extends Controller {
         this.showConstraintPropertiesDialog(this.on_constraint);
       }
     }
+    // Finally, reset "selecting with rectangle" (just to be sure), and
+    // update the UI button states.
     this.start_sel_x = -1;
     this.start_sel_y = -1;
     this.updateButtons();
@@ -2253,9 +2291,8 @@ class GUIController extends Controller {
         topmod = null,
         code = e.code,
         alt = e.altKey;
-    for(let i = 0; i < modals.length; i++) {
+    for(const m of modals) {
       const
-          m = modals[i],
           cs = window.getComputedStyle(m),
           z = parseInt(cs.zIndex);
       if(cs.display !== 'none' && z > maxz) {
@@ -2569,7 +2606,7 @@ class GUIController extends Controller {
   validNames(nn, an='') {
     // Check whether names meet conventions; if not, warn user
     if(!UI.validName(nn) || nn.indexOf(UI.BLACK_BOX) >= 0) {
-      UI.warn(`Invalid name "${nn}"`);
+      this.warningInvalidName(nn);
       return false;
     }
     if(an === '' || an === UI.NO_ACTOR) return true;
@@ -2627,12 +2664,12 @@ class GUIController extends Controller {
   }
   
   updateScaleUnitList() {
-    // Update the HTML datalist element to reflect all scale units
+    // Update the HTML datalist element to reflect all scale units.
     const
         ul = [],
         keys = Object.keys(MODEL.scale_units).sort(ciCompare);
-    for(let i = 0; i < keys.length; i++) {
-      ul.push(`<option value="${MODEL.scale_units[keys[i]].name}">`);
+    for(const k of keys) {
+      ul.push(`<option value="${MODEL.scale_units[k].name}">`);
     }
     document.getElementById('units-data').innerHTML = ul.join('');
   }
@@ -3001,6 +3038,7 @@ class GUIController extends Controller {
           const vn = this.validName(nn);
           if(!vn) {
             UNDO_STACK.pop();
+            this.warningInvalidName(nn);
             return false;
           }
           // NOTE: Pre-check if product exists.
@@ -3229,8 +3267,8 @@ class GUIController extends Controller {
           if(elig.length) {
             sl.push('<div class="paste-select"><select id="paste-ft-', i,
               '" style="font-size: 12px">');
-            for(let j = 0; j < elig.length; j++) {
-              const dn = elig[j].displayName;
+            for(const e of elig) {
+              const dn = e.displayName;
               sl.push('<option value="', dn, '">', dn, '</option>');
             }
             sl.push('</select></div>');
@@ -3404,8 +3442,7 @@ class GUIController extends Controller {
     function nameConflicts(node) {
       // Maps names of entities defined by the child nodes of `node`
       // while detecting name conflicts.
-      for(let i = 0; i < node.childNodes.length; i++) {
-        const c = node.childNodes[i];
+      for(const c of node.childNodes) {
         if(c.nodeName !== 'link' && c.nodeName !== 'constraint') {
           const
               fn = fullName(c),
@@ -3505,9 +3542,8 @@ class GUIController extends Controller {
       // Prompt for names of selected cluster nodes.
       if(selc_node.childNodes.length && !mapping.prefix) {
         mapping.top_clusters = {};
-        for(let i = 0; i < selc_node.childNodes.length; i++) {
+        for(const c of selc_node.childNodes) {
           const
-              c = selc_node.childNodes[i],
               fn = fullName(c),
               mn = mappedName(fn);
           mapping.top_clusters[fn] = mn;
@@ -3522,9 +3558,8 @@ class GUIController extends Controller {
       const
           ft_map = {},
           ft_type = {};
-      for(let i = 0; i < from_tos_node.childNodes.length; i++) {
+      for(const c of from_tos_node.childNodes) {
         const
-            c = from_tos_node.childNodes[i],
             fn = fullName(c),
             mn = mappedName(fn);
         if(MODEL.objectByName(mn)) {
@@ -3554,20 +3589,14 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     }
     
     // No conflicts => add all
-    for(let i = 0; i < extras_node.childNodes.length; i++) {
-      addEntityFromNode(extras_node.childNodes[i]);
-    }
-    for(let i = 0; i < from_tos_node.childNodes.length; i++) {
-      addEntityFromNode(from_tos_node.childNodes[i]);
-    }
-    for(let i = 0; i < entities_node.childNodes.length; i++) {
-      addEntityFromNode(entities_node.childNodes[i]);
-    }
+    for(const c of extras_node.childNodes) addEntityFromNode(c);
+    for(const c of from_tos_node.childNodes) addEntityFromNode(c);
+    for(const c of entities_node.childNodes) addEntityFromNode(c);
     // Update diagram, showing newly added nodes as selection.
     MODEL.clearSelection();
-    for(let i = 0; i < selection_node.childNodes.length; i++) {
+    for(const c of selection_node.childNodes) {
       const
-          n = xmlDecoded(nodeContent(selection_node.childNodes[i])),
+          n = xmlDecoded(nodeContent(c)),
           obj = MODEL.objectByName(mappedName(n));
       if(obj) {
         // NOTE: Selected products must be positioned.
@@ -3681,6 +3710,12 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     cb = UI.boxChecked('settings-power');
     redraw = redraw || cb !== model.with_power_flow;
     model.with_power_flow = cb;
+    // NOTE: Clear the "ignore" options if no power flow constraints.
+    if(!model.with_power_flow) {
+      model.ignore_grid_capacity = false;
+      model.ignore_KVL = false;
+      model.ignore_power_losses = false;
+    }
     cb = UI.boxChecked('settings-cost-prices');
     redraw = redraw || cb !== model.infer_cost_prices;
     model.infer_cost_prices = cb;
@@ -3749,8 +3784,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     const
         md = this.modals.solver,
         html = ['<option value="">(default)</option>'];
-    for(let i = 0; i < VM.solver_list.length; i++) {
-      const s = VM.solver_list[i];
+    for(const s of VM.solver_list) {
       html.push(['<option value="', s,
           (s === MODEL.preferred_solver ? '"selected="selected' : ''),
           '">', VM.solver_names[s], '</option>'].join(''));
@@ -3885,17 +3919,13 @@ console.log('HERE name conflicts', name_conflicts, mapping);
       plate.innerHTML = pg.voltage;
       overlay.style.display = 'block';
       // Disable tab stop for the properties that are now not shown.
-      for(let i = 0; i < notab.length; i++) {
-        md.element(notab[i]).tabIndex = -1;
-      }
+      for(const nt of notab) md.element(nt).tabIndex = -1;
     } else {
       plate.innerHTML = '(&#x21AF;)';
       plate.className = 'no-grid-plate';
       overlay.style.display = 'none';
       // Enable tab stop for the properties that are now not shown.
-      for(let i = 0; i < notab.length; i++) {
-        md.element(notab[i]).tabIndex = 0;
-      }
+      for(const nt of notab) md.element(nt).tabIndex = 0;
     }
     this.hideGridPlateMenu('process');
     // Show plate "button" only when power grids option is set for model.
@@ -4131,9 +4161,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
 
   showClusterPropertiesDialog(c, group=[]) {
     let bb = false;
-    for(let i = 0; !bb && i < group.length; i++) {
-      bb = group[i].is_black_boxed;
-    }
+    for(const g of group) bb = bb || g.is_black_boxed;
     if(bb || c.is_black_boxed) {
       this.notify('Black-boxed clusters cannot be edited');
       return;
@@ -4375,31 +4403,27 @@ console.log('HERE name conflicts', name_conflicts, mapping);
       this.drawObject(p);
       // Make list of nodes related to P by links
       const rel_nodes = [];
-      for(let i = 0; i < p.inputs.length; i++) {
-        rel_nodes.push(p.inputs[i].from_node);
-      }
-      for(let i = 0; i < p.outputs.length; i++) {
-        rel_nodes.push(p.outputs[i].to_node);
-      }
+      for(const l of p.inputs) rel_nodes.push(l.from_node);
+      for(const l of p.outputs) rel_nodes.push(l.to_node);
       const options = [];
-      for(let i in MODEL.products) if(MODEL.products.hasOwnProperty(i) &&
+      for(let k in MODEL.products) if(MODEL.products.hasOwnProperty(k) &&
           // NOTE: do not show "black-boxed" products
-          !i.startsWith(UI.BLACK_BOX)) {
-        const po = MODEL.products[i];
+          !k.startsWith(UI.BLACK_BOX)) {
+        const po = MODEL.products[k];
         // Skip the product that is to be replaced, an also products having a
         // different type (regular product or data product) 
         if(po !== p && po.is_data === p.is_data) {
           // NOTE: also skip products PO that are linked to a node Q that is
           // already linked to P (as replacing would then create a two-way link)
           let no_rel = true; 
-          for(let j = 0; j < po.inputs.length; j++) {
-            if(rel_nodes.indexOf(po.inputs[j].from_node) >= 0) {
+          for(const l of po.inputs) {
+            if(rel_nodes.indexOf(l.from_node) >= 0) {
               no_rel = false;
               break;
             }
           }
-          for(let j = 0; j < po.outputs.length; j++) {
-            if(rel_nodes.indexOf(po.outputs[j].to_node) >= 0) {
+          for(const l of po.outputs) {
+            if(rel_nodes.indexOf(l.to_node) >= 0) {
               no_rel = false;
               break;
             }

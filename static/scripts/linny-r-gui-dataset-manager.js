@@ -207,10 +207,9 @@ class GUIDatasetManager extends DatasetManager {
   }
   
   hideCollapsedRows() {
-    // Hides all rows except top level and immediate children of expanded
-    for(let i = 0; i < this.dataset_table.rows.length; i++) {
+    // Hides all rows except top level and immediate children of expanded.
+    for(const row of this.dataset_table.rows) {
       const
-          row = this.dataset_table.rows[i],
           // Get the first DIV in the first TD of this row
           first_div = row.firstChild.firstElementChild,
           btn = first_div.dataset.prefix === 'x';
@@ -274,10 +273,7 @@ class GUIDatasetManager extends DatasetManager {
       pl.pop();
     }
     this.hideCollapsedRows();
-    for(let i = 0; i < this.dataset_table.rows.length; i++) {
-      const r = this.dataset_table.rows[i];
-      if(r.dataset.prefix === lcp) return r;
-    }
+    for(const r of this.dataset_table.rows) if(r.dataset.prefix === lcp) return r;
     return null;
   }
 
@@ -328,8 +324,8 @@ class GUIDatasetManager extends DatasetManager {
         names = [],
         pref_names = {},
         xids = [];
-    for(let i = 0; i < dnl.length; i++) {
-      const pref = UI.prefixesAndName(MODEL.datasets[dnl[i]].name);
+    for(const dn of dnl) {
+      const pref = UI.prefixesAndName(MODEL.datasets[dn].name);
       // NOTE: only the name part (so no prefixes at all) will be shown
       names.push(pref.pop());
       indent.push(pref.length);
@@ -851,8 +847,7 @@ class GUIDatasetManager extends DatasetManager {
     // Update all chartvariables referencing this dataset + old selector.
     const vl = MODEL.datasetVariables;
     let cv_cnt = 0;
-    for(let i = 0; i < vl.length; i++) {
-      const v = vl[i];
+    for(const v of vl) {
       if(v.object === this.selected_dataset && v.attribute === oldm.selector) {
         v.attribute = m.selector;
         cv_cnt++;
@@ -949,16 +944,10 @@ class GUIDatasetManager extends DatasetManager {
       return;
     }
     prefix += UI.PREFIXER;
-    const
-        dsn = ds.displayName,
-        pml = ds.inferPrefixableModifiers,
-        xl = MODEL.allExpressions,
-        vl = MODEL.datasetVariables,
-        nl = MODEL.notesWithTags;
-    for(let i = 0; i < pml.length; i++) {
+    const dsn = ds.displayName;
+    for(const m of ds.inferPrefixableModifiers) {
       // Create prefixed dataset with correct default value
       const
-          m = pml[i],
           sel = m.selector,
           newds = MODEL.addDataset(prefix + sel);
       if(newds) {
@@ -976,17 +965,16 @@ class GUIDatasetManager extends DatasetManager {
         const
             from = dsn + UI.OA_SEPARATOR + sel,
             to = newds.displayName;
-        for(let j = 0; j < vl.length; j++) {
-          const v = vl[j];
-          // NOTE: variable should match original dataset + selector
+        for(const v of MODEL.datasetVariables) {
+          // NOTE: variable should match original dataset + selector.
           if(v.displayName === from) {
-            // Change to new dataset WITHOUT selector
+            // Change to new dataset WITHOUT selector.
             v.object = newds;
             v.attribute = '';
             vcount++;
           }
         }
-        // Rename variable in the Sensitivity Analysis
+        // Rename variable in the Sensitivity Analysis.
         for(let j = 0; j < MODEL.sensitivity_parameters.length; j++) {
           if(MODEL.sensitivity_parameters[j] === from) {
             MODEL.sensitivity_parameters[j] = to;
@@ -1008,10 +996,8 @@ class GUIDatasetManager extends DatasetManager {
             // Pattern ends at any character that is invalid for a
             // dataset modifier selector (unlike equation names)
             '\\s*[^a-zA-Z0-9\\+\\-\\%\\_]', 'gi');
-        for(let j = 0; j < xl.length; j++) {
-          const
-              x = xl[j],
-              matches = x.text.match(re);
+        for(const x of MODEL.allExpressions) {
+          const matches = x.text.match(re);
           if(matches) {
             for(let k = 0; k < matches.length; k++) {
               // NOTE: each match will start with the opening bracket,
@@ -1025,10 +1011,8 @@ class GUIDatasetManager extends DatasetManager {
             x.code = null;
           }
         }
-        for(let j = 0; j < nl.length; j++) {
-          const
-              n = nl[j],
-              matches = n.contents.match(re);
+        for(const n of MODEL.notesWithTags) {
+          const matches = n.contents.match(re);
           if(matches) {
             for(let k = 0; k < matches.length; k++) {
               // See NOTE above for the use of `slice` here
@@ -1181,9 +1165,8 @@ class GUIDatasetManager extends DatasetManager {
         parts = lines[0].split(sep),
         dsn = [];
     let quoted = false;
-    for(let i = 0; i < parts.length; i++) {
+    for(const p of parts) {
       const
-          p = parts[i],
           swq = /^\"(\"\")*($|[^\"])/.test(p),
           ewq = p.endsWith('"');
       if(!quoted && swq && !ewq) {
@@ -1236,8 +1219,6 @@ class GUIDatasetManager extends DatasetManager {
         if(sf === '' && v !== '') {
           UI.warn(`Invalid numerical value "${v}" for <strong>${dsn[j]}</strong> on line ${i}`);
           return false;
-        } else {
-          dsa[j].push(sf);
         }
       }
     }

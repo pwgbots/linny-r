@@ -122,9 +122,7 @@ class GUIMonitor {
   addProgressBlock(b, err, time) {
     // Adds a block to the progress bar, and updates the relative block lengths
     let total_time = 0;
-    for(let i = 0; i < b; i++) {
-      total_time += VM.solver_times[i];
-    }
+    for(let i = 0; i < b; i++) total_time += VM.solver_times[i];
     const
         n = document.createElement('div'),
         ssecs = VM.solver_secs[b - 1];
@@ -158,15 +156,13 @@ class GUIMonitor {
   showBlock(b) {
     this.shown_block = b;
     const cn = this.progress_bar.childNodes;
-    for(let i = 0; i < cn.length; i++) {
-      cn[i].classList.remove('sel-pb');
-    }
+    for(const n of cn) n.classList.remove('sel-pb');
     cn[b - 1].classList.add('sel-pb');
     this.updateContent(this.tab);
   }
 
   updateDialog() {
-    // Implements default behavior for a draggable/resizable dialog
+    // Implements default behavior for a draggable/resizable dialog.
     this.updateContent(this.tab);
   }
   
@@ -199,33 +195,31 @@ class GUIMonitor {
   }
 
   showCallStack(t) {
-    // Show the error message in the dialog header
-    // NOTE: prevent showing again when VM detects multiple errors
+    // Show the error message in the dialog header.
+    // NOTE: Prevent showing again when VM detects multiple errors.
     if(this.call_stack_shown) return;
     const
         csl = VM.call_stack.length,
         top = VM.call_stack[csl - 1],
         err = top.vector[t],
-        // Make separate lists of variable names and their expressions
+        // Make separate lists of variable names and their expressions.
         vlist = [],
         xlist = [];
     document.getElementById('call-stack-error').innerHTML =
         `ERROR at t=${t}: ` + VM.errorMessage(err);
-    for(let i = 0; i < csl; i++) {
-      const
-          x = VM.call_stack[i],
-          // For equations, only show the attribute
-          ons = (x.object === MODEL.equations_dataset ? '' :
-              x.object.displayName + '|');
+    for(const x of VM.call_stack) {
+      // For equations, only show the attribute.
+      const ons = (x.object === MODEL.equations_dataset ? '' :
+          x.object.displayName + '|');
       vlist.push(ons + x.attribute);
-      // Trim spaces around all object-attribute separators in the expression
+      // Trim spaces around all object-attribute separators in the expression.
       xlist.push(x.text.replace(/\s*\|\s*/g, '|'));
     }
-    // Highlight variables where they are used in the expressions
+    // Highlight variables where they are used in the expressions.
     const vcc = UI.chart_colors.length;
     for(let i = 0; i < xlist.length; i++) {
       for(let j = 0; j < vlist.length; j++) {
-        // Ignore selectors, as these may be different per experiment
+        // Ignore selectors, as these may be different per experiment.
         const
             vnl = vlist[j].split('|'),
             sel = (vnl.length > 1 ? vnl.pop() : ''),
@@ -236,26 +230,26 @@ class GUIMonitor {
         xlist[i] = xlist[i].split(vn).join(vnc);
       }
     }
-    // Then also color the variables
+    // Then also color the variables.
     for(let i = 0; i < vlist.length; i++) {
       vlist[i] = '<span style="font-weight: 600; color: ' +
         `${UI.chart_colors[i % vcc]}">${vlist[i]}</span>`;
     }
-    // Start without indentation
+    // Start without indentation.
     let pad = 0;
-    // First show the variable being computed
+    // First show the variable being computed.
     const tbl = ['<div>', vlist[0], '</div>'];
-    // Then iterate upwards over the call stack
+    // Then iterate upwards over the call stack.
     for(let i = 0; i < vlist.length - 1; i++) {
-      // Show the expression, followed by the next computed variable
+      // Show the expression, followed by the next computed variable.
       tbl.push(['<div class="call-stack-row" style="padding-left: ',
         pad, 'px"><div class="call-stack-expr">', xlist[i],
-        '</div><div class="call-stack-vbl">&nbsp;\u2937', vlist[i+1],
+        '</div><div class="call-stack-vbl">&nbsp;\u2937', vlist[i + 1],
         '</div></div>'].join(''));
       // Increase indentation
       pad += 8;
     }
-    // Show the last expression, highlighting the array-out-of-bounds (if any)
+    // Show the last expression, highlighting the array-out-of-bounds (if any).
     let last_x = xlist[xlist.length - 1],
         anc = '';
     if(VM.out_of_bounds_array) {
@@ -265,14 +259,14 @@ class GUIMonitor {
     }
     tbl.push('<div class="call-stack-expr" style="padding-left: ' +
         `${pad}px">${last_x}</div>`);
-    // Add index-out-of-bounds message if appropriate
+    // Add index-out-of-bounds message if appropriate.
     if(anc) {
       tbl.push('<div style="color: gray; margin-top: 8px; font-size: 10px">',
           VM.out_of_bounds_msg.replace(VM.out_of_bounds_array, anc), '</div>');
     }
-    // Dump the code for the last expression to the console
+    // Dump the code for the last expression to the console.
     console.log('Code for', top.text, top.code);
-    // Show the call stack dialog
+    // Show the call stack dialog.
     document.getElementById('call-stack-table').innerHTML = tbl.join('');
     document.getElementById('call-stack-modal').style.display = 'block';
     this.call_stack_shown = true;    
@@ -284,19 +278,19 @@ class GUIMonitor {
   }
 
   logMessage(block, msg) {
-    // Appends a solver message to the monitor's messages textarea
+    // Append a solver message to the monitor's messages textarea
     if(this.messages_text.value === VM.no_messages) {
-      // Erase the "(no messages)" if still showing
+      // Erase the "(no messages)" if still showing.
       this.messages_text.value = '';
     }
     if(this.shown_block === 0 && block !== this.last_message_block) {
-      // Clear text area when starting with new block while no block selected
+      // Clear text area when starting with new block while no block selected.
       this.last_message_block = block;
       this.messages_text.value = '';      
     }
     // NOTE: `msg` is appended only if no block has been selected by
     // clicking on the progress bar, or if the message belongs to the
-    // selected block
+    // selected block.
     if(this.shown_block === 0 || this.shown_block === block) {
       this.messages_text.value += msg + '\n';
     }
@@ -347,8 +341,8 @@ class GUIMonitor {
   }
 
   connectToServer() {
-    // Prompts for credentials if not connected yet.
-    // NOTE: No authentication prompt if SOLVER.user_id in `linny-r-config.js`
+    // Prompt for credentials if not connected yet.
+    // NOTE: No authentication prompt if SOLVER.user_id in `linny-r-config.js`.
     // is left blank.
     if(!VM.solver_user) {
       VM.connected = false;
@@ -414,7 +408,7 @@ UI.logHeapSize(`BEFORE creating post data`);
             mipgap: MODEL.MIP_gap
           });
 UI.logHeapSize(`AFTER creating post data`);
-    // Immediately free the memory taken up by VM.lines
+    // Immediately free the memory taken up by VM.lines.
     VM.lines = '';
     UI.logHeapSize(`BEFORE submitting block #${bwr} to solver`);
     fetch('solver/', pd)
@@ -430,15 +424,15 @@ UI.logHeapSize(`AFTER creating post data`);
           try {
             VM.processServerResponse(JSON.parse(data));
             UI.logHeapSize('After processing results for block #' + this.block_count);
-            // If no errors, solve next block (if any)
-            // NOTE: use setTimeout so that this calling function returns,
-            // and browser can update its DOM to display progress
+            // If no errors, solve next block (if any).
+            // NOTE: Use setTimeout so that this calling function returns,
+            // and browser can update its DOM to display progress.
             setTimeout(() => VM.solveBlocks(), 1);
           } catch(err) {
-            // Log details on the console
+            // Log details on the console.
             console.log('ERROR while parsing JSON:', err);
             console.log(data);
-            // Pass summary on to the browser
+            // Pass summary on to the browser.
             const msg = 'ERROR: Unexpected data from server: ' +
                 ellipsedText(data);
             this.logMessage(this.block_count, msg);

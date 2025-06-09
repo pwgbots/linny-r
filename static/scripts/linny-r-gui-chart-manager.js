@@ -123,9 +123,7 @@ class GUIChartManager extends ChartManager {
     document.getElementById('chart-copy-table-btn').addEventListener(
         'click', () => CHART_MANAGER.copyTable());
     document.getElementById('chart-save-btn').addEventListener(
-        'click', () => CHART_MANAGER.downloadChart());
-    document.getElementById('chart-render-btn').addEventListener(
-        'click', () => CHART_MANAGER.renderChartAsPNG());
+        'click', () => CHART_MANAGER.downloadChart(event.shiftKey));
     document.getElementById('chart-widen-btn').addEventListener(
         'click', () => CHART_MANAGER.stretchChart(1));
     document.getElementById('chart-narrow-btn').addEventListener(
@@ -370,8 +368,8 @@ class GUIChartManager extends ChartManager {
       }
       UI.setBox('chart-title', c.show_title);
       const ol = [];
-      for(let i = 0; i < this.legend_options.length; i++) {
-        const opt = this.legend_options[i], val = opt.toLowerCase();
+      for(const opt of this.legend_options) {
+        const val = opt.toLowerCase();
         ol.push(['<option value="', val,
           (c.legend_position === val ? '" selected="selected' : ''),
           '">', opt, '</option>'].join(''));
@@ -507,9 +505,7 @@ class GUIChartManager extends ChartManager {
       let n = '';
       if(c.histogram) {
         let vv = [];
-        for(let i = 0; i < c.variables.length; i++) {
-          if(c.variables[i].visible) vv.push(c.variables[i]);
-        }
+        for(const v of c.variables) if(v.visible) vv.push(v);
         const
             l = vv.length,
             bars = c.bins * l,
@@ -608,10 +604,8 @@ class GUIChartManager extends ChartManager {
       nc.bins = c.bins;
       nc.show_title = c.show_title;
       nc.legend_position = c.legend_position;
-      for(let i = 0; i < c.variables.length; i++) {
-        const
-            cv = c.variables[i],
-            nv = new ChartVariable(nc);
+      for(const cv of c.variables) {
+        const nv = new ChartVariable(nc);
         nv.setProperties(cv.object, cv.attribute, cv.stacked,
             cv.color, cv.scale_factor, cv.line_width, cv.sorted);
         nc.variables.push(nv);
@@ -751,10 +745,10 @@ class GUIChartManager extends ChartManager {
         tr = [],
         dn = dsm.displayName,
         tbl = md.element('table');
-    for(let i = 0; i < indices.length; i++) {
-      tr.push('<tr><td class="v-box"><div id="wcv-box-', indices[i],
+    for(const index of indices) {
+      tr.push('<tr><td class="v-box"><div id="wcv-box-', index,
           '" class="box clear" onclick="UI.toggleBox(event);"></td>',
-          '<td class="vname">', dn.replace('??', indices[i]),
+          '<td class="vname">', dn.replace('??', index),
           '</td></tr>');
       tbl.innerHTML = tr.join('');
     }
@@ -769,11 +763,10 @@ class GUIChartManager extends ChartManager {
         md = this.add_wildcard_modal,
         c = md.chart,
         dsm = md.modifier,
-        il = md.indices,
         indices = [];
     if(c && dsm && il) {
-      for(let i = 0; i < il.length; i++) {
-        if(UI.boxChecked('wcv-box-'+ il[i])) indices.push(il[i]);
+      for(const index of md.indices) {
+        if(UI.boxChecked('wcv-box-'+ index)) indices.push(index);
       }
     }
     if(indices.length) c.addWildcardVariables(dsm, indices);
@@ -947,28 +940,27 @@ class GUIChartManager extends ChartManager {
       this.variable_index = -1;
       this.updateDialog();
       // Also update the experiment viewer (charts define the output variables)
-      // and finder dialog
+      // and finder dialog.
       if(EXPERIMENT_MANAGER.selected_experiment) UI.updateControllerDialogs('FX');
     }
     this.variable_modal.hide();
   }
   
   showChartImage(c) {
-    // Displays the SVG image for chart `c` (computed by this Chart object)
+    // Display the SVG image for chart `c` (computed by this Chart object).
     if(c) document.getElementById('chart-svg').innerHTML = c.svg;
   }
 
   drawTable() {
-    // Shows the statistics on the chart variables.
+    // Show the statistics on the chart variables.
     const html = [];
     let vbl = [];
     if(this.chart_index >= 0) vbl = MODEL.charts[this.chart_index].variables;
     // First get the (potentially floating point) numbers so that their format
-    // can be made uniform per column
+    // can be made uniform per column.
     const data = [];
     let nr = 0;
-    for(let i = 0; i < vbl.length; i++) {
-      const v = vbl[i];
+    for(const v of vbl) {
       if(v.visible) {
         data.push([VM.sig4Dig(v.minimum), VM.sig4Dig(v.maximum),
             VM.sig4Dig(v.mean), VM.sig4Dig(Math.sqrt(v.variance)),
@@ -980,7 +972,7 @@ class GUIChartManager extends ChartManager {
       this.table_panel.innerHTML = '<div id="no-chart-data">No data</div>';
       return;
     }
-    // Process each of 5 columns separately
+    // Process each of 5 columns separately.
     for(let c = 0; c < 5; c++) {
       const col = [];
       for(let r = 0; r < data.length; r++) {
@@ -998,10 +990,9 @@ class GUIChartManager extends ChartManager {
         '<th>&mu;</th><th>&sigma;</th><th>&Sigma;</th>',
         '<th>&ne;0</th><th>&#x26A0;</th></tr>');
     nr = 0;
-    for(let i = 0; i < vbl.length; i++) {
-      const v = vbl[i];
+    for(const v of vbl) {
       if(v.visible) {
-        // NOTE: while still solving, display t-1 as N
+        // NOTE: While still solving, display t-1 as N.
         const n = Math.max(0, v.N);
         html.push('<tr><td class="v-name">', v.displayName, '</td><td>', n,
             '</td><td title="', v.minimum.toPrecision(8), '">', data[nr][0],
@@ -1086,16 +1077,16 @@ class GUIChartManager extends ChartManager {
     }
   }
   
-  downloadChart() {
-    // Pushes the SVG of the selected chart as file to the browser
+  downloadChart(shift) {
+    // Pushes the SVG of the selected chart as file to the browser.
     if(this.chart_index >= 0) {
-      FILE_MANAGER.pushOutSVG(MODEL.charts[this.chart_index].svg);
+      const svg = MODEL.charts[this.chart_index].svg;
+      if(shift) {
+        FILE_MANAGER.pushOutSVG(svg);
+      } else {
+        FILE_MANAGER.pushOutPNG(svg);
+      }
     }
-  }
-  
-  renderChartAsPNG() {
-    window.localStorage.removeItem('png-url');
-    FILE_MANAGER.renderSVGAsPNG(MODEL.charts[this.chart_index].svg);
   }
 
   drawChart() {

@@ -280,10 +280,10 @@ class DocumentationManager {
 
   clearEntity(list) {
     // To be called when entities are deleted 
-    if(list.indexOf(this.entity) >= 0) {
+    if(list === true || list.indexOf(this.entity) >= 0) {
       this.stopEditing();
       this.entity = null;
-      this.title.innerHTML = 'Information and documentation';
+      this.title.innerHTML = 'About Linny-R';
       this.viewer.innerHTML = this.about_linny_r;
     }
   }
@@ -540,18 +540,17 @@ class DocumentationManager {
 
   showArrowLinks(arrow) {
     // Show list of links represented by a composite arrow.
-    const
-        n = arrow.links.length,
-        msg = 'Arrow represents ' + pluralS(n, 'link');
+    const msg = 'Arrow represents ' + pluralS(arrow.links.length, 'link');
     UI.setMessage(msg);
     if(this.visible && !this.editing) {
       // Set the dialog title.
       this.title.innerHTML = msg;
       // Show list.
       const lis = [];
-      let l, dn, c, af;
-      for(let i = 0; i < n; i++) {
-        l = arrow.links[i];
+      let dn,
+          c,
+          af;
+      for(const l of arrow.links) {
         dn = l.displayName;
         if(l.from_node instanceof Process) {
           c = UI.color.produced;
@@ -600,9 +599,7 @@ class DocumentationManager {
       this.title.innerHTML = msg;
       // Show list.
       const lis = [];
-      for(let i = 0; i < iol.length; i++) {
-        lis.push(`<li>${iol[i].displayName}</li>`);
-      }
+      for(const io of iol) lis.push(`<li>${io.displayName}</li>`);
       lis.sort(ciCompare);
       this.viewer.innerHTML = `<ul>${lis.join('')}</ul>`;
     }
@@ -714,9 +711,8 @@ class DocumentationManager {
         this.differenceAsTable(d.settings));
     if('units' in d) html.push('<h2>Units</h2>',
         this.differenceAsTable(d.units));
-    for(let i = 0; i < UI.MC.ENTITY_PROPS.length; i++) {
-      const e = UI.MC.ENTITY_PROPS[i];
-      if(e in d) html.push('<h2>' + this.propertyName(e) + '</h2>',
+    for(const e of UI.MC.ENTITY_PROPS) if(e in d) {
+      html.push('<h2>' + this.propertyName(e) + '</h2>',
           this.differenceAsTable(d[e]));
     }
     if('charts' in d) html.push('<h2><em>Charts</em></h2>',
@@ -759,9 +755,7 @@ class DocumentationManager {
       const
           html = ['<table>'],
           keys = Object.keys(d).sort();
-      for(let i = 0; i < keys.length; i++) {
-        html.push(this.differenceAsTableRow(d, keys[i]));
-      }
+      for(const k of keys) html.push(this.differenceAsTableRow(d, k));
       html.push('</table>');
       return html.join('\n');
     }

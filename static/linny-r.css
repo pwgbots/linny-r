@@ -1065,7 +1065,7 @@ div.grid-watts {
   margin-right: 3px;  
 }
 
-div.grid-kcl-symbol {
+div.grid-kvl-symbol {
   display: inline-block;
   height: 17px;
   font-size: 19px;
@@ -5304,7 +5304,7 @@ div.sel-tab {
   z-index: 150; /* should be highest of all dialogs (even modal ones) */
   margin: 0;
   width: 395px;
-  height: 195px;
+  height: 200px;
   min-width: 340px;
   min-height: 150px;
   max-height: 99vh;

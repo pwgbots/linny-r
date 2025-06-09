@@ -342,7 +342,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   }
 
   getRepositories() {
-    // Gets the list of repository names from the server
+    // Gets the list of repository names from the server.
     this.repositories.length = 0;
     fetch('repo/', postData({action: 'list'}))
       .then((response) => {
@@ -353,14 +353,13 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
         })
       .then((data) => {
           if(UI.postResponseOK(data)) {
-            // NOTE: trim to prevent empty name strings
-            const rl = data.trim().split('\n');
-            for(let i = 0; i < rl.length; i++) {
-              this.addRepository(rl[i].trim());
+            // NOTE: Trim to prevent empty name strings.
+            for(const r of data.trim().split('\n')) {
+              this.addRepository(r.trim());
             }
           }
-          // NOTE: set index to first repository on list (typically local host)
-          // unless the list is empty
+          // NOTE: Set index to first repository on list (typically local host)
+          // unless the list is empty.
           this.repository_index = Math.min(0, this.repositories.length - 1);
           this.updateDialog();
         })
@@ -545,7 +544,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   }
 
   updateModulesTable() {
-    // Refresh the module table
+    // Refresh the module table.
     let mcount = 0;
     const trl = [];
     if(this.repository_index >= 0) {
@@ -565,7 +564,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
     this.modules_count.innerHTML = pluralS(mcount, 'module');
     if(this.module_index >= 0) {
       UI.enableButtons('repo-load repo-include');
-      // NOTE: only allow deletion from local host repository
+      // NOTE: Only allow deletion from local host repository.
       if(this.repository_index === 0 && this.isLocalHost) {
         UI.enableButtons(' repo-delete');
       } else {
@@ -577,7 +576,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   }
   
   updateDialog() {
-    // Refreshes all dialog elements
+    // Refreshe all dialog elements.
     const ol = [];
     for(let i = 0; i < this.repositories.length; i++) {
       ol.push('<option value="', i,
@@ -586,7 +585,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
     }
     this.repository_selector.innerHTML = ol.join('');
     UI.disableButtons('repo-access repo-remove repo-store');
-    // NOTE: on remote installation, do not allow add/remove/store
+    // NOTE: On remote installation, do not allow add/remove/store.
     if(!this.isLocalHost) {
       UI.disableButtons('repo-add');
     } else if(this.repository_index >= 0) {
@@ -597,7 +596,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
         UI.enableButtons('repo-access');
       }
       if(r.name !== 'local host') {
-        // NOTE: cannot remove 'local host'
+        // NOTE: Cannot remove 'local host'.
         UI.enableButtons('repo-remove');
       }
     }
@@ -605,7 +604,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   }
 
   promptForInclusion(repo, file, node) {
-    // Add entities defined in the parsed XML tree with root `node`
+    // Add entities defined in the parsed XML tree with root `node`.
     IO_CONTEXT = new IOContext(repo, file, node);
     const md = this.include_modal;
     md.element('name').innerHTML = IO_CONTEXT.file_name;
@@ -616,8 +615,8 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   }
   
   updateActors() {
-    // Adds actor (if specified) to model, and then updates the selector options
-    // for each actor binding selector
+    // Add actor (if specified) to model, and then updates the selector options
+    // for each actor binding selector.
     if(!IO_CONTEXT) return;
     const
         aname = this.include_modal.element('actor').value.trim(),
@@ -637,25 +636,24 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   }
   
   parameterBinding(name) {
-    // Returns the selected option (as DOM element) of the the parameter
-    // selector identified by its element name (!) in the Include modal
-    const lst = document.getElementsByName(name);
-    let e = null;
-    for(let i = 0; i < lst.length; i++) {
-      if(lst[i].type.indexOf('select') === 0) {
-        e = lst[i];
+    // Return the selected option (as DOM element) of the the parameter
+    // selector identified by its element name (!) in the Include modal.
+    let sel = null;
+    for(const e of document.getElementsByName(name)) {
+      if(e.type.indexOf('select') === 0) {
+        sel = e;
         break;
       }
     }
-    if(!e) UI.alert(`Parameter selector "${b.id}" not found`);
-    return e;
+    if(!sel) UI.alert(`Parameter selector "${name}" not found`);
+    return sel;
   }
   
   performInclusion() {
-    // Includes the selected model as "module" cluster in the model;
-    // this is effectuated by "re-initializing" the current model using
+    // Include the selected model as "module" cluster in the model.
+    // This is effectuated by "re-initializing" the current model using
     // the XML of the model-to-be-included with the contextualization as
-    // indicated by the modeler
+    // indicated by the modeler.
     if(!IO_CONTEXT) {
       UI.alert('Cannot include module without context');
       return;
@@ -667,7 +665,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
       pref.focus();
       return;
     }
-    // NOTE: prefix must not already be in use as entity name
+    // NOTE: Prefix must not already be in use as entity name.
     let obj = MODEL.objectByName(IO_CONTEXT.prefix);
     if(obj) {
       UI.warningEntityExists(obj, IO_CONTEXT.prefix);
@@ -678,10 +676,10 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
     IO_CONTEXT.actor_name = this.include_modal.element('actor').value.trim();
     MODEL.clearSelection();
     IO_CONTEXT.bindParameters();
-    // NOTE: including may affect focal cluster, so store it...
+    // NOTE: Including may affect focal cluster, so store it...
     const fc = MODEL.focal_cluster;
     MODEL.initFromXML(IO_CONTEXT.xml);
-    // ... and restore it afterwards
+    // ... and restore it afterwards.
     MODEL.focal_cluster = fc;
     let counts = `: ${pluralS(IO_CONTEXT.added_nodes.length, 'node')}, ` +
         pluralS(IO_CONTEXT.added_links.length, 'link');
@@ -691,9 +689,9 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
     }
     UI.notify(`Model <tt>${IO_CONTEXT.file_name}</tt> included from ` +
         `<strong>${IO_CONTEXT.repo_name}</strong>${counts}`);
-    // Get the containing cluster
+    // Get the containing cluster.
     obj = MODEL.objectByName(IO_CONTEXT.clusterName);
-    // Position it in the focal cluster
+    // Position it in the focal cluster.
     if(obj instanceof Cluster) {
       obj.x = IO_CONTEXT.centroid_x;
       obj.y = IO_CONTEXT.centroid_y;
@@ -701,20 +699,20 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
     } else {
       UI.alert('Include failed to create a cluster');
     }
-    // Reset the IO context
+    // Reset the IO context.
     IO_CONTEXT = null;
     this.include_modal.hide();
     MODEL.cleanUpActors();
     MODEL.focal_cluster.clearAllProcesses();
     UI.drawDiagram(MODEL);
-    // Select the newly added cluster
+    // Select the newly added cluster.
     if(obj) MODEL.select(obj);
-    // Update dataset manager if shown (as new datasets may have been added)
+    // Update dataset manager if shown (as new datasets may have been added).
     if(DATASET_MANAGER.visible) DATASET_MANAGER.updateDialog();
   }
   
   cancelInclusion() {
-    // Clears the IO context and closes the inclusion dialog
+    // Clear the IO context and closes the inclusion dialog.
     IO_CONTEXT = null;
     this.include_modal.hide();
   }
@@ -724,7 +722,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
       this.store_modal.element('name').innerText =
           this.repositories[this.repository_index].name;
       this.store_modal.element('model-name').value =
-          this.asFileName(MODEL.name);
+          asFileName(MODEL.name);
       this.store_modal.show('model-name');
     }
   }
@@ -746,7 +744,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
       this.store_bb_modal.element('name').innerText =
           this.repositories[this.repository_index].name;
       this.store_bb_modal.element('model-name').value =
-          this.asFileName(MODEL.name);
+          asFileName(MODEL.name);
       this.store_bb_modal.show('model-name');
     }
   }
@@ -757,7 +755,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
           mn = this.store_bb_modal.element('model-name').value.trim(),
           r = this.repositories[this.repository_index];
       if(mn.length > 1) {
-        // NOTE: second parameter indicates: store with "black box XML"
+        // NOTE: Second parameter indicates: store with "black box XML".
         r.storeModelAsModule(mn, true);
         this.store_bb_modal.hide();
       }
@@ -765,19 +763,19 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   }
   
   loadModuleAsModel() {
-    // Loads selected module as model
+    // Load selected module as model.
     this.confirm_load_modal.hide();
     if(this.repository_index >= 0 && this.module_index >= 0) {
-      // NOTE: when loading new model, the stay-on-top dialogs must be reset
+      // NOTE: When loading new model, the stay-on-top dialogs must be reset.
       UI.hideStayOnTopDialogs();
       const r = this.repositories[this.repository_index];
-      // NOTE: pass FALSE to indicate "no inclusion; load XML as model"
+      // NOTE: Pass FALSE to indicate "no inclusion; load XML as model".
       r.loadModule(this.module_index, false);
     }
   }
   
   includeModule() {
-    // Includes selected module into the current model
+    // Include selected module into the current model.
     if(this.repository_index >= 0 && this.module_index >= 0) {
       const r = this.repositories[this.repository_index];
       r.loadModule(this.module_index, true);
@@ -785,7 +783,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   }
 
   confirmLoadModuleAsModel() {
-    // Prompts modeler to confirm loading the selected module as model
+    // Prompt modeler to confirm loading the selected module as model.
     if(this.repository_index >= 0 && this.module_index >= 0 &&
         document.getElementById('repo-load-btn').classList.contains('enab')) {
       const r = this.repositories[this.repository_index];
@@ -796,7 +794,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   }
   
   confirmDeleteFromRepository() {
-    // Prompts modeler to confirm deletion of the selected module
+    // Prompt modeler to confirm deletion of the selected module.
     if(this.repository_index >= 0 && this.module_index >= 0 &&
         document.getElementById('repo-delete-btn').classList.contains('enab')) {
       const r = this.repositories[this.repository_index];
@@ -808,7 +806,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
   }
   
   deleteFromRepository() {
-    // Deletes the selected modulle from the current repository
+    // Delete the selected modulle from the current repository.
     if(this.repository_index >= 0 && this.module_index >= 0) {
       const r = this.repositories[this.repository_index];
       if(r) r.deleteModule(this.module_index);

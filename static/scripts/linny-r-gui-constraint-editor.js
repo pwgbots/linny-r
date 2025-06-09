@@ -984,11 +984,10 @@ class ConstraintEditor {
       '</defs>'].join('');
     // Draw the grid
     this.drawGrid();
-    // Use c as shorthand for this.constraint
+    // Use `c` as shorthand for this.constraint.
     const c = this.constraint;
     // Add the SVG for lower and upper bounds
-    for(let i = 0; i < c.bound_lines.length; i++) {
-      const bl = c.bound_lines[i];
+    for(const bl of c.bound_lines) {
       this.drawContour(bl);
       this.drawLine(bl);
     }
@@ -1057,10 +1056,7 @@ class ConstraintEditor {
     } else {
       const base_y = (l.type === VM.GE ? 0 : 100);
       cp = 'M' + this.point(0, base_y);
-      for(let i = 0; i < l.points.length; i++) {
-        const p = l.points[i];
-        cp += `L${this.point(p[0], p[1])}`;
-      }
+      for(const p of l.points) cp += `L${this.point(p[0], p[1])}`;
       cp += 'L' + this.point(100, base_y) + 'z';
       // Save the contour for rapid display of thumbnails.
       l.contour_path = cp;
@@ -1089,10 +1085,10 @@ class ConstraintEditor {
     const
         cfs = `fill="${color}" stroke="${color}" stroke-width="${width}"`,
         icfs = 'fill="white" stroke="white" stroke-width="1"';
-    for(let i = 0; i < l.points.length; i++) {
+    for(const p of l.points) {
       const
-          px = l.points[i][0],
-          py = l.points[i][1];
+          px = p[0],
+          py = p[1];
       pp.push(this.point(px, py));
       dots += `<circle ${this.circleCenter(px, py)} r="3" ${cfs}></circle>`;
       // Draw "custom points" with a white inner circle.

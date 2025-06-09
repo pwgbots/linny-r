@@ -241,8 +241,7 @@ class GUIReceiver {
       // NOTE: The @ will be replaced by the run number, so that that
       // number precedes the clock time. The @ will be unique because
       // `asFileName()` replaces special characters by underscores. 
-      file = REPOSITORY_BROWSER.asFileName(MODEL.name || 'model') +
-          '@-' + compactClockTime();
+      file = asFileName(MODEL.name || 'model') + '@-' + compactClockTime();
     }
     if(MODEL.solved && !VM.halted) {
       // Normal execution termination => report results

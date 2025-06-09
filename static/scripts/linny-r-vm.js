@@ -3883,7 +3883,7 @@ class VirtualMachine {
           this.code.push([VMI_add_grid_process_constraints, p]);
         }
       }
-      this.code.push(
+      if(!MODEL.ignore_KVL) this.code.push(
           [VMI_add_kirchhoff_constraints, POWER_GRID_MANAGER.cycle_basis]);
     }
 
@@ -5035,7 +5035,7 @@ class VirtualMachine {
           // For grid processes, rates depend on losses, which depend on
           // the process level, and whether the link is P -> Q or Q -> P.
           rr = 1;
-          if(p.grid.loss_approximation > 0 &&
+          if(p.grid.loss_approximation > 0 && !MODEL.ignore_power_losses &&
               ((pl > 0 && p === l.from_node) ||
                   (pl < 0 && p === l.to_node))) {
             const alr = p.actualLossRate(bt);
@@ -5048,7 +5048,7 @@ class VirtualMachine {
       }
     }
     // Report power losses per grid, if applicable.
-    if(MODEL.with_power_flow) {
+    if(MODEL.with_power_flow && !MODEL.ignore_power_losses) {
       const ll = [];
       for(let k in MODEL.power_grids) if(MODEL.power_grids.hasOwnProperty(k)) {
         const pg = MODEL.power_grids[k];
@@ -8305,8 +8305,8 @@ function VMI_set_bounds(args) {
     // For grid elements, bounds must be set on UP and DOWN variables.
     if(vbl.grid) {
       // When considering losses, partition range 0...UB in sections.
-      const step = (vbl.grid.loss_approximation < 2 ? u :
-          u / vbl.grid.loss_approximation);
+      const step = (MODEL.ignore_power_losses || vbl.grid.loss_approximation < 2 ?
+          u : u / vbl.grid.loss_approximation);
       VM.upper_bounds[VM.offset + vbl.up_1_var_index] = step;
       VM.upper_bounds[VM.offset + vbl.down_1_var_index] = step;
       if(vbl.grid.loss_approximation > 1) {
@@ -9010,7 +9010,7 @@ function VMI_add_grid_process_constraints(p) {
   // Now the variable index lists all contain 1, 2 or 3 indices,
   // depending on the loss approximation level.
   let ub = p.upper_bound.result(VM.t);
-  if(ub >= VM.PLUS_INFINITY) {
+  if(ub >= VM.PLUS_INFINITY || MODEL.ignore_grid_capacity) {
     // When UB = +INF, this is interpreted as "unlimited", which is
     // implemented as 99999 grid power units.
     ub = VM.UNLIMITED_POWER_FLOW;

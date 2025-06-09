@@ -192,58 +192,57 @@ class Controller {
     // NOTE: Add '' in case string is a number
     const lines = ('' + string).split('\n');
     let w = 0;
-    for(let i = 0; i < lines.length; i++) {
-      w = Math.max(w, lines[i].length * cw);
+    for(const l of lines) {
+      w = Math.max(w, l.length * cw);
     }
     return {width: w, height: lines.length * ch};
   }
 
   stringToLineArray(string, width=100, fsize=8) {
-    // Returns an array of strings wrapped to given width at given font size
-    // while preserving newlines -- used to format text of notes
+    // Return an array of strings wrapped to given width at given font size
+    // while preserving newlines -- used to format text of notes.
     const
         multi = [],
         lines = string.split('\n'),
-        ll = lines.length,
         // If no paper, assume 144 px/inch, so 1 pt = 2 px
         fh = (this.paper ? this.paper.font_heights[fsize] : 2 * fsize),
         scalar = fh / 2;
-    for(let i = 0; i < ll; i++) {
+    for(const l of lines) {
       // NOTE: interpret two spaces as a "non-breaking" space
-      const words = lines[i].replace(/  /g, '\u00A0').trim().split(/ +/);
+      const words = l.replace(/  /g, '\u00A0').trim().split(/ +/);
       // Split words at '-' when wider than width
-      for(let j = 0; j < words.length; j++) {
-        if(words[j].length * scalar > width) {
-          const sw = words[j].split('-');
-          if(sw.length > 1) {
-            // Replace j-th word by last fragment of split string
-            words[j] = sw.pop();
+      for(let i = 0; i < words.length; i++) {
+        if(words[i].length * scalar > width) {
+          const sw = words[i].split('-');
+          if(sw[0] && sw.length > 1) {
+            // Replace i-th word by last fragment of split string
+            words[i] = sw.pop();
             // Insert remaining fragments before
-            while(sw.length > 0) words.splice(j, 0, sw.pop() + '-');
+            while(sw.length > 0) words.splice(i, 0, sw.pop() + '-');
           }
         }
       }
-      let line = words[0] + ' ';
-      for(let j = 1; j < words.length; j++) {
+      let line = words.shift() + ' ';
+      for(const word of words) {
         const
-            l = line + words[j] + ' ',
+            l = line + word + ' ',
             w = (l.length - 1) * scalar;
-        if (w > width && j > 0) {
+        if (w > width) {
           const
               nl = line.trim(),
               nw = Math.floor(nl.length * scalar);
           multi.push(nl);
           // If width of added line exceeds the given width, adjust width
-          // so that following lines fill out better
+          // so that following lines fill out better.
           width = Math.max(width, nw);
-          line = words[j] + ' ';
+          line = word + ' ';
         } else {
           line = l;
         }
       }
       line = line.trim();
       // NOTE: Chrome and Safari ignore empty lines in SVG text; as a workaround,
-      // we add a non-breaking space to lines containing only whitespace
+      // we add a non-breaking space to lines containing only whitespace.
       if(!line) line = '\u00A0';
       multi.push(line);
     }
@@ -335,7 +334,7 @@ class Controller {
   }
   
   completePrefix(name) {
-    // Returns the prefix part (including the final colon plus space),
+    // Return the prefix part (including the final colon plus space),
     // or the empty string if none.
     const p = UI.prefixesAndName(name);
     p[p.length - 1] = '';
@@ -343,6 +342,7 @@ class Controller {
   }
   
   sharedPrefix(n1, n2) {
+    // Return the longest series of prefixes that `n1` and `n2` have in common.
     const
         pan1 = this.prefixesAndName(n1),
         pan2 = this.prefixesAndName(n2),
@@ -350,7 +350,7 @@ class Controller {
         shared = [];
     let i = 0;
     while(i < l && ciCompare(pan1[i], pan2[i]) === 0) {
-      // NOTE: if identical except for case, prefer "Abc" over "aBc" 
+      // NOTE: If identical except for case, prefer "Abc" over "aBc".
       shared.push(pan1[i] < pan2[i] ? pan1[i] : pan2[i]);
       i++;
     }
@@ -358,7 +358,7 @@ class Controller {
   }
   
   colonPrefixedName(name, prefix) {
-    // Replaces a leading colon in `name` by `prefix`.
+    // Replace a leading colon in `name` by `prefix`.
     // If `name` identifies a link or a constraint, this is applied to
     // both node names.
     const
@@ -377,7 +377,7 @@ class Controller {
   }
   
   tailNumber(name) {
-    // Returns the string of digits at the end of `name`. If not there,
+    // Return the string of digits at the end of `name`. If not there,
     // check prefixes (if any) *from right to left* for a tail number.
     // Thus, the number that is "closest" to the name part is returned.
     const pan = UI.prefixesAndName(name);
@@ -444,10 +444,11 @@ class Controller {
       // Empty string signals failure.
       return '';
     }
-    // NOTE: Replace single quotes by Unicode apostrophe so that they
-    // cannot interfere with JavaScript strings delimited by single quotes.
+    // NOTE: Replace single quotes by Unicode apostrophe, and double quotes
+    // by Unicode mono-space " so that quotes cannot interfere with string
+    // delimiters used in JavaScript or HTML.
     return name.toLowerCase().replace(/\s/g, '_')
-        .replace("'", '\u2019').replace('"', '\uff02');
+        .replaceAll("'", '\u2019').replaceAll('"', '\uff02');
   }
   
   htmlEquationName(n) {
@@ -654,9 +655,8 @@ class RepositoryBrowser {
       .then((data) => {
           if(UI.postResponseOK(data)) {
             // NOTE: Trim to prevent empty name strings.
-            const rl = data.trim().split('\n');
-            for(let i = 0; i < rl.length; i++) {
-              this.addRepository(rl[i].trim());
+            for(const r of data.trim().split('\n')) {
+              this.addRepository(r.trim());
             }
           }
           // NOTE: Set index to first repository on list (typically the
@@ -669,21 +669,10 @@ class RepositoryBrowser {
   
   repositoryByName(n) {
     // Return the repository having name `n` if already known, or NULL.
-    for(let i = 0; i < this.repositories.length; i++) {
-      if(this.repositories[i].name === n) {
-        return this.repositories[i];
-      }
+    for(const r of this.repositories) {
+      if(r.name === n) return r;
     }
     return null;
-  }
-  
-  asFileName(s) {
-    // Return string `s` with whitespace converted to a single dash, and
-    // special characters converted to underscores.
-    return s.normalize('NFKD').trim()
-        .replace(/[\s\-]+/g, '-')
-        .replace(/[^A-Za-z0-9_\-]/g, '_')
-        .replace(/^[\-\_]+|[\-\_]+$/g, '');
   }
   
   loadModuleAsModel() {
@@ -842,9 +831,7 @@ class ChartManager {
   
   resetChartVectors() {
     // Reset vectors of all charts.
-    for(let i = 0; i < MODEL.charts.length; i++) {
-      MODEL.charts[i].resetVectors();
-    }
+    for(const c of MODEL.charts) c.resetVectors();
   }
 
   promptForWildcardIndices(chart, dsm) {
@@ -916,9 +903,8 @@ class SensitivityAnalysis {
       // Clear results from previous analysis.
       this.clearResults();
       this.parameters = [];
-      for(let i = 0; i < MODEL.sensitivity_parameters.length; i++) {
+      for(const p of MODEL.sensitivity_parameters) {
         const
-            p = MODEL.sensitivity_parameters[i],
             vn = p.split(UI.OA_SEPARATOR),
             obj = MODEL.objectByName(vn[0]),
             oax = (obj ? obj.attributeExpression(vn[1]) : null);
@@ -932,20 +918,16 @@ class SensitivityAnalysis {
         }
       }
       this.chart = new Chart(this.chart_title);
-      for(let i = 0; i < MODEL.sensitivity_outcomes.length; i++) {
-        const vn = MODEL.sensitivity_outcomes[i].split(UI.OA_SEPARATOR);
-        this.chart.addVariable(vn[0], vn[1]);
+      for(const o of MODEL.sensitivity_outcomes) {
+        this.chart.addVariable(...o.split(UI.OA_SEPARATOR));
       }
       this.experiment = new Experiment(this.experiment_title);
       this.experiment.charts = [this.chart];
       this.experiment.inferVariables();
       // This experiment always uses the same combination: the base selectors.
       const bs = MODEL.base_case_selectors.split(' ');
-      this.experiment.combinations = [];
       // Add this combination N+1 times for N parameters.
-      for(let i = 0; i <= this.parameters.length; i++) {
-        this.experiment.combinations.push(bs);
-      }
+      this.experiment.combinations = Array(this.parameters.length + 1).fill(bs);
       // NOTE: Model settings will not be changed, but will be restored after
       // each run => store the original settings.
       this.experiment.original_model_settings = MODEL.settingsString;
@@ -1045,17 +1027,15 @@ class SensitivityAnalysis {
     this.perc = {};
     this.shade = {};
     this.data = {};
-    const
-        ol = MODEL.sensitivity_outcomes.length,
-        rl = MODEL.sensitivity_runs.length;
+    const ol = MODEL.sensitivity_outcomes.length;
     if(ol === 0) return;
     // Always find highest relative change.
     let max_dif = 0;
     for(let i = 0; i < ol; i++) {
       this.data[i] = [];
-      for(let j = 0; j < rl; j++) {
+      for(const run of MODEL.sensitivity_runs) {
         // Get the selected statistic for each run to get an array of numbers.
-        const rr = MODEL.sensitivity_runs[j].results[i];
+        const rr = run.results[i];
         if(!rr) {
           this.data[i].push(VM.UNDEFINED);
         } else if(sas === 'N') {
@@ -1162,8 +1142,7 @@ class ExperimentManager {
     // Select charts having 1 or more variables, as only these are meaningful
     // as the dependent variables of an experiment
     this.suitable_charts.length = 0;
-    for(let i = 0; i < MODEL.charts.length; i++) {
-      const c = MODEL.charts[i];
+    for(const c of MODEL.charts) {
       if(c.variables.length > 0) this.suitable_charts.push(c);
     }
   }  
@@ -1278,18 +1257,17 @@ class ExperimentManager {
       }
       xr.start();
       this.showProgress(ci, p, n);
-      // NOTE: first restore original model settings (setings may be partial!)
+      // NOTE: First restore original model settings (setings may be partial!).
       MODEL.parseSettings(x.original_model_settings);
-      // Parse all active settings selector strings
-      // NOTE: may be multiple strings; the later overwrite the earlier
-      for(let i = 0; i < x.settings_selectors.length; i++) {
-        const ssel = x.settings_selectors[i].split('|');
+      // Parse all active settings selector strings.
+      // NOTE: May be multiple strings; the later overwrite the earlier.
+      for(const sel of x.settings_selectors) {
+        const ssel = sel.split('|');
         if(combi.indexOf(ssel[0]) >= 0) MODEL.parseSettings(ssel[1]);
       }
-      // Also set the correct round sequence
-      // NOTE: if no match, default is retained
-      for(let i = 0; i < x.actor_selectors.length; i++) {
-        const asel = x.actor_selectors[i];
+      // Also set the correct round sequence.
+      // NOTE: If no match, default is retained.
+      for(const asel of x.actor_selectors) {
         if(combi.indexOf(asel.selector) >= 0) {
           MODEL.round_sequence = asel.round_sequence;
         }

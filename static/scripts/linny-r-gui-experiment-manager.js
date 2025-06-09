@@ -301,18 +301,16 @@ class GUIExperimentManager extends ExperimentManager {
         xl = [],
         xtl = [],
         sx = this.selected_experiment;
-    for(let i = 0; i < MODEL.experiments.length; i++) {
-      xtl.push(MODEL.experiments[i].title);
-    }
+    for(const x of MODEL.experiments) xtl.push(x.title);
     xtl.sort(ciCompare);
-    for(let i = 0; i < xtl.length; i++) {
+    for(const xt of xtl) {
       const
-          xi = MODEL.indexOfExperiment(xtl[i]),
+          xi = MODEL.indexOfExperiment(xt),
           x = (xi < 0 ? null : MODEL.experiments[xi]);
       xl.push(['<tr class="experiment',
           (x == sx ? ' sel-set' : ''),
           '" onclick="EXPERIMENT_MANAGER.selectExperiment(\'',
-          escapedSingleQuotes(xtl[i]),
+          escapedSingleQuotes(xt),
           '\');" onmouseover="EXPERIMENT_MANAGER.showInfo(', xi,
           ', event.shiftKey);"><td>', x.title, '</td></tr>'].join(''));
     }
@@ -369,9 +367,7 @@ class GUIExperimentManager extends ExperimentManager {
     dim_count.innerHTML = pluralS(x.available_dimensions.length,
         'more dimension');
     x.inferActualDimensions();
-    for(let i = 0; i < x.actual_dimensions.length; i++) {
-      x.actual_dimensions[i].sort(compareSelectors);
-    }
+    for(const ad of x.actual_dimensions) ad.sort(compareSelectors);
     x.inferCombinations();
     //x.combinations.sort(compareCombinations);
     combi_count.innerHTML = pluralS(x.combinations.length, 'combination');
@@ -532,9 +528,9 @@ class GUIExperimentManager extends ExperimentManager {
           ol = [],
           ov = MODEL.outcomeNames,
           vl = [...ov];
-      for(let i = 0; i < x.variables.length; i++) {
+      for(const v of x.variables) {
         const
-            vn = x.variables[i].displayName,
+            vn = v.displayName,
             oi = ov.indexOf(vn);
         // If an outcome dataset or equation is plotted in an experiment
         // chart, remove its name from the outcome variable list.
@@ -546,8 +542,7 @@ class GUIExperimentManager extends ExperimentManager {
       // name will not be in the list (and its old name cannot be inferred)
       // so then clear it.
       if(vl.indexOf(x.selected_variable) < 0) x.selected_variable = '';
-      for(let i = 0; i < vl.length; i++) {
-        const vn = vl[i];
+      for(const vn of vl) {
         // NOTE: FireFox selector dropdown areas have a pale gray
         // background that darkens when color is set, so always set it
         // to white (like Chrome). Then set color of outcome variables
@@ -565,12 +560,12 @@ class GUIExperimentManager extends ExperimentManager {
   }
   
   drawTable() {
-    // Draw experimental design as table
+    // Draw experimental design as table.
     const x = this.selected_experiment;
     if(x) {
       this.clean_columns = [];
       this.clean_rows = [];
-      // Calculate the actual number of columns and rows of the table
+      // Calculate the actual number of columns and rows of the table.
       const
           coldims = x.configuration_dims + x.column_scenario_dims,
           rowdims = x.actual_dimensions.length - coldims,
@@ -795,32 +790,28 @@ class GUIExperimentManager extends ExperimentManager {
       const combi = x.combinations[n];
       info.title = `Combination: <tt>${tupelString(combi)}</tt>`;
       const html = [], list = [];
-      for(let i = 0; i < combi.length; i++) {
-        const sel = combi[i];
+      for(const sel of combi) {
         html.push('<h3>Selector <tt>', sel, '</tt></h3>');
-        // List associated model settings (if any)
+        // List associated model settings (if any).
         list.length = 0;
-        for(let j = 0; j < x.settings_selectors.length; j++) {
-          const ss = x.settings_selectors[j].split('|');
-          if(sel === ss[0]) list.push(ss[1]);
+        for(const ss of x.settings_selectors) {
+          const tuple = ss.split('|');
+          if(sel === tuple[0]) list.push(tuple[1]);
         }
         if(list.length > 0) {
           html.push('<p><em>Model settings:</em> <tt>', list.join(';'),
               '</tt></p>');
         }
-        // List associated actor settings (if any)
+        // List associated actor settings (if any).
         list.length = 0;
-        for(let j = 0; j < x.actor_selectors.length; j++) {
-          const as = x.actor_selectors[j];
-          if(sel === as.selector) {
-            list.push(as.round_sequence);
-          }
+        for(const as of x.actor_selectors) {
+          if(sel === as.selector) list.push(as.round_sequence);
         }
         if(list.length > 0) {
           html.push('<p><em>Actor settings:</em> <tt>', list.join(';'),
               '</tt></p>');
         }
-        // List associated datasets (if any)
+        // List associated datasets (if any).
         list.length = 0;
         for(let id in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(id)) {
           const ds = MODEL.datasets[id];
@@ -888,10 +879,8 @@ class GUIExperimentManager extends ExperimentManager {
       // Set reference column indices so that values for the reference|
       // configuration can be displayed in orange.
       const ref_conf_indices = [];
-      for(let i = 0; i < x.runs.length; i++) {
-        const
-            r = x.runs[i],
-            rr = r.results[rri];
+      for(const r of x.runs) {
+        const rr = r.results[rri];
         if(!rr) {
           data.push(VM.UNDEFINED);
         } else if(x.selected_scale === 'sec') {
@@ -918,12 +907,12 @@ class GUIExperimentManager extends ExperimentManager {
       }
       // Scale data as selected.
       const scaled = data.slice();
-      // NOTE: scale only after the experiment has been completed AND
-      // configurations have been defined (otherwise comparison is pointless)
+      // NOTE: Scale only after the experiment has been completed AND
+      // configurations have been defined (otherwise comparison is pointless).
       if(x.completed && this.nr_of_configurations > 0) {
         const n = scaled.length / this.nr_of_configurations;
         if(x.selected_scale === 'dif') {
-          // Compute difference: current configuration - reference configuration
+          // Compute difference: current configuration - reference configuration.
           const rc = x.reference_configuration;
           for(let i = 0; i < this.nr_of_configurations; i++) {
             if(i != rc) {
@@ -932,47 +921,36 @@ class GUIExperimentManager extends ExperimentManager {
               }
             }
           }
-          // Set difference for reference configuration itself to 0
+          // Set difference for reference configuration itself to 0.
           for(let i = 0; i < n; i++) {
             const index = rc * n + i;
             scaled[index] = 0;
             ref_conf_indices.push(index);
           }
         } else if(x.selected_scale === 'reg') {
-          // Compute regret: current config - high value config in same scenario
+          // Compute regret: current config - high value config in same scenario.
           for(let i = 0; i < n; i++) {
-            // Get high value
+            // Get high value.
             let high = VM.MINUS_INFINITY;
             for(let j = 0; j < this.nr_of_configurations; j++) {
               high = Math.max(high, scaled[j * n + i]);
             }
-            // Scale (so high config always has value 0)
+            // Scale (so high config always has value 0).
             for(let j = 0; j < this.nr_of_configurations; j++) {
               scaled[j * n + i] -= high;
             }            
           }
         }
       }
-      // For color scales, compute normalized scores
-      let normalized = scaled.slice(),
-          high = VM.MINUS_INFINITY,
-          low = VM.PLUS_INFINITY;
-      for(let i = 0; i < normalized.length; i++) {
-        high = Math.max(high, normalized[i]);
-        low = Math.min(low, normalized[i]);
-      }
-      // Avoid too small value ranges
-      const range = (high - low < VM.NEAR_ZERO ? 0 : high - low);
-      if(range > 0) {
-        for(let i = 0; i < normalized.length; i++) {
-          normalized[i] = (normalized[i] - low) / range;
-        }
-      }
-      // Format data such that they all have same number of decimals
-      let formatted = [];
-      for(let i = 0; i < scaled.length; i++) {
-        formatted.push(VM.sig4Dig(scaled[i]));
-      }
+      // For color scales, compute normalized scores.
+      const
+          high = Math.max(...scaled),
+          low = Math.min(...scaled),
+          // Avoid too small value ranges.
+          range = (high - low < VM.NEAR_ZERO ? 0 : high - low),
+          normalized = scaled.map((v) => range ? (v - low) / range : v),
+          formatted = scaled.map((v) => VM.sig4Dig(v));
+      // Format data such that they all have same number of decimals.
       uniformDecimals(formatted);
       // Display formatted data in cells.
       for(let i = 0; i < x.combinations.length; i++) {
@@ -1072,11 +1050,11 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
       const
           spl = this.viewer.getElementsByClassName('spin-plus'),
           rem = (x.configuration_dims + x.column_scenario_dims < xdims);
-      for(let i = 0; i < spl.length; i++) {
+      for(const sp of spl) {
         if(rem) {
-          spl.item(i).classList.remove('no-spin');
+          sp.classList.remove('no-spin');
         } else {
-          spl.item(i).classList.add('no-spin');
+          sp.classList.add('no-spin');
         }
       }
       if(dir != 0 ) this.drawTable();
@@ -1103,9 +1081,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
         x.selected_color_scale = cs;
         this.color_scale.set(cs);
         const csl = this.viewer.getElementsByClassName('color-scale');
-        for(let i = 0; i < csl.length; i++) {
-          csl.item(i).classList.remove('sel-cs');
-        }
+        for(const cs of csl) cs.classList.remove('sel-cs');
         document.getElementById(`xv-${cs}-scale`).classList.add('sel-cs');
       }
       this.updateData();
@@ -1189,14 +1165,14 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
   
   editIteratorRanges() {
-    // Open dialog for editing iterator ranges
+    // Open dialog for editing iterator ranges.
     const
         x = this.selected_experiment,
         md = this.iterator_modal,
         il = ['i', 'j', 'k'];
     if(x) {
       // NOTE: there are always 3 iterators (i, j k) so these have fixed
-      // FROM and TO input fields in the dialog
+      // FROM and TO input fields in the dialog.
       for(let i = 0; i < 3; i++) {
         const k = il[i];
         md.element(k + '-from').value = x.iterator_ranges[i][0];
@@ -1211,8 +1187,8 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
         x = this.selected_experiment,
         md = this.iterator_modal;
     if(x) {
-      // First validate all input fields (must be integer values)
-      // NOTE: test using a copy so as not to overwrite values until OK
+      // First validate all input fields (must be integer values).
+      // NOTE: Test using a copy so as not to overwrite values until OK.
       const
           il = ['i', 'j', 'k'],
           ir = [[0, 0], [0, 0], [0, 0]],
@@ -1227,7 +1203,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
           t = el.value.trim() || '0';
           if(t === '' || re.test(t)) el = null;
         }
-        // NULL value signals that field inputs are valid
+        // NULL value signals that field inputs are valid.
         if(el === null) {
           ir[i] = [f, t];
         } else {
@@ -1236,7 +1212,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
           return;
         }
       }
-      // Input validated, so modify the iterator dimensions
+      // Input validated, so modify the iterator dimensions.
       x.iterator_ranges = ir;
       this.updateDialog();
     }
@@ -1244,17 +1220,17 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
  
   editSettingsDimensions() {
-    // Open dialog for editing model settings dimensions
+    // Open dialog for editing model settings dimensions.
     const x = this.selected_experiment, rows = [];
     if(x) {
-      // Initialize selector list
+      // Initialize selector list.
       for(let i = 0; i < x.settings_selectors.length; i++) {
         const sel = x.settings_selectors[i].split('|');
         rows.push('<tr onclick="EXPERIMENT_MANAGER.editSettingsSelector(', i,
             ');"><td width="25%">', sel[0], '</td><td>', sel[1], '</td></tr>');
       }
       this.settings_modal.element('s-table').innerHTML = rows.join('');
-      // Initialize combination list
+      // Initialize combination list.
       rows.length = 0;
       for(let i = 0; i < x.settings_dimensions.length; i++) {
         const dim = x.settings_dimensions[i];
@@ -1263,14 +1239,14 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
       }
       this.settings_modal.element('d-table').innerHTML = rows.join('');
       this.settings_modal.show();
-      // NOTE: clear infoline because dialog can generate warnings that would
-      // otherwise remain visible while no longer relevant
+      // NOTE: Clear infoline because dialog can generate warnings that would
+      // otherwise remain visible while no longer relevant.
       UI.setMessage('');
     }
   }
 
   closeSettingsDimensions() {
-    // Hide editor, and then update the experiment manager to reflect changes
+    // Hide editor, and then update the experiment manager to reflect changes.
     this.settings_modal.hide();
     this.updateDialog();
   }
@@ -1302,7 +1278,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
       const
           md = this.settings_selector_modal,
           sc = md.element('code'),
-          ss = md.element('string'),
+          ss = md.element('string').toLowerCase(),
           code = sc.value.replace(/[^\w\+\-\%]/g, ''),
           value = ss.value.trim().replace(',', '.'),
           add =  this.edited_selector_index < 0;
@@ -1323,7 +1299,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
           }
         }
         // Check for valid syntax -- canonical example: s=0.25h t=1-100 b=12 l=6
-        const re = /^(s\=\d+(\.?\d+)?(yr?|wk?|d|h|m|min|s)\s+)?(t\=\d+(\-\d+)?\s+)?(b\=\d+\s+)?(l=\d+\s+)?$/i;
+        const re = /^(s\=\d+(\.?\d+)?(yr?|wk?|d|h|m|min|s)\s+)?(t\=\d+(\-\d+)?\s+)?(b\=\d+\s+)?(l=\d+\s+)?(\-[ckl]+)?$/i;
         if(!re.test(value + ' ')) {
           UI.warn(`Invalid settings "${value}"`);
           ss.focus();
@@ -1560,40 +1536,37 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     if(x) {
       const
           add = this.edited_combi_dimension_index < 0,
-          // Trim whitespace and reduce inner spacing to a single space
+          // Trim whitespace and reduce inner spacing to a single space.
           dimstr = this.combination_dimension_modal.element('string').value.trim();
-      // Remove dimension if field has been cleared
+      // Remove dimension if field has been cleared.
       if(dimstr.length === 0) {
         if(!add) {
           x.combination_dimensions.splice(this.edited_combi_dimension_index, 1);
         }
       } else {
-        // Check for valid selector list
+        // Check for valid selector list.
         const
             dim = dimstr.split(/\s+/g),
             ssl = [];
-        // Get this experiment's combination selector list
-        for(let i = 0; i < x.combination_selectors.length; i++) {
-          ssl.push(x.combination_selectors[i].split('|')[0]);
-        }
-        // All selectors in string should have been defined
+        // Get this experiment's combination selector list.
+        for(const sel of x.combination_selectors) ssl.push(sel.split('|')[0]);
+        // All selectors in string should have been defined.
         let c = complement(dim, ssl);
         if(c.length > 0) {
           UI.warn('Combination dimension contains ' +
               pluralS(c.length, 'unknown selector') + ': ' + c.join(' '));
           return;
         }
-        // All selectors should expand to non-overlapping selector sets
+        // All selectors should expand to non-overlapping selector sets.
         if(!x.orthogonalCombinationDimensions(dim)) return;
-        // Do not add when a (setwise) identical combination dimension exists
-        for(let i = 0; i < x.combination_dimensions.length; i++) {
-          const cd = x.combination_dimensions[i];
+        // Do not add when a (setwise) identical combination dimension exists.
+        for(const cd of x.combination_dimensions) {
           if(intersection(dim, cd).length === dim.length) {
             UI.notify('Combination already defined: ' + setString(cd));
             return;
           }
         }
-        // OK? Then add or modify
+        // OK? Then add or modify.
         if(add) {
           x.combination_dimensions.push(dim);
         } else {
@@ -1602,15 +1575,15 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
       }
     }
     this.combination_dimension_modal.hide();
-    // Update combination dimensions dialog
+    // Update combination dimensions dialog.
     this.editCombinationDimensions();
   }
  
   editActorDimension() {
-    // Open dialog for editing the actor dimension
+    // Open dialog for editing the actor dimension.
     const x = this.selected_experiment, rows = [];
     if(x) {
-      // Initialize selector list
+      // Initialize selector list.
       for(let i = 0; i < x.actor_selectors.length; i++) {
         rows.push('<tr onclick="EXPERIMENT_MANAGER.editActorSelector(', i,
             ');"><td>', x.actor_selectors[i].selector,
@@ -1619,8 +1592,8 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
       }
       this.actor_dimension_modal.element('table').innerHTML = rows.join('');
       this.actor_dimension_modal.show();
-      // NOTE: clear infoline because dialog can generate warnings that would
-      // otherwise remain visible while no longer relevant
+      // NOTE: Clear infoline because dialog can generate warnings that would
+      // otherwise remain visible while no longer relevant.
       UI.setMessage('');
     }
   }
@@ -1707,17 +1680,16 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
         clist = [],
         csel = md.element('select'),
         sinp = md.element('selectors');
-    // NOTE: copy experiment property to modal dialog property, so that changes
+    // NOTE: Copy experiment property to modal dialog property, so that changes
     // are made only when OK is clicked
     md.clusters = [];
-    for(let i = 0; i < x.clusters_to_ignore.length; i++) {
-      const cs = x.clusters_to_ignore[i];
-      md.clusters.push({cluster: cs.cluster, selectors: cs. selectors});
+    for(const cs of x.clusters_to_ignore) {
+      md.clusters.push({cluster: cs.cluster, selectors: cs.selectors});
     }
     md.cluster_index = -1;
     for(let k in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(k)) {
       const c = MODEL.clusters[k];
-      // Do not add top cluster, nor clusters already on the list
+      // Do not add top cluster, nor clusters already on the list.
       if(c !== MODEL.top_cluster && !c.ignore && !x.mayBeIgnored(c)) {
         clist.push(`<option value="${k}">${c.displayName}</option>`);
       }
@@ -1738,7 +1710,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
         sdiv = md.element('selectors-div'),
         cl = md.clusters.length;
     if(cl > 0) {
-      // Show cluster+selectors list
+      // Show cluster+selectors list.
       const ol = [];
       for(let i = 0; i < cl; i++) {
         const cti = md.clusters[i];
@@ -1751,7 +1723,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
       clst.style.display = 'block';
       nlst.style.display = 'none';
     } else {
-      // Hide list and show "no clusters set to be ignored"
+      // Hide list and show "no clusters set to be ignored".
       clst.style.display = 'none';
       nlst.style.display = 'block';
     }
@@ -1767,7 +1739,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
 
   selectCluster(n) {
-    // Set selected cluster index to `n`
+    // Set selected cluster index to `n`.
     this.clusters_modal.cluster_index = n;
     this.updateClusterList();
   }
@@ -1780,7 +1752,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     if(c) {
       md.clusters.push({cluster: c, selectors: ''});
       md.cluster_index = md.clusters.length - 1;
-      // Remove cluster from select so it cannot be added again
+      // Remove cluster from select so it cannot be added again.
       sel.remove(sel.selectedIndex);
       this.updateClusterList();
     }
@@ -1803,7 +1775,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
   
   deleteClusterFromIgnoreList() {
-    // Delete selected cluster+selectors from list
+    // Delete selected cluster+selectors from list.
     const md = this.clusters_modal;
     if(md.cluster_index >= 0) {
       md.clusters.splice(md.cluster_index, 1);
@@ -1813,7 +1785,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
   
   modifyClustersToIgnore() {
-    // Replace current list by cluster+selectors list of modal dialog
+    // Replace current list by cluster+selectors list of modal dialog.
     const
         md = this.clusters_modal,
         x = this.selected_experiment;
@@ -1823,7 +1795,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
 
   promptForParameter(type) {
-    // Open dialog for adding new dimension or chart
+    // Open dialog for adding new dimension or chart.
     const x = this.selected_experiment;
     if(x) {
       const ol = [];
@@ -1835,9 +1807,8 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
           ol.push(`<option value="${i}">${ds}</option>`);
         }
       } else { 
-        for(let i = 0; i < this.suitable_charts.length; i++) {
-          const c = this.suitable_charts[i];
-          // NOTE: exclude charts already in the selected experiment
+        for(const c of this.suitable_charts) {
+          // NOTE: Exclude charts already in the selected experiment.
           if (x.charts.indexOf(c) < 0) {
             ol.push(`<option value="${c.title}">${c.title}</option>`);
           }
@@ -1849,7 +1820,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
   
   addParameter() {
-    // Add parameter (dimension or chart) to experiment
+    // Add parameter (dimension or chart) to experiment.
     const
         x = this.selected_experiment,
         name = this.parameter_modal.element('select').value;
@@ -1871,7 +1842,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
   
   deleteParameter() {
-    // Remove selected dimension or chart from selected experiment
+    // Remove selected dimension or chart from selected experiment.
     const
         x = this.selected_experiment,
         sp = this.selected_parameter;
@@ -1888,12 +1859,12 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
 
   editExclusions() {
-    // Give visual feedback by setting background color to white
+    // Give visual feedback by setting background color to white.
     this.exclude.style.backgroundColor = 'white';
   }
   
   setExclusions() {
-    // Sanitize string before accepting it as space-separated selector list
+    // Sanitize string before accepting it as space-separated selector list.
     const
         x = this.selected_experiment;
     if(x) {
@@ -1907,24 +1878,24 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
   
   readyButtons() {
-    // Set experiment run control buttons in "ready" state
+    // Set experiment run control buttons in "ready" state.
     this.pause_btn.classList.add('off');
     this.stop_btn.classList.add('off');
     this.start_btn.classList.remove('off', 'blink');
   }
   
   pausedButtons(aci) {
-    // Set experiment run control buttons in "paused" state
+    // Set experiment run control buttons in "paused" state.
     this.pause_btn.classList.remove('blink');
     this.pause_btn.classList.add('off');
     this.start_btn.classList.remove('off');
-    // Blinking start button indicates: paused -- click to resume
+    // Blinking start button indicates: paused -- click to resume.
     this.start_btn.classList.add('blink');
     this.viewer_progress.innerHTML = `Run ${aci} PAUSED`;
   }
   
   resumeButtons() {
-    // Changes buttons to "running" state, and return TRUE if state was "paused"
+    // Changes buttons to "running" state, and return TRUE if state was "paused".
     const paused = this.start_btn.classList.contains('blink');
     this.start_btn.classList.remove('blink');
     this.start_btn.classList.add('off');
@@ -1934,7 +1905,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
   
   pauseExperiment() {
-    // Interrupt solver but retain data on server and allow resume
+    // Interrupt solver but retain data on server and allow resume.
     UI.notify('Run sequence will be suspended after the current run');
     this.pause_btn.classList.add('blink');
     this.stop_btn.classList.remove('off');
@@ -1942,7 +1913,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
   
   stopExperiment() {
-    // Interrupt solver but retain data on server (and no resume)
+    // Interrupt solver but retain data on server (and no resume).
     VM.halt();
     MODEL.running_experiment = null;
     UI.notify('Experiment has been stopped');
@@ -1951,7 +1922,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
   
   showProgress(ci, p, n) {
-    // Show progress in the viewer
+    // Show progress in the viewer.
     this.viewer_progress.innerHTML = `Run ${ci} (${p}% of ${n})`;
   }
   
@@ -1962,7 +1933,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
   
   promptForDownload() {
-    // Show the download modal
+    // Show the download modal.
     const x = this.selected_experiment;
     if(!x) return;
     const
@@ -1975,13 +1946,13 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
       return;
     }
     md.element(ds.variables + '-v').checked = true;
-    // Disable "selected runs" button when no runs have been selected
+    // Disable "selected runs" button when no runs have been selected.
     if(sruns) {
       md.element('selected-r').disabled = false;
       md.element(ds.runs + '-r').checked = true;
     } else {
       md.element('selected-r').disabled = true;
-      // Check "all runs" but do not change download setting
+      // Check "all runs" but do not change download setting.
       md.element('all-r').checked = true;
     }
     this.download_modal.show();
@@ -1997,7 +1968,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   }
   
   downloadDataAsCSV() {
-    // Push results to browser
+    // Push results to browser.
     if(this.selected_experiment) {
       const md = this.download_modal;
       this.selected_experiment.download_settings = {

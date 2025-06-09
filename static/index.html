@@ -277,13 +277,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
            title="Sensitivity analysis (Ctrl-J)">
       <img id="experiment-btn" class="btn enab" src="images/experiment.png"
            title="Manage experiments (Ctrl-X)">
-      <a href="show-png.html" target="_blank"
-         style="text-decoration: none; outline: none">
-        <img id="diagram-btn" class="btn enab" src="images/diagram.png"
-           title="Render diagram as bitmap at 300 dpi (Ctrl-P)">
-      </a>
       <img id="savediagram-btn" class="btn enab" src="images/save-diagram.png"
-           title="Download diagram as Scalable Vector Graphics (Ctrl-G)">
+           title="Download diagram as Portable Network Graphics bitmap image (Ctrl-P)
+&#x270E; Shift-click to download as Scalable Vector Graphics (Ctrl-Shift-P)">
       <img id="finder-btn" class="btn enab" src="images/find.png"
            title="Find model elements by their name (Ctrl-F)">
       <img id="monitor-btn" class="btn enab" src="images/monitor.png"
@@ -771,6 +767,24 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
         <table id="power-grids-table">
         </table>
       </div>
+      <table>
+        <tr title="Checked aspects will be ignored for all power grids">
+          <td style="padding-bottom: 3px; font-style: italic">Disregard:</td>
+          <td style="padding: 0px; width: 20px">
+            <div id="power-grids-capacity" class="box clear"></div>
+          </td>
+          <td style="padding-bottom: 3px; width: 70px">Congestion</td>
+          <td style="padding: 0px; width: 20px">
+            <div id="power-grids-KVL" class="box clear"></div>
+          </td>
+          <td style="padding-bottom: 3px; width: 35px"
+              title="Kirchhoff's Voltage Law">KVL</td>
+          <td style="padding: 0px; width: 20px">
+            <div id="power-grids-losses" class="box clear"></div>
+          </td>
+          <td style="padding-bottom: 3px">Losses</td>
+        </tr>
+      </table>
     </div>
   </div>
 
@@ -2234,13 +2248,8 @@ NOTE: * and ? will be interpreted as wildcards"
         </div>
         <div id="chart-only-buttons">
           <img id="chart-save-btn" class="btn enab" src="images/save-chart.png"
-               title="Save chart diagram">
-          <a id="chart-render-btn" href="show-png.html" target="_blank"
-             style="margin-left: 4px; text-decoration: none; outline: none">
-            <img class="btn enab" src="images/chart.png"
-                 title="Render chart diagram as PNG"
-                 style="height: 20px; width: 20px">
-          </a>
+               title="Download chart as bitmap image (PNG)
+&#x270E; Shift-click to download chart as Scalable Vector Graphics (SVG)">
           <img id="chart-widen-btn" class="btn enab" src="images/stretch.png"
                title="Widen chart" style="margin-left: 24px">
           <img id="chart-narrow-btn" class="btn enab" src="images/compress.png"
@@ -2858,7 +2867,9 @@ NOTE: * and ? will be interpreted as wildcards"
         <label>Settings:</label>
         <input id="xp-settings-selector-string" type="text" autocomplete="off"
                title="Can specifiy time step, simulation period, block length and look-ahead.
-Example: s=0.5h  t=1-480  b=24  l=24   (in this order: s t b l)">
+Example: s=0.5h  t=1-480  b=24  l=24
+When modeling power grids, -c indicates &ldquo;ignore Kirchhoff's Voltage Law&rdquo;,
+-k &ldquo;ignore Kirchhoff's Voltage Law&rdquo;, and -l &ldquo;ignore power losses&rdquo;">
       </div>
     </div>
   </div>

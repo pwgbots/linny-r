@@ -36,8 +36,8 @@ Linny-R is developed as a JavaScript package, and requires that **Node.js**
 is installed on your computer. This software can be downloaded from
 <a href="https://nodejs.org" target="_blank">https://nodejs.org</a>. 
 Make sure that you choose the correct installer for your computer.
-Linny-R is developed using the _current_ release. Presently (December 2024)
-this is 23.3.0. 
+Linny-R is developed using the _current_ release. Presently (May 2025)
+this is 24.1.0. 
 
 Run the installer and accept the default settings.
 There is <u>**no**</u> need to install the optional _Tools for Native Modules_.
@@ -48,7 +48,7 @@ Verify the installation by typing:
 
 ``node --version``
 
-The response should be the version number of Node.js, for example: v23.3.0.
+The response should be the version number of Node.js, for example: v24.1.0.
 
 ## Installing Linny-R
 It is advisable to install Linny-R in a directory on your computer, **not**
@@ -116,7 +116,6 @@ The `linny-r` package directory should contain this file `README.md`, the files
 `static`. This `static` directory should contain three HTML files: 
 
 * `index.html` (the browser-based GUI) 
-* `show-png.html` (to render SVG diagrams as PNG images)
 * `show-diff.html` (to display differences between two Linny-R models)
 
 It should also contain the style sheet `linny-r.css` required by the GUI.
@@ -379,7 +378,6 @@ You can customize Linny-R by adding more arguments to the `node` command
 in the launch script:
 
 <pre>
-dpi=[number]       to overrule the default resolution (300 dpi) for Inkscape 
 launch             to automatically launch Linny-R in your default browser
 port=[number]      to overrule the default port number (5050)
 solver=[name]      to overrule the default sequence (Gurobi, MOSEK, CPLEX, SCIP, LP_solve)
@@ -402,8 +400,6 @@ The sub-directories of this directory `user` are used by Linny-R to store files.
 * `channel` and `callback` will be used to interact with Linny-R via its _Receiver_ 
 * `data` will be used by the _Dataset Manager_ to locate datasets for which
   a path has been specified
-* `diagrams` will be used to render Scalable Vector Graphics (SVG) files as
-  Portable Network Graphics (PNG) using Inkscape (if installed)
 * `models` will contain models that you saved by Shift-clicking on the
   _Save_ button, or using the keyboard shortcut Ctrl-Shift-S
 * `modules` will contain models stored in the `local host` _repository_
@@ -418,39 +414,6 @@ The sub-directories of this directory `user` are used by Linny-R to store files.
 > You can overrule this by starting the server with the `workspace=[path]`
 > option. This will create a new, empty workspace in the specified path.
 > It will **not** affect or duplicate information from existing workspaces.
-
-## Installing Inkscape
-
-Linny-R creates its diagrams and charts as SVG images. 
-When you download a diagram, it will be saved as a .svg file.
-These files can be viewed and edited using Inkscape, an open source
-vector graphics editor. 
-
-As it may be tedious to first save a diagram as SVG and then render it
-manually as a bitmap image, Linny-R features a *Render diagram as bitmap*
-button on the top toolbar, and on the bottom toolbar of the _Chart manager_.
-When you click it, Linny-R will send the image as SVG to the server. 
-The server script will save the SVG in the `user/diagrams` sub-directory, 
-and then try to execute an Inkscape command that will convert this SVG to
-a PNG image file in the same directory.
-The file name will be `diagram-(date and time).png`. 
-Meanwhile, the browser will have opened a new tab that will be "waiting"
-for this PNG image to become available. 
-If rendering was successful, the image will appear in this browser tab; 
-if rendering failed, the original SVG image will be shown.
-
-To install Inkscape, please look here:
-<a href="https://inkscape.org/release"
-   target="_blank">https://inkscape.org/release</a>
-
-Linny-R will automatically detect whether Inkscape is installed by searching
-for it in the environment variable PATH on your computer. On a macOS computer,
-Linny-R will look for Inkscape in `/Applications/Inkscape.app/Contents/MacOS`.
-
-> [!NOTE]
-> The installation wizard for Inkscape (version 1.3) may **not**
-> add the application to the PATH variable. Please check whether you need to
-> do this yourself.
 
 ## Using Linny-R console
 

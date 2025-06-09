@@ -158,10 +158,8 @@ class ModelAutoSaver {
     document.getElementById('load-modal').style.display = 'none';
     // Contruct the table to select from.
     let html = '';
-    for(let i = 0; i < this.model_list.length; i++) {
-      const
-          m = this.model_list[i],
-          bytes = UI.sizeInBytes(m.size).split(' ');
+    for(const m of this.model_list) {
+      const bytes = UI.sizeInBytes(m.size).split(' ');
       html += ['<tr class="dataset" style="color: gray" ',
           'onclick="FILE_MANAGER.loadAutoSavedModel(\'',
           m.name,'\');"><td class="restore-name">', m.name, '</td><td>',

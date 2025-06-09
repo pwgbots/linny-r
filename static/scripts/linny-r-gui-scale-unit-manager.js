@@ -35,18 +35,18 @@ SOFTWARE.
 // CLASS ScaleUnitManager (modal dialog!)
 class ScaleUnitManager {
   constructor() {
-    // Add the scale units modal
+    // Add the scale units modal.
     this.dialog = new ModalDialog('scale-units');
     this.dialog.close.addEventListener('click',
         () => SCALE_UNIT_MANAGER.dialog.hide());
-    // Make the add, edit and delete buttons of this modal responsive
+    // Make the add, edit and delete buttons of this modal responsive.
     this.dialog.element('new-btn').addEventListener('click',
         () => SCALE_UNIT_MANAGER.promptForScaleUnit());
     this.dialog.element('edit-btn').addEventListener('click',
         () => SCALE_UNIT_MANAGER.editScaleUnit());
     this.dialog.element('delete-btn').addEventListener('click',
         () => SCALE_UNIT_MANAGER.deleteScaleUnit());
-    // Add the scale unit definition modal
+    // Add the scale unit definition modal.
     this.new_scale_unit_modal = new ModalDialog('new-scale-unit');
     this.new_scale_unit_modal.ok.addEventListener(
         'click', () => SCALE_UNIT_MANAGER.addNewScaleUnit());
@@ -57,19 +57,19 @@ class ScaleUnitManager {
   }
   
   get selectedUnitIsBaseUnit() {
-    // Returns TRUE iff selected unit is used as base unit for some unit
-    for(let u in this.scale_units) if(this.scale_units.hasOwnProperty(u)) {
-      if(this.scale_units[u].base_unit === this.selected_unit) return true;
+    // Return TRUE iff selected unit is used as base unit for some unit.
+    for(let k in this.scale_units) if(this.scale_units.hasOwnProperty(k)) {
+      if(this.scale_units[k].base_unit === this.selected_unit) return true;
     }
     return false;
   }
 
   show() {
-    // Show the user-defined scale units for the current model
-    // NOTE: add/edit/delete actions operate on this list, so changes
-    // take immediate effect
+    // Show the user-defined scale units for the current model.
+    // NOTE: Add/edit/delete actions operate on this list, so changes
+    // take immediate effect.
     MODEL.cleanUpScaleUnits();
-    // NOTE: unit name is key in the scale units object
+    // NOTE: Unit name is key in the scale units object.
     this.selected_unit = '';
     this.last_time_selected = 0;
     this.updateDialog();
@@ -78,7 +78,7 @@ class ScaleUnitManager {
   
   updateDialog() {
     // Create the HTML for the scale units table and update the state
-    // of the action buttons
+    // of the action buttons.
     if(!MODEL.scale_units.hasOwnProperty(this.selected_unit)) {
       this.selected_unit = '';
     }
@@ -88,7 +88,7 @@ class ScaleUnitManager {
         ss = this.selected_unit;
     let ssid = 'scntr';
     if(keys.length <= 1) {
-      // Only one key => must be the default '1'
+      // Only one key => must be the default '1'.
       sl.push('<tr><td><em>No units defined</em></td></tr>');
     } else {
       for(let i = 1; i < keys.length; i++) {
@@ -118,14 +118,14 @@ class ScaleUnitManager {
   }
 
   selectScaleUnit(event, symbol, focus) {
-    // Select scale unit, and when double-clicked, allow to edit it
+    // Select scale unit, and when double-clicked, allow to edit it.
     const
         ss = this.selected_unit,
         now = Date.now(),
         dt = now - this.last_time_selected,
-        // NOTE: Alt-click and double-click indicate: edit
+        // NOTE: Alt-click and double-click indicate: edit.
         // Consider click to be "double" if the same modifier was clicked
-        // less than 300 ms ago
+        // less than 300 ms ago.
         edit = event.altKey || (symbol === ss && dt < 300);
     this.selected_unit = symbol;
     this.last_time_selected = now;
@@ -138,9 +138,9 @@ class ScaleUnitManager {
   }
   
   promptForScaleUnit(action='Define new', focus='name') {
-    // Show the Add/Edit scale unit dialog for the indicated action 
+    // Show the Add/Edit scale unit dialog for the indicated action.
     const md = this.new_scale_unit_modal;
-    // NOTE: by default, let name and base unit be empty strings, not '1'
+    // NOTE: By default, let name and base unit be empty strings, not '1'.
     let sv = {name: '', scalar: '1', base_unit: '' };
     if(action === 'Edit' && this.selected_unit) {
       sv = MODEL.scale_units[this.selected_unit];
@@ -154,23 +154,23 @@ class ScaleUnitManager {
   }
 
   addNewScaleUnit() {
-    // Add the new scale unit or update the one being edited 
+    // Add the new scale unit or update the one being edited.
     const
         md = this.new_scale_unit_modal,
         edited = md.element('action').innerText === 'Edit',
-        // NOTE: unit name cannot contain single quotes
+        // NOTE: Unit name cannot contain single quotes.
         s = UI.cleanName(md.element('name').value).replace("'", ''),
         v = md.element('scalar').value.trim(),
-        // NOTE: accept empty base unit to denote '1'
+        // NOTE: Accept empty base unit to denote '1'.
         b = md.element('base').value.trim() || '1';
     if(!s) {
-      // Do not accept empty string as name
+      // Do not accept empty string as name.
       UI.warn('Scale unit must have a name');
       md.element('name').focus();
       return;
     }
     if(MODEL.scale_units.hasOwnProperty(s) && !edited) {
-      // Do not accept existing unit as name for new unit
+      // Do not accept existing unit as name for new unit.
       UI.warn(`Scale unit "${s}" is already defined`);
       md.element('name').focus();
       return;      
@@ -194,7 +194,7 @@ class ScaleUnitManager {
       }      
       const selu = this.selected_unit;
       if(edited && b !== s) {
-        // Prevent inconsistencies across scalars
+        // Prevent inconsistencies across scalars.
         const cr = MODEL.scale_units[b].conversionRates();
         if(cr.hasOwnProperty(s)) {
           UI.warn(`Defining ${s} in terms of ${b} introduces a circular reference`);
@@ -203,13 +203,13 @@ class ScaleUnitManager {
         }
       }
       if(edited && s !== selu) {
-         // First rename base units
-        for(let u in MODEL.scale_units) if(MODEL.scale_units.hasOwnProperty(u)) {
-          if(MODEL.scale_units[u].base_unit === selu) {
-            MODEL.scale_units[u].base_unit = s;
+         // First rename base units.
+        for(let k in MODEL.scale_units) if(MODEL.scale_units.hasOwnProperty(k)) {
+          if(MODEL.scale_units[k].base_unit === selu) {
+            MODEL.scale_units[k].base_unit = s;
           }
         }
-        // NOTE: renameScaleUnit replaces references to `s`, not the entry
+        // NOTE: renameScaleUnit replaces references to `s`, not the entry.
         MODEL.renameScaleUnit(selu, s);
         delete MODEL.scale_units[this.selected_unit];
       }
@@ -222,13 +222,13 @@ class ScaleUnitManager {
   }
   
   editScaleUnit() {
-    // Allow user to edit name and/or value
+    // Allow user to edit name and/or value.
     if(this.selected_unit) this.promptForScaleUnit('Edit', 'scalar');
   }
   
   deleteScaleUnit() {
-    // Allow user to delete
-    // @@@TO DO: check whether scale unit is used in the model
+    // Allow user to delete.
+    // @@@TO DO: Check whether scale unit is used in the model.
     if(this.selected_unit && !this.selectedUnitIsBaseUnit) {
       delete MODEL.scale_units[this.selected_unit];
       this.updateDialog();
@@ -236,7 +236,7 @@ class ScaleUnitManager {
   }
   
   updateScaleUnits() {
-    // Replace scale unit definitions of model by the new definitions
+    // Replace scale unit definitions of model by the new definitions.
     UI.updateScaleUnitList();
     this.dialog.hide();
   }

@@ -1265,29 +1265,27 @@ function rcvrCallBack(res, rpath, rfile, script) {
 const STATIC_FILES = {
     // MIME types of files that can be served
     extensions: {
-      js: 'application/javascript',
-      xml: 'application/xml',
-      wav: 'audio/x-wav',
-      ttc: 'font/collection',
-      otf: 'font/otf',
-      ttf: 'font/ttf',
-      icns: 'image/icns',
-      png: 'image/png',
-      svg: 'image/svg+xml',
-      ico: 'image/x-icon',
-      css: 'text/css',
-      html: 'text/html',
-      txt: 'text/plain'
-    },
+        js: 'application/javascript',
+        xml: 'application/xml',
+        wav: 'audio/x-wav',
+        ttc: 'font/collection',
+        otf: 'font/otf',
+        ttf: 'font/ttf',
+        icns: 'image/icns',
+        png: 'image/png',
+        svg: 'image/svg+xml',
+        ico: 'image/x-icon',
+        css: 'text/css',
+        html: 'text/html',
+        txt: 'text/plain'
+      },
     // Subdirectories of (main)/static/ directory from which files with
     // accepted MIME types can be served
     directories: {
         '/scripts': ['js'],
         '/images': ['icns', 'ico', 'png', 'svg'],
         '/fonts': ['otf', 'ttc', 'ttf'],
-        '/sounds': ['wav'],
-        // NOTE: diagrams will actually be served from (main)/user/diagrams/
-        '/diagrams': ['png', 'svg']
+        '/sounds': ['wav']
       },
     // Files that can be served from the (main)/static/ directory itself
     files: [
@@ -1417,17 +1415,11 @@ function permittedFile(path) {
 }
 
 function serveStaticFile(res, path) {
-  // Serve the specified path (if permitted: only diagrams and static files)
+  // Serve the specified path (if permitted: only static files)
   if(path === '/' || path === '') path = '/index.html';
-  if(path.startsWith('/diagrams/')) {
-    // Serve diagrams from the (main)/user/diagrams/ sub-directory 
-    logAction('Diagram: ' + path);
-    path = WORKING_DIRECTORY + '/user' + path;
-  } else {
-    // Other files from the (main)/static/ subdirectory
-    logAction('Static file: ' + path);
-    path = MODULE_DIRECTORY + '/static' + path;
-  }
+  // Serve files from the (main)/static/ subdirectory
+  logAction('Static file: ' + path);
+  path = MODULE_DIRECTORY + '/static' + path;
   fs.readFile(path, (err, data) => {
       if(err) {
         console.log(err);
@@ -1440,75 +1432,6 @@ function serveStaticFile(res, path) {
       res.writeHead(200);
       res.end(data);
     });
-}
-
-function convertSVGtoPNG(req, res, sp) {
-  // Convert SVG data from browser to PNG image using Inkscape
-  // NOTE: images can be huge, so send only the file name as response;
-  // Linny-R will open a new browser window, load the file, and display it
-  const
-      svg = decodeURI(atob(sp.get('data'))),
-      // Use current time as file name
-      fn = 'diagram-' +
-          (new Date()).toISOString().slice(0, 19).replace(/[\-\:]/g, ''),
-      fp = path.join(WORKSPACE.diagrams, fn);
-  // NOTE: use binary encoding for SVG file
-  logAction('Saving SVG file: ' + fp);
-  try {
-    fs.writeFileSync(fp + '.svg', svg);
-  } catch(error) {
-    console.log('WARNING: Failed to save SVG --', error);
-  }
-  // Use Inkscape to convert SVG to the requested format
-  if(SETTINGS.inkscape) {
-    logAction('Rendering image');
-    let
-      cmd = SETTINGS.inkscape,
-      svg = fp + '.svg';
-    // Enclose paths in double quotes if they contain spaces
-    if(cmd.indexOf(' ') >= 0) cmd = `"${cmd}"`;
-    if(svg.indexOf(' ') >= 0) svg = `"${svg}"`;
-    cmd += ` --export-type=png --export-dpi=${SETTINGS.dpi} ${svg}`;
-    console.log(cmd);
-    child_process.exec(cmd,
-        (error, stdout, stderr) => {
-            let ext = '.svg';
-            console.log(stdout);
-            if(error) {
-              console.log('WARNING: Failed to run Inkscape --', error);
-              console.log(stderr);
-            } else {
-              // Look for the PNG file.
-              const mode = fs.constants.R_OK | fs.constants.W_O;
-              try {
-                fs.accessSync(fp + '.png', mode);
-                ext = '.png';
-              } catch(err) {
-                // NOTE: Inkscape 1.3 adds ".png" to the original file name,
-                // so this may end on ".svg.png"
-                try {
-                  fs.accessSync(fp + '.svg.png', mode);
-                  // If found, rename the PNG file.
-                  fs.renameSync(fp + '.svg.png', fp + '.png');
-                  ext = '.png';
-                } catch(err) {
-                  console.log('WARNING: Inkscape did not output a PNG file');
-                }
-              }
-              // Delete the SVG file.
-              try {
-                fs.unlinkSync(fp + '.svg');
-              } catch(error) {
-                console.log(`NOTICE: Failed to delete SVG file "${fp}.svg"`);
-              }
-            }
-            // Return the image file name (PNG if successful, otherwise SVG) 
-            servePlainText(res, 'diagrams/' + fn + ext);
-          }
-      );
-  } else {
-    servePlainText(res, 'diagrams/' + fn + '.svg');
-  }
 }
 
 // Convenience functions to fetch data from external URL
@@ -1591,8 +1514,6 @@ function commandLineSettings() {
   // Sets default settings, and then checks the command line arguments.
   const settings = {
       cli_name: (PLATFORM.startsWith('win') ? 'Command Prompt' : 'Terminal'),
-      inkscape: '',
-      dpi: 300,
       launch: false,
       port: 5050,
       preferred_solver: '',
@@ -1604,7 +1525,6 @@ function commandLineSettings() {
       usage = `Usage:  ${app} server [options]
 
 Possible options are:
-  dpi=[number]       will make InkScape render SVGs in the specified resolution
   help               will display these command line options
   launch             will open the Linny-R GUI in a browser window
   port=[number]      will listen at the specified port number
@@ -1635,14 +1555,6 @@ Possible options are:
         } else {
           settings.preferred_solver = av[1];
         }
-      } else if(av[0] === 'dpi') {
-        // Accept any number greater than or equal to 1024.
-        const n = parseInt(av[1]);
-        if(isNaN(n) || n > 1200) {
-          console.log(`WARNING: Invalid resolution ${av[1]} (max. 1200 dpi)`);
-        } else {
-          settings.dpi = n;
-        }
       } else if(av[0] === 'workspace') {
         // User directory must be READ/WRITE-accessible.
         try {
@@ -1664,55 +1576,6 @@ Possible options are:
         process.exit();
       }
     }
-  }
-  // Check whether Inkscape has been installed.
-  const path_list = process.env.PATH.split(path.delimiter);
-  for(let i = 0; i < path_list.length; i++) {
-    // Check whether it is an Inkscape path.
-    match = path_list[i].match(/inkscape/i);
-    // If so, use it (so the *last* matching path will be used).
-    if(match) settings.inkscape = path_list[i];
-  }
-  // NOTE: On macOS, Inkscape is not added to the PATH environment variable. 
-  if(!settings.inkscape && PLATFORM === 'darwin') {
-    console.log('Looking for Inkscape in Applications...');
-    try {
-      // Look in the default directory.
-      const ip = '/Applications/Inkscape.app/Contents/MacOS';
-      fs.accessSync(ip);
-      settings.inkscape = ip;
-    } catch(err) {
-      // No real error, so no action needed.
-    }
-  }
-  // Verify that Inkscape is installed.
-  if(settings.inkscape) {
-    // NOTE: On Windows, the command line version is a .com file.
-    let ip = path.join(settings.inkscape,
-        'inkscape' + (PLATFORM.startsWith('win') ? '.com' : ''));
-    try {
-      fs.accessSync(ip, fs.constants.X_OK);
-    } catch(err) {
-      // NOTE: As of Inkscape version 1.3, the command line executable
-      // is called inkscapecom(.com).
-      ip = path.join(settings.inkscape,
-          'inkscapecom' + (PLATFORM.startsWith('win') ? '.com' : ''));
-    }
-    try {
-      fs.accessSync(ip, fs.constants.X_OK);
-      console.log('Path to Inkscape:', settings.inkscape);
-      settings.inkscape = ip;
-      console.log(
-          `SVG will be rendered with ${settings.dpi} dpi resolution`);
-    } catch(err) {
-      settings.inkscape = '';
-      console.log(err.message);
-      console.log(
-          'WARNING: Failed to access the Inkscape command line application');
-    }
-  } else {
-    console.log(
-        'Inkscape not installed, so images will not be rendered as PNG');
   }
   return settings;
 }
@@ -1741,7 +1604,6 @@ function createWorkspace() {
       channel: path.join(SETTINGS.user_dir, 'channel'),
       callback: path.join(SETTINGS.user_dir, 'callback'),
       data: path.join(SETTINGS.user_dir, 'data'),
-      diagrams: path.join(SETTINGS.user_dir, 'diagrams'),
       models: path.join(SETTINGS.user_dir, 'models'),
       modules: path.join(SETTINGS.user_dir, 'modules'),
       reports: path.join(SETTINGS.user_dir, 'reports'),

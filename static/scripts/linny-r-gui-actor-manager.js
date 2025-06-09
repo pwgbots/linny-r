@@ -72,18 +72,18 @@ class ActorManager {
   }
   
   roundLetter(n) {
-    // Returns integer `n` as lower case letter: 1 = a, 2 = b, 26 = z
-    // NOTE: numbers 27-52 return upper case A-Z; beyond ranges results in '?' 
-    if(n < 1 || n > this.max_rounds) return '?';
+    // Return integer `n` as lower case letter: 1 = a, 2 = b, 26 = z.
+    // NOTE: Numbers 27-31 return upper case A-E; beyond ranges results in '?'.
+    if(n < 1 || n > VM.max_rounds) return '?';
     return VM.round_letters[n];
   }
   
   checkRoundSequence(s) {
     // Expects a string with zero or more round letters
-    for(let i = 0; i < s.length; i++) {
-      const n = VM.round_letters.indexOf(s[i]);
+    for(const rl of s) {
+      const n = VM.round_letters.indexOf(rl);
       if(n < 1 || n > this.rounds) {
-        UI.warn(`Round ${s[i]} outside range (a` +
+        UI.warn(`Round ${rl} outside range (a` +
             (this.rounds > 1 ? '-' + this.roundLetter(this.rounds) : '') + ')');
         return false;    
       }
@@ -160,20 +160,14 @@ class ActorManager {
             // in the actors table, but both need to be passed on.
             const p = event.target.parentElement;
             // Pass name and weight of the selected actor (first and second
-            // TD of this TR)
+            // TD of this TR).
             ACTOR_MANAGER.showEditActorDialog(
                 p.cells[0].innerText, p.cells[1].innerText);
           };
-      for(let i = 0; i < abs.length; i++) {          
-      abs[i].addEventListener('click', abf);
-    }
-    // Clicking the other cells should open the ACTOR dialog
-    for(let i = 0; i < abns.length; i++) {          
-      abns[i].addEventListener('click', eaf);
-    }
-    for(let i = 0; i < abws.length; i++) {          
-      abws[i].addEventListener('click', eaf);
-    }
+    for(const ab of abs) ab.addEventListener('click', abf);
+    // Clicking the other cells should open the ACTOR dialog.
+    for(const abn of abns) abn.addEventListener('click', eaf);
+    for(const abw of abws) abw.addEventListener('click', eaf);
     UI.modals.actors.show();
   }
 
@@ -190,7 +184,7 @@ class ActorManager {
   }
 
   addRound() {
-    // Limit # rounds to 30 to cope with 32 bit integer used by JavaScript
+    // Limit # rounds to 31 to cope with 32 bit integer used by JavaScript.
     if(this.rounds < VM.max_rounds) {
       this.rounds++;
       this.round_count.innerHTML = pluralS(this.rounds, 'round');
@@ -202,12 +196,12 @@ class ActorManager {
     if(this.selected_round > 0 && this.selected_round <= this.rounds) {
       const mask = Math.pow(2, this.selected_round) - 1;
       this.updateRoundFlags();
-      for(let i = 0; i < MODEL.actor_list.length; i++) {
-        let rf = MODEL.actor_list[i][2];
+      for(const a of MODEL.actor_list) {
+        let rf = a[2];
         const
             low = (rf & mask),
             high = (rf & ~mask) >>> 1;
-        MODEL.actor_list[i][2] = (low | high);
+        a[2] = (low | high);
       }
       this.rounds--;
       this.selected_round = 0;
@@ -291,16 +285,13 @@ class ActorManager {
   }
 
   updateActorProperties() {
-    // This method is called when the modeler clicks OK on the actor list dialog
+    // This method is called when the modeler clicks OK on the actor list dialog.
     this.updateRoundFlags();
     const xp = new ExpressionParser('');
-    let a,
-        ali,
-        ok = true;
-    for(let i = 0; i < MODEL.actor_list.length; i++) {
-      ali = MODEL.actor_list[i];
-      a = MODEL.actors[ali[0]];
-      // Rename actor if name has been changed
+    let ok = true;
+    for(const ali of MODEL.actor_list) {
+      const a = MODEL.actors[ali[0]];
+      // Rename actor if name has been changed.
       if(a.displayName != ali[1]) a.rename(ali[1]);
       // Set its round flags
       a.round_flags = ali[2];
@@ -316,7 +307,7 @@ class ActorManager {
           a.weight.update(xp);
         }
       }
-      // Update import/export status
+      // Update import/export status.
       MODEL.ioUpdate(a, ali[4]);
     }
     const seq = this.sequence.value;
@@ -329,8 +320,8 @@ class ActorManager {
   }
   
   showActorInfo(n, shift) {
-    // Show actor documentation when Shift is held down
-    // NOTE: do not allow documentation of "(no actor)"
+    // Show actor documentation when Shift is held down.
+    // NOTE: do not allow documentation of "(no actor)".
     if(n > 0) {
       const a = MODEL.actorByID(MODEL.actor_list[n][0]);
       DOCUMENTATION_MANAGER.update(a, shift);
@@ -338,4 +329,3 @@ class ActorManager {
   }
   
 } // END of class ActorManager
-

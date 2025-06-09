@@ -98,6 +98,9 @@ class LinnyRModel {
     this.grid_pixels = 20;
     this.align_to_grid = true;
     this.with_power_flow = false;
+    this.ignore_grid_capacity = false;
+    this.ignore_KVL = false;
+    this.ignore_power_losses = false;
     this.infer_cost_prices = false;
     this.ignore_negative_flows = false;
     this.report_results = false;
@@ -136,6 +139,9 @@ class LinnyRModel {
     // Reset counts of effects of a rename operation
     this.variable_count = 0;
     this.expression_count = 0;
+    // Translation time is used to calibrate speed when dragging a node
+    // beyond left or upper paper limit.
+    this.translation_time = 0;
   }
   
   // NOTE: a model can also be the entity for the documentation manager,
@@ -150,6 +156,14 @@ class LinnyRModel {
   }
 
   /* METHODS THAT LOOKUP ENTITIES, OR INFER PROPERTIES */
+  
+  aligned(x) {
+    // Return x "rounded" to the alignment grid resolution if alignment
+    // option has been checked.
+    if(!this.align_to_grid) return x;
+    const gr = this.grid_pixels;
+    return Math.round(x / gr) * gr;
+  }
 
   get simulationTimeStep() {
     // Return actual model time step, rather than `t`, which is relative
@@ -213,10 +227,20 @@ class LinnyRModel {
   get settingsString() {
     // Return model settings as string
     const tu = {year: 'y', week: 'w', day: 'd',
-        hour: 'h', minute: 'm', second: 's'};
-    return ['s=', this.time_scale, tu[this.time_unit],
-      ' t=', this.start_period, '-', this.end_period,
-      ' b=', this.block_length, ' l=', this.look_ahead].join('');
+        hour: 'h', minute: 'm', second: 's'},
+        ss = [
+            's=', this.time_scale, tu[this.time_unit],
+            ' t=', this.start_period, '-', this.end_period,
+            ' b=', this.block_length,
+            ' l=', this.look_ahead].join('');
+    let go = '';
+    if(this.with_power_flow) {
+      if(this.ignore_grid_capacity) go += 'c';
+      if(this.ignore_KVL) go += 'k';
+      if(this.ignore_power_losses) go += 'l';
+      if(go) go = ' -' + go;
+    }
+    return ss + go;
   }
   
   parseSettings(ss, testing=false) {
@@ -232,18 +256,24 @@ class LinnyRModel {
         ssp = false,
         sep = false,
         sbl = false,
-        sla = false;
-    for(let i = 0; i < sl.length; i++) {
-      const s = sl[i].split('=');
-      if(s[0] === 's') {
-        let fs = s[1],
+        sla = false,
+        cap = false,
+        kvl = false,
+        pls = false;
+    for(const kvp of sl) {
+      const
+          s = kvp.split('='),
+          setting = s[0],
+          value = s[1];
+      if(setting === 's') {
+        let fs = value,
             j = fs.length - 1;
         while('yrwkdhmins'.indexOf(fs.charAt(j)) >= 0) {
           j--;
         }
         stu = tu[fs.charAt(j + 1)];
         if(!stu) {
-          UI.warn(`Invalid time unit in settings "md.element{ss}"`);
+          UI.warn(`Invalid time unit in settings "${ss}"`);
           ok = false;
         }
         sts = parseFloat(fs);
@@ -251,8 +281,8 @@ class LinnyRModel {
           UI.warn(`Invalid time scale in settings "${ss}"`);
           ok = false;
         }
-      } else if(s[0] === 't') {
-        const ts = s[1].split('-');
+      } else if(setting === 't') {
+        const ts = value.split('-');
         ssp = parseInt(ts[0]);
         if(ts.length > 1) {
           sep = parseInt(ts[1]);
@@ -261,14 +291,18 @@ class LinnyRModel {
           UI.warn(`Invalid simulation period in settings "${ss}"`);
           ok = false;
         }
-      } else if(s[0] === 'b') {
-        sbl = parseInt(s[1]);
+      } else if(setting === 'b') {
+        sbl = parseInt(value);
         if(sbl <= 0) {
           UI.warn(`Invalid block length in settings "${ss}"`);
           ok = false;
         }
-      } else if(s[0] === 'l') {
-        sla = parseInt(s[1]);
+      } else if(setting === 'l') {
+        sla = parseInt(value);
+      } else if(!value && setting.startsWith('-')) {
+        cap = setting.indexOf('c') >= 0;
+        kvl = setting.indexOf('k') >= 0;
+        pls = setting.indexOf('l') >= 0;
       }
     }
     if(ok && !testing) {
@@ -278,6 +312,11 @@ class LinnyRModel {
       if(sep !== false) this.end_period = sep;
       if(sbl !== false) this.block_length = sbl;
       if(sla !== false) this.look_ahead = sla;
+      if(this.with_power_flow) {
+        this.ignore_grid_capacity = cap;
+        this.ignore_KVL = kvl;
+        this.ignore_power_losses = pls;
+      }
     }
     return ok;
   }
@@ -301,23 +340,25 @@ class LinnyRModel {
     // Return list of power grids for which Kirchhoff's voltage law must
     // be enforced.
     const pgl = [];
-    for(let k in this.power_grids) if(this.power_grids.hasOwnProperty(k)) {
-      const pg = this.power_grids[k];
-      if(pg.kirchhoff) pgl.push(pg);
+    if(!this.ignore_KVL) {
+      for(let k in this.power_grids) if(this.power_grids.hasOwnProperty(k)) {
+        const pg = this.power_grids[k];
+        if(pg.kirchhoff) pgl.push(pg);
+      }
     }
     return pgl;
   }
   
   noteByID(id) {
-    // NOTE: Note object identifiers have syntax #cluster name#time stamp#
+    // NOTE: Note object identifiers have syntax #cluster name#time stamp#.
     const parts = id.split('#');
-    // check whether the identifier matches this syntax 
+    // Check whether the identifier matches this syntax.
     if(parts.length === 4 && this.clusters.hasOwnProperty(parts[1])) {
-      // if so, get the cluster
+      // If so, get the cluster.
       const c = this.clusters[parts[1]];
-      // then look in this cluster for a note having the specified identifier
-      for(let i = 0; i < c.notes.length; i++) {
-        if(c.notes[i].identifier === id) return c.notes[i];
+      // Then look in this cluster for a note having the specified identifier.
+      for(const n of c.notes) {
+        if(n.identifier === id) return n;
       }
     }
     return null;
@@ -366,7 +407,7 @@ class LinnyRModel {
   }
 
   equationByID(id) {
-    // NOTE: return the equation's dataset modifier if its selector matches
+    // NOTE: Return the equation's dataset modifier if its selector matches.
     if(this.equations_dataset &&
         this.equations_dataset.modifiers.hasOwnProperty(id)) {
       return this.equations_dataset.modifiers[id];
@@ -375,22 +416,22 @@ class LinnyRModel {
   }
   
   wildcardEquationByID(id) {
-    // Returns the tuple [dataset modifier, number] holding the first
+    // Return the tuple [dataset modifier, number] holding the first
     // wildcard equation for which the ID (e.g., "abc ??") matches with
     // `id`, or NULL if no match is found.
     // NOTE: `id` must contain a number, not a wildcard.
     if(!this.equations_dataset) return null;
     const ids = Object.keys(this.equations_dataset.modifiers);
-    for(let i = 0; i < ids.length; i++) {
+    for(const mid of ids) {
       // Skip the modifier ID is identical to `id` (see NOTE above).
-      if(ids[i] !== id) {
-        const re = wildcardMatchRegex(ids[i], true);
+      if(mid !== id) {
+        const re = wildcardMatchRegex(mid, true);
         if(re) {
           const m = [...id.matchAll(re)];
           if(m.length > 0) {
             const n = parseInt(m[0][1]);
             if(n || n === 0) {
-              return [this.equations_dataset.modifiers[ids[i]], n];
+              return [this.equations_dataset.modifiers[mid], n];
             }
           }
         }
@@ -432,21 +473,20 @@ class LinnyRModel {
   }
 
   objectByName(name) {
-    // Looks up a named object based on its display name.
+    // Look up a named object based on its display name.
     // NOTE: Top cluster is uniquely identified by its name.
     if(name === UI.TOP_CLUSTER_NAME || name === UI.FORMER_TOP_CLUSTER_NAME) {
       return this.clusters[UI.nameToID(UI.TOP_CLUSTER_NAME)];
     }
-    // Other names must be converted to an ID
-    for(let i = 0; i < 2; i++) {
-      const sym = [UI.LINK_ARROW, UI.CONSTRAINT_ARROW][i];
+    // Other names must be converted to an ID.
+    for(const sym of [UI.LINK_ARROW, UI.CONSTRAINT_ARROW]) {
       if(name.indexOf(sym) >= 0) {
-        // NOTE: link IDs are based on node codes, not node names
+        // NOTE: Link IDs are based on node codes, not node names
         const nn = name.split(sym),
             // NOTE: recursive calls to objectByName
             fn = this.objectByName(nn[0]),
             tn = this.objectByName(nn[1]);
-        if(i === 0) {
+        if(sym === UI.LINK_ARROW) {
           // NOTE: three underscores denote the link arrow
           if(fn && tn) return this.linkByID(fn.code + '___' + tn.code);
           return null;
@@ -491,9 +531,9 @@ class LinnyRModel {
     const
         list = [],
         keys = Object.keys(this.equations_dataset.modifiers);
-    for(let i = 0; i < keys.length; i++) {
-      if(keys[i].startsWith(':')) {
-        list.push(this.equations_dataset.modifiers[keys[i]]);
+    for(const k of keys) {
+      if(k.startsWith(':')) {
+        list.push(this.equations_dataset.modifiers[k]);
       }
     }
     return list;
@@ -502,11 +542,10 @@ class LinnyRModel {
   endsWithMethod(name) {
     // Return method (instance of DatasetModifier) if `name` ends with
     // ":(whitespace)m" for some method having selector ":m".
-    const ml = this.allMethods;
-    for(let i = 0; i < ml.length; i++) {
+    for(const m of this.allMethods) {
       const re = new RegExp(
-          ':\\s*' + escapeRegex(ml[i].selector.substring(1)) + '$', 'i');
-      if(name.match(re)) return ml[i];
+          ':\\s*' + escapeRegex(m.selector.substring(1)) + '$', 'i');
+      if(name.match(re)) return m;
     }
     return null;
   }
@@ -627,8 +666,10 @@ class LinnyRModel {
     const
         el = [],
         ml = [...s.matchAll(/\[(\{[^\}]+\}){0,1}([^\]]+)\]/g)];
-    for(let i = 0; i < ml.length; i++) {
-      const n = ml[i][2].trim();
+    for(const m of ml) {
+      // NOTE: Match group m[0] will be '[', m[1] the optional experiment
+      // run specifier, and m[3] the closing bracket ']'.
+      const n = m[2].trim();
       let sep = n.lastIndexOf('|');
       if(sep < 0) sep = n.lastIndexOf('@');
       const
@@ -640,7 +681,7 @@ class LinnyRModel {
   }
   
   get clustersToIgnore() {
-    // Returns a "dictionary" with all clusters that are to be ignored
+    // Return a "dictionary" with all clusters that are to be ignored.
     const cti = {};
     for(let k in this.clusters) if(this.clusters.hasOwnProperty(k)) {
       if(this.clusters[k].toBeIgnored) cti[k] = true;
@@ -650,62 +691,55 @@ class LinnyRModel {
   
   inferIgnoredEntities() {
     // Makes a "dictionary" with all processes, products and links that are
-    // to be ignored when solving the model
+    // to be ignored when solving the model.
     const cti = this.clustersToIgnore;
     let pti = [];
     this.ignored_entities = Object.assign({}, cti);
     for(let k in this.processes) if(this.processes.hasOwnProperty(k)) {
       const cid = this.processes[k].cluster.identifier;
       if(cti[cid]) {
-        // Add identifier of the process
+        // Add identifier of the process.
         this.ignored_entities[k] = true;
-        // Also add identifiers for all its links
+        // Also add identifiers for all its links.
         const p = this.processes[k];
-        for(let i = 0; i < p.inputs.length; i++) {
-          const l = p.inputs[i];
+        for(const l of p.inputs) {
           this.ignored_entities[l.identifier] = true;
           addDistinct(l.from_node, pti);
         }
-        for(let i = 0; i < p.outputs.length; i++) {
-          const l = p.outputs[i];
+        for(const l of p.outputs) {
           this.ignored_entities[l.identifier] = true;
           addDistinct(l.to_node, pti);
         }
       }
     }
-    // Now `pti` holds products that MAY be ignorable
+    // Now `pti` holds products that MAY be ignorable.
     while(pti.length > 0) {
-      // `new_pti` will hold data products that may ALSO be ignored
+      // `new_pti` will hold data products that may ALSO be ignored.
       const new_pti = [];
-      for(let i = 0; i < pti.length; i++) {
-        const p = pti[i];
-        if(p.allLinksIgnored) {
-          this.ignored_entities[p.identifier] = true;
-          // Data products may also link to other data products
-          if(p.is_data) {
-            // These outgoing data links can also be ignored
-            for(let i = 0; i < p.outputs.length; i++) {
-              const
-                  l = p.outputs[i],
-                  k = l.identifier;
-              if(!this.ignored_entities[k]) {
-                // Link not already ignored => add it...
-                this.ignored_entities[k] = true;
-                // ... and then its TO-node MAY also be ignorable ...
-                const tn = l.to_node;
-                if(tn.is_data && !this.ignored_entities[tn.identifier]) {
-                  //... if it is a data product that is not already ignored 
-                  new_pti.push(tn);
-                }
+      for(const p of pti) if(p.allLinksIgnored) {
+        this.ignored_entities[p.identifier] = true;
+        // Data products may also link to other data products.
+        if(p.is_data) {
+          // These outgoing data links can also be ignored.
+          for(const l of p.outputs) {
+            const k = l.identifier;
+            if(!this.ignored_entities[k]) {
+              // Link not already ignored => add it...
+              this.ignored_entities[k] = true;
+              // ... and then its TO-node MAY also be ignorable ...
+              const tn = l.to_node;
+              if(tn.is_data && !this.ignored_entities[tn.identifier]) {
+                //... if it is a data product that is not already ignored 
+                new_pti.push(tn);
               }
             }
           }
         }
       }
-      // Iterate until no more new products-that-may-be-gnored are found
+      // Iterate until no more new products-that-may-be-gnored are found.
       pti = new_pti;
     }
-    // Catch-all -- appears to be needed, still -- @@TO DO: figure out why
+    // Catch-all -- appears to be needed, still -- @@TO DO: figure out why.
     for(let k in this.links) if(this.links.hasOwnProperty(k)) {
       const l = this.links[k];
       if(!this.ignored_entities[k] &&
@@ -714,7 +748,7 @@ class LinnyRModel {
         this.ignored_entities[k] = true;
       }
     }
-    // Ignore all constraints having FROM and/or TO node set to be ingnored
+    // Ignore all constraints having FROM and/or TO node set to be ingnored.
     for(let k in this.constraints) if(this.constraints.hasOwnProperty(k)) {
       const c = this.constraints[k];
       if(this.ignored_entities[c.from_node.identifier] ||
@@ -725,10 +759,10 @@ class LinnyRModel {
   }
   
   inferBlackBoxEntities() {
-    // Makes a "dictionary" with for all processes, products and "black-boxed"
-    // datasets an entry identifier: "black-boxed" name
+    // Make a "dictionary" with for all processes, products and "black-boxed"
+    // datasets an entry identifier: "black-boxed" name.
     // NOTE: "black-boxed" names are prefixed numbers, where the parentheses
-    // in the prefix ensure that the IDs cannot double with normal entity names
+    // in the prefix ensure that the IDs cannot double with normal entity names.
     let n = 1;
     this.black_box_entities = {};
     for(let k in this.processes) if(this.processes.hasOwnProperty(k)) {
@@ -762,7 +796,7 @@ class LinnyRModel {
   }
   
   inferPrefix(obj) {
-    // Return the inferred (!) prefixes of `obj` as a list
+    // Return the inferred (!) prefixes of `obj` as a list.
     if(obj) {
       const pl = UI.prefixesAndName(obj.displayName);
       if(pl.length > 1) {
@@ -774,7 +808,7 @@ class LinnyRModel {
   }
   
   inferParentCluster(obj) {
-    // Find the best "parent" cluster for link or constraint `obj`
+    // Find the best "parent" cluster for link or constraint `obj`.
     let p, q;
     if(obj.from_node instanceof Product) {
       p = obj.from_node;
@@ -784,11 +818,11 @@ class LinnyRModel {
       q = obj.from_node;
     }
     // If P is a process, BOTH nodes are processes (so `obj` is a constraint);
-    // then focus on the constrained node P (NOTE: this is an arbitrary choice!)
+    // then focus on the constrained node P. NOTE: this is an arbitrary choice!
     if(p instanceof Process) return p.cluster;
-    // For a link or constraint related to a process, focus on the process
+    // For a link or constraint related to a process, focus on the process.
     if(q instanceof Process) return q.cluster;
-    // Now both P and Q are products => look for a cluster that shows both
+    // Now both P and Q are products => look for a cluster that shows both.
     const
         pcl = p.productPositionClusters,
         qcl = q.productPositionClusters;
@@ -796,11 +830,9 @@ class LinnyRModel {
         hc = null,
         lnl = 100000;
     // Look for shared parent cluster; meanwhile, keep track of the "highest"
-    // parent cluster of P, i.e., the cluster having the lowest nesting level
-    for(let i = 0; i < pcl.length; i++) {
-      const
-          pc = pcl[i],
-          nl = pc.nestingLevel;
+    // parent cluster of P, i.e., the cluster having the lowest nesting level.
+    for(const pc of pcl) {
+      const nl = pc.nestingLevel;
       if(nl < lnl) {
         lnl = nl;
         hc = pc;
@@ -809,12 +841,10 @@ class LinnyRModel {
       break;
     }
     if(!c) {
-      // Different clusters => focus on the "higher" cluster in the tree
+      // Different clusters => focus on the "higher" cluster in the tree.
       c = hc;
-      for(let i = 0; i < qcl.length; i++) {
-        const
-            qc = qcl[i],
-            nl = qc.nestingLevel;
+      for(const qc of qcl) {
+        const nl = qc.nestingLevel;
         if(nl < lnl) {
           lnl = nl;
           c = qc;
@@ -825,18 +855,18 @@ class LinnyRModel {
   }
 
   indexOfChart(t) {
-    // Return the index of a chart having title `t` in the model's chart list
-    for(let i = 0; i < this.charts.length; i++) {
-      if(this.charts[i].title === t) return i;
+    // Return the index of a chart having title `t` in the model's chart list.
+    for(let index = 0; index < this.charts.length; index++) {
+      if(this.charts[index].title === t) return index;
     }
     return -1;
   }
 
   indexOfExperiment(t) {
     // Return the index of an experiment having title `t` in the model's
-    // experiment list
-    for(let i = 0; i < this.experiments.length; i++) {
-      if(this.experiments[i].title === t) return i;
+    // experiment list.
+    for(let index = 0; index < this.experiments.length; index++) {
+      if(this.experiments[index].title === t) return index;
     }
     return -1;
   }
@@ -860,8 +890,8 @@ class LinnyRModel {
   
   isDimensionSelector(s) {
     // Return TRUE if `s` is a dimension selector in some experiment.
-    for(let i = 0; i < this.experiments.length; i++) {
-      if(this.experiments[i].isDimensionSelector(s)) return true;
+    for(const x of this.experiments) {
+      if(x.isDimensionSelector(s)) return true;
     }
     return false;
   }
@@ -878,14 +908,10 @@ class LinnyRModel {
     if(to.name.startsWith('$')) return false;
     // No links from actor cash flow data to processes.
     if(from.name.startsWith('$') && to instanceof Process) return false;
-    // At most ONE link A --> B.
-    for(let i = 0; i < from.outputs.length; i++) {
-      if(from.outputs[i].to_node === to) return false;
-    }
+    // At most ONE link A --> B, so FALSE if such a link already exists.
+    for(const l of from.outputs) if(l.to_node === to) return false;
     // No link A --> B if there already exists a link B --> A.
-    for(let i = 0; i < to.outputs.length; i++) {
-      if(to.outputs[i].to_node === from) return false;
-    }
+    for(const l of to.outputs) if(l.to_node === from) return false;
     return true;
   }
 
@@ -912,18 +938,16 @@ class LinnyRModel {
     if(sl.length > 1) {
       let newdim = true;
       // Merge into dimension if there are shared selectors.
-      for(let i = 0; i < this.dimensions.length; i++) {
-        const c = complement(sl, this.dimensions[i]);
+      for(const d of this.dimensions) {
+        const c = complement(sl, d);
         if(c.length < sl.length) {
-          if(c.length > 0) this.dimensions[i].push(...c);
+          if(c.length > 0) d.push(...c);
           newdim = false;
           break;
         }
       }
       // If only new selectors, add the list as a dimension.
-      if(newdim) {
-        this.dimensions.push(sl);
-      }
+      if(newdim) this.dimensions.push(sl);
     }
   }
   
@@ -935,68 +959,63 @@ class LinnyRModel {
     for(let d in this.datasets) if(this.datasets.hasOwnProperty(d) &&
         this.datasets[d] !== this.equations_dataset) {
       // Get the selector list for this dataset.
-      const ds = this.datasets[d];
       // NOTE: Ignore wildcard selectors!
-      this.processSelectorList(ds.plainSelectors);
+      this.processSelectorList(this.datasets[d].plainSelectors);
     }
     // Analyze constraint bound lines in the same way.
     for(let k in this.constraints) if(this.constraints.hasOwnProperty(k)) {
-      // Get selector list
+      // Get selector list.
       const c = this.constraints[k];
-      for(let i = 0; i < c.bound_lines.length; i++) {
-        const sl = c.bound_lines[i].selectorList;
+      for(const bl of c.bound_lines) {
+        const sl = bl.selectorList;
         // NOTE: Ignore the first selector "(default)".
         sl.shift();
         this.processSelectorList(sl);
       }
     }
-
   }
 
   expandDimension(sl) {
-    // Find dimension that overlaps with stringlist `sl`, and expand it
-    for(let i = 0; i < this.dimensions.length; i++) {
-      const c = complement(sl, this.dimensions[i]);
+    // Find dimension that overlaps with stringlist `sl`, and expand it.
+    for(const dim of this.dimensions) {
+      const c = complement(sl, dim);
       if(c.length > 0 && c.length < sl.length) {
-        this.dimensions[i].push(...c);
+        dim.push(...c);
         break;
       }
     }
-    // Likewise update dimensions of experiments
-    for(let i = 0; i < this.experiments.length; i++) {
-      const x = this.experiments[i];
-      for(let j = 0; j < x.dimensions.length; j++) {
-        const c = complement(sl, x.dimensions[j]);
+    // Likewise update dimensions of experiments.
+    for(const x of this.experiments) {
+      for(const dim of x.dimensions) {
+        const c = complement(sl, dim);
         if(c.length > 0 && c.length < sl.length) {
-          x.dimensions[j].push(...c);
+          dim.push(...c);
           break;
         }
       }
     }
-    // Update the Experiment Manager
+    // Update the Experiment Manager.
     UI.updateControllerDialogs('X');
   }
 
   updateDimensions() {
-    // Infer dimensions, detect changes, and apply them to experiments
-    // First make a copy of the "old" dimensions
+    // Infer dimensions, detect changes, and apply them to experiments.
+    // First make a copy of the "old" dimensions.
     const od = [];
-    for(let i = 0; i < this.dimensions.length; i++) {
-      od.push(this.dimensions[i].slice());
+    for(const dim of this.dimensions) {
+      od.push(dim.slice());
     }
-    // Then infer dimensions from the datasets (which have been changed)
+    // Then infer dimensions from the datasets (which have been changed).
     this.inferDimensions();
-    // Find dimension that has been removed (or only reduced)
+    // Find dimension that has been removed (or only reduced).
     let removed = null,
         reduced = null;
     if(od.length > this.dimensions.length) {
-      // Dimension removed => find out which one
-      let rd = null;
-      for(let i = 0; i < od.length; i++) {
-        rd = od[i];
+      // Dimension removed => find out which one.
+      for(const rd of od) {
         let match = false;
-        for(let j = 0; j < this.dimensions.length; j++) {
-          if(intersection(rd, this.dimensions[j]).length === rd.length) {
+        for(const dim of this.dimensions) {
+          if(intersection(rd, dim).length === rd.length) {
             match = true;
             break;
           }
@@ -1006,28 +1025,27 @@ class LinnyRModel {
         }
       }
     } else {
-      // See if a dimension has been reduced
-      for(let i = 0; i < od.length; i++) {
-        const rd = od[i];
-        for(let j = 0; j < this.dimensions.length; j++) {
-          const l = intersection(rd, this.dimensions[j]).length;
-          // Non-empty intersection, but with fewer elements
+      // See if a dimension has been reduced.
+      for(const rd of od) {
+        for(const dim of this.dimensions) {
+          const l = intersection(rd, dim).length;
+          // Non-empty intersection, but with fewer elements.
           if(l > 0 && l < rd.length) {
-            reduced = this.dimensions[j];
+            reduced = dim;
             break;
           }
         }
       }
     }
     if(reduced || removed) {
-      // Update rows and columns of experiments
+      // Update rows and columns of experiments.
       if(reduced) {
-        for(let i = 0; i < this.experiments.length; i++) {
-          this.experiments[i].reduceDimension(reduced);
+        for(const x of this.experiments) {
+          x.reduceDimension(reduced);
         }
       } else if(removed) {
-        for(let i = 0; i < this.experiments.length; i++) {
-          this.experiments[i].removeDimension(removed);
+        for(const x of this.experiments) {
+          x.removeDimension(removed);
         }
       }
       UI.updateControllerDialogs('X');
@@ -1035,25 +1053,25 @@ class LinnyRModel {
   }
 
   renameSelectorInExperiments(olds, news) {
-    // Replace all occurrences of `olds` in dimension strings by `news`
-    for(let i = 0; i < this.experiments.length; i++) {
-      this.experiments[i].renameSelectorInDimensions(olds, news);
+    // Replace all occurrences of `olds` in dimension strings by `news`.
+    for(const x of this.experiments) {
+      x.renameSelectorInDimensions(olds, news);
     }
   }
 
   ignoreClusterInThisRun(c) {
-    // Returns TRUE iff an experiment is running and cluster `c` is in the
+    // Return TRUE iff an experiment is running and cluster `c` is in the
     // clusters-to-ignore list and its selectors in this list overlap with the
-    // current combination
+    // current combination.
     if(!this.running_experiment) return false;
     const cti = this.running_experiment.clusters_to_ignore;
-    // NOTE: use FALSE, as empty selectors string denotes "any selector"
+    // NOTE: Use FALSE, as empty selectors string denotes "any selector".
     let sels = false;
     for(let i = 0; i < cti.length && sels === false; i++) {
       if(cti[i].cluster === c) sels = cti[i].selectors;
     }
     if(sels === false) return false;
-    // Return TRUE if selectors and actual dimensions have common elements
+    // Return TRUE if selectors and actual dimensions have common elements.
     const
         ac = this.running_experiment.activeCombination,
         ss = intersection(sels.split(' '), ac);
@@ -1076,8 +1094,8 @@ class LinnyRModel {
       // merely some upper/lower case change.
       if(newkey !== oldkey) {
         let nc = 0;
-        for(let i = 0; i < dsl.length; i++) {
-          let nk = newkey + dsl[i].substring(oldkey.length);
+        for(const ds of dsl) {
+          const nk = newkey + ds.substring(oldkey.length);
           if(MODEL.datasets[nk]) nc++;
         }
         if(nc) {
@@ -1090,8 +1108,8 @@ class LinnyRModel {
       this.entity_count = 0;
       this.expression_count = 0;
       // Rename datasets one by one, suppressing notifications.
-      for(let i = 0; i < dsl.length; i++) {
-        const d = MODEL.datasets[dsl[i]];
+      for(const ds of dsl) {
+        const d = MODEL.datasets[ds];
         d.rename(d.displayName.replace(old_prefix, new_prefix), false);
       }
       let msg = 'Renamed ' + pluralS(dsl.length, 'dataset').toLowerCase();
@@ -1112,6 +1130,7 @@ class LinnyRModel {
   //
 
   addActor(name, node=null) {
+    // Add actor to the model.
     name = UI.cleanName(name);
     if(name === '') return this.actors[UI.nameToID(UI.NO_ACTOR)];
     const id = UI.nameToID(name),
@@ -1122,7 +1141,7 @@ class LinnyRModel {
         this.actors[id].initFromXML(node);
       }
     } else if(iot === 2 && name !== UI.NO_ACTOR) {
-      // NOTE: initFromXML only when actor is exported
+      // NOTE: initFromXML only when actor is exported.
       this.actors[id].initFromXML(node);
       IO_CONTEXT.supersede(this.actors[id]);
     }
@@ -1130,19 +1149,19 @@ class LinnyRModel {
   }
 
   addScaleUnit(name, scalar='1', base_unit='1') {
-    // Add a scale unit to the model, and return its symbol
+    // Add a scale unit to the model, and return its symbol.
     //  (1) To permit things like 1 kWh = 3.6 MJ, and 1 GJ = 1000 MJ,
     //      scale units have a multiplier and a base unit; by default,
-    //      multiplier = 1 and base unit = '1' to denote "atomic unit"
+    //      multiplier = 1 and base unit = '1' to denote "atomic unit".
     //  (2) Linny-R remains agnostic about physics, SI standards etc.
-    //      so modelers can do anything they like
+    //      so modelers can do anything they like.
     //  (3) Linny-R may in the future be extended with a unit consistency
-    //      check
+    //      check.
     name = UI.cleanName(name);
-    // NOTE: empty string denotes default unit, so test this first to
-    // avoid a warning 
+    // NOTE: Empty string denotes default unit, so test this first to
+    // avoid a warning .
     if(!name) return this.default_unit;
-    // NOTE: do not replace or modify an existing scale unit
+    // NOTE: do not replace or modify an existing scale unit.
     if(!this.scale_units.hasOwnProperty(name)) {
       this.scale_units[name] = new ScaleUnit(name, scalar, base_unit);
       UI.updateScaleUnitList();
@@ -1151,33 +1170,30 @@ class LinnyRModel {
   }
   
   addPreconfiguredScaleUnits() {
-    // Add scale units defined in file `config.js` (by default: none)
-    for(let i = 0; i < CONFIGURATION.scale_units.length; i++) {
-      const su = CONFIGURATION.scale_units[i];
-      this.addScaleUnit(...su);
-    }
+    // Add scale units defined in file `config.js` (by default: none).
+    for(const su of CONFIGURATION.scale_units) this.addScaleUnit(...su);
   }
   
   cleanUpScaleUnits() {
-    // Remove all scale units that are not used and have base unit '1'
+    // Remove all scale units that are not used and have base unit '1'.
     const suiu = {};
-    // Collect all non-empty product units
+    // Collect all non-empty product units.
     for(let p in this.products) if(this.products.hasOwnProperty(p)) {
       const su = this.products[p].scale_unit;
       if(su) suiu[su] = true;
     }
-    // Likewise collect all non-empty dataset units
+    // Likewise collect all non-empty dataset units.
     for(let ds in this.datasets) if(this.datasets.hasOwnProperty(ds)) {
       const su = this.datasets[ds].scale_unit;
       if(su) suiu[su] = true;
     }
-    // Also collect base units and units having base unit other than '1'
+    // Also collect base units and units having base unit other than '1'.
     for(let su in this.scale_units) if(this.scale_units.hasOwnProperty(su)) {
       const u = this.scale_units[su];
       suiu[u.base_unit] = true;
       if(u.base_unit !== '1') suiu[u.name] = true;
     }
-    // Now all scale units NOT in `suiu` can be removed
+    // Now all scale units NOT in `suiu` can be removed.
     for(let su in this.scale_units) if(this.scale_units.hasOwnProperty(su)) {
       if(!suiu.hasOwnProperty(su)) {
         delete this.scale_units[su];
@@ -1187,36 +1203,32 @@ class LinnyRModel {
   
   renameScaleUnit(oldu, newu) {
     let nr = 0;
-    // Update the default product unit
+    // Update the default product unit.
     if(MODEL.default_unit === oldu) {
       MODEL.default_unit = newu;
       nr++;
     }
-    // Rename product scale units
+    // Rename product scale units.
     for(let p in MODEL.products) if(MODEL.products.hasOwnProperty(p)) {
       if(MODEL.products[p].scale_unit === oldu) {
         MODEL.products[p].scale_unit = newu;
         nr++;
       }
     }
-    // Rename product and dataset units
+    // Rename product and dataset units.
     for(let ds in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(ds)) {
       if(MODEL.datasets[ds].scale_unit === oldu) {
         MODEL.datasets[ds].scale_unit = newu;
         nr++;
       }
     }
-    // Also rename conversion units in note fields
+    // Also rename conversion units in note fields.
     for(let k in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(k)) {
-      const c = MODEL.clusters[k];
-      for(let i = 0; i < c.notes.length; i++) {
-        const
-            n = c.notes[i],
-            tags = n.tagList;
+      for(const n of MODEL.clusters[k].notes) {
+        const tags = n.tagList;
         if(tags) {
-          for(let i = 0; i < tags.length; i++) {
+          for(const ot of tags) {
             const
-                ot = tags[i],
                 parts = ot.split('->'), 
                 last = parts.pop().trim();
             if(last === oldu + ']]') {
@@ -1228,54 +1240,54 @@ class LinnyRModel {
         }
       }
     }
-    // Also rename scale units in expressions (quoted if needed)
+    // Also rename scale units in expressions (quoted if needed).
     oldu = UI.nameAsConstantString(oldu);
     newu = UI.nameAsConstantString(newu);
     const ax = MODEL.allExpressions;
     if(oldu.startsWith("'")) {
-      // Simple case: replace quoted old unit by new
-      for(let i = 0; i < ax.length; i++) {
-        let parts = ax[i].text.split(oldu);
+      // Simple case: replace quoted old unit by new.
+      for(const x of ax) {
+        let parts = x.text.split(oldu);
         nr += parts.length - 1;
-        ax[i].text = parts.join(newu);
+        x.text = parts.join(newu);
       }
     } else {
       // Old unit is not enclosed in quotes; then care must be taken
       // not to replace partial matches, e.g., kton => ktonne when 'ton'
       // is renamed to 'tonne'; solution is to ensure that old unit must
-      // have a separator character on both sides, or it is not replaced
+      // have a separator character on both sides, or it is not replaced.
       const
           sep = SEPARATOR_CHARS + "]'",
           esep = escapeRegex(sep),
           eou = escapeRegex(oldu),
           raw = `\[[^\[]*\]|(^|\s|[${esep}])(${eou})($|\s|[${esep}])`;
       const
-          // NOTE: this will match anything within brackets, and the unit
+          // NOTE: This will match anything within brackets, and the unit.
           re = new RegExp(raw, 'g');
-      // Iterate over all expressions
-      for(let i = 0; i < ax.length; i++) {
-        let ot = ax[i].text,
+      // Iterate over all expressions.
+      for(const x of ax) {
+        let ot = x.text,
             nt = '',
             m = re.exec(ot);
         while (m !== null) {
           // NOTE: A match with the unit name will have 3 groups, and the
           // middle one (so element with index 2) should then be equal to
           // the unit name; other matches will be bracketed text that
-          // should be ignored
+          // should be ignored.
           if(m.length > 2 && m[2] === oldu) {
             // NOTE: lastIndex points right after the complete match,
             // and this match m[0] can have separator characters on both
-            // sides which should not be removed
+            // sides which should not be removed.
             const
                 parts = m[0].split(oldu),
                 left = parts[0].split('').pop(),
                 right = (parts[1] ? parts[1].split('')[0] : '');
-            // NOTE: if one separator is a single quote, the the other
+            // NOTE: If one separator is a single quote, the the other
             // must also be a single quote (to avoid 'ton/m3' to be
-            // renamed when 'ton' is renamed)
+            // renamed when 'ton' is renamed).
             if(!((left === "'" || right === "'") && left !== right) &&
                 sep.indexOf(left) >= 0 && sep.indexOf(right) >= 0) {
-              // Separator chars on both side =>
+              // Separator chars on both side => use lastIndex.
               nt += ot.slice(0, re.lastIndex - m[0].length) + parts.join(newu);
               ot = ot.slice(re.lastIndex);
             }
@@ -1283,7 +1295,7 @@ class LinnyRModel {
           m = re.exec(ot);
         }
         if(nt) {
-          ax[i].text = nt + ot;
+          x.text = nt + ot;
           nr++;
         }
       }
@@ -1295,8 +1307,8 @@ class LinnyRModel {
   }
   
   unitConversionMultiplier(from, to) {
-    // Compute and return the FROM : TO unit conversion rate
-    // NOTE: no conversion if TO is the primitive unit
+    // Compute and return the FROM : TO unit conversion rate.
+    // NOTE: No conversion if TO is the primitive unit.
     if(from === to || to === '1' || to === '') return 1;
     const fsu = this.scale_units[from];
     if(fsu) { 
@@ -1323,12 +1335,12 @@ class LinnyRModel {
   }
 
   addCluster(name, actor_name, node=null) {
-    // NOTE: Adapt XML saved by legacy Linny-R software
+    // NOTE: Adapt XML saved by legacy Linny-R software.
     if(name === UI.FORMER_TOP_CLUSTER_NAME ||
         name === UI.LEGACY_TOP_CLUSTER_NAME) {
       name = UI.TOP_CLUSTER_NAME;
     }
-    // Set actor name if it is specified in the IO context
+    // Set actor name if it is specified in the IO context.
     if(IO_CONTEXT && name === IO_CONTEXT.prefix && IO_CONTEXT.actor_name !== '') {
       if(actor_name === '' || actor_name === UI.NO_ACTOR) {
         actor_name = IO_CONTEXT.actor_name;
@@ -1354,7 +1366,7 @@ class LinnyRModel {
     }
     c = new Cluster(this.focal_cluster, name, actor);
     this.clusters[c.identifier] = c;
-    // Do not add cluster as sub-cluster of itself (applies to TOP CLUSTER)
+    // Do not add cluster as sub-cluster of itself (applies to TOP CLUSTER).
     if(this.focal_cluster && c !== this.focal_cluster) {
       this.focal_cluster.sub_clusters.push(c);
     }
@@ -1373,15 +1385,15 @@ class LinnyRModel {
     const n = name + (actor.name != UI.NO_ACTOR ? ` (${actor.name})` : '');
     let nb = this.namedObjectByID(UI.nameToID(n));
     if(nb) {
-      // If process by this name already exists, return it
+      // If process by this name already exists, return it.
       if(nb instanceof Process) {
         if(IO_CONTEXT) {
-          // NOTE: this should NEVER occur because processes are always prefixed
+          // NOTE: This should NEVER occur because processes are always prefixed.
           IO_CONTEXT.supersede(nb);
         }
         return nb;
       }
-      // Otherwise, warn the modeler
+      // Otherwise, warn the modeler.
       UI.warningEntityExists(nb);
       return null;
     }
@@ -1392,14 +1404,12 @@ class LinnyRModel {
     this.focal_cluster.processes.push(p);
     p.resize();
     // Adding a new process affects dependencies, so prepare its cluster
-    // for redrawing the diagram
+    // for redrawing the diagram.
     p.cluster.clearAllProcesses();
     return p;
   }
 
   addProduct(name, node=null) {
-    // Product nodes have no actor
-    let actor = this.addActor('');
     name = UI.cleanName(name);
     // Leading dollar sign indicates an actor cash flow data product.
     if(!UI.validName(name)) {
@@ -1408,7 +1418,7 @@ class LinnyRModel {
     }
     let nb = this.namedObjectByID(UI.nameToID(name));
     if(nb !== null) {
-      // Preserve name uniqueness
+      // Preserve name uniqueness.
       if(nb instanceof Product) {
         if(IO_CONTEXT) {
           if(IO_CONTEXT.isBound(name) === 2) {
@@ -1421,7 +1431,8 @@ class LinnyRModel {
       UI.warningEntityExists(nb);
       return null;
     }
-    const p = new Product(this.top_cluster, name, actor);
+    // NOTE: Product nodes have no actor, not even (no actor).
+    const p = new Product(this.top_cluster, name, this.addActor(''));
     if(node) p.initFromXML(node);
     p.setCode();
     this.products[p.identifier] = p;
@@ -1432,13 +1443,13 @@ class LinnyRModel {
       p.unit = MODEL.currency_unit;
     }
     p.resize();
-    // New product => prepare for redraw
+    // New product => prepare for redraw.
     p.cluster.clearAllProcesses();
     return p;
   }
 
   addLink(from, to, node=null) {
-    // NOTE: a link ID has THREE underscores between its node IDs
+    // NOTE: A link ID has THREE underscores between its node IDs.
     let l = this.linkByID(from.code + '___' + to.code);
     if(l !== null) {
       if(IO_CONTEXT) IO_CONTEXT.supersede(l);
@@ -1452,13 +1463,13 @@ class LinnyRModel {
     to.inputs.push(l);
     this.makePredecessorLists();
     l.is_feedback = (from.predecessors.indexOf(to) >= 0);
-    // New link => prepare both related clusters for redraw
+    // New link => prepare both related clusters for redraw.
     l.from_node.cluster.clearAllProcesses();
     if(l.to_node.cluster != l.from_node.cluster) {
       l.to_node.cluster.clearAllProcesses();
     }
-    // NOTE: for product nodes, it is possible that their cluster is not the
-    // focal cluster; in that case, also prepare the focal cluster
+    // NOTE: For product nodes, it is possible that their cluster is not
+    // the focal cluster; in that case, also prepare the focal cluster.
     if(this.focal_cluster != l.from_node.cluster &&
         this.focal_cluster != l.to_node.cluster) {
       this.focal_cluster.clearAllProcesses();
@@ -1467,7 +1478,7 @@ class LinnyRModel {
   }
   
   addConstraint(from, to, node=null) {
-    // NOTE: constraint ID has FOUR underscores between its node codes
+    // NOTE: Constraint ID has FOUR underscores between its node codes.
     let c = this.constraintByID(from.code + '____' + to.code);
     if(c !== null) {
       if(IO_CONTEXT) IO_CONTEXT.supersede(c);
@@ -1476,7 +1487,7 @@ class LinnyRModel {
     }
     c = new Constraint(from, to);
     if(node) c.initFromXML(node);
-    // New constraint => prepare for redraw
+    // New constraint => prepare for redraw.
     c.from_node.cluster.clearAllProcesses();
     if(c.to_node.cluster != c.from_node.cluster) {
       c.to_node.cluster.clearAllProcesses();
@@ -1497,7 +1508,7 @@ class LinnyRModel {
       if(IO_CONTEXT) {
         IO_CONTEXT.supersede(d);
       } else {
-        // Preserve name uniqueness
+        // Preserve name uniqueness.
         UI.warningEntityExists(d);
         return null;
       }
@@ -1526,10 +1537,10 @@ class LinnyRModel {
   }
   
   addChart(title, node=null) {
-    // If chart with given title exists, do not add a new instance
+    // If chart with given title exists, do not add a new instance.
     const ci = this.indexOfChart(title);
     if(ci >= 0) return this.charts[ci];
-    // Otherwise, add it. NOTE: unlike datasets, charts are not "entities" 
+    // Otherwise, add it. NOTE: unlike datasets, charts are not "entities".
     let c = new Chart();
     c.title = title;
     if(node) c.initFromXML(node);
@@ -1538,7 +1549,7 @@ class LinnyRModel {
     this.charts.sort(
         function (a, b) {
           if(a.title === b.title) return 0;
-          // ... but ensure that the default chart always comes first
+          // ... but ensure that the default chart always comes first.
           if(a.title === CHART_MANAGER.new_chart_title || a.title < b.title) return -1;
           return 1;
         });
@@ -1546,7 +1557,7 @@ class LinnyRModel {
   }
   
   addExperiment(title, node=null) {
-    // If experiment with given title exists, do not add a new instance
+    // If experiment with given title exists, do not add a new instance.
     title = title.trim();
     if(!title) {
       UI.warn('Experiment must have a title');
@@ -1554,12 +1565,12 @@ class LinnyRModel {
     }
     const xi = this.indexOfExperiment(title);
     if(xi >= 0) return this.experiments[xi];
-    // Otherwise, add it. NOTE: similar to charts, experiments are not "entities" 
+    // Otherwise, add it. NOTE: Similar to charts, experiments are not "entities".
     let x = new Experiment();
     x.title = title;
     if(node) x.initFromXML(node);
     this.experiments.push(x);
-    // Sort the experiment titles alphabetically...
+    // Sort the experiment titles alphabetically.
     this.experiments.sort(
         function (a, b) {
           if(a.title === b.title) return 0;
@@ -1570,34 +1581,30 @@ class LinnyRModel {
   }
   
   addImport(obj) {
-    // NOTE: also pass model, as obj may be an XML element that does not "know"
-    // the model to which the import is added
+    // NOTE: Also pass model (`this`), as `obj` may be an XML element that does
+    // not "know" the model to which the import is added.
     this.imports.push(new Import(this, obj));
   }
   
   addExport(obj) {
-    // NOTE: also pass model, as obj may be an XML element that does not "know"
-    // the model to which the import is added
+    // NOTE: Also pass model (`this`), as `obj` may be an XML element that does
+    // not "know" the model to which the import is added.
     this.exports.push(new Export(this, obj));
   }
   
   ioType(obj) {
-    // Returns 1 if `obj` is an import, 2 if export, and 0 otherwise
+    // Return 1 if `obj` is an import, 2 if export, and 0 otherwise.
     if(!(obj instanceof Actor || obj instanceof Dataset ||
         obj instanceof Product)) {
       return 0;
     }
-    for(let i = 0; i < this.imports.length; i++) {
-      if(this.imports[i].entity === obj) return 1; // 1 denotes "import"
-    }
-    for(let i = 0; i < this.exports.length; i++) {
-      if(this.exports[i].entity === obj) return 2; // 2 denotes "export"
-    }
-    return 0; // 0 indicates "not an i/o object"
+    for(const io of this.imports) if(io.entity === obj) return 1;
+    for(const io of this.exports) if(io.entity === obj) return 2;
+    return 0;
   }
   
   removeImport(obj) {
-    // Removes `obj` from imports if it is an import
+    // Remove `obj` from imports if it is an import.
     for(let i = 0; i < this.imports.length; i++) {
       if(this.imports[i].entity === obj) {
         this.imports.splice(i, 1);
@@ -1608,6 +1615,7 @@ class LinnyRModel {
   }
   
   removeExport(obj) {
+    // Remove `obj` from exports if it is an export.
     for(let i = 0; i < this.exports.length; i++) {
       if(this.exports[i].entity === obj) {
         this.exports.splice(i, 1);
@@ -1618,7 +1626,7 @@ class LinnyRModel {
   }
 
   ioUpdate(obj, newio) {
-    // Update import/export status if changed
+    // Update import/export status if changed.
     const io = this.ioType(obj);
     if(io !== newio) {
       if(io === 1) {
@@ -1648,33 +1656,31 @@ class LinnyRModel {
     // of the diagram because notes are not connected to arrows.
     // However, when notes relate to nearby nodes, preserve their relative
     // position to this node.
-    for(let i = 0; i < fc.notes.length; i++) {
-      const
-          note = fc.notes[i],
-          nbn = note.nearbyNode;
-      note.nearby_pos = (nbn ? {node: nbn, oldx: nbn.x, oldy: nbn.y} : null);
+    for(const n of fc.notes) if(n.selected) {
+      const nbn = n.nearbyNode;
+      n.nearby_pos = (nbn ? {node: nbn, dx: n.x - nbn.x, dy: n.y - nbn.y} : null);
+    } else {
+        n.nearby_pos = null;
     }
-    for(let i = 0; i < fc.processes.length; i++) {
-      move = fc.processes[i].alignToGrid() || move;
+    for(const p of fc.processes) {
+      move = p.alignToGrid() || move;
     }
-    for(let i = 0; i < fc.product_positions.length; i++) {
-      move = fc.product_positions[i].alignToGrid() || move;
+    for(const pp of fc.product_positions) {
+      move = pp.alignToGrid() || move;
     }
-    for(let i = 0; i < fc.sub_clusters.length; i++) {
-      move = fc.sub_clusters[i].alignToGrid() || move;
+    for(const c of fc.sub_clusters) {
+      move = c.alignToGrid() || move;
     }
     if(move) {
-      // Reposition "associated" notes.
-      for(let i = 0; i < fc.notes.length; i++) {
-        const
-            note = fc.notes[i],
-            nbp = note.nearby_pos;
+      // Reposition "associated" notes -- only when selected!
+      for(const n of fc.notes) if(n.selected) {
+        const nbp = n.nearby_pos;
         if(nbp) {
           // Adjust (x, y) so as to retain the relative position.
-          note.x += nbp.node.x - nbp.oldx;
-          note.y += nbp.node.y - nbp.oldy;
-          note.nearby_pos = null;
+          n.x = nbp.node.x + nbp.dx;
+          n.y = nbp.node.y + nbp.dy;
         }
+        n.nearby_pos = null;
       }
       UI.drawDiagram(this);
     }
@@ -1682,23 +1688,23 @@ class LinnyRModel {
   
   translateGraph(dx, dy) {
     // Move all entities in the focal cluster by (dx, dy) pixels.
-    if(!dx && !dy) return;
+    if(!dx && !dy) return 0;
     const fc = this.focal_cluster;
-    for(let i = 0; i < fc.processes.length; i++) {
-      fc.processes[i].x += dx;
-      fc.processes[i].y += dy;
+    for(const p of fc.processes) {
+      p.x += dx;
+      p.y += dy;
     }
-    for(let i = 0; i < fc.product_positions.length; i++) {
-      fc.product_positions[i].x += dx;
-      fc.product_positions[i].y += dy;
+    for(const pp of fc.product_positions) {
+      pp.x += dx;
+      pp.y += dy;
     }
-    for(let i = 0; i < fc.sub_clusters.length; i++) {
-      fc.sub_clusters[i].x += dx;
-      fc.sub_clusters[i].y += dy;
+    for(const c of fc.sub_clusters) {
+      c.x += dx;
+      c.y += dy;
     }
-    for(let i = 0; i < fc.notes.length; i++) {
-      fc.notes[i].x += dx;
-      fc.notes[i].y += dy;
+    for(const n of fc.notes) {
+      n.x += dx;
+      n.y += dy;
     }
     // NOTE: force drawing, because SVG must immediately be downloadable.
     UI.drawDiagram(this);
@@ -1733,23 +1739,22 @@ class LinnyRModel {
     UI.drawObject(obj);
   }
 
-  selectList(ol) {
-    // Set selection to elements in `ol`
-    // NOTE: first clear present selection without redrawing
+  selectList(list) {
+    // Set selection to elements in `ol`.
+    // NOTE: First clear present selection without redrawing.
     this.clearSelection(false);
-    for(let i = 0; i < ol.length; i++) {
-      ol[i].selected = true;
-      if(this.selection.indexOf(ol[i]) < 0) this.selection.push(ol[i]);
+    for(const obj of list) {
+      obj.selected = true;
+      if(this.selection.indexOf(obj) < 0) this.selection.push(obj);
     }
     this.selection_related_arrows.length = 0;
     // NOTE: does not redraw the graph -- the calling routine should do that
   }
   
   get getSelectionPositions() {
-    // Return a list of tuples [X, y] for all selected nodes
+    // Return a list of tuples [x, y] for all selected nodes.
     const pl = [];
-    for(let i = 0; i < this.selection.length; i++) {
-      let obj = this.selection[i];
+    for(let obj of this.selection) {
       if(obj instanceof Product) obj = obj.positionInFocalCluster;
       if(!(obj instanceof Link || obj instanceof Constraint)) {
         pl.push([obj.x, obj.y]);
@@ -1759,13 +1764,13 @@ class LinnyRModel {
   }
 
   setSelectionPositions(pl) {
-    // Set position of selected nodes to the [X, y] passed in the list
-    // NOTE: iterate backwards over the selection ...
+    // Set position of selected nodes to the [x, y] passed in the list.
+    // NOTE: Iterate backwards over the selection ...
     for(let i = this.selection.length - 1; i >= 0; i--) {
       let obj = this.selection[i];
       if(obj instanceof Product) obj = obj.positionInFocalCluster;
       if(!(obj instanceof Link || obj instanceof Constraint)) {
-        // ... and apply [X, Y] only to nodes in the selection
+        // ... and apply [X, Y] only to nodes in the selection.
         const xy = pl.pop();
         obj.x = xy[0];
         obj.y = xy[1];
@@ -1775,8 +1780,7 @@ class LinnyRModel {
 
   clearSelection(draw=true) {
     if(this.selection.length > 0) {
-      for(let i = 0; i < this.selection.length; i++) {
-        const obj = this.selection[i];
+      for(const obj of this.selection) {
         obj.selected = false;
         if(draw) {
           if(obj instanceof Link) {
@@ -1792,36 +1796,33 @@ class LinnyRModel {
   }
 
   setSelection() {
-    // Set selection to contain all selected entities in the focal cluster
-    // NOTE: to be called after loading a model, and after UNDO/REDO (and
-    // then before drawing the diagram)
+    // Set selection to contain all selected entities in the focal cluster.
+    // NOTE: To be called after loading a model, and after UNDO/REDO (and
+    // then before drawing the diagram).
     const fc = this.focal_cluster;
     this.selection.length = 0;
     this.selection_related_arrows.length = 0;
-    for(let i = 0; i < fc.processes.length; i++) if(fc.processes[i].selected) {
-      this.selection.push(fc.processes[i]);
+    for(const p of fc.processes) if(p.selected) {
+      this.selection.push(p);
     }
-    for(let i = 0; i < fc.product_positions.length; i++) if(
-        fc.product_positions[i].product.selected) {
-      this.selection.push(fc.product_positions[i].product);
+    for(const pp of fc.product_positions) if(pp.product.selected) {
+      this.selection.push(pp.product);
     }
-    for(let i = 0; i < fc.sub_clusters.length; i++) if(
-        fc.sub_clusters[i].selected) {
-      this.selection.push(fc.sub_clusters[i]);
+    for(const c of fc.sub_clusters) if(c.selected) {
+      this.selection.push(c);
     }
-    for(let i = 0; i < fc.notes.length; i++) if(fc.notes[i].selected) {
-      this.selection.push(fc.notes[i]);
+    for(const n of fc.notes) if(n.selected) {
+      this.selection.push(n);
     }
-    for(let i = 0; i < fc.related_links; i++) if(fc.related_links[i].selected) {
-      this.selection.push(fc.related_links[i]);
+    for(const l of fc.related_links) if(l.selected) {
+      this.selection.push(l);
     }
   }
   
   get clusterOrProcessInSelection() {
     // Return TRUE if current selection contains at least one cluster
     // or process.
-    for(let i = 0; i < this.selection.length; i++) {
-      const obj = this.selection[i];
+    for(const obj of this.selection) {
       if(obj instanceof Cluster || obj instanceof Process) return true;
     }
     return false;
@@ -1832,11 +1833,9 @@ class LinnyRModel {
     // NOTE: No undo, as moves are incremental; the original positions
     // have been stored on MOUSE DOWN.
     if(dx === 0 && dy === 0) return;
-    let obj,
-        minx = 0,
+    let minx = 0,
         miny = 0;
-    for(let i = 0; i < this.selection.length; i++) {
-      obj = this.selection[i];
+    for(const obj of this.selection) {
       if(!(obj instanceof Link || obj instanceof Constraint)) {
         if(obj instanceof Product) {
           obj.movePositionInFocalCluster(dx, dy);
@@ -1848,25 +1847,29 @@ class LinnyRModel {
         miny = Math.min(miny, obj.y - obj.height / 2);
       }
     }
+    // Record time it takes to redraw so the movement speed can be adapted.
+    const
+        t0 = Date.now(),
+        max_move = Math.round(5 + this.translation_time / 5);
     // Translate entire graph if some elements are above and/or left of
     // the paper edge.
     if(minx < 0 || miny < 0) {
-      // NOTE: limit translation to 5 pixels to prevent "run-away effect"
-      this.translateGraph(Math.min(5, -minx), Math.min(5, -miny));
+      // NOTE: Limit translation to 5 pixels to prevent "run-away effect".
+      this.translateGraph(Math.min(max_move, -minx), Math.min(max_move, -miny));
     } else {
       UI.drawSelection(this);
     }
-    this.alignToGrid();
+    // Record the new time it took to redraw.
+    this.translation_time = Date.now() - t0;
   }
   
   get topLeftCornerOfSelection() {
     // Return the pair [X coordinate of the edge of the left-most selected node,
-    // Y coordinate of the edge of the top-most selected node]
+    // Y coordinate of the edge of the top-most selected node].
     if(this.selection.length === 0) return [0, 0];
     let minx = VM.PLUS_INFINITY,
         miny = VM.PLUS_INFINITY;
-    for(let i = 0; i < this.selection.length; i++) {
-      let obj = this.selection[i];
+    for(const obj of this.selection) {
       if(!(obj instanceof Link || obj instanceof Constraint)) {
         if(obj instanceof Product) {
           const ppi = this.focal_cluster.indexOfProduct(obj);
@@ -1886,9 +1889,8 @@ class LinnyRModel {
   
   get canRenumberSelection() {
     // Selection can be renumbered only if (1) it does not contain clusters,
-    // and (2) all selected processes have names that end with a number
-    for(let i = 0; i < this.selection.length; i++) {
-      const obj = this.selection[i];
+    // and (2) all selected processes have names that end with a number.
+    for(const obj of this.selection) {
       if(obj instanceof Cluster ||
           (obj instanceof Process && !obj.numberContext)) {
         return false;
@@ -1898,16 +1900,16 @@ class LinnyRModel {
   }
   
   eligibleFromToNodes(type) {
-    // Returns a list of nodes of given type (Process, Product or Data)
-    // that are visible in the focal cluster
+    // Return a list of the nodes of the given type (Process, Product or Data)
+    // that are visible in the focal cluster.
     const
         fc = this.focal_cluster,
         el = [];
     if(type === 'Process') {
-      for(let i = 0; i < fc.processes.length; i++) el.push(fc.processes[i]);
+      el.push(...fc.processes);
     } else {
-      for(let i = 0; i < fc.product_positions.length; i++) {
-        const p = fc.product_positions[i].product;
+      for(const pp of fc.product_positions) {
+        const p = pp.product;
         if((type === 'Data' && p.is_data) || !p.is_data) el.push(p);
       }
     }
@@ -1915,9 +1917,9 @@ class LinnyRModel {
   }
 
   get selectionAsXML() {
-    // Returns XML for the selected entities, and also for the entities
+    // Return XML for the selected entities, and also for the entities.
     // referenced by expressions for their attributes.
-    // NOTE: the name and actor name of the focal cluster are added as
+    // NOTE: The name and actor name of the focal cluster are added as
     // attributes of the main node to permit "smart" renaming of
     // entities when PASTE would result in name conflicts.
     if(this.selection.length <= 0) return '';
@@ -1939,8 +1941,7 @@ class LinnyRModel {
         ft_xml = [],
         selc_xml = [],
         selected_xml = [];
-    for(let i = 0; i < this.selection.length; i++) {
-      const obj = this.selection[i];
+    for(const obj of this.selection) {
       entities[obj.type].push(obj);
       if(obj instanceof Cluster) selc_xml.push(
           '<selc name="', xmlEncoded(obj.name),
@@ -1948,60 +1949,55 @@ class LinnyRModel {
       selected_xml.push(`<sel>${xmlEncoded(obj.displayName)}</sel>`);
     }
     // Expand (sub)clusters by adding all their model entities to their
-    // respective lists
-    for(let i = 0; i < entities.Cluster.length; i++) {
-      const c = entities.Cluster[i];
+    // respective lists.
+    for(const c of entities.Cluster) {
       c.clearAllProcesses();
       c.categorizeEntities();
-      // All processes and products in (sub)clusters must be copied
+      // All processes and products in (sub)clusters must be copied.
       mergeDistinct(c.all_processes, entities.Process);
       mergeDistinct(c.all_products, entities.Product);
       // Likewise for all related links and constraints
       mergeDistinct(c.related_links, entities.Link);
       mergeDistinct(c.related_constraints, entities.Constraint);
-      // NOTE: add entities referenced by notes within selected clusters
+      // NOTE: Add entities referenced by notes within selected clusters
       // to `extras`, but not the XML for these notes, as this is already
-      // part of the clusters' XML
+      // part of the clusters' XML.
       const an = c.allNotes;
-      // Add selected notes as these must also be checked for "extras"
+      // Add selected notes as these must also be checked for "extras".
       mergeDistinct(entities.Note, an);
-      for(let i = 0; i < an.length; i++) {
-        const n = an[i];
+      for(const n of an) {
         mergeDistinct(n.color.referencedEntities, extras);
-        for(let i = 0; i < n.fields.length; i++) {
-          addDistinct(n.object, extras);
+        for(const f of n.fields) {
+          addDistinct(f.object, extras);
         }
       }
     }
-    // Only add the XML for notes in the selection
-    for(let i = 0; i < entities.Note.length; i++) {
-      xml.push(entities.Note[i].asXML);
+    // Only add the XML for notes in the selection.
+    for(const n of entities.Note) {
+      xml.push(n.asXML);
     }
-    for(let i = 0; i < entities.Product.length; i++) {
-      const p = entities.Product[i];
+    for(const p of entities.Product) {
       mergeDistinct(p.lower_bound.referencedEntities, extras);
       mergeDistinct(p.upper_bound.referencedEntities, extras);
       mergeDistinct(p.initial_level.referencedEntities, extras);
       mergeDistinct(p.price.referencedEntities, extras);
       xml.push(p.asXML);
     }
-    for(let i = 0; i < entities.Process.length; i++) {
-      const p = entities.Process[i];
+    for(const p of entities.Process) {
       mergeDistinct(p.lower_bound.referencedEntities, extras);
       mergeDistinct(p.upper_bound.referencedEntities, extras);
       mergeDistinct(p.initial_level.referencedEntities, extras);
       mergeDistinct(p.pace_expression.referencedEntities, extras);
       xml.push(p.asXML);
     }
-    // Only now add the XML for the selected clusters
-    for(let i = 0; i < entities.Cluster.length; i++) {
-      xml.push(entities.Cluster[i].asXML);
+    // Only now add the XML for the selected clusters.
+    for(const c of entities.Cluster) {
+      xml.push(c.asXML);
     }
-    // Add all links that have (implicitly via clusters) been selected
-    for(let i = 0; i < entities.Link.length; i++) {
-      const l = entities.Link[i];
-      // NOTE: the FROM and/or TO node need not be selected; if not, put
-      // them in a separate list
+    // Add all links that have (implicitly via clusters) been selected.
+    for(const l of entities.Link) {
+      // NOTE: The FROM and/or TO node need not be selected; if not, put
+      // them in a separate list.
       if(entities.Process.indexOf(l.from_node) < 0 &&
           entities.Product.indexOf(l.from_node) < 0) {
         addDistinct(l.from_node, from_tos);
@@ -2014,10 +2010,9 @@ class LinnyRModel {
       mergeDistinct(l.flow_delay.referencedEntities, extras);
       xml.push(l.asXML);
     }
-    for(let i = 0; i < entities.Constraint.length; i++) {
-      const c = entities.Constraint[i];
-      // NOTE: the FROM and/or TO node need not be selected; if not, put
-      // them in a separate list
+    for(const c of entities.Constraint) {
+      // NOTE: The FROM and/or TO node need not be selected; if not, put
+      // them in a separate list.
       if(entities.Process.indexOf(c.from_node) < 0 &&
           entities.Product.indexOf(c.from_node) < 0) {
         addDistinct(c.from_node, from_tos);
@@ -2028,8 +2023,7 @@ class LinnyRModel {
       }
       xml.push(c.asXML);
     }
-    for(let i = 0; i < from_tos.length; i++) {
-      const p = from_tos[i];
+    for(const p of from_tos) {
       ft_xml.push('<from-to type="', p.type, '" name="', xmlEncoded(p.name));
       if(p instanceof Process) {
         ft_xml.push('" actor-name="', xmlEncoded(p.actor.name));
@@ -2038,8 +2032,8 @@ class LinnyRModel {
       }
       ft_xml.push('"></from-to>');
     }
-    for(let i = 0; i < extras.length; i++) {
-      extra_xml.push(extras[i].asXML);
+    for(const x of extras) {
+      extra_xml.push(x.asXML);
     }
     return ['<copy timestamp="', Date.now(),
         '" model-timestamp="', this.time_created.getTime(),
@@ -2054,70 +2048,73 @@ class LinnyRModel {
   }
   
   dropSelectionIntoCluster(c) {
-    // Move all selected nodes to cluster `c`
-    let n = 0,
-        rmx = c.rightMarginX,
+    // Move all selected nodes to cluster `c`.
+    // NOTE: The relative position of the selected notes is presserved,
+    // but the nodes are positioned to the right of the diagram of `c`
+    // with a margin of 50 pixels. 
+    const
+        space = 50,
+        rmx = c.rightMarginX + space,
         tlc = this.topLeftCornerOfSelection;
-    for(let i = 0; i < this.selection.length; i++) {
-      const obj = this.selection[i];
+    let n = 0;
+    for(const obj of this.selection) {
       if(obj instanceof Product) {
         const ppi = this.focal_cluster.indexOfProduct(obj);
         if(ppi >= 0) {
           const pp = this.focal_cluster.product_positions[ppi];
-          // Add product position for `obj` to `c`
+          // Add product position for `obj` to `c`.
           if(c.addProductPosition(obj,
-              pp.x + rmx + 50 - tlc[0], pp.y + 50 - tlc[1])) {
-            // If successful, remove its position from the focal cluster
-            // NOTE: all visible arrows to `obj` will now connect to cluster `c`
+              pp.x + rmx - tlc[0], pp.y + space - tlc[1])) {
+            // If successful, remove its position from the focal cluster.
+            // NOTE: All visible arrows to `obj` will now connect to cluster `c`.
             this.focal_cluster.product_positions.splice(ppi, 1);
             n++;
           }
         }
       } else if(!(obj instanceof Link || obj instanceof Constraint)) {
         obj.setCluster(c);
-        obj.x += rmx + 50 - tlc[0];
-        obj.y += 50 - tlc[1];
+        obj.x += rmx - tlc[0];
+        obj.y += space - tlc[1];
         n++;
       }
-      // NOTE: ignore selected links and constraints, as these will be
-      // "taken along" automatically
+      // NOTE: Ignore selected links and constraints, as these will be
+      // "taken along" automatically.
     }
     UI.notify(pluralS(n, 'node') + ' moved to cluster ' + c.displayName);
-    // Prepare cluster `c` for redrawing
+    // Prepare cluster `c` for redrawing.
     c.clearAllProcesses();
     // Clear the selection WITHOUT redrawing the selected entities
-    // (as these will no longer be part of the graph)
+    // (as these will no longer be part of the graph).
     this.clearSelection(false);
-    // Instead, redraw entire diagram after recomputing the arrows
+    // Instead, redraw entire diagram after recomputing the arrows.
     this.focal_cluster.clearAllProcesses();
     UI.drawDiagram(this);
   }
   
   cloneSelection(prefix, actor_name, renumber) {
-    // Adds a "clone" to the model for each entity in the selection 
+    // Adds a "clone" to the model for each entity in the selection.
     if(this.selection.length) {
-      // Add the prefix symbol ': ' only if the prefix is not blank
+      // Add the prefix symbol ': ' only if the prefix is not blank.
       if(prefix) prefix += UI.PREFIXER;
-      // Categorize selected entities and pre-validate their clone name
+      // Categorize selected entities and pre-validate their clone name.
       const
           notes = [],
           products = [],
           processes = [],
           clusters = [],
           links = [];
-      for(let i = 0; i < this.selection.length; i++) {
-        const obj = this.selection[i];
+      for(const obj of this.selection) {
         if(obj instanceof Note) {
           notes.push(obj);
         } else if(obj instanceof Link || obj instanceof Constraint) {
-          // NOTE: links and constraints are similar; distinction is made later
+          // NOTE: Links and constraints are similar; distinction is made later.
           links.push(obj);
         } else {
           let e = null;
-          // Check whether renumbering applies
+          // Check whether renumbering applies.
           if(actor_name || obj instanceof Cluster ||
               !renumber || !obj.numberContext) {
-            // NO? then check whether prefixed name is already in use
+            // NO? Then check whether prefixed name is already in use.
             let name = prefix + obj.name,
                 aname = '';
             if(obj instanceof Process || obj instanceof Cluster) {
@@ -2126,8 +2123,8 @@ class LinnyRModel {
             }
             e = this.objectByName(name);
           }
-          // NOTE: ignore existing *product* issue when no prefix is defined,
-          // as then only processes and clusters will be cloned (for new actor)
+          // NOTE: Ignore existing *product* issue when no prefix is defined,
+          // as then only processes and clusters will be cloned (for new actor).
           if(e && !(obj instanceof Product && !prefix)) {
             UI.warningEntityExists(e);
             return 'prefix';            
@@ -2141,34 +2138,32 @@ class LinnyRModel {
           } else if(obj instanceof Process) {
             processes.push(obj);
           } else if(obj instanceof Product && !e) {
-            // NOTE: do not clone existing products
+            // NOTE: Do not clone existing products.
             products.push(obj);
           }
         }
       }
-      // Construct list of the cloned objects
+      // Construct list of the cloned objects.
       const
         cloned_selection = [],
         node_dict = {};
-      // First clone notes
-      for(let i = 0; i < notes.length; i++) {
+      // First clone notes.
+      for(let nr = 0; nr < notes.length; nr++) {
         const c = this.addNote();
         if(c) {
-          c.copyPropertiesFrom(notes[i], renumber);
+          c.copyPropertiesFrom(notes[nr], renumber);
           c.x += 100;
           c.y += 100;
           cloned_selection.push(c);
         } else {
           // Warn and exit
-          UI.warn('Failed to clone note #' + i);
+          UI.warn('Failed to clone note #' + nr);
           return;
         }
       }
-      // Then clone nodes
-      for(let i = 0; i < processes.length; i++) {
-        const
-            p = processes[i],
-            nn = (renumber && !actor_name ? p.nextAvailableNumberName : '');
+      // Then clone nodes.
+      for(const p of processes) {
+        const nn = (renumber && !actor_name ? p.nextAvailableNumberName : '');
         let c;
         if(nn) {
           c = this.addProcess(nn, p.actor.name);
@@ -2183,50 +2178,46 @@ class LinnyRModel {
           c.y += 100;
           cloned_selection.push(c);
         } else {
-          // Warn and exit
+          // Warn and exit.
           UI.warn('Failed to clone process ' + p.displayName);
           return;
         }
       }
-      for(let i = 0; i < products.length; i++) {
+      for(const p of products) {
         const
-            p = products[i],
             nn = (renumber && !actor_name ? p.nextAvailableNumberName : ''),
             c = this.addProduct(nn ? nn : prefix + p.name);
         if(c) {
           node_dict[p.displayName] = c.displayName;
           c.copyPropertiesFrom(p);
-          // Also add placeholder in the focal cluster
+          // Also add placeholder in the focal cluster.
           this.focal_cluster.addProductPosition(c, c.x + 100, c.y + 100);
           cloned_selection.push(c);
         } else {
-          // Warn and exit
+          // Warn and exit.
           UI.warn('Failed to clone product ' + p.displayName);
           return;
         }
       }
-      // Clone clusters
-      for(let i = 0; i < clusters.length; i++) {
+      // Clone clusters.
+      for(const c of clusters) {
         const
-            c = clusters[i], 
             a = (actor_name ? actor_name : c.actor.name),
             cc = this.addCluster(prefix + c.name, a);
         if(cc) {
-          // NOTE: the TRUE parameter indicates that links should be cloned
           cc.cloneFrom(c, prefix, a);
           cc.x += 100;
           cc.y += 100;
           cloned_selection.push(cc);
         } else {
-          // Warn and exit
+          // Warn and exit.
           UI.warn('Failed to clone cluster ' + c.displayName);
           return;
         }
       }
-      // Clone links and constraints (!!)
-      for(let i = 0; i < links.length; i++) {
-        const l = links[i];
-        // NOTE: links and constraints both have FROM and TO nodes
+      // Clone links and constraints -- both are in list `links`.
+      for(const l of links) {
+        // NOTE: Links and constraints both have FROM and TO nodes.
         let cf = l.from_node,
             ct = l.to_node;
         const
@@ -2234,7 +2225,7 @@ class LinnyRModel {
                 node_dict[cf.displayName] : cf.displayName),
             nt = (node_dict[ct.displayName] ?
                 node_dict[ct.displayName] : ct.displayName);
-        // If in selection, map FROM node onto cloned node
+        // If in selection, map FROM node onto cloned node.
         if(processes.indexOf(cf) >= 0) {
           let name = (nf ? nf + (cf.hasActor ? cf.actor.name : '') :
               prefix + cf.name);
@@ -2244,7 +2235,7 @@ class LinnyRModel {
         } else if(products.indexOf(cf) >= 0) {
           cf = this.objectByName(nf ? nf : prefix + cf.name);
         }
-        // Do likewise for the TO node
+        // Do likewise for the TO node.
         if(processes.indexOf(ct) >= 0) {
           let name = (nt ? nt + (ct.hasActor ? ct.actor.name : '') :
               prefix + ct.name);
@@ -2264,7 +2255,7 @@ class LinnyRModel {
           c = this.addConstraint(cf, ct);
         }
         if(!c) return;
-        // ... but do not add it to the clone list if it already exists 
+        // ... but do not add it to the clone list if it already exists .
         if(c !== l) {
           c.copyPropertiesFrom(l);
           cloned_selection.push(c);
@@ -2274,14 +2265,14 @@ class LinnyRModel {
         // Prepare for redraw
         this.focal_cluster.clearAllProcesses();
         this.focal_cluster.categorizeEntities();
-        // Make the clone the new selection (so it can be moved easily)
+        // Make the clone the new selection (so it can be moved easily).
         this.selectList(cloned_selection);
         UI.drawDiagram(this);
       } else {
         UI.notify('No elements to clone');
       }
     }
-    // Empty string indicates: no problems
+    // Empty string indicates: no problems.
     return '';
   }
   
@@ -2312,8 +2303,8 @@ class LinnyRModel {
     // Then delete selected nodes.
     for(let i = this.selection.length - 1; i >= 0; i--) {
       obj = this.selection.splice(i, 1)[0];
-      // NOTE: when deleting a selection, this selection has been made in the
-      // focal cluster
+      // NOTE: When deleting a selection, this selection has been made in the
+      // focal cluster.
       if(obj instanceof Note) {
         fc.deleteNote(obj);
       } else if(obj instanceof Product) {
@@ -2325,7 +2316,7 @@ class LinnyRModel {
       }
     }
     // Clear the related arrow set (used to minimize link drawing while moving
-    // a selection)
+    // a selection).
     this.selection_related_arrows.length = 0;
     fc.categorizeEntities();
     this.inferIgnoredEntities();
@@ -2338,18 +2329,18 @@ class LinnyRModel {
   
   deleteNode(node) {
     // Delete a node (process or product) and its associated links and constraints
-    // from the model
+    // from the model.
     // First generate the XML for restoring the node, but add it later to the
-    // UndoEdit so that it comes BEFORE the XML of its subelements
+    // UndoEdit so that it comes BEFORE the XML of its sub-elements.
     let xml = node.asXML;
-    // Prepare for redraw
+    // Prepare for redraw.
     node.cluster.clearAllProcesses();
-    // Remove associated links
+    // Remove associated links.
     for(let l in this.links) if(this.links.hasOwnProperty(l)) {
       l = this.links[l];
       if(l.from_node == node || l.to_node == node) this.deleteLink(l);
     }
-    // Remove associated constraints
+    // Remove associated constraints.
     for(let c in this.constraints) if(this.constraints.hasOwnProperty(c)) {
       c = this.constraints[c];
       if(c.from_node == node || c.to_node == node) this.deleteConstraint(c);
@@ -2361,54 +2352,53 @@ class LinnyRModel {
       if(i >= 0) node.cluster.processes.splice(i, 1);
       delete this.processes[node.identifier];
     } else {
-      // Remove product from parameter lists
+      // Remove product from parameter lists.
       this.removeImport(node);
       this.removeExport(node);
-      // Get list of ALL clusters containing the product
-      const ppc = node.productPositionClusters;
-      for(let i = 0; i < ppc.length; i++) ppc[i].deleteProduct(node);
+      // Remove product from ALL clusters containing it.
+      for(const c of node.productPositionClusters) c.deleteProduct(node);
       delete this.products[node.identifier];
     }
-    // Now insert XML for node, so that the constraints will be restored properly
+    // Now insert XML for node, so that the constraints will be restored properly.
     UNDO_STACK.addXML(xml);
   }
 
   deleteLink(link) {
-    // Remove link from model
-    // NOTE: do not allow "semi-black-boxed" links to be removed
-    // (their attributes can be modified, so rate can be set to 0 if needed)
+    // Remove link from model.
+    // NOTE: Do not allow "semi-black-boxed" links to be removed.
+    // Their attributes can be modified, so rate can be set to 0 if needed.
     if(link.displayName.indexOf(UI.BLACK_BOX) >= 0) {
-      UI.warn('Black-box links cannot be deleted');
+      UI.warn('Black-box links cannot be deleted -- set rate to 0 to disable flow');
       return;
     }
-    // First remove link from outputs list of its FROM node
+    // First remove link from outputs list of its FROM node.
     let i = link.from_node.outputs.indexOf(link);
     if(i >= 0) link.from_node.outputs.splice(i, 1);
-    // Also remove link from inputs list of its TO node
+    // Also remove link from inputs list of its TO node.
     i = link.to_node.inputs.indexOf(link);
     if(i >= 0) link.to_node.inputs.splice(i, 1);
     // Prepare for redraw
     link.from_node.cluster.clearAllProcesses();
     link.to_node.cluster.clearAllProcesses();
-    // NOTE: for product nodes, it is possible that their cluster is not the
-    // focal cluster; in that case, also prepare the focal cluster
+    // NOTE: For product nodes, it is possible that their cluster is not the
+    // focal cluster; in that case, also prepare the focal cluster.
     if(this.focal_cluster != link.from_node.cluster &&
          this.focal_cluster != link.to_node.cluster) {
       this.focal_cluster.clearAllProcesses();
     }
-    // Finally, remove link from the model
+    // Finally, remove link from the model.
     UNDO_STACK.addXML(link.asXML);
     delete this.links[link.identifier];
     this.cleanUpFeedbackLinks();
   }
 
   deleteConstraint(constraint) {
-    // Remove constraint from model
-    // Prepare for redraw
+    // Remove constraint from model.
+    // Prepare for redraw.
     constraint.from_node.cluster.clearAllProcesses();
     constraint.to_node.cluster.clearAllProcesses();
     // NOTE: Clear this global, as Bezier curves move from under the cursor
-    // without a mouseout event 
+    // without a mouseout event.
     UI.constraint_under_cursor = null;
     UNDO_STACK.addXML(constraint.asXML);
     UI.removeShape(constraint.shape);
@@ -2416,104 +2406,100 @@ class LinnyRModel {
   }
 
   deleteCluster(c, with_xml=true) {
-    // Remove cluster `c` from model
-    // NOTE: only append the cluster's XML to the UndoEdit if it is the first
+    // Remove cluster `c` from model.
+    // NOTE: Only append the cluster's XML to the UndoEdit if it is the first
     // cluster to be deleted (because this XML contains full XML of all
-    // sub-clusters)
+    // sub-clusters).
     if(with_xml) UNDO_STACK.addXML(c.asXML);
-    // Then delete all of its parts (appending their XML to the UndoEdit)
-    let i;
-    // NOTE: delete notes, product positions and subclusters in this cluster
+    // Then delete all of its parts (appending their XML to the UndoEdit).
+    // NOTE: Delete notes, product positions and subclusters in this cluster
     // WITHOUT appending their XML, as this has already been generated as part
-    // of the cluster's XML
-    for(i = c.notes.length - 1; i >= 0; i--) {
+    // of the cluster's XML.
+    for(let i = c.notes.length - 1; i >= 0; i--) {
       c.deleteNote(c.notes[i], false);
     }
-    for(i = c.product_positions.length - 1; i >= 0; i--) {
+    for(let i = c.product_positions.length - 1; i >= 0; i--) {
       c.deleteProduct(c.product_positions[i].product, false);
     }
-    for(i = c.processes.length - 1; i >= 0; i--) {
+    for(let i = c.processes.length - 1; i >= 0; i--) {
       this.deleteNode(c.processes[i]);
     }
-    for(i = c.sub_clusters.length - 1; i >= 0; i--) {
-      // NOTE: recursive call, but lower level clusters will not output undo-XML
+    for(let i = c.sub_clusters.length - 1; i >= 0; i--) {
+      // NOTE: Recursive call, but lower level clusters will not output undo-XML.
       this.deleteCluster(c.sub_clusters[i], false); 
     }
-    // Remove the cluster from its parent's subcluster list
-    i = c.cluster.sub_clusters.indexOf(c);
+    // Remove the cluster from its parent's subcluster list.
+    let i = c.cluster.sub_clusters.indexOf(c);
     if(i >= 0) c.cluster.sub_clusters.splice(i, 1);
     UI.removeShape(c.shape);
-    // Finally, remove the cluster from the model
+    // Finally, remove the cluster from the model.
     delete this.clusters[c.identifier];
   }
 
   cleanUpActors() {
     // Remove actors that do not occur as "owner" of any process, product or
-    // cluster, and update the model property `actor_list` accordingly
-    // NOTE: this actor list contains 5-tuples [id, name, round flags (integer),
-    // weight (expression string), parameter type (0, 1 or 2)]
-    let a, p, l = [];
+    // cluster, and update the model property `actor_list` accordingly.
+    // NOTE: This actor list contains 5-tuples [id, name, round flags (integer),
+    // weight (expression string), parameter type (0, 1 or 2)].
     // Compile a list of all actors that are "owner" of a process, product
-    // and/or cluster 
-    for(p in this.processes) if(this.processes.hasOwnProperty(p)) {
-      a = this.processes[p].actor;
-      if(l.indexOf(a) < 0) l.push(a.identifier);
+    // and/or cluster.
+    const used = [];
+    for(let k in this.processes) if(this.processes.hasOwnProperty(k)) {
+      addDistinct(this.processes[k].actor.identifier, used);
     }
-    for(p in this.products) if(this.products.hasOwnProperty(p)) {
-      a = this.products[p].actor;
-      if(l.indexOf(a) < 0) l.push(a.identifier);
+    for(let k in this.products) if(this.products.hasOwnProperty(k)) {
+      addDistinct(this.products[k].actor.identifier, used);
     }
-    for(p in this.clusters) if(this.clusters.hasOwnProperty(p)) {
-      a = this.clusters[p].actor;
-      if(l.indexOf(a) < 0) l.push(a.identifier);
+    for(let k in this.clusters) if(this.clusters.hasOwnProperty(k)) {
+      addDistinct(this.clusters[k].actor.identifier, used);
     }
-    // Then remove actors that are NOT on this "actors in use" list
-    for(p in this.actors) if(this.actors.hasOwnProperty(p)) {
-      if(l.indexOf(p) < 0) {
-        const a = this.actors[p];
+    // Then remove actors that are NOT on this "actors in use" list.
+    for(let k in this.actors) if(this.actors.hasOwnProperty(k)) {
+      if(used.indexOf(k) < 0) {
+        const a = this.actors[k];
         // NOTE: XML for these actors must be appended to the undo because
-        // actors have modeler-defined properties
+        // actors have modeler-defined properties.
         UNDO_STACK.addXML(a.asXML);
         this.removeImport(a);
         this.removeExport(a);
-        delete this.actors[p];
+        delete this.actors[k];
       }
     }
-    // Update the sorted actor list that is used in dialogs
+    // Update the sorted actor list that is used in dialogs.
     this.actor_list.length = 0;
-    for(let i in this.actors) if(this.actors.hasOwnProperty(i)) {
-      const a = this.actors[i];
+    for(let k in this.actors) if(this.actors.hasOwnProperty(k)) {
+      const a = this.actors[k];
       this.actor_list.push([a.identifier, a.displayName, a.round_flags,
         a.weight.text, this.ioType(a)]);
     }
-    // NOTE: sorting will automatically put "(no actor)" at the top since
-    // "(" (ASCII 40) comes before "0" (ASCII 48)
+    // NOTE: Sorting will automatically put "(no actor)" at the top since
+    // "(" (ASCII 40) comes before "0" (ASCII 48).
     this.actor_list.sort(function(a, b) {return a[0].localeCompare(b[0]);});
   }
 
   makePredecessorLists() {
-    // Compose for each node its lost of predecessor nodes
-    // NOTE: first reset all lists, and unset the `visited` flags of links
-    for(let p in this.processes) if (this.processes.hasOwnProperty(p)) {
-      this.processes[p].predecessors.length = 0;
+    // Compose for each node its lost of predecessor nodes.
+    // NOTE: First reset all lists, and unset the `visited` flags of links.
+    for(let k in this.processes) if (this.processes.hasOwnProperty(k)) {
+      this.processes[k].predecessors.length = 0;
     }
-    for(let p in this.products) if (this.products.hasOwnProperty(p)) {
-      this.products[p].predecessors.length = 0;
+    for(let k in this.products) if (this.products.hasOwnProperty(k)) {
+      this.products[k].predecessors.length = 0;
     }
-    for(let l in this.links) if(this.links.hasOwnProperty(l)) {
-      this.links[l].visited = false;
+    for(let k in this.links) if(this.links.hasOwnProperty(k)) {
+      this.links[k].visited = false;
     }
-    // Only then compute the predecessor lists
-    for(let p in this.processes) if (this.processes.hasOwnProperty(p)) {
-      this.processes[p].setPredecessors();
+    // Only then compute the predecessor lists.
+    for(let k in this.processes) if (this.processes.hasOwnProperty(k)) {
+      this.processes[k].setPredecessors();
     }
-    for(let p in this.products) if (this.products.hasOwnProperty(p)) {
-      this.products[p].setPredecessors();
+    for(let k in this.products) if (this.products.hasOwnProperty(k)) {
+      this.products[k].setPredecessors();
     }
   }
 
   cleanUpFeedbackLinks() {
-    // Reset feedback property to FALSE for links that no longer close a loop
+    // Reset feedback property to FALSE for links that no longer close a loop.
     this.makePredecessorLists();
     for(let l in this.links) if(this.links.hasOwnProperty(l)) {
       l = this.links[l];
@@ -2524,42 +2510,37 @@ class LinnyRModel {
   }
 
   get datasetVariables() {
-    // Returns list with all ChartVariable objects in this model that
+    // Return list with all ChartVariable objects in this model that
     // reference a regular dataset, i.e., not an equation.
     const vl = [];
-    for(let i = 0; i < MODEL.charts.length; i++) {
-      const c = MODEL.charts[i];
-      for(let j = 0; j < c.variables.length; j++) {
-        const v = c.variables[j];
+    for(const c of this.charts) {
+      for(const v of c.variables) {
         if(v.object instanceof Dataset &&
-            v.object !== MODEL.equations_dataset) vl.push(v);
+            v.object !== this.equations_dataset) vl.push(v);
       }
     }
     return vl;
   }
   
   get notesWithTags() {
-    // Returns a list with all notes having tags [[...]] in this model
+    // Return a list with all notes having tags [[...]] in this model.
     const nl = [];
     for(let k in this.clusters) if(this.clusters.hasOwnProperty(k)) {
       const c = this.clusters[k];
-      for(let i = 0; i < c.notes.length; i++) {
-        const n = c.notes[i];
-        if(n.tagList) nl.push(n);
-      }
+      for(const n of c.notes) if(n.tagList) nl.push(n);
     }
     return nl;
   }
   
   get allExpressions() {
-    // Returns list of all Expression objects in this model
-    // NOTE: start with dataset expressions, so that when recompiling
+    // Return list of all Expression objects in this model.
+    // NOTE: Start with dataset expressions so that when recompiling,
     // their `level-based` property is set before recompiling the
-    // other expressions
+    // other expressions.
     const xl = [];
     for(let k in this.datasets) if(this.datasets.hasOwnProperty(k)) {
       const ds = this.datasets[k];
-      // NOTE: dataset modifier expressions include the equations
+      // NOTE: Dataset modifier expressions include the equations.
       for(let m in ds.modifiers) if(ds.modifiers.hasOwnProperty(m)) {
         xl.push(ds.modifiers[m].expression);
       }
@@ -2576,23 +2557,15 @@ class LinnyRModel {
       xl.push(p.lower_bound, p.upper_bound, p.initial_level, p.price);
     }
     for(let k in this.clusters) if(this.clusters.hasOwnProperty(k)) {
-      const c = this.clusters[k];
-      for(let i = 0; i < c.notes.length; i++) {
-        const n = c.notes[i];
-        xl.push(n.color);
-      }
+      for(const n of this.clusters[k].notes) xl.push(n.color);
     }
     for(let k in this.links) if(this.links.hasOwnProperty(k)) {
       const l = this.links[k];
       xl.push(l.relative_rate, l.flow_delay);
     }
     for(let k in this.constraints) if(this.constraints.hasOwnProperty(k)) {
-      const c = this.constraints[k];
-      for(let i = 0; i < c.bound_lines.length; i++) {
-        const bl = c.bound_lines[i];
-        for(let j = 0; j < bl.selectors.length; j++) {
-          xl.push(bl.selectors[j].expression);
-        }
+      for(const bl of this.constraints[k].bound_lines) {
+        for(const sel of bl.selectors) xl.push(sel.expression);
       }
     }
     return xl;
@@ -2600,28 +2573,24 @@ class LinnyRModel {
 
   replaceEntityInExpressions(en1, en2, notify=true) {
     // Replace entity name `en1` by `en2` in all variables in all expressions
-    // (provided that they are not identical)
+    // (provided that they are not identical).
     if(en1 === en2) return;
-    // NOTE: ignore case and multiple spaces in `en1`, but conserve those in
-    // new name `en2` (except for leading and trailing spaces)
+    // NOTE: Ignore case and multiple spaces in `en1`, but conserve those in
+    // new name `en2` (except for leading and trailing spaces).
     en1 = en1.trim().replace(/\s+/g, ' ').toLowerCase();
     en2 = en2.trim();
-    // NOTE: Neither entity name may be empty
+    // NOTE: Neither entity name may be empty.
     if(!en1 || !en2) return;
-    // NOTE: use the `rewrite` method of class IOContext; this will keep track
-    // of the number of replacements made
+    // NOTE: Use the `rewrite` method of class IOContext; this will keep track
+    // of the number of replacements made.
     const ioc = new IOContext();
-    // Iterate over all expressions
-    const ax = this.allExpressions;
-    for(let i = 0; i < ax.length; i++) {
-      ioc.rewrite(ax[i], en1, en2);
+    // Iterate over all expressions.
+    for(const x of this.allExpressions) {
+      ioc.rewrite(x, en1, en2);
     }
-    // Iterate over all notes in clusters to rename entities in note fields
+    // Iterate over all notes in clusters to rename entities in note fields.
     for(let k in this.clusters) if(this.clusters.hasOwnProperty(k)) {
-      const cn = this.clusters[k].notes;
-      for(let i = 0; i < cn.length; i++) {
-        cn[i].rewriteFields(en1, en2);
-      }
+      for(const n of this.clusters[k].notes) n.rewriteFields(en1, en2);
     }
     if(ioc.replace_count) {
       this.variable_count += ioc.replace_count;
@@ -2631,7 +2600,7 @@ class LinnyRModel {
             pluralS(ioc.expression_count, 'expression'));
       }
     }
-    // Also rename entities in parameters and outcomes of sensitivity analysis
+    // Also rename entities in parameters and outcomes of sensitivity analysis.
     for(let i = 0; i < this.sensitivity_parameters.length; i++) {
       const sp = this.sensitivity_parameters[i].split('|');
       if(sp[0].toLowerCase() === en1) {
@@ -2646,34 +2615,31 @@ class LinnyRModel {
         this.sensitivity_outcomes[i] = so.join('|');
       }
     }
-    // Name was changed, so update controller dialogs to display the new name
+    // Name was changed, so update controller dialogs to display the new name.
     UI.updateControllerDialogs('CDEFJX');
   }
 
   replaceAttributeInExpressions(ena, a) {
     // Replace for all occurrences of entity|attribute `ena` the attribute by
-    // `a` in all variables in all expressions, and return # replacements made
-    // NOTE: ignore case and multiple spaces in `en` but not in its attribute
-    // or in the new attribute `a` (except for leading and trailing spaces)
+    // `a` in all variables in all expressions, and return # replacements made.
+    // NOTE: Ignore case and multiple spaces in `en` but not in its attribute
+    // or in the new attribute `a` (except for leading and trailing spaces).
     a = a.trim();
     ena = ena.split('|');
-    // Double-check that `a` is not empty and `ena` contains a vertical bar
+    // Double-check that `a` is not empty and `ena` contains a vertical bar.
     if(!a || ena.length < 2) return;
     // Prepare regex to match [entity|attribute] including brackets, but case-
-    // tolerant and spacing-tolerant
+    // tolerant and spacing-tolerant.
     const
         en = escapeRegex(ena[0].trim().replace(/\s+/g, ' ').toLowerCase()),
         at = ena[1].trim(),
         raw = en.replace(/\s/, '\\s+') + '\\s*\\|\\s*' + escapeRegex(at),
         re = new RegExp(String.raw`\[\s*${raw}\s*(\@[^\]]+)?\s*\]`, 'gi');
-    // Count replacements made
+    // Count replacements made.
     let n = 0;
-    // Iterate over all expressions
-    const ax = this.allExpressions;
-    for(let i = 0; i < ax.length; i++) {
-      n += ax[i].replaceAttribute(re, at, a);
-    }
-    // Also rename attributes in parameters and outcomes of sensitivity analysis
+    // Iterate over all expressions.
+    for(const x of this.allExpressions) n += x.replaceAttribute(re, at, a);
+    // Also rename attributes in parameters and outcomes of sensitivity analysis.
     let sa_cnt = 0;
     const enat = en + '|' + at;
     for(let i = 0; i < this.sensitivity_parameters.length; i++) {
@@ -2745,6 +2711,9 @@ class LinnyRModel {
       this.decimal_comma = nodeParameterValue(node, 'decimal-comma') === '1';
       this.align_to_grid = nodeParameterValue(node, 'align-to-grid') === '1';
       this.with_power_flow = nodeParameterValue(node, 'power-flow') === '1';
+      this.ignore_grid_capacity = nodeParameterValue(node, 'ignore-grid-capacity') === '1';
+      this.ignore_KVL = nodeParameterValue(node, 'ignore-KVL') === '1';
+      this.ignore_power_losses = nodeParameterValue(node, 'ignore-power-losses') === '1';
       this.infer_cost_prices = nodeParameterValue(node, 'cost-prices') === '1';
       this.ignore_negative_flows = nodeParameterValue(node, 'negative-flows') === '1';
       this.report_results = nodeParameterValue(node, 'report-results') === '1';
@@ -2943,35 +2912,29 @@ class LinnyRModel {
     this.max_time_to_load = 0;
     n = childNodeByTag(node, 'datasets');
     if(n && n.childNodes) {
-      for(i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'dataset') {
-          name = xmlDecoded(nodeContentByTag(c, 'name'));
-          // NOTE: when including a module, dataset parameters may be bound to
-          // existing datasets, but the equations dataset is a special case:
-          // a model has only ONE equations dataset, so for imported equations 
-          // the *modifiers* must be prefixed. This is implemented by passing
-          // the IO context as third argument to the addModifier method, which
-          // will then add the module prefix to the selector
-          if(IO_CONTEXT) {
-            if(name === UI.EQUATIONS_DATASET_NAME) {
-              const mn = childNodeByTag(c, 'modifiers');
-              if(mn && mn.childNodes) {
-                for(let j = 0; j < mn.childNodes.length; j++) {
-                  const cc = mn.childNodes[j];
-                  if(cc.nodeName === 'modifier') {
-                    this.equations_dataset.addModifier(
-                        xmlDecoded(nodeContentByTag(cc, 'selector')),
-                        cc, IO_CONTEXT);
-                  }
-                }
-              }              
-            } else {
-              name = IO_CONTEXT.actualName(name);
-            }
+      for(const c of n.childNodes) if(c.nodeName === 'dataset') {
+        name = xmlDecoded(nodeContentByTag(c, 'name'));
+        // NOTE: when including a module, dataset parameters may be bound to
+        // existing datasets, but the equations dataset is a special case:
+        // a model has only ONE equations dataset, so for imported equations 
+        // the *modifiers* must be prefixed. This is implemented by passing
+        // the IO context as third argument to the addModifier method, which
+        // will then add the module prefix to the selector
+        if(IO_CONTEXT) {
+          if(name === UI.EQUATIONS_DATASET_NAME) {
+            const mn = childNodeByTag(c, 'modifiers');
+            if(mn && mn.childNodes) {
+              for(const cc of mn.childNodes) if(cc.nodeName === 'modifier') {
+                this.equations_dataset.addModifier(
+                    xmlDecoded(nodeContentByTag(cc, 'selector')),
+                    cc, IO_CONTEXT);
+              }
+            }              
+          } else {
+            name = IO_CONTEXT.actualName(name);
           }
-          this.addDataset(name, c);
         }
+        this.addDataset(name, c);
       }
     }
     // Create equations dataset if not defined yet (legacy models < 0.9x50)
@@ -3003,11 +2966,11 @@ class LinnyRModel {
     this.selector_order_string = xmlDecoded(nodeContentByTag(node,
         'selector-order'));
     this.selector_order_list = this.selector_order_string.trim().split(/\s+/);
-    // Infer dimensions of experimental design space
+    // Infer dimensions of experimental design space.
     this.inferDimensions();
-    // NOTE: when including a model, IGNORE sensitivity analysis, experiments
+    // NOTE: When including a model, IGNORE sensitivity analysis, experiments
     // and import/export definitions, and do NOT perform any further
-    // initialization operations
+    // initialization operations.
     if(!IO_CONTEXT) {
       this.base_case_selectors = xmlDecoded(
           nodeContentByTag(node, 'base-case-selectors'));
@@ -3033,45 +2996,33 @@ class LinnyRModel {
           nodeContentByTag(node, 'sensitivity-delta'));
       n = childNodeByTag(node, 'sensitivity-runs');
       if(n && n.childNodes) {
-        // NOTE: use a "dummy experiment object" as parent for SA runs
+        // NOTE: Use a "dummy experiment object" as parent for SA runs.
         const dummy = {title: SENSITIVITY_ANALYSIS.experiment_title};
-        for(let i = 0; i < n.childNodes.length; i++) {
-          c = n.childNodes[i];
-          if(c.nodeName === 'experiment-run') {
-            const xr = new ExperimentRun(dummy, i);
-            xr.initFromXML(c);
-            this.sensitivity_runs.push(xr);
-          }
+        for(const c of n.childNodes) if(c.nodeName === 'experiment-run') {
+          const xr = new ExperimentRun(dummy, i);
+          xr.initFromXML(c);
+          this.sensitivity_runs.push(xr);
         }
       }
       n = childNodeByTag(node, 'experiments');
       if(n && n.childNodes) {
-        for(i = 0; i < n.childNodes.length; i++) {
-          c = n.childNodes[i];
-          if(c.nodeName === 'experiment') {
-            this.addExperiment(xmlDecoded(nodeContentByTag(c, 'title')), c);
-          }
+        for(const c of n.childNodes) if(c.nodeName === 'experiment') {
+          this.addExperiment(xmlDecoded(nodeContentByTag(c, 'title')), c);
         }
       }
       n = childNodeByTag(node, 'imports');
       if(n && n.childNodes) {
-        for(i = 0; i < n.childNodes.length; i++) {
-          c = n.childNodes[i];
-          if(c.nodeName === 'import') this.addImport(c);
-        }
+        for(const c of n.childNodes) if(c.nodeName === 'import') this.addImport(c);
       }
       n = childNodeByTag(node, 'exports');
       if(n && n.childNodes) {
-        for(i = 0; i < n.childNodes.length; i++) {
-          c = n.childNodes[i];
-          if(c.nodeName === 'export') this.addExport(c);
-        }
+        for(const c of n.childNodes) if(c.nodeName === 'export') this.addExport(c);
       }
-      // Add the default chart (will add it only if absent)
+      // Add the default chart (will add it only if absent).
       this.addChart(CHART_MANAGER.new_chart_title);
-      // Infer dimensions of experimental design space
+      // Infer dimensions of experimental design space.
       this.inferDimensions();
-      // set the current time step (if specified)
+      // Set the current time step (if specified).
       let s = nodeParameterValue(node, 'current');
       if(s) {
         this.current_time_step = Math.min(this.end_period,
@@ -3081,14 +3032,14 @@ class LinnyRModel {
       }
       this.inferIgnoredEntities();
       this.focal_cluster = this.top_cluster;
-      // NOTE: links in legacy Linny-R models by default have 100% share-of-cost;
+      // NOTE: Links in legacy Linny-R models by default have 100% share-of-cost;
       // to minimize conversion effort, set SoC for SINGLE links OUT of processes
-      // to 100%
+      // to 100%.
       if(legacy_model) {
         for(let l in this.links) if(this.links.hasOwnProperty(l)) {
           l = this.links[l];
-          // NOTE: preserve non-zero SoC values, as these have been specified
-          // by the modeler
+          // NOTE: Preserve non-zero SoC values, as these have been specified
+          // by the modeler.
           if(l.from_node instanceof Process &&
               l.from_node.outputs.length === 1 && l.share_of_cost === 0) {
             l.share_of_cost = 1;
@@ -3116,6 +3067,9 @@ class LinnyRModel {
     if(this.decimal_comma) p += ' decimal-comma="1"';
     if(this.align_to_grid) p += ' align-to-grid="1"';
     if(this.with_power_flow) p += ' power-flow="1"';
+    if(this.ignore_grid_capacity) p += ' ignore-grid-capacity="1"';
+    if(this.ignore_KVL) p += ' ignore-KVL="1"';
+    if(this.ignore_power_losses) p += ' ignore-power-losses="1"';
     if(this.infer_cost_prices) p += ' cost-prices="1"';
     if(this.ignore_negative_flows) p += ' negative-flows="1"';
     if(this.report_results) p += ' report-results="1"';
@@ -3151,7 +3105,7 @@ class LinnyRModel {
     }
     xml += '</powergrids><actors>';
     for(obj in this.actors) {
-      // NOTE: do not to save "(no actor)"
+      // NOTE: Do not to save "(no actor)".
       if(this.actors.hasOwnProperty(obj) && obj != UI.nameToID(UI.NO_ACTOR)) {
         xml += this.actors[obj].asXML;
       }
@@ -3174,54 +3128,46 @@ class LinnyRModel {
         xml += this.constraints[obj].asXML;
       }
     }
-    // NOTE: cluster XML defines its own subclusters, and the model has
-    // ONE top cluster that cannot be "black-boxed"
+    // NOTE: Cluster XML defines its own subclusters, and the model has
+    // ONE top cluster that cannot be "black-boxed".
     xml += '</constraints><clusters>' + this.top_cluster.asXML +
         '</clusters><datasets>';
     for(obj in this.datasets) {
       if(this.datasets.hasOwnProperty(obj)) xml += this.datasets[obj].asXML;
     }
     xml += '</datasets><charts>';
-    for(let i = 0; i < this.charts.length; i++) {
-      xml += this.charts[i].asXML;
-    }
+    for(const c of this.charts) xml += c.asXML;
     xml += '</charts><selector-order>' +
         xmlEncoded(this.selector_order_string) + '</selector-order>';
-    // NOTE: when "black-boxing", SA and experiments are not stored 
+    // NOTE: When "black-boxing", SA and experiments are not stored.
     if(!this.black_box) {
       xml += '<base-case-selectors>' +
           xmlEncoded(this.base_case_selectors) +
           '</base-case-selectors><sensitivity-parameters>';
-      for(let i = 0; i < this.sensitivity_parameters.length; i++) {
-        xml += '<sa-parameter>' + xmlEncoded(this.sensitivity_parameters[i]) +
-            '</sa-parameter>';
+      for(const sp of this.sensitivity_parameters) {
+        xml += '<sa-parameter>' + xmlEncoded(sp) + '</sa-parameter>';
       }
       xml += '</sensitivity-parameters><sensitivity-outcomes>';
-      for(let i = 0; i < this.sensitivity_outcomes.length; i++) {
-        xml += '<sa-outcome>' + xmlEncoded(this.sensitivity_outcomes[i]) +
-            '</sa-outcome>';
+      for(const so of this.sensitivity_outcomes) {
+        xml += '<sa-outcome>' + xmlEncoded(so) + '</sa-outcome>';
       }
       xml += '</sensitivity-outcomes><sensitivity-delta>' +
         this.sensitivity_delta + '</sensitivity-delta><sensitivity-runs>';
-      for(let i = 0; i < this.sensitivity_runs.length; i++) {
-        xml += this.sensitivity_runs[i].asXML;
-      }
+      for(const r of this.sensitivity_runs) xml += r.asXML;
       xml += '</sensitivity-runs><experiments>';
-      for(let i = 0; i < this.experiments.length; i++) {
-        xml += this.experiments[i].asXML;
-      }
+      for(const x of this.experiments) xml += x.asXML;
       xml += '</experiments>';
     }
-    // NOTE: always store module parameters
+    // NOTE: Always store module parameters.
     xml += '<imports>';
-    for(let i = 0; i < this.imports.length; i++) xml += this.imports[i].asXML;
+    for(const io of this.imports) xml += io.asXML;
     xml += '</imports><exports>';
-    for(let i = 0; i < this.exports.length; i++) xml += this.exports[i].asXML;
+    for(const io of this.exports) xml += io.asXML;
     return xml + '</exports></model>';
   }
   
   get asBlackBoxXML() {
-    // Returns model as XML with abstract names for all "black-boxed" entities
+    // Returns model as XML with abstract names for all "black-boxed" entities.
     this.black_box = true;
     this.inferBlackBoxEntities();
     const xml = this.asXML;
@@ -3246,11 +3192,9 @@ class LinnyRModel {
         scale_re = /\s+\(x[0-9\.\,]+\)$/;
     // First create list of distinct variables used in charts.
     // NOTE: Also include those that are not checked as "visible".
-    for(let i = 0; i < this.charts.length; i++) {
-      const c = this.charts[i];
-      for(let j = 0; j < c.variables.length; j++) {
-        let v = c.variables[j],
-            vn = v.displayName;
+    for(const c of this.charts) {
+      for(const v of c.variables) {
+        let vn = v.displayName;
         // If variable is scaled, do not include it as such, but include
         // a new unscaled chart variable.
         if(vn.match(scale_re)) {
@@ -3300,8 +3244,7 @@ class LinnyRModel {
     const
         c = new Chart(),
         wcdm = [];
-    for(let i = 0; i < vbls.length; i++) {
-      const v = vbls[i];
+    for(const v of vbls) {
       // NOTE: Prevent adding wildcard dataset modifiers more than once.
       if(wcdm.indexOf(v.object) < 0) {
         if(v.object instanceof DatasetModifier &&
@@ -3381,15 +3324,15 @@ class LinnyRModel {
     }
     const keys = Object.keys(this.equations_dataset.modifiers); 
     sl.push('_____Equations');
-    for(let i = 0; i < keys.length; i++) {
-      const m = this.equations_dataset.modifiers[keys[i]];
+    for(const k of keys) {
+      const m = this.equations_dataset.modifiers[k];
       if(!m.selector.startsWith(':')) {
         sl.push(m.displayName, '`' + m.expression.text + '`\n');
       }
     }
     sl.push('_____Methods');
-    for(let i = 0; i < keys.length; i++) {
-      const m = this.equations_dataset.modifiers[keys[i]];
+    for(const k of keys) {
+      const m = this.equations_dataset.modifiers[k];
       if(m.selector.startsWith(':')) {
         let markup = '\n\nDoes not apply to any entity.';
         if(m.expression.eligible_prefixes) {
@@ -3403,13 +3346,9 @@ class LinnyRModel {
       }
     }
     sl.push('_____Charts');
-    for(let i = 0; i < this.charts.length; i++) {
-      sl.push(this.charts[i].title, this.charts[i].comments);
-    }
+    for(const c of this.charts) sl.push(c.title, c.comments);
     sl.push('_____Experiments');
-    for(let i = 0; i < this.experiments.length; i++) {
-      sl.push(this.experiments[i].title, this.experiments[i].comments);
-    }
+    for(const x of this.experiments) sl.push(x.title, x.comments);
     return sl;
   }
   
@@ -3417,9 +3356,9 @@ class LinnyRModel {
   
   cleanVector(v, initial, other=VM.NOT_COMPUTED) {
     // Set an array to [0, ..., run length] of numbers initialized as
-    // "not computed" to ensure that they will be evaluated "lazily"
+    // "not computed" to ensure that they will be evaluated "lazily".
     // NOTES:
-    // (1) the first element (0) corresponds to t = 0, i.e., the model
+    // (1) The first element (0) corresponds to t = 0, i.e., the model
     //     time step just prior to the time step defined by start_period.
     // (2) All vectors must be initialized with an appropriate value for
     //     element 0.
@@ -3438,80 +3377,80 @@ class LinnyRModel {
     // so the modeler is warned when a wildcard equation fails to obtain
     // a valid wildcard number. 
     this.equations_dataset.default_value = VM.UNDEFINED;
-
-    let obj, l, p;
-    for(obj in this.actors) if(this.actors.hasOwnProperty(obj)) {
-      p = this.actors[obj];
-      // Default weight = 1
-      p.weight.reset(1);
-      // NOTE: actor cash flows cumulate as sum of CF of "owned" processes
-      this.cleanVector(p.cash_flow, 0, 0);
-      this.cleanVector(p.cash_in, 0, 0);
-      this.cleanVector(p.cash_out, 0, 0);
+    for(let k in this.actors) if(this.actors.hasOwnProperty(k)) {
+      const a = this.actors[k];
+      // Default weight = 1.
+      a.weight.reset(1);
+      // NOTE: Actor cash flows cumulate as sum of CF of "owned" processes.
+      this.cleanVector(a.cash_flow, 0, 0);
+      this.cleanVector(a.cash_in, 0, 0);
+      this.cleanVector(a.cash_out, 0, 0);
     }
-    for(obj in this.clusters) if(this.clusters.hasOwnProperty(obj)) {
-      p = this.clusters[obj];
-      // NOTE: cluster cash flows cumulate as sum of CF of child processes
-      this.cleanVector(p.cash_flow, 0, 0);
-      this.cleanVector(p.cash_in, 0, 0);
-      this.cleanVector(p.cash_out, 0, 0);
-      // NOTE: note fields also must be reset
-      p.resetNoteFields();
+    for(let k in this.clusters) if(this.clusters.hasOwnProperty(k)) {
+      const c = this.clusters[k];
+      // NOTE: Cluster cash flows cumulate as sum of CF of child processes.
+      this.cleanVector(c.cash_flow, 0, 0);
+      this.cleanVector(c.cash_in, 0, 0);
+      this.cleanVector(c.cash_out, 0, 0);
+      // NOTE: Note fields also must be reset.
+      c.resetNoteFields();
     }
-    for(obj in this.processes) if(this.processes.hasOwnProperty(obj)) {
-      p = this.processes[obj];
-      // Defaults for processes: LB = 0, UB = +INF, L = initial level
+    for(let k in this.processes) if(this.processes.hasOwnProperty(k)) {
+      const p = this.processes[k];
+      // Defaults for processes: LB = 0, UB = +INF, L = initial level.
       p.lower_bound.reset(0);
       p.upper_bound.reset(VM.PLUS_INFINITY);
       p.initial_level.reset(0);
       p.pace_expression.reset(1);
-      // NOTE: immediately calculate pace (*static* integer value >= 1)
+      // NOTE: Immediately calculate pace (*static* integer value >= 1).
       p.pace = Math.max(1, Math.floor(p.pace_expression.result(1)));
       this.cleanVector(p.level, p.initial_level.result(1));
       this.cleanVector(p.cost_price, VM.UNDEFINED);
       this.cleanVector(p.cash_flow, 0, 0);
       this.cleanVector(p.cash_in, 0, 0);
       this.cleanVector(p.cash_out, 0, 0);
-      // NOTE: `start_ups` is a list of time steps when start-up occurred
+      // NOTE: `start_ups` is a list of time steps when start-up occurred.
       p.start_ups.length = 0;
       // NOTE: `b_peak_inc` records the peak increase for each block,
-      // so at t=0 (block *before* block #1) this is the initial level
+      // so at t=0 (block *before* block #1) this is the initial level.
       p.b_peak_inc = [p.level[0]];
       // `la_peak_inc` records the additional peak increase in the
-      // look-ahead period
+      // look-ahead period.
       p.la_peak_inc = [p.level[0]];
-      // b_peak[b] records peak level value up to and including block b
+      // b_peak[b] records peak level value up to and including block b.
       p.b_peak = [p.level[0]];      
     }
-    for(obj in this.products) if(this.products.hasOwnProperty(obj)) {
-      p = this.products[obj];
-      // Empty lower bound string indicates LB = 0 unless p is a source
+    for(let k in this.products) if(this.products.hasOwnProperty(k)) {
+      const p = this.products[k];
+      // Empty lower bound string indicates LB = 0 unless p is a source.
       p.lower_bound.reset(p.isSourceNode ? VM.MINUS_INFINITY : 0);
       // Empty upper bound string for product (!) indicates UB = 0
-      // unless p is a sink
+      // unless p is a sink.
       p.upper_bound.reset(p.isSinkNode ? VM.PLUS_INFINITY : 0);
-      // Price defaults to 0
+      // Price defaults to 0.
       p.price.reset(0);
       p.initial_level.reset(0);
-      // Level defaults to initial level
+      // Level defaults to initial level.
       this.cleanVector(p.level, p.initial_level.result(1));
       this.cleanVector(p.cost_price, VM.UNDEFINED);
       this.cleanVector(p.highest_cost_price, VM.UNDEFINED);
       if(p.is_buffer) this.cleanVector(p.stock_price, VM.UNDEFINED);
       p.start_ups.length = 0;
-      // NOTE: peak increase also applies to products
+      // NOTE: Peak increase also applies to products.
       p.b_peak_inc = [p.level[0]];
       p.la_peak_inc = [p.level[0]];
       p.b_peak = [p.level[0]];      
     }
-    for(obj in this.links) if(this.links.hasOwnProperty(obj)) {
-      l = this.links[obj];
+    for(let k in this.links) if(this.links.hasOwnProperty(k)) {
+      const l = this.links[k];
       l.relative_rate.reset(1);
       l.flow_delay.reset(0);
+      // NOTE: Initial value (for t=0) of vectors is special!
+      let p;
       if(l.to_node instanceof Process) {
         p = l.to_node.initial_level.result(1);
       } else {
-        // NOTE: works also if FROM node is a product
+        // NOTE: Works also if FROM node is a product.
         p = l.from_node.initial_level.result(1);
         // Link multiplier also matters!
         if(l.to_node.is_data && l.multiplier > 0) {
@@ -3520,7 +3459,7 @@ class LinnyRModel {
           } else if(l.multiplier === VM.LM_POSITIVE) {
             p = (p > 0 ? 1 : 0);
           } else if(l.multiplier === VM.LM_THROUGHPUT) {
-            // Link rates default to 1, so take # links in as throughput
+            // Link rates default to 1, so take # links in as throughput.
             p *= l.from_node.inputs.length;
           } else if(l.multiplier === VM.LM_STARTUP ||
               l.multiplier === VM.LM_SHUTDOWN ||
@@ -3529,37 +3468,28 @@ class LinnyRModel {
           } else if(l.multiplier === VM.LM_SPINNING_RESERVE) {
             p = (p === 0 ? 0 : VM.PLUS_INFINITY);
           }
-          // Other multipliers: p equals the initial FROM node level
+          // Other multipliers: p equals the initial FROM node level.
         }
       }
       this.cleanVector(l.actual_flow, p * l.relative_rate.result(0));
     }
     for(let k in this.constraints) if(this.constraints.hasOwnProperty(k)) {
       const c = this.constraints[k];
-      for(let i = 0; i < c.bound_lines.length; i++) {
-        const bl = c.bound_lines[i];
-        for(let j = 0; j < bl.selectors.length; j++) {
-          bl.selectors[j].expression.reset(0);
-        }
+      for(const bl of c.bound_lines) {
+        for(const sel of bl.selectors) sel.expression.reset(0);
       }
     }
-    for(obj in this.datasets) if(this.datasets.hasOwnProperty(obj)) {
-      const ds = this.datasets[obj];
-      ds.resetExpressions();
+    for(let k in this.datasets) if(this.datasets.hasOwnProperty(k)) {
+      this.datasets[k].resetExpressions();
     }
-    // NOTE: also reset the scaled result vectors of experiments, as these
-    // depend on model time scale which may be changed
-    for(let i = 0; i < this.experiments.length; i++) {
-      this.experiments[i].resetScaledVectors();
-    }
+    // NOTE: Also reset the scaled result vectors of experiments, as these
+    // depend on model time scale which may be changed.
+    for(const x of this.experiments) x.resetScaledVectors();
   }
 
   compileExpressions() {
     // Compile all expression attributes of all model entities
-    const ax = this.allExpressions;
-    for(let i = 0; i < ax.length; i++) {
-      ax[i].compile();
-    }
+    for(const x of this.allExpressions) x.compile();
   }
   
   /* SPECIAL MODEL CALCULATIONS */
@@ -3577,8 +3507,7 @@ class LinnyRModel {
             // Return number of relevant contraints (see below) that
             // can affect the cost price of product or process `p`.
             let n = 0;
-            for(let i = 0; i < constraints.length; i++) {
-              const c = constraints[i];
+            for(const c of constraints) {
               if(!MODEL.ignored_entities[c.identifier] &&
                   ((c.to_node === p && c.soc_direction === VM.SOC_X_Y) ||
                   (c.from_node === p && c.soc_direction === VM.SOC_Y_X))) n++;
@@ -3590,8 +3519,7 @@ class LinnyRModel {
             // links from processes, nosoc the number of these that carry
             // no cost, and nz the number of links having actual flow > 0.
             let tuple = {n: 0, nosoc: 0, nz: 0};
-            for(let i = 0; i < p.inputs.length; i++) {
-              const l = p.inputs[i];
+            for(const l of p.inputs) {
               // NOTE: Only process --> product links can carry cost.
               if(!MODEL.ignored_entities[l.identifier] &&
                   l.from_node instanceof Process) {
@@ -3647,9 +3575,8 @@ class LinnyRModel {
         // No inputs or cost-transferring constraints, then CP = 0
         // unless output products have price < 0.
         let negpr = 0;
-        for(let i = 0; i < p.outputs.length; i++) {
+        for(const l of p.outputs) {
           const
-              l = p.outputs[i],
               // NOTE: *add* delay to consider *future* price & rate!
               dt = t + l.actualDelay(t),
               px = l.to_node.price,
@@ -3737,9 +3664,8 @@ class LinnyRModel {
     // Iterate until no more new CP have been calculated.
     while(count < prev_count) {
       // (1) Update the constraints.
-      for(let i = 0; i < constraints.length; i++) {
+      for(const c of constraints) {
         const
-            c = constraints[i],
             // NOTE: Constraints in list have levels greater than near-zero.
             fl = c.from_node.actualLevel(t),
             tl = c.to_node.actualLevel(t);
@@ -3765,8 +3691,7 @@ class LinnyRModel {
       for(let i = processes.length - 1; i >= 0; i--) {
         const p = processes[i];
         let cp = 0;
-        for(let j = 0; j < p.inputs.length; j++) {
-          const l = p.inputs[j];
+        for(const l of p.inputs) {
           if(!MODEL.ignored_entities[l.identifier]) {
             const ucp = l.unit_cost_price;
             if(ucp === VM.UNDEFINED) {
@@ -3778,8 +3703,7 @@ class LinnyRModel {
           }
         }
         // NOTE: Also check constraints that transfer cost to `p`.
-        for(let j = 0; j < constraints.length; j++) {
-          const c = constraints[j];
+        for(const c of constraints) {
           if(c.to_node === p && c.soc_direction === VM.SOC_X_Y ||
              (c.from_node === p && c.soc_direction === VM.SOC_Y_X)) {
             if(c.transfer_cp === VM.UNDEFINED) {
@@ -3794,8 +3718,7 @@ class LinnyRModel {
           // Also consider negative prices of outputs.
           // NOTE: ignore SoC, as this affects the CP of the product, but
           // NOT the CP of the process producing it.
-          for(let j = 0; j < p.outputs.length; j++) {
-            const l = p.outputs[j];
+          for(const l of p.outputs) {
             if(!MODEL.ignored_entities[l.identifier]) {
               const
                   // NOTE: For output links always use current price.
@@ -3831,27 +3754,25 @@ class LinnyRModel {
           processes.splice(i, 1);
           // Set the CP of constraints that transfer cost of `p`, while
           // removing the constraints that have contributed to its CP.
-          for(let j = constraints.length - 1; j >= 0; j--) {
-            const c = constraints[j];
+          for(let ci = constraints.length - 1; ci >= 0; ci--) {
+            const c = constraints[ci];
             if(c.from_node === p) {
               if(c.soc_direction === VM.SOC_X_Y) {
                 c.transfer_cp = c.transfer_rate * cp;
               } else {
-                constraints.splice(j, 1);
+                constraints.splice(ci, 1);
               }
             } else if(c.to_node === p) {
               if(c.soc_direction === VM.SOC_Y_X) {
                 c.transfer_cp = c.transfer_rate * cp;
               } else {
-                constraints.splice(j, 1);
+                constraints.splice(ci, 1);
               }
             }
           }
           // Also set unit CP of outgoing links of `p` if still on the list...
-          for(let j = 0; j < p.outputs.length; j++) {
-            const
-                l = p.outputs[j],
-                li = links.indexOf(l);
+          for(const l of p.outputs) {
+            const li = links.indexOf(l);
             if(li >= 0) {
               // NOTE: If delay > 0, use earlier CP.
               const ld = l.actualDelay(t);
@@ -3869,8 +3790,8 @@ class LinnyRModel {
       // processes (!) and constraints is known.
       // NOTE: Iterate from last to first so that products can be
       // removed from the list.
-      for(let i = products.length - 1; i >= 0; i--) {
-        const p = products[i];
+      for(let pi = products.length - 1; pi >= 0; pi--) {
+        const p = products[pi];
         let cp = 0,
             cnp = 0, // cost of newly produced product
             qnp = 0, // quantity of newly produced product
@@ -3880,8 +3801,7 @@ class LinnyRModel {
             // link. `cp_sccp` (CP of single cost-carrying process)
             // is used to track whether this condition applies.
             cp_sccp = VM.COMPUTING;
-        for(let j = 0; j < p.inputs.length; j++) {
-          const l = p.inputs[j];
+        for(const l of p.inputs) {
           if(!MODEL.ignored_entities[l.identifier] &&
               l.from_node instanceof Process) {
             cp = l.from_node.costPrice(t - l.actualDelay(t));
@@ -3923,8 +3843,7 @@ class LinnyRModel {
           cp = (qnp > 0 ? cnp / qnp : cp_sccp);
         }
         // NOTE: Now also check constraints that transfer cost to `p`.
-        for(let j = 0; j < constraints.length; j++) {
-          const c = constraints[j];
+        for(const c of constraints) {
           if(c.to_node === p && c.soc_direction === VM.SOC_X_Y ||
              (c.from_node === p && c.soc_direction === VM.SOC_Y_X)) {
             if(c.transfer_cp === VM.UNDEFINED) {
@@ -3948,30 +3867,29 @@ class LinnyRModel {
           p.stock_price[t] = cp;
         }
         // Set CP for outgoing links, and remove them from list.
-        for(let j = 0; j < p.outputs.length; j++) {
-          const l = p.outputs[j],
-                li = links.indexOf(l);
+        for(const l of p.outputs) {
+          const li = links.indexOf(l);
           if(li >= 0) {
             l.unit_cost_price = cp * l.relative_rate.result(t);
             links.splice(li, 1);
           }
         }
-        products.splice(i, 1);
+        products.splice(pi, 1);
         // Set the CP of constraints that transfer cost of `p`, while
         // removing the constraints that have contributed to its CP.
-        for(let j = constraints.length - 1; j >= 0; j--) {
-          const c = constraints[j];
+        for(let ci = constraints.length - 1; ci >= 0; ci--) {
+          const c = constraints[ci];
           if(c.from_node === p) {
             if(c.soc_direction === VM.SOC_X_Y) {
               c.transfer_cp = c.transfer_rate * cp;
             } else {
-              constraints.splice(j, 1);
+              constraints.splice(ci, 1);
             }
           } else if(c.to_node === p) {
             if(c.soc_direction === VM.SOC_Y_X) {
               c.transfer_cp = c.transfer_rate * cp;
             } else {
-              constraints.splice(j, 1);
+              constraints.splice(ci, 1);
             }
           }
         }
@@ -3983,26 +3901,23 @@ class LinnyRModel {
       if(count >= prev_count) {
         // Still no avail? Then set CP=0 for links relating to processes
         // having level 0.
-        for(let i = processes.length-1; i >= 0; i--) {
-          const p = processes[i];
-          if(p.nonZeroLevel(t) < VM.NEAR_ZERO) {
-            p.cost_price[t] = 0;
-            for(let j = links.length-1; j >= 0; j--) {
-              const l = links[j];
-              if(l.from_node === p || l.to_node === p) {
-                l.unit_cost_price = 0;
-                links.splice(j, 1);
-              }
+        for(const p of processes) if(p.nonZeroLevel(t) < VM.NEAR_ZERO) {
+          p.cost_price[t] = 0;
+          for(let li = links.length - 1; li >= 0; li--) {
+            const l = links[li];
+            if(l.from_node === p || l.to_node === p) {
+              l.unit_cost_price = 0;
+              links.splice(li, 1);
             }
           }
         }
         // Then (also) look for links having AF = 0 ...
-        for(let i = links.length-1; i >= 0; i--) {
-          const af = links[i].actualFlow(t);
+        for(let li = links.length - 1; li >= 0; li--) {
+          const af = links[li].actualFlow(t);
           if(Math.abs(af) < VM.NEAR_ZERO) {
             // ... and set their UCP to 0.
-            links[i].unit_cost_price = 0;
-            links.splice(i, 1);
+            links[li].unit_cost_price = 0;
+            links.splice(li, 1);
             // And break, as this may be enough to calculate more "regular" CPs.
             break;
           }
@@ -4010,14 +3925,14 @@ class LinnyRModel {
         count = processes.length + products.length + links.length + constraints.length;
         if(count >= prev_count) {
           // No avail? Then look for links from stocks ...
-          for(let i = links.length-1; i >= 0; i--) {
+          for(let li = links.length - 1; li >= 0; li--) {
             const
-                l = links[i],
+                l = links[li],
                 p = l.from_node;
             if(p.is_buffer) {
               // ... and set their UCP to the previous stock price.
               l.unit_cost_price = (p.nonZeroLevel(t-1) > 0 ? p.stockPrice(t-1) : 0);
-              links.splice(i, 1);
+              links.splice(li, 1);
               // And break, as this may be enough to calculate more "regular" CPs.
               break;
             }
@@ -4045,10 +3960,7 @@ class LinnyRModel {
     // robust to changes in product units the modeler may make after cluster
     // balance variables have been parsed. The alternative (reparsing all
     // expressions and note fields) would be much more cumbersome.
-    let p,
-        l,
-        af,
-        b = 0,
+    let b = 0,
         su = cu.u,
         dataflows = false;
     // NOTE: If unit ends with ! then data flows are considered as well.
@@ -4059,17 +3971,15 @@ class LinnyRModel {
     // Get all processes in the cluster.
     const ap = cu.c.allProcesses;
     // Sum over all processes MINUS the actual flows IN.
-    for(let i = 0; i < ap.length; i++) {
-      p = ap[i];
+    for(const p of ap) {
       if(!MODEL.ignored_entities[p.identifier]) {
-        for(let j = 0; j < p.inputs.length; j++) {
-          l = p.inputs[j];
+        for(const l of p.inputs) {
           // Only consider links having the default multiplier (LM_LEVEL) ...
           if(l.multiplier === VM.LM_LEVEL &&
               // ... and at their tail a product having specified scale unit
               // (or the balance unit is '' to indicate "any unit").
               (l.from_node.scale_unit === su || su === '')) {
-            af = l.actualFlow(t);
+            const af = l.actualFlow(t);
             // Return infinite values or error codes as such.
             if(af <= VM.MINUS_INFINITY || af > VM.PLUS_INFINITY) return af;
             // Subtract, as inflows are consumed.
@@ -4077,13 +3987,12 @@ class LinnyRModel {
           }
         }
         // Apply the same procedure to process outflows.
-        for(let j = 0; j < p.outputs.length; j++) {
-          l = p.outputs[j];
+        for(const l of p.outputs) {
           if(l.multiplier === VM.LM_LEVEL &&
               (l.to_node.scale_unit === su || su === '') &&
               // NOTE: For outflows, consider data only if told to!
               (dataflows || !l.to_node.is_data)) {
-            af = l.actualFlow(t);
+            const af = l.actualFlow(t);
             if(af <= VM.MINUS_INFINITY || af > VM.PLUS_INFINITY) return af;
             // Add, as outflows are produced.
             b += af;
@@ -4175,20 +4084,18 @@ class LinnyRModel {
           // ... and then it MAY be that within this sub-cluster, the local
           // links to `p` were NOT redirected.
           const ll = [];
-          for(let i = 0; i < p.inputs.length; i++) {
-            const l = p.inputs[i];
+          for(const l of p.inputs) {
             if(rl.indexOf(l) < 0 && ((l.from_node instanceof Process &&
                 c.containsProcess(l.from_node)) ||
                 c.containsProduct(l.from_node))) ll.push(l);
           }
-          for(let i = 0; i < p.outputs.length; i++) {
-            const l = p.outputs[i];
+          for(const l of p.outputs) {
             if(rl.indexOf(l) < 0 && ((l.to_node instanceof Process &&
                 c.containsProcess(l.to_node)) ||
                 c.containsProduct(l.to_node))) ll.push(l);
           }
           // `p` must be replaced by `r` only when `c` contains NO
-          // "un-redirected" links 
+          // "un-redirected" links.
           if(ll.length === 0) {
             pp.product = r;
             undo_info.cl.push(c.identifier);
@@ -4196,31 +4103,30 @@ class LinnyRModel {
         }
         c.clearAllProcesses();
       }
-      // Now prepare for undo, so that deleteNode can add its XML 
+      // Now prepare for undo, so that deleteNode can add its XML.
       UNDO_STACK.push('replace', undo_info);
       // Delete original product `p` if it has no more product positions.
       if(!this.top_cluster.containsProduct(p)) this.deleteNode(p);
     }
-    // Prepare for redraw
+    // Prepare for redraw.
     this.focal_cluster.clearAllProcesses();
     UI.drawDiagram(this);
   }
   
   differences(m) {
-    // Returns "dictionary" with differences between this model and model `m`
+    // Return "dictionary" with differences between this model and model `m`.
     const d = {};
     // Start with the Linny-R model properties
     let diff = differences(this, m, Object.keys(UI.MC.SETTINGS_PROPS));
     if(Object.keys(diff).length > 0) d.settings = diff;
-    // NOTE: dataset differences will also detect equation differences
-    for(let i = 0; i < UI.MC.ENTITY_PROPS.length; i++) {
-      const ep = UI.MC.ENTITY_PROPS[i]; 
+    // NOTE: dataset differences will also detect equation differences.
+    for(const ep of UI.MC.ENTITY_PROPS) {
       diff = {};
-      // Check for added / modified entities in this model (relative to `m`)
+      // Check for added / modified entities in this model (relative to `m`).
       for(let k in this[ep]) if(this[ep].hasOwnProperty(k)) {
         if(k in m[ep]) {
-          // NOTE: each entity type has its own `differences` method
-          // that returns a "dictionary" with modified properties
+          // NOTE: Each entity type has its own `differences` method
+          // that returns a "dictionary" with modified properties.
           const edif = this[ep][k].differences(m[ep][k]);
           if(edif) {
             if(k === UI.EQUATIONS_DATASET_ID) {
@@ -4233,23 +4139,21 @@ class LinnyRModel {
           diff[k] = [UI.MC.ADDED, this[ep][k].displayName];
         }
       }
-      // Check for entities in `m` that do not exist in this model
+      // Check for entities in `m` that do not exist in this model.
       for(let k in m[ep]) if(m[ep].hasOwnProperty(k)) {
         if(!(k in this[ep])) {
           diff[k] = [UI.MC.DELETED, m[ep][k].displayName];
         }
       }
-      // Only add differences for entity property `ep` if any were detected
+      // Only add differences for entity property `ep` if any were detected.
       if(Object.keys(diff).length > 0) d[ep] = diff;
     }
-    // Check for link and constraint differences
-    // NOTE: link and constraint IDs are based on entity codes, and these can
+    // Check for link and constraint differences.
+    // NOTE: Link and constraint IDs are based on entity codes, and these can
     // be identical across models while denoting different entities, hence also
     // check whether display names are identical -- this may list links as
-    // changed while only their nodes has been renamed
-    const lc_prop = ['links', 'constraints'];
-    for(let i = 0; i < lc_prop.length; i++) {
-      const lcp = lc_prop[i];
+    // changed while only their nodes has been renamed.
+    for(const lcp of ['links', 'constraints']) {
       diff = {};
       for(let k in this[lcp]) if(this[lcp].hasOwnProperty(k)) {
         const
@@ -4272,16 +4176,14 @@ class LinnyRModel {
       }
       if(Object.keys(diff).length > 0) d[lcp] = diff;
     }
-    // Check for new or modified charts
+    // Check for new or modified charts.
     diff = {};
-    for(let i = 0; i < this.charts.length; i++) {
-      const
-        c = this.charts[i],
-        cid = UI.nameToID(c.title);
+    for(const c of this.charts) {
+      const cid = UI.nameToID(c.title);
       let mc = null;
-      for(let j = 0; j < m.charts.length; j++) {
-        if(UI.nameToID(m.charts[j].title) === cid) {
-          mc = m.charts[j];
+      for(const cc of m.charts) {
+        if(UI.nameToID(cc.title) === cid) {
+          mc = cc;
           break;
         }
       }
@@ -4292,31 +4194,27 @@ class LinnyRModel {
         diff[cid] = [UI.MC.ADDED, c.title];
       }
     }
-    // Check for deleted charts
-    for(let i = 0; i < m.charts.length; i++) {
-      const
-          mc = m.charts[i],
-          mcid = UI.nameToID(mc.title);
+    // Check for deleted charts.
+    for(const mc of m.charts) {
+      const mcid = UI.nameToID(mc.title);
       let c = null;
-      for(let j = 0; j < this.charts.length; j++) {
-        if(UI.nameToID(this.charts[j].title) === mcid) {
-          c = this.charts[j];
+      for(const cc of this.charts) {
+        if(UI.nameToID(cc.title) === mcid) {
+          c = cc;
           break;
         }
       }
       if(!c) diff[mcid] = [UI.MC.DELETED, mc.title];
     }
     if(Object.keys(diff).length > 0) d.charts = diff;
-    // Check for new or modified experiments
+    // Check for new or modified experiments.
     diff = {};
-    for(let i = 0; i < this.experiments.length; i++) {
-      const
-        x = this.experiments[i],
-        xid = UI.nameToID(x.title);
+    for(const x of this.experiments) {
+      const xid = UI.nameToID(x.title);
       let mx = null;
-      for(let j = 0; j < m.experiments.length; j++) {
-        if(UI.nameToID(m.experiments[j].title) === xid) {
-          mx = m.experiments[j];
+      for(const xx of m.experiments) {
+        if(UI.nameToID(xx.title) === xid) {
+          mx = xx;
           break;
         }
       }
@@ -4327,22 +4225,20 @@ class LinnyRModel {
         diff[xid] = [UI.MC.ADDED, x.title];
       }
     }
-    // Check for deleted experiments
-    for(let i = 0; i < m.experiments.length; i++) {
-      const
-          mx = m.experiments[i],
-          mxid = UI.nameToID(mx.title);
+    // Check for deleted experiments.
+    for(const mx of m.experiments) {
+      const mxid = UI.nameToID(mx.title);
       let x = null;
-      for(let j = 0; j < this.experiments.length; j++) {
-        if(UI.nameToID(this.experiments[j].title) === mxid) {
-          x = this.charts[j];
+      for(const xx of this.experiments) {
+        if(UI.nameToID(xx.title) === mxid) {
+          x = xx;
           break;
         }
       }
       if(!x) diff[mxid] = [UI.MC.DELETED, mx.title];
     }
     if(Object.keys(diff).length > 0) d.experiments = diff;
-    // Return the now complete differences "dictionary"
+    // Return the now complete differences "dictionary".
     return d;
   }
   
@@ -4479,15 +4375,11 @@ class IOBinding {
         const i = index.indexOf(UI.EQUATIONS_DATASET_ID);
         if(i >= 0) index.splice(i, 1);
       }
-      for(let i = 0; i < index.length; i++) {
-        const
-            key = index[i],
-            e = s[key];
-        // NOTE: do not list "black-boxed" entities
-        if(!key.startsWith(UI.BLACK_BOX)) {
-          if(!(e instanceof Product) || this.is_data === e.is_data) {
-            html += `<option value="${key}">${e.displayName}</option>`;
-          }
+      // NOTE: Do not list "black-boxed" entities.
+      for(const key of index) if(!key.startsWith(UI.BLACK_BOX)) {
+        const e = s[key];
+        if(!(e instanceof Product) || this.is_data === e.is_data) {
+          html += `<option value="${key}">${e.displayName}</option>`;
         }
       }
       html += '</select>';
@@ -4519,24 +4411,20 @@ class IOContext {
     this.file_name = file;
     let n = childNodeByTag(node, 'imports');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        const c = n.childNodes[i];
-        if(c.nodeName === 'import') {
-          this.addBinding(1, xmlDecoded(nodeContentByTag(c, 'type')),
-              nodeContentByTag(c, 'is-data') === '1',
-              xmlDecoded(nodeContentByTag(c, 'name')));
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'import') {
+        // NOTE: IO type 1 indicates import.
+        this.addBinding(1, xmlDecoded(nodeContentByTag(c, 'type')),
+            nodeContentByTag(c, 'is-data') === '1',
+            xmlDecoded(nodeContentByTag(c, 'name')));
       }
     }
     n = childNodeByTag(node, 'exports');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        const c = n.childNodes[i];
-        if(c.nodeName === 'export') {
-          this.addBinding(2, xmlDecoded(nodeContentByTag(c, 'type')),
-              nodeContentByTag(c, 'is-data') === '1',
-              xmlDecoded(nodeContentByTag(c, 'name')));
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'export') {
+        // NOTE: IO type 2 indicates export.
+        this.addBinding(2, xmlDecoded(nodeContentByTag(c, 'type')),
+            nodeContentByTag(c, 'is-data') === '1',
+            xmlDecoded(nodeContentByTag(c, 'name')));
       }
     }
   }
@@ -5108,10 +4996,9 @@ class ObjectWithXYWH {
     // a move.
     const
         ox = this.x,
-        oy = this.y,
-        gr = MODEL.grid_pixels;
-    this.x = Math.round((this.x + 0.49999999*gr) / gr) * gr;
-    this.y = Math.round((this.y + 0.49999999*gr) / gr) * gr;
+        oy = this.y;
+    this.x = MODEL.aligned(this.x);
+    this.y = MODEL.aligned(this.y);
     return Math.abs(this.x - ox) > VM.NEAR_ZERO ||
         Math.abs(this.y - oy) > VM.NEAR_ZERO;
   }
@@ -5121,7 +5008,7 @@ class ObjectWithXYWH {
     // (to avoid redrawing it)
     this.x += dx;
     this.y += dy;
-    UI.moveShapeTo(shape, this.x, this.y);
+    UI.moveShapeTo(this.shape, this.x, this.y);
   }
 } // END of CLASS ObjectWithXYWH
 
@@ -5240,14 +5127,15 @@ class Note extends ObjectWithXYWH {
     // note (Euclidian distance between center points), but with at most
     // 30 pixel units between their rims.
     const
+        max_dist = 30,
         c = this.cluster,
         nodes = c.processes.concat(c.product_positions, c.sub_clusters);
     let nn = nodes[0] || null;
     if(nn) {
       let md = 1e+10;
-      // Find the nearest node
-      for(let i = 0; i < nodes.length; i++) {
-        const n = nodes[i];
+      // Find the nearest node.
+      for(let n of nodes) {
+        if(n instanceof ProductPosition) n = n.product;
         const
             dx = (n.x - this.x),
             dy = (n.y - this.y),
@@ -5257,8 +5145,8 @@ class Note extends ObjectWithXYWH {
           md = d;
         }
       }
-      if(Math.abs(nn.x - this.x) < (nn.width + this.width) / 2 + 30 &&
-          Math.abs(nn.y - this.y) < (nn.height + this.height) / 2 + 30) return nn;
+      if(Math.abs(nn.x - this.x) < (nn.width + this.width) / 2 + max_dist &&
+          Math.abs(nn.y - this.y) < (nn.height + this.height) / 2 + max_dist) return nn;
     }
     return null;
   }
@@ -5276,9 +5164,9 @@ class Note extends ObjectWithXYWH {
   
   initFromXML(node) {
     this.timestamp = safeStrToInt(nodeContentByTag(node, 'timestamp'));
-    // NOTE: legacy XML does not include the timestamp
+    // NOTE: Legacy XML does not include the timestamp.
     if(!this.timestamp) {
-      // for such notes, generate a 13-digit random number
+      // For such notes, generate a 13-digit random number.
       this.timestamp = Math.floor((1 + Math.random()) * 1E12);
     }
     this.contents = xmlDecoded(nodeContentByTag(node, 'contents'));
@@ -5288,9 +5176,8 @@ class Note extends ObjectWithXYWH {
     this.height = safeStrToInt(nodeContentByTag(node, 'height'));
     this.color.text = xmlDecoded(nodeContentByTag(node, 'color'));
     if(IO_CONTEXT) {
-      const fel = this.fieldEntities;
-      for(let i = 0; i < fel.length; i++) {
-        this.rewriteTags(fel[i], IO_CONTEXT.actualName(fel[i]));
+      for(const fe of this.fieldEntities) {
+        this.rewriteTags(fe, IO_CONTEXT.actualName(fe));
       }
       IO_CONTEXT.rewrite(this.color);
     }
@@ -5318,153 +5205,154 @@ class Note extends ObjectWithXYWH {
     // Fills the list of fields by parsing all [[...]] tags in the text.
     // NOTE: this does not affect the text itself; tags will be replaced
     // by numerical values only when drawing the note.
+    
+    // TO DO: Keep track whether this note associates itself with context node
+    // so that it should remain aligned to this node.
+    
     this.fields.length = 0;
     const tags = this.tagList;
-    if(tags) {
-      for(let i = 0; i < tags.length; i++) {
-        const
-            tag = tags[i],
-            inner = tag.slice(2, tag.length - 2).trim(),
-            bar = inner.lastIndexOf('|'),
-            arrow = inner.lastIndexOf('->');
-        // Special case: [[#]] denotes the number context of this note.
-        if(inner === '#') {
-          this.fields.push(new NoteField(this, tag, this));
-          // Done, so move on to the next tag
-          continue;
+    if(tags) for(const tag of tags) {
+      const
+          inner = tag.slice(2, tag.length - 2).trim(),
+          bar = inner.lastIndexOf('|'),
+          arrow = inner.lastIndexOf('->');
+      // Special case: [[#]] denotes the number context of this note.
+      if(inner === '#') {
+        this.fields.push(new NoteField(this, tag, this));
+        // Done, so move on to the next tag.
+        continue;
+      }
+      // Check if a unit conversion scalar was specified.
+      let ena,
+          from_unit = '1',
+          to_unit = '',
+          multiplier = 1;
+      if(arrow > bar) {
+        // Now for sure it is entity->unit or entity|attr->unit.
+        ena = inner.split('->');
+        // As example, assume that unit = 'kWh' (so the value of the
+        // field should be displayed in kilowatthour).
+        // NOTE: Use .trim() instead of UI.cleanName(...) here. This
+        // forces the modeler to be exact, and that permits proper
+        // renaming of scale units in note fields.
+        to_unit = ena[1].trim();
+        ena = ena[0].split('|');
+        if(!MODEL.scale_units.hasOwnProperty(to_unit)) {
+          UI.warn(`Unknown scale unit "${to_unit}"`);
+          to_unit = '1';
         }
-        // Check if a unit conversion scalar was specified.
-        let ena,
-            from_unit = '1',
-            to_unit = '',
-            multiplier = 1;
-        if(arrow > bar) {
-          // Now for sure it is entity->unit or entity|attr->unit.
-          ena = inner.split('->');
-          // As example, assume that unit = 'kWh' (so the value of the
-          // field should be displayed in kilowatthour).
-          // NOTE: use .trim() instead of UI.cleanName(...) here. This
-          // forces the modeler to be exact, and that permits proper
-          // renaming of scale units in note fields.
-          to_unit = ena[1].trim();
-          ena = ena[0].split('|');
-          if(!MODEL.scale_units.hasOwnProperty(to_unit)) {
-            UI.warn(`Unknown scale unit "${to_unit}"`);
-            to_unit = '1';
-          }
-        } else {
-          ena = inner.split('|');
-        }
-        // Look up entity for name and attribute.
-        let en = UI.colonPrefixedName(ena[0].trim(), this.clusterPrefix),
-            id = UI.nameToID(en),
-            // First try to match `id` with the IDs of wildcard equations,
-            // (e.g., "abc 123" would match with "abc ??").
-            w = MODEL.wildcardEquationByID(id),
-            obj = null,
-            wildcard = false;
-        if(w) {
-          // If wildcard equation match, w[0] is the equation (instance
-          // of DatasetModifier), and w[1] the matching number.
-          obj = w[0];
-          wildcard = w[1];
-        } else {
-          obj = MODEL.objectByID(id);
-        }
-        // If not found, this may be due to # wildcards in the name.
-        if(!obj && en.indexOf('#') >= 0) {
-          // First try substituting # by the context number. 
-          const numcon = this.numberContext;
-          obj = MODEL.objectByName(en.replace('#', numcon));
-          // If no match, check whether the name matches a wildcard equation.
-          if(!obj) {
-            obj = MODEL.equationByID(UI.nameToID(en.replace('#', '??')));
-            if(obj) wildcard = numcon;
-          }
-        }
+      } else {
+        ena = inner.split('|');
+      }
+      // Look up entity for name and attribute.
+      let en = UI.colonPrefixedName(ena[0].trim(), this.clusterPrefix),
+          id = UI.nameToID(en),
+          // First try to match `id` with the IDs of wildcard equations,
+          // (e.g., "abc 123" would match with "abc ??").
+          w = MODEL.wildcardEquationByID(id),
+          obj = null,
+          wildcard = false;
+      if(w) {
+        // If wildcard equation match, w[0] is the equation (instance
+        // of DatasetModifier), and w[1] the matching number.
+        obj = w[0];
+        wildcard = w[1];
+      } else {
+        obj = MODEL.objectByID(id);
+      }
+      // If not found, this may be due to # wildcards in the name.
+      if(!obj && en.indexOf('#') >= 0) {
+        // First try substituting # by the context number. 
+        const numcon = this.numberContext;
+        obj = MODEL.objectByName(en.replace('#', numcon));
+        // If no match, check whether the name matches a wildcard equation.
         if(!obj) {
-          const m = MODEL.equations_dataset.modifiers[UI.nameToID(ena[0])];
-          if(m) {
-            UI.warn('Methods cannot be evaluated without prefix');
-          } else {
-            UI.warn(`Unknown model entity "${en}"`);
-          }
-        } else if(obj instanceof DatasetModifier) {
-          // NOTE: equations are (for now) dimenssonless => unit '1'.
-          if(obj.dataset !== MODEL.equations_dataset) {
-            from_unit = obj.dataset.scale_unit;
-            multiplier = MODEL.unitConversionMultiplier(from_unit, to_unit);
-          }
-          this.fields.push(new NoteField(this, tag, obj.expression, to_unit,
-              multiplier, wildcard));
-        } else if(obj) {
-          // If attribute omitted, use default attribute of entity type.
-          const attr = (ena.length > 1 ? ena[1].trim() : obj.defaultAttribute);
-          let val = null;
-          // NOTE: For datasets, use the active modifier if no attribute.
-          if(!attr && obj instanceof Dataset) {
-            val = obj.activeModifierExpression;
-          } else {
-            // Variable may specify a vector-type attribute.
-            val = obj.attributeValue(attr);
-          }
-          // If not, it may be a cluster unit balance.
-          if(!val && attr.startsWith('=') && obj instanceof Cluster) {
-            val = {c: obj, u: attr.substring(1).trim()};
-            from_unit = val.u;
-          }
-          if(obj instanceof Dataset) {
+          obj = MODEL.equationByID(UI.nameToID(en.replace('#', '??')));
+          if(obj) wildcard = numcon;
+        }
+      }
+      if(!obj) {
+        const m = MODEL.equations_dataset.modifiers[UI.nameToID(ena[0])];
+        if(m) {
+          UI.warn('Methods cannot be evaluated without prefix');
+        } else {
+          UI.warn(`Unknown model entity "${en}"`);
+        }
+      } else if(obj instanceof DatasetModifier) {
+        // NOTE: equations are (for now) dimenssonless => unit '1'.
+        if(obj.dataset !== MODEL.equations_dataset) {
+          from_unit = obj.dataset.scale_unit;
+          multiplier = MODEL.unitConversionMultiplier(from_unit, to_unit);
+        }
+        this.fields.push(new NoteField(this, tag, obj.expression, to_unit,
+            multiplier, wildcard));
+      } else if(obj) {
+        // If attribute omitted, use default attribute of entity type.
+        const attr = (ena.length > 1 ? ena[1].trim() : obj.defaultAttribute);
+        let val = null;
+        // NOTE: For datasets, use the active modifier if no attribute.
+        if(!attr && obj instanceof Dataset) {
+          val = obj.activeModifierExpression;
+        } else {
+          // Variable may specify a vector-type attribute.
+          val = obj.attributeValue(attr);
+        }
+        // If not, it may be a cluster unit balance.
+        if(!val && attr.startsWith('=') && obj instanceof Cluster) {
+          val = {c: obj, u: attr.substring(1).trim()};
+          from_unit = val.u;
+        }
+        if(obj instanceof Dataset) {
+          from_unit = obj.scale_unit;
+        } else if(obj instanceof Product) {
+          if(attr === 'L') {
             from_unit = obj.scale_unit;
-          } else if(obj instanceof Product) {
-            if(attr === 'L') {
-              from_unit = obj.scale_unit;
-            } else if(attr === 'CP' || attr === 'HCP') {
-              from_unit = MODEL.currency_unit;
-            }
-          } else if(obj instanceof Link) {
-            const node = (obj.from_node instanceof Process ?
-                obj.to_node : obj.from_node);
-            if(attr === 'F') {
-              if(obj.multiplier <= VM.LM_MEAN) {
-                from_unit = node.scale_unit;
-              } else {
-                from_unit = '1';
-              }
-            }
-          } else if(attr === 'CI' || attr === 'CO' || attr === 'CF') {
+          } else if(attr === 'CP' || attr === 'HCP') {
             from_unit = MODEL.currency_unit;
           }
-          // If still no value, `attr` may be an expression-type attribute.
-          if(!val) {
-            val = obj.attributeExpression(attr);
-            // For wildcard expressions, provide the tail number of `attr`
-            // as number context.
-            if(val && val.isWildcardExpression) {
-              const nr = matchingNumber(attr, val.attribute);
-              if(nr) {
-                wildcard = nr;
-              } else {
-                UI.warn(`Attribute "${attr}" does not provide a number`);
-                continue;
-              }
-            }
-            if(obj instanceof Product) {
-              if(attr === 'IL' || attr === 'LB' || attr === 'UB') {
-                from_unit = obj.scale_unit;
-              } else if(attr === 'P') {
-                from_unit = MODEL.currency_unit + '/' + obj.scale_unit;
-              }
+        } else if(obj instanceof Link) {
+          const node = (obj.from_node instanceof Process ?
+              obj.to_node : obj.from_node);
+          if(attr === 'F') {
+            if(obj.multiplier <= VM.LM_MEAN) {
+              from_unit = node.scale_unit;
+            } else {
+              from_unit = '1';
             }
           }
-          // If no TO unit, add the FROM unit.
-          if(to_unit === '') to_unit = from_unit;
-          if(val) {
-            multiplier = MODEL.unitConversionMultiplier(from_unit, to_unit);
-            this.fields.push(new NoteField(this, tag, val, to_unit,
-                multiplier, wildcard));
-          } else {
-            UI.warn(`Unknown ${obj.type.toLowerCase()} attribute "${attr}"`);
+        } else if(attr === 'CI' || attr === 'CO' || attr === 'CF') {
+          from_unit = MODEL.currency_unit;
+        }
+        // If still no value, `attr` may be an expression-type attribute.
+        if(!val) {
+          val = obj.attributeExpression(attr);
+          // For wildcard expressions, provide the tail number of `attr`
+          // as number context.
+          if(val && val.isWildcardExpression) {
+            const nr = matchingNumber(attr, val.attribute);
+            if(nr) {
+              wildcard = nr;
+            } else {
+              UI.warn(`Attribute "${attr}" does not provide a number`);
+              continue;
+            }
           }
+          if(obj instanceof Product) {
+            if(attr === 'IL' || attr === 'LB' || attr === 'UB') {
+              from_unit = obj.scale_unit;
+            } else if(attr === 'P') {
+              from_unit = MODEL.currency_unit + '/' + obj.scale_unit;
+            }
+          }
+        }
+        // If no TO unit, add the FROM unit.
+        if(to_unit === '') to_unit = from_unit;
+        if(val) {
+          multiplier = MODEL.unitConversionMultiplier(from_unit, to_unit);
+          this.fields.push(new NoteField(this, tag, val, to_unit,
+              multiplier, wildcard));
+        } else {
+          UI.warn(`Unknown ${obj.type.toLowerCase()} attribute "${attr}"`);
         }
       }
     }
@@ -5476,9 +5364,8 @@ class Note extends ObjectWithXYWH {
     const
         fel = [],
         tags = this.tagList;
-    for(let i = 0; i < tags.length; i++) {
+    for(const tag of tags) {
       const
-          tag = tags[i],
           // Trim brackets and padding spaces on both sides, and then
           // expand leading colons that denote prefixes.
           inner = UI.colonPrefixedName(tag.slice(2, tag.length - 2).trim()),
@@ -5499,16 +5386,14 @@ class Note extends ObjectWithXYWH {
   }
   
   rewriteTags(en1, en2) {
-    // Rewrite tags that reference entity name `en1` to reference `en2` instead
+    // Rewrite tags that reference entity name `en1` to reference `en2` instead.
     if(en1 === en2) return;
     const
         raw = en1.split(/\s+/).join('\\\\s+'),
         re = new RegExp('\\[\\[\\s*' + raw + '\\s*(\\->|\\||\\])', 'gi'),
         tags = this.contents.match(re);
-    if(tags) {
-      for(let i = 0; i < tags.length; i++) {
-        this.contents = this.contents.replace(tags[i], tags[i].replace(en1, en2));
-      }
+    if(tags) for(const tag of tags) {
+      this.contents = this.contents.replace(tag, tag.replace(en1, en2));
     }
   }
   
@@ -5517,11 +5402,9 @@ class Note extends ObjectWithXYWH {
     // instead.
     // NOTE: This does not affect the expression code.
     if(en1 === en2) return;
-    for(let i = 0; i < this.fields.length; i++) {
-      const
-          f = this.fields[i],
-          // Trim the double brackets and padding spaces on both sides.
-          tag = f.field.slice(2, f.field.length - 2).trim();
+    for(const f of this.fields) {
+      // Trim the double brackets and padding spaces on both sides.
+      const tag = f.field.slice(2, f.field.length - 2).trim();
       // Separate tag into variable and attribute + offset string (if any).
       let e = tag,
           a = '',
@@ -5551,10 +5434,7 @@ class Note extends ObjectWithXYWH {
     // by their note field values.
     if(!this.parsed) this.parseFields();
     let txt = this.contents;
-    for(let i = 0; i < this.fields.length; i++) {
-      const nf = this.fields[i];
-      txt = txt.replace(nf.field, nf.value);
-    }
+    for(const nf of this.fields) txt = txt.replace(nf.field, nf.value);
     return txt;
   }
   
@@ -5871,23 +5751,21 @@ class NodeBox extends ObjectWithXYWH {
     // Draw all *visible* arrows associated with this node.
     fc.categorizeEntities();
     // Make list of arrows that represent a link related to this node.
-    let a,
-        alist = [];
-    for(let j = 0; j < fc.arrows.length; j++) {
-      a = fc.arrows[j];
-      for(let i = 0; i < this.inputs.length; i++) {
-        if(a.links.indexOf(this.inputs[i]) >= 0 && alist.indexOf(a) < 0) {
+    const alist = [];
+    for(const a of fc.arrows) {
+      for(const l of this.inputs) {
+        if(a.links.indexOf(l) >= 0 && alist.indexOf(a) < 0) {
           alist.push(a);
         }
       }
-      for(let i = 0; i < this.outputs.length; i++) {
-        if(a.links.indexOf(this.outputs[i]) >= 0 && alist.indexOf(a) < 0) {
+      for(const l of this.outputs) {
+        if(a.links.indexOf(l) >= 0 && alist.indexOf(a) < 0) {
           alist.push(a);
         }
       }
     }
     // Draw all arrows in this list.
-    for(let i = 0; i < alist.length; i++) UI.drawObject(alist[i]);
+    for(const a of alist) UI.drawObject(a);
     // Also draw related constraint arrows.
     for(let k in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(k)) {
       const c = MODEL.constraints[k];
@@ -5913,29 +5791,28 @@ class Arrow {
   constructor(link, from, to) {
     this.links = [link];
     // NOTES:
-    // (1) FROM and TO may be clusters, so they cannot be inferred from `link`
+    // (1) FROM and TO may be clusters, so they cannot be inferred from `link`.
     // (2) Either FROM or TO may be NULL if it is a process outside the focal
     //     cluster, or if FROM is a product NOT produced in the cluster, or
     //     if TO is a product NOT consumed in the cluster; such NULL arrows are
-    //     represented by block arrows on the node, and may have multiple links
+    //     represented by block arrows on the node, and may have multiple links.
     this.from_node = from;
     this.to_node = to;
     this.bidirectional = false;
-    // The following attributes are calculated while drawing
+    // The following attributes are calculated while drawing.
     this.from_x = 0;
     this.from_y = 0;
     this.to_x = 0;
     this.to_y = 0;
-    // For multi-link arrows, the list of nodes that are NOT displayed
+    // For multi-link arrows, the list of nodes that are NOT displayed.
     this.hidden_nodes = [];
-    // Arrows are drawn as a shape, similar to nodes
+    // Arrows are drawn as a shape, similar to nodes.
     this.shape = UI.createShape(this);
   }
   
   get hasComments() {
-    for(let i = 0; i < this.links.length; i++) {
-      if(this.links[i].comments) return true;
-    }
+    // Return TRUE iff documentation hass been added for this arrow.
+    for(const l of this.links) if(l.comments) return true;
     return false;
   }
   
@@ -5946,9 +5823,9 @@ class Arrow {
     // the arrow is unidirectional, and the flow is the sum of flows
     // over all links; (2) when both FROM and TO are clusters, and the
     // links composing this arrow all consume the same product P, or all
-    // produce the same product P, or all either produce P1 or consume P2
+    // produce the same product P, or all either produce P1 or consume P2.
 
-    // Returns a tuple [status, tail_flow, head_flow, tail_at_ub, head_at_ub]
+    // Return a tuple [status, tail_flow, head_flow, tail_at_ub, head_at_ub]
     // where status can be:
     //   0: no flows (model not computed)
     //   1: no distinct flows (but arrow may have active links)
@@ -5961,7 +5838,7 @@ class Arrow {
     // tail_at_ub is TRUE iff one or more links P1 --> Q are constrained by the
     // UB of their process Q;
     // head_at_ub is TRUE iff one or more links Q --> P2 are constrained by the
-    // UB of their process Q;
+    // UB of their process Q.
 
     if(!MODEL.solved) return [0, 0, 0, false, false];
     let p = [null, null],
@@ -5971,13 +5848,11 @@ class Arrow {
         total = 0,
         sum = [0, 0],
         out = [0, 0];
-    for(let i = 0; i < this.links.length; i++) {
-      const
-          l = this.links[i],
-          af = l.actualFlow(MODEL.t);
+    for(const l of this.links) {
+      const af = l.actualFlow(MODEL.t);
       total += af;
       if(l.from_node instanceof Product) {
-        // NOTE: flow OUT of this product P
+        // NOTE: Flow OUT of this product P.
         const
             n = l.to_node,
             pl = n.actualLevel(MODEL.t),
@@ -5995,7 +5870,7 @@ class Arrow {
                 // denote "head flow"
                 !(this.to_node instanceof Cluster &&
                     this.to_node.containsProduct(l.from_node))) ? 0 : 1);
-        // NOTE: only links in/out of a process can be "congested"
+        // NOTE: Only links in/out of a process can be "congested".
         if(pl >= ub) at_ub[pi] = n instanceof Process;
         if(!p[pi]) {
           p[pi] = l.from_node;
@@ -6082,18 +5957,13 @@ class Arrow {
       // Links of this arrow will be either INputs our OUTputs of p[0],
       // so calculate the balance of INflows and OUTflows
       let flow = 0;
-      for(let i = 0; i < this.links.length; i++) {
-        const l = this.links[i];
+      for(const l of this.links) {
         if(p0.inputs.indexOf(l) >= 0) {
           const af = l.actualFlow(MODEL.t);
-          if(Math.abs(af) > VM.NEAR_ZERO) {
-            flow += af;
-          }
+          if(Math.abs(af) > VM.NEAR_ZERO) flow += af;
         } else if(p0.outputs.indexOf(l) >= 0) {
           const af = l.actualFlow(MODEL.t);
-          if(Math.abs(af) > VM.NEAR_ZERO) {
-            flow -= af;
-          }
+          if(Math.abs(af) > VM.NEAR_ZERO) flow -= af;
         }
       }
       // For tail flow, sum of flows should equal sum[0] ...
@@ -6221,7 +6091,7 @@ class Cluster extends NodeBox {
   
   get blackBoxName() {
     // Return prefixed name if "black boxing" and this cluster is not already
-    // "black-boxed" and some parent cluster is marked as black box
+    // "black-boxed" and some parent cluster is marked as black box.
     if(MODEL.black_box && !this.is_black_boxed &&
         this.cluster && this.cluster.blackBoxed) {
       return UI.BLACK_BOX_PREFIX + this.name;
@@ -6230,25 +6100,13 @@ class Cluster extends NodeBox {
   }
 
   get rightMarginX() {
-    // Return the horizontal position 50px right of the edge of the right-most
-    // node in the diagram for this cluster
+    // Return the horizontal position of the right-most edge of the right-most
+    // node in the diagram for this cluster.
     let max = 0;
-    for(let i = 0; i < this.notes.length; i++) {
-      const n = this.notes[i];
-      max = Math.max(max, n.x + n.width / 2);
-    }
-    for(let i = 0; i < this.processes.length; i++) {
-      const p = this.processes[i];
-      max = Math.max(max, p.x + p.width / 2);
-    }
-    for(let i = 0; i < this.sub_clusters.length; i++) {
-      const c = this.sub_clusters[i];
-      max = Math.max(max, c.x + c.width / 2);
-    }
-    for(let i = 0; i < this.product_positions.length; i++) {
-      const p = this.product_positions[i];
-      max = Math.max(max, p.x + p.product.width / 2);
-    }
+    for(const n of this.notes) max = Math.max(max, n.x + n.width / 2);
+    for(const p of this.processes) max = Math.max(max, p.x + p.width / 2);
+    for(const c of this.sub_clusters) max = Math.max(max, c.x + c.width / 2);
+    for(const p of this.product_positions) max = Math.max(max, p.x + p.product.width / 2);
     return max;
   }
   
@@ -6257,8 +6115,8 @@ class Cluster extends NodeBox {
   }
 
   attributeValue(a) {
-    // Return the computed result for attribute `a`
-    // For clusters, this is always a vector
+    // Return the computed result for attribute `a`.
+    // For clusters, this is always a vector.
     if(a === 'CF') return this.cash_flow;
     if(a === 'CI') return this.cash_in;
     if(a === 'CO') return this.cash_out;
@@ -6266,7 +6124,7 @@ class Cluster extends NodeBox {
   }
   
   attributeExpression() {
-    // Clusters have no attribute expressions => always return null
+    // Clusters have no attribute expressions => always return null.
     return null;
   }
 
@@ -6284,8 +6142,8 @@ class Cluster extends NodeBox {
         '</x-coord><y-coord>', this.y,
         '</y-coord><comments>', cmnts,
         '</comments><process-set>'].join('');
-    for(let i = 0; i < this.processes.length; i++) {
-      let n = this.processes[i].displayName;
+    for(const p of this.processes) {
+      let n = p.displayName;
       const id = UI.nameToID(n);
       if(MODEL.black_box_entities.hasOwnProperty(id)) {
         n = MODEL.black_box_entities[id];
@@ -6293,25 +6151,19 @@ class Cluster extends NodeBox {
       xml += '<process-name>' + xmlEncoded(n) + '</process-name>';
     }
     xml += '</process-set>';
-    // NOTE: product positions and notes are not saved in a "black box"
+    // NOTE: Product positions and notes are not saved in a "black box".
     if(!this.toBeBlackBoxed) {
       xml += '<product-positions>';
-      for(let i = 0; i < this.product_positions.length; i++) {
-        xml += this.product_positions[i].asXML;
-      }
+      for(const pp of this.product_positions) xml += pp.asXML;
       xml += '</product-positions><notes>';
-      for(let i = 0; i < this.notes.length; i++) {
-        xml += this.notes[i].asXML;
-      }
+      for(const n of this.notes) xml += n.asXML;
       xml += '</notes>';
     }
-    // NOTE: save sub-clusters AFTER product positions, as PP coordinates
+    // NOTE: Save sub-clusters AFTER product positions, as PP coordinates
     // may change when saving sub-clusters -- @@TO DO: find out where/why!
     xml += '<sub-clusters>';
-    // NOTE: recursive call will capture entire sub-cluster hierarchy
-    for(let i = 0; i < this.sub_clusters.length; i++ ) {
-      xml += this.sub_clusters[i].asXML;
-    }
+    // NOTE: Recursive call will capture entire sub-cluster hierarchy.
+    for(const c of this.sub_clusters) xml += c.asXML;
     xml += '</sub-clusters>';
     return xml + '</cluster>';
   }
@@ -6324,91 +6176,76 @@ class Cluster extends NodeBox {
     this.ignore = nodeParameterValue(node, 'ignore') === '1';
     this.black_box = nodeParameterValue(node, 'black-box') === '1';
     this.is_black_boxed = nodeParameterValue(node, 'is-black-boxed') === '1';
-    let c,
-        n = childNodeByTag(node, 'process-set'),
-        p,
-        name,
-        actor;
         
     // NOTE: to compensate for a shameful bug in an earlier version, look
     // for "product-positions" node and for "notes" node in the process-set,
     // as it may have been put there instead of in the cluster node itself
+    let name,
+        actor,
+        n = childNodeByTag(node, 'process-set');
     const
         hidden_pp = childNodeByTag(n, 'product-positions'),
         hidden_notes = childNodeByTag(n, 'notes');
     // (if they exist, these nodes will be used a bit further down)
 
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'process-name') {
-          name = xmlDecoded(nodeContent(c));
-          if(IO_CONTEXT) {
-            const an = name.split(' (');
-            if(an.length > 1) {
-              const
-                  a = an.pop().slice(0, -1),
-                  p = an.join(' ('),
-                  aan = IO_CONTEXT.actualName(a),
-                  aaid = UI.nameToID(aan);
-              // Check that actor exists, as (...) may just be part of the name
-              if(MODEL.actorByID(aaid)) { 
-                name = IO_CONTEXT.actualName(p, a) + ` (${aan})`;
-              } else {
-                name = IO_CONTEXT.actualName(name);
-              }
+      for(const c of n.childNodes) if(c.nodeName === 'process-name') {
+        name = xmlDecoded(nodeContent(c));
+        if(IO_CONTEXT) {
+          const an = name.split(' (');
+          if(an.length > 1) {
+            const
+                a = an.pop().slice(0, -1),
+                p = an.join(' ('),
+                aan = IO_CONTEXT.actualName(a),
+                aaid = UI.nameToID(aan);
+            // Check that actor exists, as (...) may just be part of the name.
+            if(MODEL.actorByID(aaid)) { 
+              name = IO_CONTEXT.actualName(p, a) + ` (${aan})`;
             } else {
               name = IO_CONTEXT.actualName(name);
             }
+          } else {
+            name = IO_CONTEXT.actualName(name);
           }
-          p = MODEL.nodeBoxByID(UI.nameToID(name));
-          if(p) p.setCluster(this);
         }
+        const p = MODEL.nodeBoxByID(UI.nameToID(name));
+        if(p) p.setCluster(this);
       }
     }
     n = childNodeByTag(node, 'sub-clusters');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'cluster') {
-          // Refocus on this cluster because addCluster may change focus if it
-          // contains subclusters
-          MODEL.focal_cluster = this;
-          // NOTE: addCluster will then cause recursion by calling the method
-          // `initFromXML` again
-          name = xmlDecoded(nodeContentByTag(c, 'name'));
-          actor = xmlDecoded(nodeContentByTag(c, 'owner'));
-          if(IO_CONTEXT) {
-            actor = IO_CONTEXT.actualName(actor);
-            name = IO_CONTEXT.actualName(name);
-          }
-          MODEL.addCluster(name, actor, c);
+      for(const c of n.childNodes) if(c.nodeName === 'cluster') {
+        // Refocus on this cluster because addCluster may change focus if it
+        // contains subclusters.
+        MODEL.focal_cluster = this;
+        // NOTE: addCluster will then cause recursion by calling the method
+        // `initFromXML` again.
+        name = xmlDecoded(nodeContentByTag(c, 'name'));
+        actor = xmlDecoded(nodeContentByTag(c, 'owner'));
+        if(IO_CONTEXT) {
+          actor = IO_CONTEXT.actualName(actor);
+          name = IO_CONTEXT.actualName(name);
         }
+        MODEL.addCluster(name, actor, c);
       }
     }
-    // NOTE: the part " || hidden_pp" is to compensate for a bug -- see earlier note
+    // NOTE: the part " || hidden_pp" is to compensate for a bug -- see earlier note.
     n = childNodeByTag(node, 'product-positions') || hidden_pp;
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'product-position') {
-          name = xmlDecoded(nodeContentByTag(c, 'product-name'));
-          if(IO_CONTEXT) name = IO_CONTEXT.actualName(name);
-          p = MODEL.nodeBoxByID(UI.nameToID(name));
-          if(p) this.addProductPosition(p).initFromXML(c);
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'product-position') {
+        name = xmlDecoded(nodeContentByTag(c, 'product-name'));
+        if(IO_CONTEXT) name = IO_CONTEXT.actualName(name);
+        const p = MODEL.nodeBoxByID(UI.nameToID(name));
+        if(p) this.addProductPosition(p).initFromXML(c);
       }
     }
     n = childNodeByTag(node, 'notes') || hidden_notes;
     if(n && n.childNodes) {
-      let note;
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'note') {
-          note = new Note(this);
-          note.initFromXML(c);
-          this.notes.push(note);
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'note') {
+        const note = new Note(this);
+        note.initFromXML(c);
+        this.notes.push(note);
       }
     }
   }
@@ -6476,71 +6313,63 @@ class Cluster extends NodeBox {
     // Return the subcluster of this cluster that contains product `p`,
     // or NULL if `p` does not occur in this cluster.
     if(this.indexOfProduct(p) >= 0) return this;
-    for(let i = 0; i < this.sub_clusters.length; i++) {
-      if(this.sub_clusters[i].containsProduct(p)) {
-        return this.sub_clusters[i]; // recursion!
-      }
+    for(const c of this.sub_clusters) {
+      if(c.containsProduct(p)) return c; // recursion!
     }
     return null;
   }
 
   containsProcess(p) {
-    // Return the subcluster of this cluster that contains process `p`, or null
+    // Return the subcluster of this cluster that contains process `p`, or null.
     if(p.cluster === this) return this;
-    for(let i = 0; i < this.sub_clusters.length; i++) {
-      if(this.sub_clusters[i].containsProcess(p)) {
-        return this.sub_clusters[i]; // recursion!
-      }
+    for(const c of this.sub_clusters) {
+      if(c.containsProcess(p)) return c; // recursion!
     }
     return null;
   }
 
   get allProcesses() {
-    // Return the set of all processes in this cluster and its subclusters
+    // Return the set of all processes in this cluster and its subclusters.
     let procs = this.processes.slice();
-    for(let i = 0; i < this.sub_clusters.length; i++) {
-      procs = procs.concat(this.sub_clusters[i].allProcesses); // recursion!
+    for(const c of this.sub_clusters) {
+      procs = procs.concat(c.allProcesses); // recursion!
     }
     return procs;
   }
 
   get allProducts() {
-    // Return the set of all products positioned in this cluster or one or
-    // more of its subclusters
+    // Return the set of all products positioned in this cluster or
+    // one or more of its subclusters.
     let prods = [];
-    for(let i = 0; i < this.product_positions.length; i++) {
-      addDistinct(this.product_positions[i].product, prods);
-    }
-    for(let i = 0; i < this.sub_clusters.length; i++) {
-      mergeDistinct(this.sub_clusters[i].allProducts, prods); // recursion!
+    for(const pp of this.product_positions) addDistinct(pp.product, prods);
+    for(const c of this.sub_clusters) {
+      mergeDistinct(c.allProducts, prods); // recursion!
     }
     return prods;
   }
   
   get allNotes() {
-    // Return the set of all notes in this cluster and its subclusters
+    // Return the set of all notes in this cluster and its subclusters.
     let notes = this.notes.slice();
-    for(let i = 0; i < this.sub_clusters.length; i++) {
-      notes = notes.concat(this.sub_clusters[i].allNotes); // recursion!
+    for(const c of this.sub_clusters) {
+      notes = notes.concat(c.allNotes); // recursion!
     }
     return notes;
   }
 
   resetNoteFields() {
-  // Ensure that all note fields are parsed anew when a note in this
-  // cluster are drawn.
-    for(let i = 0; i < this.notes.length; i++) {
-      this.notes[i].parsed = false;
-    }
+    // Ensure that all note fields are parsed anew when a note in this
+    // cluster is drawn.
+    for(const n of this.notes) n.parsed = false;
   }
 
   nextAvailableNoteNumber(n) {
-    // Returns the first integer greater than `n` that is not already in use
-    // by a note of this cluster
+    // Return the first integer greater than `n` that is not already in use
+    // by a note of this cluster.
     let nn = parseInt(n) + 1;
     const nrs = [];
-    for(let i = 0; i < this.notes.length; i++) {
-      const nr = this.notes[i].number;
+    for(const n of this.notes) {
+      const nr = n.number;
       if(nr) nrs.push(parseInt(nr));
     }
     while(nrs.indexOf(nn) >= 0) nn++;
@@ -6548,15 +6377,13 @@ class Cluster extends NodeBox {
   }
 
   clearAllProcesses() {
-    // Clear `all_processes` property of this cluster AND of all its parent clusters
+    // Clear `all_processes` property of this cluster AND of all its parent clusters.
     this.all_processes = null;
-    if(this.cluster) {
-      this.cluster.clearAllProcesses(); // recursion!
-    }
+    if(this.cluster) this.cluster.clearAllProcesses(); // recursion!
   }
   
   usesSlack(t, p, slack_type) {
-    // Adds slack-using product `p` to slack info for this cluster.
+    // Add slack-using product `p` to slack info for this cluster.
     // NOTE: When diagnosing an unbounded problem, `p` can also be a
     // process with an infinite level.
     let s;
@@ -6576,44 +6403,44 @@ class Cluster extends NodeBox {
     // specified `from` and `to` nodes
     // NOTE: there should be no more than one such arrow, but this is
     // not checked
-    for(let i = 0; i < this.arrows.length; i++) {
-      const a = this.arrows[i];
-      // NOTE: the direction of the arrow is irrelevant
+    for(let index = 0; index < this.arrows.length; index++) {
+      const a = this.arrows[index];
+      // NOTE: The direction of the arrow is irrelevant.
       if((a.from_node === from && a.to_node === to) ||
-          (a.from_node === to && a.to_node === from)) return i;
+          (a.from_node === to && a.to_node === from)) return index;
     }
     return -1;
   }
 
   addArrow(link, q_node=null, p_node=null, p_to_q=false) {
     // Add a new arrow to the arrow list, or updates an existing arrow
-    // to include the link specified by `link`
+    // to include the link specified by `link`.
     let a;
     // If only the link is passed, it is a plain arrow (although it may
-    // be "data-only" and drawn as dashed arrow P --> P)
+    // be "data-only" and drawn as dashed arrow P --> P).
     if(q_node === null && p_node === null) {
-      // A plain arrow is always unique => add a new instance
+      // A plain arrow is always unique => add a new instance.
       a = new Arrow(link, link.from_node, link.to_node);
       this.arrows.push(a);
       return a;
     }
-    // See if an arrow between the two nodes already exists 
+    // See if an arrow between the two nodes already exists.
     const ai = this.indexOfArrow(q_node, p_node);
     if(ai >= 0) {
-      // If so, get it, and add the link to its set unless it is already there
+      // If so, get it, and add the link to its set unless it is already there.
       a = this.arrows[ai];
       addDistinct(link, a.links);
-      // Check whether this makes the arrow bidirectional
+      // Check whether this makes the arrow bidirectional.
       // NOTE: "hidden" arrows can also be bi-directional; these are
-      // represented by a gray block arrow at the top of their cluster
+      // represented by a gray block arrow at the top of their cluster.
       if(!a.bidirectional) {
         a.bidirectional = (p_to_q ? p_node !== a.from_node : q_node !== a.from_node);
       }
       return a;
     }
-    // If not, create a new instance
-    // NOTE: the from-node and to-node that were passed to the constructor
-    // define the arrow direction
+    // If not, create a new instance.
+    // NOTE: The from-node and to-node that were passed to the constructor
+    // define the arrow direction.
     if(p_to_q) {
       a = new Arrow(link, p_node, q_node);
     } else  {
@@ -6624,10 +6451,9 @@ class Cluster extends NodeBox {
   }
   
   selectedArrows() {
-    // Return list of arrows that connect to selected nodes
+    // Return list of arrows that connect to selected nodes.
     const sa = [];
-    for(let i = 0; i < this.arrows.length; i++) {
-      const a = this.arrows[i];
+    for(const a of this.arrows) {
       if((a.from_node && a.from_node.selected) ||
           (a.to_node && a.to_node.selected)) sa.push(a);
     }
@@ -6689,7 +6515,7 @@ class Cluster extends NodeBox {
         }
       }
     }
-    // NOTE: iterate backwards through array, as elements may be removed
+    // NOTE: Iterate backwards through array, as elements may be removed.
     for(let ci = this.consumed_products.length - 1; ci >= 0; ci--) {
       const
           prod = this.consumed_products[ci],
@@ -6701,16 +6527,16 @@ class Cluster extends NodeBox {
         // P is produced by some process in this cluster
         let ext = false;
         // Any "external" process that also produces P? 
-        for(let i = 0; i < prod.inputs.length; i++) {
-          if(this.all_processes.indexOf(prod.inputs[i].from_node) < 0) {
+        for(const l of prod.inputs) {
+          if(this.all_processes.indexOf(l.from_node) < 0) {
             ext = true;
             break;
           }
         }
         // If not, any "external" process that consumes P?
         if(!ext) {
-          for(let i = 0; i < prod.outputs.length; i++) {
-            if(this.all_processes.indexOf(prod.outputs[i].to_node) < 0) {
+          for(const l of prod.outputs) {
+            if(this.all_processes.indexOf(l.to_node) < 0) {
               ext = true;
               break;
             }
@@ -6718,7 +6544,7 @@ class Cluster extends NodeBox {
         }
         // If P does NOT relate to any process outside this cluster,
         // add it to the internal product set and remove it from the
-        // produced & consumed sets
+        // produced & consumed sets.
         if(!ext) {
           this.internal_products.push(prod);
           this.consumed_products.splice(ci, 1);
@@ -6727,30 +6553,27 @@ class Cluster extends NodeBox {
       }
     }
     // Since consumed and produced need not be disjoint, also compute
-    // their disjunction
-    for(let i = 0; i < this.produced_products.length; i++) {
-      const p = this.produced_products[i];
+    // their disjunction.
+    for(const p of this.produced_products) {
       // P must be both produced and consumed but NOT internal, and not
-      // already in the io set
+      // already in the IO set.
       if(this.consumed_products.indexOf(p) >= 0 &&
           this.internal_products.indexOf(p) < 0 &&
           this.io_products.indexOf(p) < 0) this.io_products.push(p);
     }
 
     // To properly generate the arrows for this cluster, the subclusters
-    // must also be categorized
-    for(let i = 0; i < this.sub_clusters.length; i++) {
-      this.sub_clusters[i].categorizeEntities();  // recursion!
-    }
+    // must also be categorized.
+    for(const c of this.sub_clusters) c.categorizeEntities();  // recursion!
 
     // Use the product categories to determine which constraints relate
-    // to this cluster
+    // to this cluster.
     for(let c in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(c)) {
       const cns = MODEL.constraints[c];
-      // NOTE: constraints A --> B relate to this cluster if A and/or B
+      // NOTE: Constraints A --> B relate to this cluster if A and/or B
       // are visible, meaning that A or B is a process in THIS cluster
       // (not its sub-clusters) or a product having a product position
-      // in this cluster
+      // in this cluster.
       if(this.processes.indexOf(cns.from_node) >= 0 ||
           this.processes.indexOf(cns.to_node) >= 0 ||
           this.indexOfProduct(cns.from_node) >= 0 ||
@@ -6760,27 +6583,25 @@ class Cluster extends NodeBox {
     }
     
     // Finally, add the arrows
-    for(let i = 0; i < this.related_links.length; i++) {
-      this.addToArrowList(this.related_links[i]);
-    }
+    for(const l of this.related_links) this.addToArrowList(l);
   }
 
   addToArrowList(lnk) {
     // Adds `lnk` to an existing arrow in this cluster, or creates a
-    // new one
-    // NOTE: since links may relate more than two clusters (e.g., from
+    // new one.
+    // NOTE: Since links may relate more than two clusters (e.g., from
     // cluster having Q1 -> P to cluster having P -> Q2 and another
     // cluster having P -> Q3) and/or generate bidirectional flows
     // (e.g., between cluster A having Q1 -> P1 and P2 -> Q2 and
     // cluster B having P1 -> Q3 and Q4 -> P2), we use instances of
     // class Arrow, where each instance will correspond to a single
     // arrow (or condensed node, q.v.) that graphically represents
-    // one or more links
+    // one or more links.
 
-    // NOTE: the distinction between P and Q made below is needful for
+    // NOTE: The distinction between P and Q made below is needful for
     // links (to keep track of the direction of their flow), but not
     // for constraints. Particular to constraints is that, unlike links,
-    // they may relate to two processes
+    // they may relate to two processes.
     let p,
         q;
     const
@@ -6788,7 +6609,7 @@ class Cluster extends NodeBox {
         q_to_q = lnk.from_node instanceof Process &&
             lnk.to_node instanceof Process;
     // Set P to be the product and Q to be the process (so link is
-    // either P --> Q or Q --> P)
+    // either P --> Q or Q --> P).
     if(p_to_q) {
       p = lnk.from_node;
       q = lnk.to_node;
@@ -6796,37 +6617,37 @@ class Cluster extends NodeBox {
       q = lnk.from_node;
       p = lnk.to_node;
     }
-    // NOTE: now Q may STILL be a "data product", while P may be a
-    // process if `lnk` is a constraint
+    // NOTE: Now Q may STILL be a "data product", while P may be a
+    // process if `lnk` is a constraint.
 
     // P and Q are visible if they have a placeholder in this cluster,
-    // or if they are processes in this cluster
+    // or if they are processes in this cluster.
     const
         pi = this.indexOfProduct(p),
         qi = this.indexOfProduct(q),
         p_in_c = (p instanceof Process ? p.cluster === this : pi >= 0),
         q_in_c = (q instanceof Process ? q.cluster === this : qi >= 0);
 
-    // If P and Q are BOTH visible in the focal cluster, add a default arrow
+    // If P and Q are BOTH visible in the focal cluster, add a default arrow.
     if(p_in_c && q_in_c) {
       this.addArrow(lnk);
       return;
     }
     // Anticipating further steps, find out for process nodes whether
     // they are in THIS cluster, and if not, in which immediate
-    // sub-cluster of this cluster
+    // sub-cluster of this cluster.
     let cp = null,
         cq = null;
     if(p instanceof Process) {
       cp = this.containsProcess(p);
-      // Climb up the cluster hierarchy until `cp` is visible in this cluster 
+      // Climb up the cluster hierarchy until `cp` is visible in this cluster.
       while(cp !== null && cp !== this && cp.cluster !== this) {
         cp = cp.cluster;
       }
     }
     if(q instanceof Process) {
       cq = this.containsProcess(q);
-      // Climb up the cluster hierarchy until `cq` is visible in this cluster 
+      // Climb up the cluster hierarchy until `cq` is visible in this cluster.
       while(cq !== null && cq !== this && cq.cluster !== this) {
         cq = cq.cluster;
       }
@@ -6864,7 +6685,7 @@ class Cluster extends NodeBox {
     // If P and Q are both processes, while either one is not visible,
     // the arrow will be unique (as each process is in only ONE cluster)
     // and connect either a process node to a cluster node, or two
-    // cluster nodes
+    // cluster nodes.
     if(q_to_q) {
       if(p_in_c) {
         this.addArrow(lnk, p, cq);
@@ -6876,16 +6697,15 @@ class Cluster extends NodeBox {
       return;
     }
     
-    // NOTE: from this point, either P or Q is a product, or both, and
-    // only one of them is visible
+    // NOTE: From this point, either P or Q is a product, or both, and
+    // only one of them is visible.
     const pp_link = p instanceof Product && q instanceof Product;
     if(q_in_c) {
       // If Q is visible, but P is not, this leaves two possibilities:
       // (1) P is produced and/or consumed in one or more sub-clusters,
-      //     so check them all and *count* the arrows this implies
+      //     so check them all and *count* the arrows this implies.
       let acnt = 0;
-      for(let j = 0; j < this.sub_clusters.length; j++) {
-        const c = this.sub_clusters[j];
+      for(const c of this.sub_clusters) {
         let add = (p_to_q ?  c.produced_products.indexOf(p) >= 0 :
             c.consumed_products.indexOf(p) >= 0);
         if(!add) add = (pp_link && c.indexOfProduct(p) >= 0);
@@ -6895,22 +6715,19 @@ class Cluster extends NodeBox {
         }
       }
       // MOREOVER: P might also be produced c.q. consumed by processes
-      // in this cluster, so check these as well
-      for(let j = 0; j < this.processes.length; j++) {
-        const qq = this.processes[j];
-        if(qq !== q) {
-          // Check if QQ --> P --> Q or Q --> P --> QQ
-          if(p_to_q ? qq.doesProduce(p) : qq.doesConsume(p)) {
-            this.addArrow(lnk, q, qq, p_to_q);
-            acnt++;
-          }
+      // in this cluster, so check these as well.
+      for(const qq of this.processes) if(qq !== q) {
+        // Check if QQ --> P --> Q or Q --> P --> QQ
+        if(p_to_q ? qq.doesProduce(p) : qq.doesConsume(p)) {
+          this.addArrow(lnk, q, qq, p_to_q);
+          acnt++;
         }
       }
       if(acnt > 0) return;
       // (2) if P --> Q and P is NOT produced in this cluster or some
       //     of its sub-clusters, or Q --> P and P is NOT consumed in
       //     this cluster or some of its sub-clusters, then this link
-      //     should be represented by a block arrow
+      //     should be represented by a block arrow.
       if((p_to_q ?
           this.produced_products.indexOf(p) < 0 :
           this.consumed_products.indexOf(p) < 0
@@ -6922,12 +6739,11 @@ class Cluster extends NodeBox {
     }
     
     // If P is visible while Q is not, add (to) the arrow between P and
-    // the sub-cluster containing Q
+    // the sub-cluster containing Q.
     if(pi >= 0) {
       if(pp_link) {
         // Cluster containing q is not known -- could be multiple
-        for(let j = 0; j < this.sub_clusters.length; j++) {
-          const c = this.sub_clusters[j];
+        for(const c of this.sub_clusters) {
           if(c.indexOfProduct(q) >= 0) this.addArrow(lnk, p, c, !p_to_q);
         }
       } else {
@@ -6939,7 +6755,7 @@ class Cluster extends NodeBox {
     // If both P and Q are invisible, Q is uniquely in `cq`, but if
     // P --> Q, P might NOT be produced inside this cluster, and likewise
     // if Q --> P, P might NOT be consumed). In such cases, this link
-    // must be displayed as "block arrow" on the subcluster containing Q
+    // must be displayed as "block arrow" on the subcluster containing Q.
     if((p_to_q ? this.produced_products.indexOf(p) < 0 :
          this.consumed_products.indexOf(p) < 0
        ) && this.internal_products.indexOf(p) < 0) {
@@ -6949,10 +6765,9 @@ class Cluster extends NodeBox {
 
     // Finally, if P is produced (if P --> Q) or consumed (if Q --> P)
     // in this cluster, then this can happen in several sub-clusters,
-    // so check them all
-    for(let j = 0; j < this.sub_clusters.length; j++) {
-      cp = this.sub_clusters[j];
-      // NOTE: no arrow between a sub-cluster and itself
+    // so check them all.
+    for(cp of this.sub_clusters) {
+      // NOTE: No arrow between a sub-cluster and itself
       if(cp !== cq) {
         if(cp.all_products.indexOf(p) >= 0) {
           this.addArrow(lnk, cq, cp, p_to_q);
@@ -6962,16 +6777,16 @@ class Cluster extends NodeBox {
   }
 
   containsLink(l) {
-    // Returns TRUE iff link `l` is related to some process in this cluster
+    // Return TRUE iff link `l` is related to some process in this cluster.
     return this.related_links.indexOf(l) >= 0;
   }
   
   linkInList(l, list) {
-    // Returns TRUE iff both the FROM node and the TO node of link/constraint
-    // `l` are elements of `list`
-    // NOTE: this method used in linny-r-gui.js to see which links
+    // Return TRUE iff both the FROM node and the TO node of link/constraint
+    // `l` are elements of `list`.
+    // NOTE: This method used in linny-r-gui.js to see which links
     // and/or constraints are to be included when the modeler performs
-    // a "rectangular area select"
+    // a "rectangular area select".
     let prod, proc;
     if(l.to_node instanceof Process) {
       proc = l.to_node;
@@ -7034,20 +6849,16 @@ class Cluster extends NodeBox {
   }
 
   listSubclustersAndProcesses(list) {
-    for(let i = 0; i < this.processes.length; i++) {
-      list.push(this.processes[i]);
-    }
-    for(let i = 0; i < this.sub_clusters.length; i++) {
-      list.push(this.sub_clusters[i]);
-      this.sub_clusters[i].listSubclustersAndProcesses(list); // recursion!
+    for(const p of this.processes) list.push(p);
+    for(const c of this.sub_clusters) {
+      list.push(c);
+      c.listSubclustersAndProcesses(list); // recursion!
     }
   }
   
   positionProducts() {
-    for(let i = 0; i < this.product_positions.length; i++) {
-      const
-          pp = this.product_positions[i],
-          p = pp.product;
+    for(const pp of this.product_positions) {
+      const p = pp.product;
       p.x = pp.x;
       p.y = pp.y;
       p.clearHiddenIO();
@@ -7055,16 +6866,15 @@ class Cluster extends NodeBox {
   }
   
   canBeCloned(prefix, actor_name) {
-    // Returns TRUE iff all entities within this cluster can be cloned
-    // with the specified prefix and actor name
+    // Return TRUE iff all entities within this cluster can be cloned
+    // with the specified prefix and actor name.
     if(this.is_black_boxed) {
       UI.notify('Black-boxed clusters cannot be cloned');
       return false;
     }
     let name,
         aname;
-    for(let i = 0; i < this.processes.length; i++) {
-      const p = this.processes[i];
+    for(const p of this.processes) {
       name = prefix + p.name;
       aname = (actor_name ? actor_name : p.actor.name);
       if(aname && aname !== UI.NO_ACTOR) name += ` (${aname})`;
@@ -7074,9 +6884,8 @@ class Cluster extends NodeBox {
         return false;            
       }
     }
-    for(let i = 0; i < this.product_positions.length; i++) {
+    for(const pp of this.product_positions) {
       const
-          pp = this.product_positions[i],
           p = pp.product,
           e = MODEL.objectByName(prefix + p.name);
       // NOTE: ignore existing product issue when no prefix is defined,
@@ -7086,21 +6895,21 @@ class Cluster extends NodeBox {
         return false;            
       }
     }
-    for(let i = 0; i < this.sub_clusters.length; i++) {
-      // NOTE: recursive call!
-      if(!this.sub_clusters[i].canBeCloned(prefix, actor_name)) return false;
+    for(const c of this.sub_clusters) {
+      // NOTE: Recursive call!
+      if(!c.canBeCloned(prefix, actor_name)) return false;
     }
     return true;
   }
   
   cloneFrom(c, prefix, actor_name, nodes=null) {
     // Adds clones of all entities within `c` to this cluster, and then
-    // adds links between the cloned entities only AFTER recursively cloning
-    // NOTE: does not alter the name or actor of this cluster -- these are
-    // assumed to be set when this cluster was added to the model
+    // adds links between the cloned entities only AFTER recursively cloning.
+    // NOTE: Does not alter the name or actor of this cluster -- these are
+    // assumed to be set when this cluster was added to the model.
     let clone_links = false;
     if(nodes === null) {
-      // The *initial* call to cloneFrom should NOT pass `nodes`
+      // The *initial* call to cloneFrom should NOT pass `nodes`.
       nodes = [];
       clone_links = true;
     }
@@ -7108,42 +6917,40 @@ class Cluster extends NodeBox {
     this.y = c.y;
     this.collapsed = c.collapsed;
     this.resize();
-    // First clone notes
-    for(let i = 0; i < c.notes.length; i++) {
-      const n = new Note(this);
-      this.notes.push(n);
-      n.copyPropertiesFrom(c.notes[i]);
+    // First clone notes.
+    for(const n of c.notes) {
+      const cn = new Note(this);
+      this.notes.push(cn);
+      n.copyPropertiesFrom(n);
     }
-    // Declare some local variables
+    // Declare some local variables.
     let name,
         aname,
         actor;
     // NOTE: MODEL.addProcess adds process to focal cluster, so
-    // *temporarily* set it to `this`
+    // *temporarily* set it to `this`.
     const fc = MODEL.focal_cluster;
     MODEL.focal_cluster = this;
-    // Now we can clone the processes
-    for(let i = 0; i < c.processes.length; i++) {
+    // Now we can clone the processes.
+    for(const p of c.processes) {
       const
-          p = c.processes[i],
           a = (actor_name ? actor_name : c.actor.name),
           cp = MODEL.addProcess(prefix + p.name, a);
       if(cp) {
         cp.copyPropertiesFrom(p);
-        // Add the *original* process to the node list
+        // Add the *original* process to the node list.
         addDistinct(p, nodes);
       } else {
-        // Restore original focal cluster before breaking on error
+        // Restore original focal cluster before breaking on error.
         MODEL.focal_cluster = fc;
         return;
       }
     }
-    // Also restore original focal cluster when done adding processes
+    // Also restore original focal cluster when done adding processes.
     MODEL.focal_cluster = fc;
-    // Then clone product positions, and their products if needed 
-    for(let i = 0; i < c.product_positions.length; i++) {
+    // Then clone product positions, and their products if needed.
+    for(const pp of c.product_positions) {
       const
-          pp = c.product_positions[i],
           p = pp.product,
           cp = MODEL.addProduct(prefix + p.name);
       if(cp) {
@@ -7151,47 +6958,45 @@ class Cluster extends NodeBox {
         const cpp = this.addProductPosition(cp);
         cpp.x = pp.x;
         cpp.y = pp.y;
-        // Add the *original* product to the node list
+        // Add the *original* product to the node list.
         addDistinct(p, nodes);
       } else {
         return;
       }
     }
-    // Then clone sub-clusters
-    for(let i = 0; i < c.sub_clusters.length; i++) {
-      const subc = c.sub_clusters[i];
+    // Then clone sub-clusters.
+    for(const subc of c.sub_clusters) {
       name = prefix + subc.name;
       aname = (actor_name ? actor_name : subc.actor.name);
       actor = MODEL.addActor(aname);
       const newc = new Cluster(this, name, actor);
       MODEL.clusters[newc.identifier] = newc;
-      // Recursive call -- passing on the node list to 
+      // Recursive call -- passing on the node list to add to.
       newc.cloneFrom(subc, prefix, actor_name, nodes);
     }
     // Finally, clone links and constraints only when this was the
-    // "root" cluster being cloned
+    // "root" cluster being cloned.
     if(clone_links) {
       const to_clone = [];
       // Clone all links AND constraints in the entire model that have
-      // both nodes in the list of nodes that have been cloned
-      for(let i in MODEL.links) if(MODEL.links.hasOwnProperty(i)) {
-        const l = MODEL.links[i];
+      // both nodes in the list of nodes that have been cloned.
+      for(let k in MODEL.links) if(MODEL.links.hasOwnProperty(k)) {
+        const l = MODEL.links[k];
         if(nodes.indexOf(l.from_node) >= 0 && nodes.indexOf(l.to_node) >= 0) {
           to_clone.push(l);
         }
       }
-      for(let i in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(i)) {
-        const c = MODEL.constraints[i];
+      for(let k in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(k)) {
+        const c = MODEL.constraints[k];
         if(nodes.indexOf(c.from_node) >= 0 && nodes.indexOf(c.to_node) >= 0) {
           to_clone.push(c);
         }
       }
-      for(let i = 0; i < to_clone.length; i++) {
-        const l = to_clone[i];
-        // NOTE: links and constraints both have FROM and TO nodes
+      for(const l of to_clone) {
+        // NOTE: Links and constraints both have FROM and TO nodes.
         let cf = l.from_node,
             ct = l.to_node;
-        // If in selection, map FROM node onto cloned node
+        // If in selection, map FROM node onto cloned node.
         if(cf instanceof Process) {
           let name = prefix + cf.name;
           const aname = (actor_name ? actor_name : cf.actor.name);
@@ -7200,7 +7005,7 @@ class Cluster extends NodeBox {
         } else {
           cf = MODEL.objectByName(prefix + cf.name);
         }
-        // Do likewise for the TO node
+        // Do likewise for the TO node.
         if(ct instanceof Process) {
           let name = prefix + ct.name;
           const aname = (actor_name ? actor_name : ct.actor.name);
@@ -7209,7 +7014,7 @@ class Cluster extends NodeBox {
         } else {
           ct = MODEL.objectByName(prefix + ct.name);
         }
-        // Only now differentiate between links and constraints
+        // Only now differentiate between links and constraints.
         let cl = null;
         if(l instanceof Link) {
           // Add the new link ...
@@ -7219,75 +7024,67 @@ class Cluster extends NodeBox {
           cl = MODEL.addConstraint(cf, ct);
         }
         if(!cl) return;
-        // ... but do not add its to the clone list if it already exists 
+        // ... but do not add its to the clone list if it already exists.
         if(cl !== l) cl.copyPropertiesFrom(l);
       }
     }
   }
 
   differences(c) {
-    // Return "dictionary" of differences, or NULL if none
+    // Return "dictionary" of differences, or NULL if none.
     if(this.is_black_boxed) return null;
     const
         d = differences(this, c, UI.MC.CLUSTER_PROPS),
         cn = (this.cluster ? this.cluster.displayName : ''),
         ccn = (c.cluster ? c.cluster.displayName : '');
     if(cn !== ccn) d.cluster = {A: cn, B: ccn};
-    // Check for added processes
+    // Check for added processes.
     let diff = {};
-    for(let i = 0; i < this.processes.length; i++) {
-      const
-          p = this.processes[i],
-          pid = p.identifier;
-      let cp = null;
-      for(let j = 0; j < c.processes.length; j++) {
-        if(c.processes[j].identifier === pid) {
-          cp = c.processes[j];
-          break;
-        }
+    for(const p of this.processes) {
+      const pid = p.identifier;
+      let mp = null;
+      for(const cp of c.processes) if(cp.identifier === pid) {
+        mp = cp;
+        break;
       }
-      if(!cp) diff[pid] = [UI.MC.ADDED, p.displayName];
+      if(!mp) diff[pid] = [UI.MC.ADDED, p.displayName];
     }
-    // Check for deleted processes
-    for(let i = 0; i < c.processes.length; i++) {
-      const
-          cp = c.processes[i],
-          cpid = cp.identifier;
-      let p = null;
-      for(let j = 0; j < this.processes.length; j++) {
-        if(this.processes[j].identifier === cpid) {
-          p = this.processes[j];
-          break;
-        }
+    // Check for deleted processes.
+    for(const cp of c.processes) {
+      const cpid = cp.identifier;
+      let mp = null;
+      for(const p of this.processes) if(p.identifier === cpid) {
+        mp = p;
+        break;
       }
-      if(!p) diff[cpid] = [UI.MC.DELETED, cp.displayName];
+      if(!mp) diff[cpid] = [UI.MC.DELETED, cp.displayName];
     }
     if(Object.keys(diff).length > 0) d.processes = diff;
 
-    // Check for added product positions
+    // Check for added product positions.
     diff = {};
-    for(let i = 0; i < this.product_positions.length; i++) {
+    for(const pp of this.product_positions) {
       const
-          p = this.product_positions[i].product,
+          p = pp.product,
           pid = p.identifier;
       let cp = null;
-      for(let j = 0; j < c.product_positions.length; j++) {
-        if(c.product_positions[j].product.identifier === pid) {
-          cp = c.product_positions[j].product;
+      for(const cpp of c.product_positions) {
+        if(cpp.product.identifier === pid) {
+          cp = cpp.product;
           break;
         }
       }
       if(!cp) diff[pid] = [UI.MC.ADDED, p.displayName];
     }
-    // Check for deleted product positions
-    for(let i = 0; i < c.product_positions.length; i++) {
+    // Check for deleted product positions.
+    for(const cpp of c.product_positions) {
       const
-          cp = c.product_positions[i].product,
+          cp = cpp.product,
           cpid = cp.identifier;
       let p = null;
-      for(let j = 0; j < this.product_positions.length; j++) {
-        if(this.product_positions[j].product.identifier === cpid) {
-          p = this.product_positions[j].product;
+      for(const pp of this.product_positions) {
+        if(pp.product.identifier === cpid) {
+          p = pp.product;
           break;
         }
       }
@@ -7295,16 +7092,14 @@ class Cluster extends NodeBox {
     }
     if(Object.keys(diff).length > 0) d.product_positions = diff;
 
-    // Check for added / modified sub-clusters
+    // Check for added / modified sub-clusters.
     diff = {};
-    for(let i = 0; i < this.sub_clusters.length; i++) {
-      const
-          sc = this.sub_clusters[i],
-          scid = sc.identifier;
+    for(const sc of this.sub_clusters) {
+      const scid = sc.identifier;
       let csc = null;
-      for(let j = 0; j < c.sub_clusters.length; j++) {
-        if(c.sub_clusters[j].identifier === scid) {
-          csc = c.sub_clusters[j];
+      for(const cc of c.sub_clusters) {
+        if(cc.identifier === scid) {
+          csc = cc;
           break;
         }
       }
@@ -7315,56 +7110,52 @@ class Cluster extends NodeBox {
         diff[scid] = [UI.MC.ADDED, sc.displayName];
       }
     }
-    // Check for deleted sub-clusters
-    for(let i = 0; i < c.sub_clusters.length; i++) {
-      const
-          csc = c.sub_clusters[i],
-          cscid = csc.identifier;
-      let sc = null;
-      for(let j = 0; j < this.sub_clusters.length; j++) {
-        if(this.sub_clusters[j].displayName === cscid) {
-          sc = c.sub_clusters[j];
+    // Check for deleted sub-clusters.
+    for(const cc of c.sub_clusters) {
+      const ccid = cc.identifier;
+      let csc = null;
+      for(const sc of this.sub_clusters) {
+        if(sc.identifier === ccid) {
+          csc = sc;
           break;
         }
       }
-      if(!sc) diff[cscid] = [UI.MC.DELETED, csc.displayName];
+      if(!csc) diff[ccid] = [UI.MC.DELETED, cc.displayName];
     }
     if(Object.keys(diff).length > 0) d.sub_clusters = diff;
 
     // Check for added / modified notes
     diff = {};
-    for(let i = 0; i < this.notes.length; i++) {
-      const n = this.notes[i];
-      let cn = null;
-      // NOTE: n.timestamp is identifying property
-      for(let j = 0; j < c.notes.length; j++) {
-        if(c.notes[j].timestamp === n.timestamp) {
-          cn = c.notes[j];
+    for(const n of this.notes) {
+      let mn = null;
+      // NOTE: n.timestamp is identifying property.
+      for(const cn of c.notes) {
+        if(cn.timestamp === n.timestamp) {
+          mn = cn;
           break;
         }
       }
-      if(cn) {
-        const ndiff = n.differences(cn);
+      if(mn) {
+        const ndiff = n.differences(mn);
         if(ndiff) diff[n.timestamp] = [UI.MC.MODIFIED, n.displayName, ndiff];
       } else {
         diff[n.timestamp] = [UI.MC.ADDED, n.displayName];
       }
     }
-    // Check for deleted notes
-    for(let i = 0; i < c.notes.length; i++) {
-      const cn = c.notes[i];
-      let n = null;
-      for(let j = 0; j < this.notes.length; j++) {
-        if(this.notes[j].timestamp === cn.timestamp) {
-          n = this.notes[j];
+    // Check for deleted notes.
+    for(const cn of c.notes) {
+      let mn = null;
+      for(const n of this.notes) {
+        if(n.timestamp === cn.timestamp) {
+          mn = n;
           break;
         }
       }
-      if(!n) diff[cn.timestamp] = [UI.MC.DELETED, cn.displayName];
+      if(!mn) diff[cn.timestamp] = [UI.MC.DELETED, cn.displayName];
     }
     if(Object.keys(diff).length > 0) d.notes = diff;
 
-    // Only return the differences if any were detected
+    // Only return the differences if any were detected.
     if(Object.keys(d).length > 0) return d;
     return null;
   }
@@ -7400,16 +7191,12 @@ class Node extends NodeBox {
   }
 
   hasInput(node) {
-    for(let i = 0; i < this.inputs.length; i++) {
-      if(this.inputs[i].from_node == node) return this.inputs[i];
-    }
+    for(const l of this.inputs) if(l.from_node == node) return l;
     return false;
   }
 
   hasOutput(node) {
-    for(let i = 0; i < this.outputs.length; i++) {
-      if(this.outputs[i].to_node == node) return this.outputs[i];
-    }
+    for(const l of this.outputs) if(l.to_node == node) return l;
     return false;
   }
   
@@ -7461,9 +7248,9 @@ class Node extends NodeBox {
         thl = tbc.thumb.length,
         hdx = (thl > 0 ? (thl - 1) * 9 : 0),
         // NOTE: `top` and `bottom` lists are sorted on the X-coordinate
-        // of the other node q
+        // of the other node q.
         tcmp = (a, b) => {
-            // When same X, the lower one (higher Y) comes first
+            // When same X, the lower one (higher Y) comes first.
             if(a.top_x === b.top_x) {
               if(this.x >= a.top_x) return b.top_y - a.top_y;
               return a.top_y - b.top_y;
@@ -7471,7 +7258,7 @@ class Node extends NodeBox {
             return a.top_x - b.top_x;
           },
         bcmp = (a, b) => {
-            // When same X, the upper one (lower Y) comes first
+            // When same X, the upper one (lower Y) comes first.
             if(a.bottom_x === b.bottom_x) {
               if(this.x >= a.bottom_x) return a.bottom_y - b.bottom_y;
               return b.bottom_y - a.bottom_y;
@@ -7479,10 +7266,9 @@ class Node extends NodeBox {
             return a.bottom_x - b.bottom_x;
          };
     if(thl > 0) {
-      // Space thumbnails evenly at center X of node
+      // Space thumbnails evenly at center X of node.
       let dx = -hdx; 
-      for(let i = 0; i < thl; i++) {
-        const c = tbc.thumb[i];
+      for(const c of tbc.thumb) {
         if(c.from_node === this) {
           c.from_offset = dx;
         } else {
@@ -7491,22 +7277,21 @@ class Node extends NodeBox {
         dx += 18;
       }
     }
-    // Calculate available width at either side of thumbnails
+    // Calculate available width at either side of thumbnails.
     const
         // Keep 10px between connection points, and for processes
-        // also keep this distance from the rectangle corners
+        // also keep this distance from the rectangle corners.
         margin = 10,
         aw = (this instanceof Process ?
             (this.collapsed ? 8.5 : this.width / 2) :
             (this.width - this.height) / 2 + margin) - 9 * thl;
     if(tl > 0) {
       tbc.top.sort(tcmp);
-      // Start on leftmost suitable point at top
+      // Start on leftmost suitable point at top.
       let dx = -aw + margin;
-      // NOTE: process from left to right
-      for(let i = 0; i < tl; i++) {
-        const c = tbc.top[i];
-        // Only position constraints THIS --> q with q left of THIS node
+      // NOTE: Process from left to right.
+      for(const c of tbc.top) {
+        // Only position constraints THIS --> q with q left of THIS node.
         if(c.top_x < this.x) {
           if(c.from_node === this) {
             c.from_offset = dx;
@@ -7516,9 +7301,9 @@ class Node extends NodeBox {
           dx += margin;
         }
       }
-      // Start on rightmost suitable point at top
+      // Start on rightmost suitable point at top.
       dx = aw - margin;
-      // NOTE: now process from right to left
+      // NOTE: Now process from right to left.
       for(let i = tl - 1; i >= 0; i--) {
         const c = tbc.top[i];
         // Only position constraints THIS --> q NOT left of THIS
@@ -7534,12 +7319,11 @@ class Node extends NodeBox {
     }
     if(bl > 0) {
       tbc.bottom.sort(bcmp);
-      // Start on leftmost suitable point at bottom
+      // Start on leftmost suitable point at bottom.
       let dx = -aw + margin;
-      // NOTE: process from left to right
-      for(let i = 0; i < bl; i++) {
-        const c = tbc.bottom[i];
-        // Only position constraints THIS --> q with q left of THIS node
+      // NOTE: Process from left to right.
+      for(const c of tbc.bottom) {
+        // Only position constraints THIS --> q with q left of THIS node.
         if(c.bottom_x < this.x) {
           if(c.from_node === this) {
             c.from_offset = dx;
@@ -7551,7 +7335,7 @@ class Node extends NodeBox {
       }
       // Start on rightmost suitable point at bottom
       dx = aw - margin;
-      // NOTE: now process from right to left
+      // NOTE: Now process from right to left.
       for(let i = bl - 1; i >= 0; i--) {
         const c = tbc.bottom[i];
         // Only position constraints THIS --> q NOT left of THIS
@@ -7575,8 +7359,8 @@ class Node extends NodeBox {
     // "first commit" multiplier.
     // NOTE: As of version 2.0.0, power grid processes also need ON/OFF.
     if(this.grid) return true;
-    for(let i = 0; i < this.outputs.length; i++) {
-      if(VM.LM_NEEDING_ON_OFF.indexOf(this.outputs[i].multiplier) >= 0) {
+    for(const l of this.outputs) {
+      if(VM.LM_NEEDING_ON_OFF.indexOf(l.multiplier) >= 0) {
         return true;
       }
     }
@@ -7587,17 +7371,15 @@ class Node extends NodeBox {
     // Return TRUE if this node requires a binary IS ZERO variable.
     // This means that at least one output link must have the "zero"
     // multiplier.
-    for(let i = 0; i < this.outputs.length; i++) {
-      if(this.outputs[i].multiplier === VM.LM_ZERO) return true;
-    }
+    for(const l of this.outputs) if(l.multiplier === VM.LM_ZERO) return true;
     return false;
   }
 
   get needsStartUpData() {
     // Return TRUE iff this node has an output data link for start-up
     // or first commit.
-    for(let i = 0; i < this.outputs.length; i++) {
-      const m = this.outputs[i].multiplier;
+    for(const l of this.outputs) {
+      const m = l.multiplier;
       if(m === VM.LM_STARTUP || m === VM.LM_FIRST_COMMIT) return true;
     }
     return false;
@@ -7605,25 +7387,25 @@ class Node extends NodeBox {
   
   get needsShutDownData() {
     // Return TRUE iff this node has an output data link for shut-down. 
-    for(let i = 0; i < this.outputs.length; i++) {
-      if(this.outputs[i].multiplier === VM.LM_SHUTDOWN) return true;
+    for(const l of this.outputs) {
+      if(l.multiplier === VM.LM_SHUTDOWN) return true;
     }
     return false;
   }
   
   get needsFirstCommitData() {
     // Return TRUE iff this node has an output data link for first commit. 
-    for(let i = 0; i < this.outputs.length; i++) {
-      if(this.outputs[i].multiplier === VM.LM_FIRST_COMMIT) return true;
+    for(const l of this.outputs) {
+      if(l.multiplier === VM.LM_FIRST_COMMIT) return true;
     }
     return false;
   }
   
   get linksToFirstCommitDataProduct() {
     // Return data product P iff this node has an output link to P, and P has
-    // an output link for first commit 
-    for(let i = 0; i < this.outputs.length; i++) {
-      const p = this.outputs[i].to_node;
+    // an output link for first commit.
+    for(const l of this.outputs) {
+      const p = l.to_node;
       if(p.is_data && p.needsFirstCommitData) return p;
     }
     return false;
@@ -7631,9 +7413,9 @@ class Node extends NodeBox {
   
   get needsMaximumData() {
     // Returns TRUE iff this node has an output data link for peak
-    // increase, and hence should track its peak value (per block)
-    for(let i = 0; i < this.outputs.length; i++) {
-      if(this.outputs[i].multiplier === VM.LM_PEAK_INC) return true;
+    // increase, and hence should track its peak value (per block).
+    for(const l of this.outputs) {
+      if(l.multiplier === VM.LM_PEAK_INC) return true;
     }
     return false;
   }
@@ -7645,8 +7427,7 @@ class Node extends NodeBox {
     // of this method has been commented out.
  
 /*
-    for(let i = 0; i < this.inputs.length; i++) {
-      const l = this.inputs[i];
+    for(const l of this.inputs) {
       if(!l.visited) {
         l.visited = true;
         const n = l.from_node;
@@ -7654,8 +7435,7 @@ class Node extends NodeBox {
           this.predecessors.push(n);
         }
         const pp = n.setPredecessors();  // Recursion!
-        for(let j = 0; j < pp.length; j++) {
-          const n = pp[j];
+        for(const n of pp) {
           if(this.predecessors.indexOf(n) < 0) {
             this.predecessors.push(n);
           }
@@ -7669,18 +7449,14 @@ class Node extends NodeBox {
   resetStartUps(t) {
     // Remove all time steps >= t from start-up list.
     const su = [];
-    for(let i = 0; i < this.start_ups.length; i++) {
-      if(this.start_ups[i] < t) su.push(this.start_ups[i]);
-    }
+    for(const sut of this.start_ups) if(sut < t) su.push(sut);
     this.start_ups = su;
   }
 
   resetShutDowns(t) {
     // Remove all time steps >= t from shut-down list.
     const sd = [];
-    for(let i = 0; i < this.shut_downs.length; i++) {
-      if(this.shut_downs[i] < t) sd.push(this.shut_downs[i]);
-    }
+    for(const sdt of this.shut_downs) if(sdt < t) sd.push(sdt);
     this.shut_downs = sd;
   }
 
@@ -7961,15 +7737,11 @@ class Process extends Node {
     if(!g) return '';
     let fn = null,
         tn = null;
-    for(let i = 0; i < this.inputs.length; i++) {
-      const l = this.inputs[i];
-      if(l.multiplier == VM.LM_LEVEL) {
-        fn = l.from_node;
-        break;
-      }
+    for(const l of this.inputs) if(l.multiplier == VM.LM_LEVEL) {
+      fn = l.from_node;
+      break;
     }
-    for(let i = 0; i < this.outputs.length; i++) {
-      const l = this.outputs[i];
+    for(const l of this.outputs) {
       if(l.multiplier == VM.LM_LEVEL && !l.to_node.is_data) {
         tn = l.from_node;
         break;
@@ -7998,10 +7770,8 @@ class Process extends Node {
   }
   
   setCode() {
-    // Processes are assigned a unique number code for shorthand display of links
-    if(!this.code) {
-      this.code = MODEL.newProcessCode;
-    }
+    // Processes are assigned a unique number code.
+    if(!this.code) this.code = MODEL.newProcessCode;
   }
 
   get asXML() {
@@ -8016,9 +7786,9 @@ class Process extends Node {
         id = UI.nameToID(this.name + an);
     if(MODEL.black_box_entities.hasOwnProperty(id)) {
       // NOTE: "black-boxed" processes are saved anonymously, collapsed,
-      // without comments or their (X, Y) position
+      // without comments or their (X, Y) position.
       n = MODEL.black_box_entities[id];
-      // `n` is just the name, so remove the actor name if it was added
+      // `n` is just the name, so remove the actor name if it was added.
       if(an) n = n.substring(0, n.lastIndexOf(an));
       col = true;
       cmnts = '';
@@ -8082,9 +7852,9 @@ class Process extends Node {
     this.x = safeStrToInt(nodeContentByTag(node, 'x-coord'));
     this.y = safeStrToInt(nodeContentByTag(node, 'y-coord'));
     if(IO_CONTEXT) {
-      // Record that this process was included
+      // Record that this process was included.
       IO_CONTEXT.addedNode(this);
-      // Contextualize the expressions
+      // Contextualize the expressions.
       IO_CONTEXT.rewrite(this.lower_bound);
       IO_CONTEXT.rewrite(this.upper_bound);
       IO_CONTEXT.rewrite(this.initial_level);
@@ -8093,39 +7863,33 @@ class Process extends Node {
   }
   
   setCluster(c) {
-    // Place this process into the specified cluster `c`
-    // NOTE: a process must be part of exactly ONE cluster
+    // Place this process into the specified cluster `c`.
+    // NOTE: A process must be part of exactly ONE cluster.
     if(this.cluster) {
-      // Remove this process from its current cluster's process list
+      // Remove this process from its current cluster's process list.
       const i = this.cluster.processes.indexOf(this);
       if(i >= 0) this.cluster.processes.splice(i, 1);
       // Set its new cluster pointer...
       this.cluster = c;
-      // ... and add it to the new cluster's process list
+      // ... and add it to the new cluster's process list.
       if(c.processes.indexOf(this) < 0) c.processes.push(this);
     }
   }
   
   doesConsume(p) {
-    // Return the link P --> Q iff this process Q consumes product P
-    for(let i = 0; i < this.inputs.length; i++) {
-      const lnk = this.inputs[i];
-      if(lnk.from_node === p) return lnk;
-    }
+    // Return the link P --> Q iff this process Q consumes product P.
+    for(const l of this.inputs) if(l.from_node === p) return l;
     return null;
   }
 
   doesProduce(p) {
-    // Return the link Q --> P iff this process Q produces product P
-    for(let i = 0; i < this.outputs.length; i++) {
-      const lnk = this.outputs[i];
-      if(lnk.to_node === p) return lnk;
-    }
+    // Return the link Q --> P iff this process Q produces product P.
+    for(const l of this.outputs) if(l.to_node === p) return l;
     return null;
   }
   
   get defaultAttribute() {
-    // Default attribute of processes is their level
+    // Default attribute of processes is their level.
     return 'L';
   }
 
@@ -8162,9 +7926,7 @@ class Process extends Node {
     // Return sum of Share-of-Cost percentages of the output links
     // of this process.
     let tac = 0;
-    for(let i = 0; i < this.outputs.length; i++) {
-      tac += this.outputs[i].share_of_cost;
-    }
+    for(const l of this.outputs) tac += l.share_of_cost;
     return tac;
   }
   
@@ -8182,7 +7944,8 @@ class Process extends Node {
     // power flow and transmission loss approximations in coordinated
     // capacity expansion problem. Applied Energy, 314: 118859.
     // https://doi.org/10.1016/j.apenergy.2022.118859
-    if(!(this.grid && this.grid.loss_approximation)) return [0];
+    if(!(this.grid && this.grid.loss_approximation &&
+        !this.ignore_power_losses)) return [0];
     let ub = this.upper_bound.result(t);
     if(ub >= VM.PLUS_INFINITY) {
       // When UB = +INF, this is interpreted as "unlimited", which is
@@ -8205,7 +7968,7 @@ class Process extends Node {
     // Return the actual loss rate, which depends on the power flow
     // and the max. power flow (process UB).
     const g = this.grid;
-    if(!g) return 0;
+    if(!g || this.ignore_power_losses) return 0;
     const
         lr = this.lossRates(t),
         apl = Math.abs(this.actualLevel(t)),
@@ -8343,7 +8106,7 @@ class Product extends Node {
   }
   
   get positionInFocalCluster() {
-    // Returns product position object for this product if it is shown in the
+    // Return product position object for this product if it is shown in the
     // focal cluster, or NULL otherwise
     let i = MODEL.focal_cluster.indexOfProduct(this);
     if(i < 0) return null;
@@ -8351,13 +8114,12 @@ class Product extends Node {
   }
   
   get allLinksIgnored() {
-    // Returns TRUE iff all input links are ignored AND all "regular" output
-    // links (i.e., inputs of a process) are ignored
-    for(let i = 0; i < this.inputs.length; i++) {
-      if(!MODEL.ignored_entities[this.inputs[i].identifier]) return false;
+    // Return TRUE iff all input links are ignored AND all "regular" output
+    // links (i.e., inputs of a process) are ignored.
+    for(const l of this.inputs) {
+      if(!MODEL.ignored_entities[l.identifier]) return false;
     }
-    for(let i = 0; i < this.outputs.length; i++) {
-      const l = this.outputs[i];
+    for(const l of this.outputs) {
       if(l.to_node instanceof Process &&
           !MODEL.ignored_entities[l.identifier]) return false;
     }
@@ -8365,20 +8127,20 @@ class Product extends Node {
   }
 
   allLinksInCluster(c) {
-    // Returns TRUE iff this product is linked only to processes in
-    // cluster `c`
-    // NOTE: if this is TRUE, deleting this product from this cluster
-    // will delete it from the model as well
+    // Return TRUE iff this product is linked only to processes in
+    // cluster `c`.
+    // NOTE: If this is TRUE, deleting this product from this cluster
+    // will delete it from the model as well.
     let n;
-    for(let i = 0; i < this.inputs.length; i++) {
-      n = this.inputs[i].from_node;
+    for(const l of this.inputs) {
+      n = l.from_node;
       if(n instanceof Product && c.indexOfProduct(n) < 0 ||
          n instanceof Process && n.cluster !== c) {
         return false;
       }
     }
-    for(let i = 0; i < this.outputs.length; i++) {
-      n = this.outputs[i].to_node; 
+    for(const l of this.outputs) {
+      n = l.to_node; 
       if(n instanceof Product && c.indexOfProduct(n) < 0 ||
          n instanceof Process && n.cluster !== c) {
         return false;
@@ -8388,28 +8150,25 @@ class Product extends Node {
   }
   
   get allInputsAreFeedback() {
-    // Returns TRUE if all input links of this product are feedback links
-    // NOTE: this is used to determine whether a product is an implicit source
-    for(let i = 0; i < this.inputs.length; i++) {
-      if(!this.inputs[i].is_feedback) return false;
-    }
+    // Return TRUE if all input links of this product are feedback links.
+    // NOTE: This is used to determine whether a product is an implicit source.
+    for(const l of this.inputs) if(!l.is_feedback) return false;
     return true;
   }
 
   get hasDataInputs() {
-    // Returns TRUE if product has input links that are data links
-    for(let i = 0; i < this.inputs.length; i++) {
-      if(this.inputs[i].multiplier ||
-          this.inputs[i].from_node instanceof Product) return true;
+    // Return TRUE if product has input links that are data links.
+    for(const l of this.inputs) {
+      if(l.multiplier || l.from_node instanceof Product) return true;
     }
     return false;
   }
 
   get allOutputsAreData() {
-    // Returns TRUE if all output links that are data links
-    // NOTE: this requires that the product has no links to processes
-    for(let i = 0; i < this.outputs.length; i++) {
-      if(this.outputs[i].to_node instanceof Process) return false;
+    // Return TRUE if all output links that are data links.
+    // NOTE: This requires that the product has no links to processes.
+    for(const l of this.outputs) {
+      if(l.to_node instanceof Process) return false;
     }
     return true;
   }
@@ -8424,7 +8183,7 @@ class Product extends Node {
   }
 
   get isSourceNode() {
-    // Returns TRUE if this product behaves as a source
+    // Returns TRUE if this product behaves as a source.
     return (this.is_source || this.inputs.length === 0) &&
       !this.lower_bound.defined;
   }
@@ -8457,9 +8216,8 @@ class Product extends Node {
     let sum = 0;
     // Preclude infinite recursion.
     visited.push(this);
-    for(let i = 0; i < this.inputs.length; i++) {
+    for(const l of this.inputs) {
       const
-          l = this.inputs[i],
           r = l.relative_rate,
           fn = l.from_node;
       // Dynamic rate => inflows cannot constrain the UB any further.
@@ -8486,23 +8244,19 @@ class Product extends Node {
       }
     }
     // Return the sum of max. inflows as the lowest max. UB, or the initial
-    // maximum if that was lower
+    // maximum if that was lower.
     return Math.min(sum, max_ub);
   }
 
   noInflows(t) {
-    // Returns TRUE iff this product has no inflows that might affect cost price
-    for(let i = 0; i < this.inputs.length; i++) {
-      if(this.inputs[i].actualFlow(t) > 0) return false;
-    }
-    for(let i = 0; i < this.outputs.length; i++) {
-      if(this.outputs[i].actualFlow(t) < 0) return false;
-    }
+    // Return TRUE iff this product has no inflows that might affect cost price.
+    for(const l of this.inputs) if(l.actualFlow(t) > 0) return false;
+    for(const l of this.outputs) if(l.actualFlow(t) < 0) return false;
     return true;
   }
   
   stockPrice(t) {
-    // Returns the stock price if this product has storage capacity
+    // Return the stock price if this product has storage capacity.
     if(this.is_buffer && t >= 0 && t < this.stock_price.length) {
       return (t ? this.stock_price[t] : 0);
     }
@@ -8514,8 +8268,7 @@ class Product extends Node {
     // price of the most expensive process that in time step t contributes
     // to the level of this product.
     let hcp = VM.MINUS_INFINITY;
-    for(let i = 0; i < this.inputs.length; i++) {
-      const l = this.inputs[i];
+    for(const l of this.inputs) {
       if(l.from_node instanceof Process && l.actualFlow(t) > VM.NEAR_ZERO) {
         const ld = l.actualDelay(t);
         // NOTE: Only consider the allocated share of cost.
@@ -8562,14 +8315,14 @@ class Product extends Node {
     const id = UI.nameToID(n);
     if(MODEL.black_box_entities.hasOwnProperty(id)) {
       // NOTE: "black-boxed" products are saved anonymously without comments
-      // or their (X, Y) position (which is redundant anyway)
+      // or their (X, Y) position (which is redundant anyway).
       n = MODEL.black_box_entities[id];
       cmnts = '';
       x = 0;
       y = 0;
     }
     let xml = `<product${p}><name>${xmlEncoded(n)}</name>`;
-    // NOTE: only products having storage can have initial level
+    // NOTE: Only products having storage can have initial level.
     if(this.is_buffer) {
       xml += `<initial-level>${this.initial_level.asXML}</initial-level>`;
     }
@@ -8586,7 +8339,7 @@ class Product extends Node {
   }
 
   initFromXML(node) {
-    // NOTE: do not set code while importing, as new code must be assigned!
+    // NOTE: Do not set code while importing, as new code must be assigned!
     if(!IO_CONTEXT) this.code = nodeParameterValue(node, 'code');
     this.is_buffer = nodeParameterValue(node, 'is-buffer') === '1';
     this.is_source = nodeParameterValue(node, 'is-source') === '1';
@@ -8595,33 +8348,33 @@ class Product extends Node {
     this.equal_bounds = nodeParameterValue(node, 'equal-bounds') === '1';
     this.integer_level = nodeParameterValue(node, 'integer-level') === '1';
     this.no_slack = nodeParameterValue(node, 'no-slack') === '1';
-    // Legacy models have tag "hidden" instead of "no-links"
+    // Legacy models have tag "hidden" instead of "no-links".
     this.no_links = (nodeParameterValue(node, 'no-links') ||
         nodeParameterValue(node, 'hidden')) === '1';
     this.scale_unit = MODEL.addScaleUnit(
         xmlDecoded(nodeContentByTag(node, 'unit')));
     this.TEX_id = xmlDecoded(nodeContentByTag(node, 'tex-id') || 'q');
-    // Legacy models have tag "profit" instead of "price"
+    // Legacy models have tag "profit" instead of "price".
     let pp = nodeContentByTag(node, 'price');
     if(!pp) pp = nodeContentByTag(node, 'profit');
     this.price.text = xmlDecoded(pp);
-    // Legacy models can have price time series data as hexadecimal string
+    // Legacy models can have price time series data as hexadecimal string.
     this.convertLegacyPriceData(nodeContentByTag(node, 'profit-data'));
     this.lower_bound.text = xmlDecoded(nodeContentByTag(node, 'lower-bound'));
     this.upper_bound.text = xmlDecoded(nodeContentByTag(node, 'upper-bound'));
-    // legacy models can have LB and UB hexadecimal data strings
+    // Legacy models can have LB and UB hexadecimal data strings.
     this.convertLegacyBoundData(nodeContentByTag(node, 'lower-bound-data'),
         nodeContentByTag(node, 'upper-bound-data'));
-    // NOTE: legacy models have no initial level field => default to 0 
+    // NOTE: Legacy models have no initial level field => default to 0.
     const ilt = xmlDecoded(nodeContentByTag(node, 'initial-level'));
     this.initial_level.text = ilt || '0';
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     this.x = safeStrToInt(nodeContentByTag(node, 'x-coord'));
     this.y = safeStrToInt(nodeContentByTag(node, 'y-coord'));
     if(IO_CONTEXT) {
-      // Record that this product was included
+      // Record that this product was included.
       IO_CONTEXT.addedNode(this);
-      // Contextualize the expressions
+      // Contextualize the expressions.
       IO_CONTEXT.rewrite(this.price);
       IO_CONTEXT.rewrite(this.lower_bound);
       IO_CONTEXT.rewrite(this.upper_bound);
@@ -8632,14 +8385,14 @@ class Product extends Node {
 
   convertLegacyPriceData(data) {
     // Convert time series data for prices in legacy models to a dataset,
-    // and replace the price expression by a reference to this dataset
+    // and replace the price expression by a reference to this dataset.
     if(data) {
       const
           dsn = this.displayName + ' PRICE DATA',
           ds = MODEL.addDataset(dsn);
-      // Use the price attribute as default value for the dataset
+      // Use the price attribute as default value for the dataset.
       ds.default_value = parseFloat(this.price.text);
-      // NOTE: dataset unit then is a currency
+      // NOTE: Dataset unit then is a currency.
       ds.scale_unit = MODEL.currency_unit;
       ds.data = stringToFloatArray(data);
       ds.computeVector();
@@ -8675,7 +8428,7 @@ class Product extends Node {
   }
 
   changeScaleUnit(name) {
-    // Changes the scale unit for this product to `name`
+    // Change the scale unit for this product to `name`.
     let su = MODEL.addScaleUnit(name);
     if(su !== this.scale_unit) {
       this.scale_unit = su;
@@ -8685,7 +8438,7 @@ class Product extends Node {
   }
   
   get productPositionClusters() {
-    // Returns the list of ALL clusters in which this product is positioned
+    // Return the list of ALL clusters in which this product is positioned.
     const ppc = [];
     for(let k in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(k)) {
       const c = MODEL.clusters[k];
@@ -8695,17 +8448,14 @@ class Product extends Node {
   }
   
   get toBeBlackBoxed() {
-    // Returns TRUE if this product occurs only in "black box" clusters
-    const ppc = this.productPositionClusters;
-    for(let i = 0; i < ppc.length; i++) {
-      if(!ppc[i].blackBoxed) return false;
-    }
+    // Return TRUE if this product occurs only in "black box" clusters.
+    for(const c of this.productPositionClusters) if(!c.blackBoxed) return false;
     return true;
   }
 
   occursOutsideCluster(c) {
-    // Returns TRUE iff this product has a position in any cluster that is
-    // not `c` nor contained in `c`
+    // Return TRUE iff this product has a position in any cluster that is
+    // not `c` nor contained in `c`.
     for(let k in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(k)) {
       const cc = MODEL.clusters[k];
       if((cc !== c) && !c.containsCluster(cc) && (cc.indexOfProduct(this) >= 0)) {
@@ -8716,17 +8466,17 @@ class Product extends Node {
   }
 
   setPositionInFocalCluster(x=null, y=null) {
-    // Sets X and Y of this product to its position in the focal cluster
+    // Set X and Y of this product to its position in the focal cluster.
     // (OPTIONAL: after changing it to specified values `x` and `y`)
     const i = MODEL.focal_cluster.indexOfProduct(this);
     if(i < 0) return null;
     const pp = MODEL.focal_cluster.product_positions[i];
-    // Set new product position coordinates if specified
+    // Set new product position coordinates if specified.
     if(x && y) {
       pp.x = x;
       pp.y = y;
     }
-    // Set product's X and Y to its position in the focal cluster
+    // Set product's X and Y to its position in the focal cluster.
     this.x = pp.x;
     this.y = pp.y;
     return pp;
@@ -8734,14 +8484,14 @@ class Product extends Node {
 
   movePositionInFocalCluster(dx, dy) {
     // Sets X and Y of this product to its position in the focal cluster
-    // after changing it (relative to current position)
+    // after changing it (relative to current position).
     const i = MODEL.focal_cluster.indexOfProduct(this);
     if(i < 0) return null;
     const pp = MODEL.focal_cluster.product_positions[i];
-    // set new product position coordinates
+    // Set new product position coordinates.
     pp.x += dx;
     pp.y += dy;
-    // set product's X and Y to its position in the focal cluster
+    // Set product's X and Y to its position in the focal cluster.
     this.x = pp.x;
     this.y = pp.y;
     return pp;
@@ -8814,18 +8564,18 @@ class Product extends Node {
     // Add the "balance" constraint for links.
     tex.push(x + sub, '=');
     if(this.is_buffer) {
-      // Insert X[t-1]
+      // Insert X[t-1].
       tex.push(x + '_{' + this.code + (dyn ? ',t-1}' : ',0}'));
     }
     let first = true;
-    for(let i = 0; i < this.inputs.length; i++) {
-      let ltex = this.inputs[i].TEXcode.trim();
+    for(const l of this.inputs) {
+      let ltex = l.TEXcode.trim();
       if(!first && !ltex.startsWith('-')) tex.push('+');
       tex.push(ltex);
       first = false;
     }
-    for(let i = 0; i < this.outputs.length; i++) {
-      let ltex = this.outputs[i].TEXcode.trim();
+    for(const l of this.outputs) {
+      let ltex = l.TEXcode.trim();
       if(ltex.trim().startsWith('-')) {
         if(!first) {
           ltex = ltex.substring(1);
@@ -8866,13 +8616,15 @@ class ProductPosition {
   }
   
   alignToGrid() {
-    const ox = this.x, oy = this.y;
-    const gr = MODEL.grid_pixels;
-    this.x = Math.round((this.x + 0.49999999*gr) / gr) * gr;
-    this.y = Math.round((this.y + 0.49999999*gr) / gr) * gr;
+    const
+        ox = this.x,
+        oy = this.y;
+    this.x = MODEL.aligned(this.x);
+    this.y = MODEL.aligned(this.y);
     this.product.x = this.x;
     this.product.y = this.y;
-    return Math.abs(this.x - ox) > VM.NEAR_ZERO || Math.abs(this.y - oy) > VM.NEAR_ZERO;
+    return Math.abs(this.x - ox) > VM.NEAR_ZERO ||
+        Math.abs(this.y - oy) > VM.NEAR_ZERO;
   }
 
 } // END of class ProductPosition
@@ -9341,32 +9093,29 @@ class Dataset {
   }
   
   isWildcardSelector(s) {
-    // Returns TRUE if `s` contains * or ?
-    // NOTE: for equations, the wildcard must be ??
+    // Return TRUE if `s` contains * or ?
+    // NOTE: For equations, the wildcard must be ??
     if(this.dataset === MODEL.equations_dataset) return s.indexOf('??') >= 0;
     return s.indexOf('*') >= 0 || s.indexOf('?') >= 0;
   }
   
   matchingModifiers(l) {
-    // Returns the list of modifiers of this dataset (in order: from most
-    // to least specific) that match with 1 or more elements of `l`
-    const
-        sl = this.selectorList,
-        shared = [];
-    for(let i = 0; i < l.length; i++) {
-      for(let j = 0; j < sl.length; j++) {
-        const m = this.modifiers[UI.nameToID(sl[j])];
-        if(m.match(l[i])) addDistinct(m, shared);
+    // Return the list of modifiers of this dataset (in order: from most
+    // to least specific) that match with 1 or more elements of `l`.
+    const shared = [];
+    for(const sel of l) {
+      for(const s of this.selectorList) {
+        const m = this.modifiers[UI.nameToID(s)];
+        if(m.match(sel)) addDistinct(m, shared);
       }
     }
     return shared;
   }
 
   modifiersAreStatic(l) {
-    // Returns TRUE if expressions for all modifiers in `l` are static
-    // NOTE: `l` may be a list of modifiers or strings
-    for(let i = 0; i < l.length; i++) {
-      let sel = l[i];
+    // Return TRUE if expressions for all modifiers in `l` are static.
+    // NOTE: `l` may be a list of modifiers or strings.
+    for(let sel of l) {
       if(sel instanceof DatasetModifier) sel = sel.selector;
       if(this.modifiers.hasOwnProperty(sel) &&
          !this.modifiers[sel].expression.isStatic) return false;
@@ -9393,11 +9142,10 @@ class Dataset {
     // by a prefixed dataset having the expression value as its default.
     const pml = [];
     if(this !== this.equations_dataset) {
-      const sl = this.plainSelectors;
-      for(let i = 0; i < sl.length; i++) {
-        if(!MODEL.isDimensionSelector(sl[i])) {
+      for(const sel of this.plainSelectors) {
+        if(!MODEL.isDimensionSelector(sel)) {
           const
-              m = this.modifiers[sl[i].toLowerCase()],
+              m = this.modifiers[sel.toLowerCase()],
               x = m.expression;
           // Static expressions without variables can also be used
           // as dataset default value.
@@ -9432,13 +9180,13 @@ class Dataset {
   
   get dataString() {
     // Data is stored simply as semicolon-separated floating point numbers,
-    // with N-digit precision to keep model files compact (default: N = 8)
+    // with N-digit precision to keep model files compact (default: N = 8).
     let d = [];
-    for(let i = 0; i < this.data.length; i++) {
-      // Convert number to string with the desired precision
-      const f = this.data[i].toPrecision(CONFIGURATION.dataset_precision);
+    for(const v of this.data) {
+      // Convert number to string with the desired precision.
+      const f = v.toPrecision(CONFIGURATION.dataset_precision);
       // Then parse it again, so that the number will be represented
-      // (by JavaScript) in the most compact representation
+      // (by JavaScript) in the most compact representation.
       d.push(parseFloat(f));
     }
     return d.join(';');
@@ -9463,12 +9211,7 @@ class Dataset {
   unpackDataString(str) {
     // Convert semicolon-separated data to a numeric array.
     this.data.length = 0;
-    if(str) {
-      const numbers = str.split(';');
-      for(let i = 0; i < numbers.length; i++) {
-        this.data.push(parseFloat(numbers[i]));
-      }
-    }
+    if(str) for(const n of str.split(';')) this.data.push(parseFloat(n));
     this.computeVector();
     this.computeStatistics();
   }
@@ -9507,10 +9250,10 @@ class Dataset {
     this.min = this.data[0];
     this.max = this.data[0];
     let sum = this.data[0];
-    for(let i = 1; i < this.data.length; i++) {
-      this.min = Math.min(this.min, this.data[i]);
-      this.max = Math.max(this.max, this.data[i]);
-      sum += this.data[i];
+    for(const v of this.data) {
+      this.min = Math.min(this.min, v);
+      this.max = Math.max(this.max, v);
+      sum += v;
     }
     // NOTE: Avoid small differences due to numerical imprecision.
     if(this.max - this.min < VM.NEAR_ZERO) {
@@ -9520,8 +9263,8 @@ class Dataset {
     } else {
       this.mean = sum / this.data.length;
       let sumsq = 0;
-      for(let i = 0; i < this.data.length; i++) {
-        sumsq += Math.pow(this.data[i] -  this.mean, 2);
+      for(const v of this.data) {
+        sumsq += Math.pow(v -  this.mean, 2);
       }
       this.standard_deviation = Math.sqrt(sumsq / this.data.length);
     }
@@ -9680,9 +9423,7 @@ class Dataset {
       sl.push(m);
     }
     sl.sort(compareSelectors);
-    for(let i = 0; i < sl.length; i++) {
-      ml.push(this.modifiers[sl[i]].asXML);
-    }
+    for(const sel of sl) ml.push(this.modifiers[sel].asXML);
     // NOTE: "black-boxed" datasets are stored anonymously without comments.
     const id = UI.nameToID(n);
     if(MODEL.black_box_entities.hasOwnProperty(id)) {
@@ -9725,11 +9466,8 @@ class Dataset {
     }
     const n = childNodeByTag(node, 'modifiers');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        const c = n.childNodes[i];
-        if(c.nodeName === 'modifier') {
-          this.addModifier(xmlDecoded(nodeContentByTag(c, 'selector')), c);
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'modifier') {
+        this.addModifier(xmlDecoded(nodeContentByTag(c, 'selector')), c);
       }
     }
     const ds = xmlDecoded(nodeContentByTag(node, 'default-selector'));
@@ -10139,12 +9877,12 @@ class ChartVariable {
   }
 
   setBars(x0, y0, dx, dy, barw) {
-    // Set SVG path for histogram unless variable not visible
+    // Set SVG path for histogram unless variable not visible.
     if(this.visible) {
       const path = [];
       let x = x0;
-      for(let i = 0; i < this.chart.bins; i++) {
-        const barh = this.bin_tallies[i] * dy;
+      for(const tally of this.bin_tallies) {
+        const barh = tally * dy;
         path.push('M', x, ',', y0, 'l0,-', barh, 'l', barw, ',0l0,', barh, 'Z');
         x += dx;
       }
@@ -10195,9 +9933,7 @@ class Chart {
   
   get asXML() {
     let xml = '';
-    for(let i = 0; i < this.variables.length; i++) {
-      xml += this.variables[i].asXML;
-    }
+    for(const v of this.variables) xml += v.asXML;
     xml = ['<chart', (this.histogram ? ' histogram="1"' : ''),
         (this.show_title ? ' show-title="1"' : ''),
         '><title>', xmlEncoded(this.title),
@@ -10217,37 +9953,27 @@ class Chart {
     this.bins = safeStrToInt(nodeContentByTag(node, 'bins'), 20);
     this.legend_position = nodeContentByTag(node, 'legend-position');
     this.variables.length = 0;
-    let v,
-        c,
-        n = childNodeByTag(node, 'variables');
+    const n = childNodeByTag(node, 'variables');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'chart-variable') {
-          v = new ChartVariable(this);
-          // NOTE: variable may refer to deleted entity => do not add
-          if(v.initFromXML(c)) this.variables.push(v);
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'chart-variable') {
+        const v = new ChartVariable(this);
+        // NOTE: Variable may refer to deleted entity => do not add.
+        if(v.initFromXML(c)) this.variables.push(v);
       }
     }
   }
   
   variableIndexByName(n) {
-    for(let i = 0; i < this.variables.length; i++) {
-      if(this.variables[i].displayName === n) return i;
+    for(let index = 0; index < this.variables.length; index++) {
+      if(this.variables[index].displayName === n) return index;
     }
     return -1;
   }
     
   get nextAvailableDefaultColor() {
     const cl = [];
-    for(let i = 0; i < this.variables.length; i++) {
-      cl.push(this.variables[i].color);
-    }
-    for(let i = 0; i < UI.chart_colors.length; i++) {
-      const c = UI.chart_colors[i];
-      if(cl.indexOf(c) < 0) return c;
-    }
+    for(const v of this.variables) cl.push(v.color);
+    for(const c of UI.chart_colors) if(cl.indexOf(c) < 0) return c;
     return '#c00000';
   }
 
@@ -10298,21 +10024,21 @@ class Chart {
     // in the wildcard vector set of the expression that are indicated
     // by the list `indices`.
     const dn = dsm.displayName;
-    for(let i = 0; i < indices.length; i++) {
+    for(const index of indices) {
       const v = new ChartVariable(this);
       v.setProperties(dsm,  dn, false, this.nextAvailableDefaultColor);
-      v.wildcard_index = parseInt(indices[i]);
+      v.wildcard_index = parseInt(index);
       this.variables.push(v);
     }    
   }
 
   addSVG(lines) {
-    // Appends a string or an array of strings to the SVG
+    // Append a string or an array of strings to the SVG.
     this.svg += (lines instanceof Array ? lines.join('') : lines);
   }
   
   addText(x, y, text, fill='black', fsize=16, attr = '') {
-    // Appends a text element to the SVG
+    // Append a text element to the SVG.
     this.addSVG(['<text x="', x, '" y="', y,
         '" font-size="', fsize, 'px" fill="', fill, '" ', attr,
         ' dominant-baseline="middle" stroke="none" pointer-events="none">',
@@ -10320,23 +10046,23 @@ class Chart {
   }
 
   inferTimeScale() {
-    // Time scale follows either from selected experiment runs or from model
+    // Time scale follows either from selected experiment runs or from model.
     const
         selx = EXPERIMENT_MANAGER.selected_experiment,
         runs = EXPERIMENT_MANAGER.selectedRuns(this);
     if(runs.length > 0) {
-      // NOTE: runs may have different time scales; the longest TIME
+      // NOTE: Runs may have different time scales; the longest TIME
       // (i.e., time steps * delta-t) determines the number of time steps to
-      // display, while the shortest delta-t detemines the time resolution
+      // display, while the shortest delta-t detemines the time resolution.
       this.time_horizon = 0;
       this.time_scale = 1000000;
-      for(let j = 0; j < runs.length; j++) {
-        const r = selx.runs[runs[j]];
+      for(const run of runs) {
+        const r = selx.runs[run];
         this.time_scale = Math.min(this.time_scale, r.time_step_duration);
         this.time_horizon = Math.max(this.time_horizon,
             r.time_step_duration * r.time_steps);
       }
-      // Experiment runs always start at t = 1
+      // Experiment runs always start at t = 1.
       this.total_time_steps = Math.ceil(this.time_horizon / this.time_scale);
     } else {
       // No runs? then use the model's time scale and simulation period
@@ -10355,8 +10081,7 @@ class Chart {
     const
         lsv = [],
         lss = [];
-    for(let i = 0; i < this.variables.length; i++) {
-      const cv = this.variables[i];
+    for(const cv of this.variables) {
       if(cv.visible && cv.sorted.endsWith('-lead')) {
         lsv.push(cv.vector);
         lss.push(cv.sorted.startsWith('asc') ? 1 : -1);
@@ -10369,7 +10094,7 @@ class Chart {
     this.time_step_numbers.sort((a, b) => {
         let c = 0;
         for(let i = 0; c === 0 && i < lsv.length; i++) {
-          // Multiply by `lss` (lead sort sign), which will be + 1 for
+          // Multiply by `lss` (lead sort sign), which will be +1 for
           // ascending order and -1 for descending order.
           c = (lsv[i][a] - lsv[i][b]) * lss[i];
         }
@@ -10378,37 +10103,35 @@ class Chart {
   }
   
   resetVectors() {
-    // Empties the vector arrays of all variables
-    for(let i = 0; i < this.variables.length; i++) {
-      const v = this.variables[i];
+    // Empty the vector arrays of all variables.
+    for(const v of this.variables) {
       v.vector.length = 0;
       v.line_path = '';
     }
-    // NOTE: set the number of time steps to the simulation period, as this
-    // property is used by chart variables to adjust their vector length
+    // NOTE: Set the number of time steps to the simulation period, as this
+    // property is used by chart variables to adjust their vector length.
     this.inferTimeScale();
   }
   
   labelStep(range, max_labels, min_step) {
-    // Returns the first "clean" step size (decimal number starting
-    // with 1, 2 or 5) that divides `range` in `max_labels` intervals
-    // NOTE: `min_step` may be small, but must me non-negative
-    const steps = [1, 2, 5];
+    // Return the first "clean" step size (decimal number starting
+    // with 1, 2 or 5) that divides `range` in `max_labels` intervals.
+    // NOTE: `min_step` may be small, but must me non-negative.
     let min = range / max_labels,
         minmul = Math.max(VM.NEAR_ZERO, min_step),
         mul = Math.max(minmul, Math.pow(10, Math.floor(Math.log10(min))));
-    // Prevent infinite loop
+    // Prevent infinite loop.
     while(mul < VM.PLUS_INFINITY) {
-      for(let i = 0; i < steps.length; i++) {
-        const step = mul*steps[i];
+      for(const d of [1, 2, 5]) {
+        const step = mul * d;
         if(min < step) {
-          // Return the first "clean" step size
+          // Return the first "clean" step size.
           return step;
         }
       }
       mul *= 10;
     }
-    // Fall-through (should never be reached)
+    // Fall-through (should never be reached).
     return VM.PLUS_INFINITY;
   }
   
@@ -10426,20 +10149,20 @@ class Chart {
     // NOTE: The SVG drawing area is fixed to be 500 pixels high, so that
     // when saved as a file, it will (at 300 dpi) be about 2 inches high.
     // Its width will equal its hight times the W/H-ratio of the chart
-    // container, stretched by factor `sf`
+    // container, stretched by factor `sf`.
     const
         height = CHART_MANAGER.svg_height,
         scale = CHART_MANAGER.container_height / height,
         width = (scale ? CHART_MANAGER.container_width / scale : 1),
-        // Assume a fixed font character size of 16 pixels (fitting 30 lines)
+        // Assume a fixed font character size of 16 pixels (fitting 30 lines).
         font_height = 16,
         font_width = font_height * 0.6,
-        // Preserve 8 pixels margin on all sides
+        // Preserve 8 pixels margin on all sides.
         margin = 8,
         pats = ['dash', 'dot', 'dash_dot', 'long_dash', 'longer_dash',
             'short_dash', 'shorter_dash', 'long_dash_dot', 'even_dash',
             'dot_dot'];
-    // Initialize the SVG with the computed dimensions
+    // Initialize the SVG with the computed dimensions.
     this.svg = ['<svg version="1.1" xmlns="http://www.w3.org/2000/svg"',
         ' xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve"',
         ' font-family="Arial" font-size="', font_height,
@@ -10449,21 +10172,21 @@ class Chart {
         '" viewBox="0 0 ', width, ' ', height, '">',
         //  style="overflow: hidden; position: relative;"
         '<defs>', CHART_MANAGER.fill_patterns, '</defs>'].join('');
-    // NOTE: `rl`, `rt`, `rw` and `rh` define the XY-rectangle for plotting
+    // NOTE: `rl`, `rt`, `rw` and `rh` define the XY-rectangle for plotting.
     let
-        // Assume max. 7 digits for Y-scale numbers
+        // Assume max. 7 digits for Y-scale numbers.
         rl = 7 * font_width + margin,
-        // Assume no legend or title
+        // Assume no legend or title.
         rt = margin,
-        // Reserve 25px extra margin on the right to accomodate larger t-values
+        // Reserve 25px extra margin on the right to accomodate larger t-values.
         rw = width - rl - 25,
-        // Make vertical space for x-axis labels
+        // Make vertical space for x-axis labels.
         rh = height - rt - margin - font_height,
-        // Keep track of the number of visible chart variables
+        // Keep track of the number of visible chart variables.
         vv = 0;
     // Reserve vertical space for title (if shown).
     if(this.show_title) {
-      // NOTE: use title font size 120% of default
+      // NOTE: Use title font size 120% of default.
       const th = 1.2 * font_height + margin;
       rt += th;
       rh -= th;
@@ -10483,16 +10206,16 @@ class Chart {
     }
     if(this.variables.length > 0) {
       // Count visible variables and estimate total width of their names
-      // as well as the width of the longest name
+      // as well as the width of the longest name.
       let w,
           vnw = [],
           lvnw = 0,
           tvnw = 0;
-      for(let i = 0; i < this.variables.length; i++) {
-        // Always calculate and push width (to keep arrays of equal length)
-        w = UI.textSize(this.variables[i].displayName, font_height).width;
+      for(const v of this.variables) {
+        // Always calculate and push width (to keep arrays of equal length).
+        w = UI.textSize(v.displayName, font_height).width;
         vnw.push(w);
-        if(this.variables[i].visible) {
+        if(v.visible) {
           vv++;
           tvnw += w;
           lvnw = Math.max(lvnw, w);
@@ -10508,7 +10231,7 @@ class Chart {
           // Use line spacing 1.5
           leg_height = vv * 1.5 * font_height;
           // Add more space (15 instead of 4) to compensate for the error in
-          // text width calculation (see note where textWidth is defined)
+          // text width calculation (see note where textWidth is defined).
           leg_width = lvnw + sym_size + 15;
           rw -= leg_width - margin;
           leg_left = rl + rw + margin;
@@ -10522,7 +10245,7 @@ class Chart {
             leg_top = rt - margin;
             rt += leg_height + margin;
           } else {
-            // NOTE: font height relates to the numbers along the X-axis
+            // NOTE: Font height relates to the numbers along the X-axis.
             leg_top = rt + rh + 1.5*margin + font_height;
           }
         }
@@ -10532,7 +10255,7 @@ class Chart {
               // Vertical text align is middle, so add half a font height.
               y = leg_top + font_height;
           for(let i = 0; i < this.variables.length; i++) {
-            let v = this.variables[i];
+            const v = this.variables[i];
             if(v.visible) {
               // Add arrow indicating sort direction to name if applicable.
               const vn = v.displayName + CHART_MANAGER.sort_arrows[v.sorted];
@@ -10581,13 +10304,13 @@ class Chart {
         last_step = MODEL.end_period,
         time_steps = this.total_time_steps;
     if(runs.length > 0) {
-      // Adjust time step settings: run results always start at t=1
+      // Adjust time step settings: run results always start at t=1.
       first_step = 1;
       last_step = time_steps;
     }
     
-    // Calculate the range for the Y-axis (over all visible chart variables)
-    // NOTE: let scale start at 0 unless minimum < 0 EXCEPT for a histogram
+    // Calculate the range for the Y-axis (over all visible chart variables).
+    // NOTE: Let scale start at 0 unless minimum < 0 EXCEPT for a histogram.
     let minv = (this.histogram ? VM.PLUS_INFINITY : 0),
         maxv = VM.MINUS_INFINITY;
     const bar_values = {};
@@ -10596,10 +10319,10 @@ class Chart {
       if(v.visible) {
         bar_values[i] = {};
         if(runs.length > 0) {
-          for(let j = 0; j < runs.length; j++) {
-            // NOTE: run index >= 0 makes variables use run results vector,
-            // scaled to the just established chart time scale
-            this.run_index = runs[j];
+          for(const run of runs) {
+            // NOTE: Run index >= 0 makes variables use run results vector,
+            // scaled to the just established chart time scale.
+            this.run_index = run;
             if(stat_bars) {
               const rri = selx.resultIndex(v.displayName);
               let bv;
@@ -10651,12 +10374,12 @@ class Chart {
     // indicates that data is used only to save model results.
     if(!display) return;
     
-    // Define the bins when drawing as histogram
+    // Define the bins when drawing as histogram.
     if(this.histogram) {
       this.value_range = maxv - minv;
       if(this.value_range > VM.NEAR_ZERO) {
         let scalar = 1,
-            // NOTE: use 10% wider range to compute bins
+            // NOTE: Use 10% wider range to compute bins.
             bin_size = 1.1 * this.value_range / this.bins;
         // Scale up until bin size > 1
         while(bin_size < 1) {
@@ -10697,24 +10420,18 @@ class Chart {
         const v = this.variables[i];
         if(v.visible) {
           if(runs.length > 0) {
-            for(let j = 0; j < runs.length; j++) {
-              // NOTE: run index >= 0 makes variables use run results vector
-              this.run_index = runs[j];
+            for(const run of runs) {
+              // NOTE: Run index >= 0 makes variables use run results vector.
+              this.run_index = run;
               v.computeVector();
               v.tallyVector();
-              const bt = v.bin_tallies;
-              for(let j = 0; j < this.bins; j++) {
-                maxv = Math.max(maxv, bt[j]);
-              }
+              maxv = Math.max(...v.bin_tallies);
             }
           } else {
             this.run_index = -1;
             v.computeVector();
             v.tallyVector();
-            const bt = v.bin_tallies;
-            for(let j = 0; j < this.bins; j++) {
-              maxv = Math.max(maxv, bt[j]);
-            }
+            maxv = Math.max(...v.bin_tallies);
           }
         } 
       }
@@ -10769,7 +10486,7 @@ class Chart {
               '" stroke="black" stroke-width="1.5"/>']);
         }
         x = rl + dx;
-        for(let i = 0; i < runs.length; i++) {
+        for(const run of runs) {
           if(vv > 1) {
             this.addSVG(['<line x1="', x, '" y1="', rt + rh,
                 '" x2="', x, '" y2="', rt + rh + 6,
@@ -10777,66 +10494,65 @@ class Chart {
           }
           if(selx.plot_dimensions.length > 0) {
             // Draw run selectors for each plot dimension above each other.
-            const ac = selx.combinations[runs[i]];
+            const ac = selx.combinations[run];
             let pdy = y;
-            for(let j = 0; j < selx.plot_dimensions.length; j++) {
-              this.addText(x - dx / 2, pdy, ac[selx.plot_dimensions[j]]);
+            for(const pd of selx.plot_dimensions) {
+              this.addText(x - dx / 2, pdy, ac[pd]);
               pdy += font_height;
             }
           } else {
             // Draw experiment number in middle of its horizontal area.
-            this.addText(x - dx / 2, y, '#' + runs[i]);
+            this.addText(x - dx / 2, y, '#' + run);
           }
           x += dx;
         }
       } else {
         // Draw the time labels along the horizontal axis.
-        // TO DO: convert to time units if modeler checks this additional option
+        // TO DO: Convert to time units if modeler checks this additional option.
         // Draw the time step duration in bottom-left corner.
         this.addText(1, y, 'dt = ' + this.timeScaleAsString(this.time_scale),
             'black', font_height, 'text-anchor="start"');
-        // Calculate width corresponding to one half time step
+        // Calculate width corresponding to one half time step.
         const half_t = rw * 0.5 / time_steps;
-        // Always display first time step number halfway the first 1 t interval
+        // Always display first time step number halfway the first 1 t interval.
         this.addText(rl + half_t, y, first_step);
-        // Display additional labels only if there are time steps in-between
+        // Display additional labels only if there are time steps in-between.
         if(time_steps > 1) {
-          // Also display the last time step halfway the last 1 t interval
+          // Also display the last time step halfway the last 1 t interval.
           const ets = '' + last_step;
           this.addText(rl + rw - half_t, y, ets);
-          // Maximize the number of labels shown depending on the chart width
-          // NOTE: `ets` is the highest number; use twice its width as divisor
+          // Maximize the number of labels shown depending on the chart width.
+          // NOTE: `ets` is the highest number; use twice its width as divisor.
           const max_labels = Math.floor(rw / (2 * ets.length * font_width));
           // Select the most appropriate increment (with a minimum of 1)
           const step = this.labelStep(time_steps, max_labels, 1);
-          // Calculate the horizontal pixel equivalent of 1 X unit 
+          // Calculate the horizontal pixel equivalent of 1 X unit.
           dx = rw * step / time_steps;
           let fr = first_step / step;
           fr = 1 + Math.floor(fr) - fr;
-          // NOTE: avoid "crowding" of labels near the origin
+          // NOTE: Avoid "crowding" of labels near the origin.
           if(fr < 0.5) fr += 1;
-          // NOTE: add `half_t` to start relative to the middle of the first interval
+          // NOTE: Add `half_t` to start relative to the middle of the first interval.
           let x = rl + half_t + dx * fr,
               t = Math.round(first_step + fr*step);
-          // NOTE: add 1 if step = 2 and first time step is odd
+          // NOTE: Add 1 if step = 2 and first time step is odd.
           if(step == 2 && time_steps % 2 == 1 && t - first_step == 1) {
             t++;
             x += dx / 2;
           }
-          // Also avoid "crowding" near the end of the scale
+          // Also avoid "crowding" near the end of the scale.
           while(t < last_step - 0.5*step) {
             this.addText(x, y, t);
             x += dx;
             t += step;
           }
         }
-        // NOTE: Ignore "stacked" when displaying *multiple* run results
+        // NOTE: Ignore "stacked" when displaying *multiple* run results.
         if(runs.length <= 1) {
-          // Add up the stacked variable vectors to adjust min and max if needed
+          // Add up the stacked variable vectors to adjust min and max if needed.
           const sv = Array(time_steps + 1).fill(0);
-          for(let i = 0; i < this.variables.length; i++) {
-            const v = this.variables[i];
-            // For a *single* experiment run, recompute vector for that run
+          for(const v of this.variables) {
+            // For a *single* experiment run, recompute vector for that run.
             if(runs.length === 1) {
               this.run_index = runs[0];
               v.computeVector();
@@ -10846,8 +10562,8 @@ class Chart {
                 sv[t] += v.vector[t];
               }
             }
-            // NOTE: do this INSIDE the loop, as MIN and MAX of stacked variables
-            // must be calculated on the basis of each line in the stacked chart
+            // NOTE: Do this INSIDE the loop, as MIN and MAX of stacked variables
+            // must be calculated on the basis of each line in the stacked chart.
             for(let t = 0; t < sv.length; t++) {
               const v = sv[t];
               if(!isNaN(v)) {
@@ -10857,10 +10573,10 @@ class Chart {
             }
           }
         }
-        // Ignore minute differences from 0 to prevent unnecessary whitespace
+        // Ignore minute differences from 0 to prevent unnecessary whitespace.
         if(Math.abs(minv) < VM.SIG_DIF_FROM_ZERO) minv = 0;
         if(Math.abs(maxv) < VM.SIG_DIF_FROM_ZERO) maxv = 0;
-        // Extend by 10% on both ends
+        // Extend by 10% on both ends.
         maxv *= (maxv > 0 ? 1.1 : 0.9);
         if(minv < 0) minv *= 1.1;
       }
@@ -10890,7 +10606,7 @@ class Chart {
         }
         // First calculate dy as the vertical distance between labels.
         dy = rh / (labels.length - 1);
-        // Draw labels, starting at lowest Y
+        // Draw labels, starting at lowest Y.
         y = rt + rh;
         x = rl - 5;
         for(let i = 0; i < labels.length; i++) {
@@ -10909,8 +10625,8 @@ class Chart {
         this.addSVG(['<line x1="', x0, '" y1="', rt, '" x2="', x0,
             '" y2="', rt + rh, '" stroke="black" stroke-width="2"/>']);
 
-        // Now draw the chart's data elements
-        // NOTE: `vv` still is the number of visible chart variables
+        // Now draw the chart's data elements.
+        // NOTE: `vv` still is the number of visible chart variables.
         if(vv > 0 && this.histogram) {
           dx = rw / this.bins;
           const
@@ -10921,47 +10637,44 @@ class Chart {
               fsl = CHART_MANAGER.fill_styles.length;
           let mask,
               vnr = 0;
-          for(let i = 0; i < this.variables.length; i++) {
-            const v = this.variables[i];
-            if(v.visible) {
-              if(rcnt > 1) {
-                // Draw bars for each run with a different fill pattern
-                for(let j = 0; j < rcnt; j++) {
-                  // NOTE: run index >= 0 makes variables use run results vector
-                  this.run_index = runs[j];
-                  v.computeVector();
-                  v.tallyVector();
-                  v.setBars(
-                      rl + (vnr*rcnt + j)*(barw + barsp) + (vnr + 0.5)*varsp,
-                      y0, dx, dy, barw);
-                  if(j > 0) {
-                    mask = ' mask="url(#' +
-                        CHART_MANAGER.fill_styles[(j - 1) % fsl] + '-mask)"';
-                  } else {
-                    mask = '';
-                  }
-                  this.addSVG(['<path d="', v.line_path, '" stroke="', v.color,
-                      '" stroke-width="', v.line_width, '" fill="', v.color,
-                      '" fill-opacity="0.55"', mask,
-                      ' pointer-events="none" />']);
-                  if(mask) {
-                    // Draw contour again, as mask is also applied to this line
-                    this.addSVG(['<path d="', v.line_path,
-                        '" stroke="', v.color,
-                        '" stroke-width="', v.line_width,
-                        '" fill="none" pointer-events="none" />']);
-                  }
-                }
-              } else {
-                // No need to re-compute or re-tally vector
-                v.setBars(rl + vnr * (barw + barsp + varsp) + varsp,
+          for(const v of this.variables) if(v.visible) {
+            if(rcnt > 1) {
+              // Draw bars for each run with a different fill pattern.
+              for(let j = 0; j < rcnt; j++) {
+                // NOTE: Run index >= 0 makes variables use run results vector.
+                this.run_index = runs[j];
+                v.computeVector();
+                v.tallyVector();
+                v.setBars(
+                    rl + (vnr*rcnt + j)*(barw + barsp) + (vnr + 0.5)*varsp,
                     y0, dx, dy, barw);
+                if(j > 0) {
+                  mask = ' mask="url(#' +
+                      CHART_MANAGER.fill_styles[(j - 1) % fsl] + '-mask)"';
+                } else {
+                  mask = '';
+                }
                 this.addSVG(['<path d="', v.line_path, '" stroke="', v.color,
                     '" stroke-width="', v.line_width, '" fill="', v.color,
-                    '" fill-opacity="0.4" pointer-events="none" />']);
+                    '" fill-opacity="0.55"', mask,
+                    ' pointer-events="none" />']);
+                if(mask) {
+                  // Draw contour again, as mask is also applied to this line.
+                  this.addSVG(['<path d="', v.line_path,
+                      '" stroke="', v.color,
+                      '" stroke-width="', v.line_width,
+                      '" fill="none" pointer-events="none" />']);
+                }
               }
-              vnr++;
+            } else {
+              // No need to re-compute or re-tally vector.
+              v.setBars(rl + vnr * (barw + barsp + varsp) + varsp,
+                  y0, dx, dy, barw);
+              this.addSVG(['<path d="', v.line_path, '" stroke="', v.color,
+                  '" stroke-width="', v.line_width, '" fill="', v.color,
+                  '" fill-opacity="0.4" pointer-events="none" />']);
             }
+            vnr++;
           }
         } else if(vv > 0 && stat_bars) {
           dx = rw / runs.length;
@@ -10990,18 +10703,17 @@ class Chart {
             }
           }
         } else if(vv > 0) {
-          // Draw areas of stacked variables
+          // Draw areas of stacked variables.
           if(runs.length <= 1) {
-            // Draw the variables that are "stacked" first UNLESS multiple runs
-            // NOTE: as these areas are filled in a semi-transparent color,
+            // Draw the variables that are "stacked" first UNLESS multiple runs.
+            // NOTE: As these areas are filled in a semi-transparent color,
             // their bottom contour is the top contour of the previous area;
             // these cumulative "previous" Y-values are stored in the vector
-            // `offset`
-            // The initial offset is zero for each time step
+            // `offset`.
+            // The initial offset is zero for each time step.
             const offset = Array(time_steps + 2).fill(0);
-            for(let i = 0; i < this.variables.length; i++) {
-              const v = this.variables[i];
-              // Always clear the line path string
+            for(const v of this.variables) {
+              // Always clear the line path string.
               v.line_path = '';
               if(v.visible && v.stacked) {
                 // For a single experiment run, recompute vector for that run
@@ -11023,21 +10735,21 @@ class Chart {
                     vect[i] = v.vector[this.time_step_numbers[i]];
                   }
                 }
-                // NOTE: add x-value to x0, but SUBTRACT y-value from y0!
+                // NOTE: Add x-value to x0, but SUBTRACT y-value from y0!
                 x = x0;
                 y = y0 - vect[0]*dy - offset[0];
-                // Begin with the top contour
+                // Begin with the top contour.
                 const path = ['M', x, ',', y];
                 for(let t = 1; t < vect.length; t++) {
-                  // First draw line to the Y for time step t
+                  // First draw line to the Y for time step t.
                   y = y0 - (vect[t] + offset[t])*dy;
                   path.push(`L${x},${y}`);
-                  // Then move right for the duration of time step t
+                  // Then move right for the duration of time step t.
                   x += dx;
                   path.push(`L${x},${y}`);
                 }
-                // NOTE: store the upper contour path as attribute of the
-                // chart variable
+                // NOTE: Store the upper contour path as attribute of the
+                // chart variable.
                 v.line_path = path.join('');
                 // Now add the path for the bottom contour (= offset) ...
                 for(let t = vect.length - 1; t > 0; t--) {
@@ -11045,31 +10757,30 @@ class Chart {
                   path.push(`L${x},${y}`);
                   x -= dx;
                   path.push(`L${x},${y}`);
-                  // ... while computing the new offset
+                  // ... while computing the new offset.
                   offset[t] += vect[t];
                 }
-                // Draw the filled area with semi-transparent color
+                // Draw the filled area with semi-transparent color.
                 this.addSVG(['<path d="', path.join(''),
                     'z" stroke="none" fill="', v.color,
                     '" fill-opacity="0.35" pointer-events="none"/>']);
               }
             }
           }
-          // Now draw all lines
+          // Now draw all lines.
           let sda;
-          for(let i = 0; i < this.variables.length; i++) {
-            const v = this.variables[i];
+          for(const v of this.variables) {
             if(runs.length > 1) {
-              // Draw a line for each run with a different line pattern
-              for(let j = 0; j < runs.length; j++) {
+              // Draw a line for each run with a different line pattern.
+              for(let i = 0; i < runs.length; i++) {
                 v.line_path = '';
-                // NOTE: run index >= 0 makes variables use run results vector
-                this.run_index = runs[j];
+                // NOTE: Run index >= 0 makes variables use run results vector.
+                this.run_index = runs[i];
                 v.computeVector();
                 v.setLinePath(x0, y0, dx, dy);
-                if(j > 0) {
+                if(i > 0) {
                   sda = '" stroke-dasharray="' +
-                     UI.sda[pats[(j - 1) % pats.length]];
+                     UI.sda[pats[(i - 1) % pats.length]];
                 } else {
                   sda = '';
                 }
@@ -11078,7 +10789,7 @@ class Chart {
                     '" fill="none" fill-opacity="0" pointer-events="none" />']);
               }
             } else {
-              // No need to recompute vector
+              // No need to recompute vector.
               v.setLinePath(x0, y0, dx, dy);
               this.addSVG(['<path d="', v.line_path, '" stroke="', v.color,
                   '" stroke-width="', v.line_width * 2,
@@ -11088,14 +10799,14 @@ class Chart {
         }
       }
     }
-    // Add the SVG disclaimer
+    // Add the SVG disclaimer.
     this.addSVG('Sorry, your browser does not support inline SVG.</svg>');
-    // Insert the SVG into the designated DIV
-    // NOTE: the event listeners on the SVG pass the X position of the cursor,
+    // Insert the SVG into the designated DIV.
+    // NOTE: The event listeners on the SVG pass the X position of the cursor,
     // whether the time step should be displayed, and the offset of the chart
-    // rectangle (in pixel units) within the container
+    // rectangle (in pixel units) within the container.
     CHART_MANAGER.showChartImage(this);
-    // Record and "publish" chart area rectangle properties
+    // Record and "publish" chart area rectangle properties.
     this.chart_area_rect = {top: rt, left: rl, height: rh, width: rw};
   }
 
@@ -11104,17 +10815,14 @@ class Chart {
       return '(chart statistics not calculated yet)';
     }
     const stats = ['Variable\tN\tMin.\tMax.\tMean\tSt.dev.\tSum\t#NZ\t#\u26A0'];
-    for(let i = 0; i < this.variables.length; i++) {
-      const v = this.variables[i];
-      if(v.visible) {
-        // NOTE: tab-separated values
-        stats.push([v.displayName, v.N, v.minimum, v.maximum,
-            v.mean, Math.sqrt(v.variance), v.sum,
-            v.non_zero_tally, v.exceptions].join('\t'));
-      }
+    for(const v of this.variables) if(v.visible) {
+      // NOTE: Tab-separated values.
+      stats.push([v.displayName, v.N, v.minimum, v.maximum,
+          v.mean, Math.sqrt(v.variance), v.sum,
+          v.non_zero_tally, v.exceptions].join('\t'));
     }
     let str = stats.join('\n');
-    // Use decimal comma if so configured
+    // Use decimal comma if so configured.
     if(MODEL.decimal_comma) str = str.replace(/\./g, ',');
     return str;
   }
@@ -11124,77 +10832,69 @@ class Chart {
       return '(chart statistics not calculated yet)';
     }
     // NOTE: Unlike statistics, series data is output in columns.
-    const data = [], vbl = [], line = ['t'];
-    // First line: column labels (variable names, but time step in first column)
-    for(let i = 0; i < this.variables.length; i++) {
-      const v = this.variables[i];
-      if(v.visible) {
-        line.push(v.displayName);
-        vbl.push(v);
-      }
+    const
+        data = [],
+        vbl = [],
+        line = ['t'];
+    // First line: column labels (variable names, but time step in first column).
+    for(const v of this.variables) if(v.visible) {
+      line.push(v.displayName);
+      vbl.push(v);
     }
-    // Use constants to avoid array lookups in potentially long loops
+    // Use constants to avoid array lookups in potentially long loops.
     const n = vbl.length;
     if(n === 0) return '(no data)';
-    // NOTE: tab-separated values
+    // NOTE: Tab-separated values.
     data.push(line.join('\t'));
-    // Assume that all vectors have equal length
+    // Assume that all vectors have equal length.
     const steps = vbl[0].vector.length;
-    // NOTE: add the "absolute" time step on the model time scale
+    // NOTE: Add the "absolute" time step on the model time scale.
     let t = MODEL.start_period - 1;
     for(let i = 0; i < steps; i++) {
       const line = [t];
-      for(let j = 0; j < n; j++) {
-        line.push(vbl[j].vector[i]);
-      }
-      // NOTE: tab-separated values
+      for(const v of vbl) line.push(v.vector[i]);
+      // NOTE: Tab-separated values.
       data.push(line.join('\t'));
       t++;
     }
-    // Return lines as a single string
+    // Return lines as a single string.
     let str = data.join('\n');
-    // Use decimal comma if so configured
+    // Use decimal comma if so configured.
     if(MODEL.decimal_comma) str = str.replace(/\./g, ',');
     return str;
   }
   
   differences(c) {
-    // Return "dictionary" of differences, or NULL if none
+    // Return "dictionary" of differences, or NULL if none.
     const d = differences(this, c, UI.MC.CHART_PROPS);
-    // Check for new and modified variables
-    for(let i = 0; i < this.variables.length; i++) {
+    // Check for new and modified variables.
+    for(const v of this.variables) {
       const
-          v = this.variables[i],
           vn = v.displayName,
           vid = UI.nameToID(vn);
-      let cv = null;
-      for(let j = 0; j < c.variables.length; j++) {
-        if(UI.nameToID(c.variables[j].displayName) === vid) {
-          cv = c.variables[j];
-          break;
-        }
+      let mv = null;
+      for(const cv of c.variables) if(UI.nameToID(cv.displayName) === vid) {
+        mv = cv;
+        break;
       }
-      if(cv) {
-        const diff = v.differences(cv);
+      if(mv) {
+        const diff = v.differences(mv);
         if(diff) d[vid] = [UI.MC.MODIFIED, UI.htmlEquationName(vn), diff];
       } else {
         d[vid] = [UI.MC.ADDED, UI.htmlEquationName(vn)];
       }
     }
-    // Check for deleted variables
-    for(let i = 0; i < c.variables.length; i++) {
+    // Check for deleted variables.
+    for(const cv of c.variables) {
       const
-          cv = c.variables[i],
           cvn = cv.displayName,
           cvid = UI.nameToID(cvn);
-      let v = null;
-      for(let j = 0; j < this.variables.length; j++) {
-        if(UI.nameToID(this.variables[j].displayName) === cvid) {
-          v = this.variables[j];
-          break;
-        }
+      let mv = null;
+      for(const v of this.variables) if(UI.nameToID(v.displayName) === cvid) {
+        mv = v;
+        break;
       }
-      if(!v) d[cvid] = [UI.MC.DELETED, UI.htmlEquationName(cvn)];
+      if(!mv) d[cvid] = [UI.MC.DELETED, UI.htmlEquationName(cvn)];
     }
     if(Object.keys(d).length > 0) return d;
     return null;
@@ -11210,7 +10910,7 @@ class ColorScale {
   }
 
   set(range) {
-    // NOTE: range must be a predefined one, or blank scale is returned 
+    // NOTE: Range must be a predefined one, or blank scale is returned.
     if(['br', 'rb', 'gr', 'rg'].indexOf(range) < 0) {
       this.blank = true;
       this.range = 'no';
@@ -11218,7 +10918,7 @@ class ColorScale {
     }
     this.range = range;
     this.blank = false;
-    // Define palette as string of one-letter color codes and associated RGB
+    // Define palette as string of one-letter color codes and associated RGB.
     const palette = 'bgrwy',
           colors = [
             [ 46, 134, 222], // blue = 0
@@ -11236,8 +10936,8 @@ class ColorScale {
   }
   
   rgb(n) {
-    // Return RGB color for normalized value n
-    // NOTE: return empty string if no predefined color scale
+    // Return RGB color for normalized value `n`.
+    // NOTE: Return empty string if no predefined color scale.
     if(this.blank) return '';
     const a = [];
     if(n < 0.5) {
@@ -11277,6 +10977,7 @@ class ActorSelector {
   }
   
 } // END of class ActorSelector
+
 
 // CLASS ExperimentRunResult
 class ExperimentRunResult {
@@ -11447,16 +11148,19 @@ class ExperimentRunResult {
   }
 
   get vectorString() {
-    // Vector is stored as semicolon-separated floating point numbers
+    // Vector is coded as semicolon-separated floating point numbers
     // reduced to N-digit precision to keep model files more compact.
     // By default, N = 6; this can be altered in linny-r-config.js.
+    // To represent "sparse" vectors more compactly, sequences of
+    // identical values are encoded as NxF where N is the length of
+    // the sequence and F the numerical value, e.g., "17x0.4;0.2;7x0"
     if(this.was_ignored) return '';
-    let v = [],
-        prev = '',
+    let prev = '',
         cnt = 1;
-    for(let i = 0; i < this.vector.length; i++) {
+    const vl = [];
+    for(const v of this.vector) {
       // Format number with desired precision.
-      const f = this.vector[i].toPrecision(CONFIGURATION.results_precision);
+      const f = v.toPrecision(CONFIGURATION.results_precision);
       // While value is same as previous, do not store, but count.
       if(f === prev) {
         cnt++;
@@ -11464,10 +11168,10 @@ class ExperimentRunResult {
         if(cnt > 1) {
           // More than one => "compress".
           // NOTE: Parse so JavaScript will represent it most compactly.
-          v.push(cnt + 'x' + parseFloat(prev));
+          vl.push(cnt + 'x' + parseFloat(prev));
           cnt = 1;
         } else if(prev) {
-          v.push(parseFloat(prev));
+          vl.push(parseFloat(prev));
         }
         prev = f;
       }
@@ -11476,30 +11180,29 @@ class ExperimentRunResult {
     if(cnt > 1) {
       // More than one => "compress".
       // NOTE: Parse so JavaScript will represent it most compactly.
-      v.push(cnt + 'x' + parseFloat(prev));
+      vl.push(cnt + 'x' + parseFloat(prev));
       cnt = 1;
     } else if(prev) {
-      v.push(parseFloat(prev));
+      vl.push(parseFloat(prev));
     }
-    return v.join(';');
+    return vl.join(';');
   }
   
   unpackVectorString(str) {
     // Convert semicolon-separated data to a numeric array.
     this.vector = [];
     if(str && !this.was_ignored) {
-      const numbers = str.split(';');
-      for(let i = 0; i < numbers.length; i++) {
-        const tpl = numbers[i].split('x');
-        if(tpl.length === 2) {
+      for(const parts of str.split(';')) {
+        const tuple = parts.split('x');
+        if(tuple.length === 2) {
           const
-              n = parseInt(tpl[0]),
-              f = parseFloat(tpl[1]);
+              n = parseInt(tuple[0]),
+              f = parseFloat(tuple[1]);
           for(let i = 0; i < n; i++) {
             this.vector.push(f);
           }
         } else {
-          this.vector.push(parseFloat(tpl[0]));
+          this.vector.push(parseFloat(tuple[0]));
         }
       }
     }
@@ -11638,16 +11341,13 @@ class ExperimentRun {
   }
 
   get asXML() {
-    // NOTE: do not save runs without results
+    // NOTE: Do not save runs without results.
     if(this.results.length === 0) return '';
     let r = '';
-    for(let i = 0; i < this.results.length; i++) {
-      r += this.results[i].asXML;
-    }
+    for(const res of this.results) r += res.asXML;
     let bm = '';
-    for(let i = 0; i < this.block_messages.length; i++) {
-      bm += this.block_messages[i].asXML;
-    }    return ['<experiment-run number="', this.number,
+    for(const msg of this.block_messages) bm += msg.asXML;
+    return ['<experiment-run number="', this.number,
         '" started="', this.time_started,
         '" recorded="', this.time_recorded,
         '"><x-title>', xmlEncoded(this.experiment.title),
@@ -11663,33 +11363,26 @@ class ExperimentRun {
     this.time_started = safeStrToInt(nodeParameterValue(node, 'started'));
     this.time_recorded = safeStrToInt(nodeParameterValue(node, 'recorded'));
     const t = xmlDecoded(nodeContentByTag(node, 'x-title'));
-    // NOTE: for sensitivity analysis runs, the experiment title is undefined 
+    // NOTE: For sensitivity analysis runs, the experiment title is undefined.
     if(t != this.experiment.title) {
       UI.warn(`Run title "${t}" does not match experiment title "` +
           this.experiment.title + '"');
     }
     this.time_steps = safeStrToInt(nodeContentByTag(node, 'time-steps'));
     this.time_step_duration = safeStrToFloat(nodeContentByTag(node, 'delta-t'));
-    let c, n = childNodeByTag(node, 'results');
+    let n = childNodeByTag(node, 'results');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'run-result') {
-          this.results.push(new ExperimentRunResult(this, c));
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'run-result') {
+        this.results.push(new ExperimentRunResult(this, c));
       }
     }
     n = childNodeByTag(node, 'messages');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'block-msg') {
-          this.block_messages.push(new BlockMessages(c));
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'block-msg') {
+        this.block_messages.push(new BlockMessages(c));
       }
     }
-    for(let i = 0; i < this.block_messages.length; i++) {
-      const bm = this.block_messages[i];
+    for(const bm of this.block_messages) {
       this.warning_count += bm.warningCount;
       this.solver_seconds += bm.solver_secs;
     }
@@ -11701,18 +11394,14 @@ class ExperimentRun {
     this.time_step_duration = MODEL.timeStepDuration;
     // Reset each output chart to achieve that all chart variables will
     // be recomputed for the current model settings.
-    for(let i = 0; i < this.experiment.charts.length; i++) {
-      this.experiment.charts[i].resetVectors();
-    }
+    for(const c of this.experiment.charts) c.resetVectors();
     // Calculate number of vectors/outcomes/equations to store.
     this.oc_list = MODEL.outcomes;
     // NOTE: All equations are also considered to be outcomes EXCEPT
     // methods (selectors starting with a colon).
     this.eq_list = [];
     const eml = Object.keys(MODEL.equations_dataset.modifiers);
-    for(let i = 0; i < eml.length; i++) {
-      if(!eml[i].startsWith(':')) this.eq_list.push(eml[i]);
-    }
+    for(const em of eml) if(!em.startsWith(':')) this.eq_list.push(em);
     const
         cv = this.experiment.variables.length,
         oc = this.oc_list.length,
@@ -11794,12 +11483,12 @@ class ExperimentRun {
     // they can be viewed when an experiment run is selected in the viewer.
     this.warning_count = 0;
     this.solver_seconds = 0;
-    for(let i = 0; i < VM.messages.length; i++) {
+    for(let b = 0; b < VM.messages.length; b++) {
       const bm = new BlockMessages();
-      bm.block_number = i;
-      bm.solver_time = VM.solver_times[i];
-      bm.solver_secs = VM.solver_secs[i];
-      bm.messages = VM.messages[i];
+      bm.block_number = b;
+      bm.solver_time = VM.solver_times[b];
+      bm.solver_secs = VM.solver_secs[b];
+      bm.messages = VM.messages[b];
       this.block_messages.push(bm);
       this.warning_count += bm.warningCount;
       // NOTE: When set by the VM, `solver_secs` is a string.
@@ -11809,9 +11498,7 @@ class ExperimentRun {
   
   resetScaledVectors() {
     // Set the vectors with scaled run results to NULL so they will recompute. 
-    for(let i = 0; i < this.results.length; i++) {
-      this.results[i].resetScaledVectors();
-    }
+    for(const r of this.results) r.resetScaledVectors();
   }
 
 } // END of class ExperimentRun
@@ -11852,28 +11539,28 @@ class Experiment {
     this.excluded_selectors = '';
     this.clusters_to_ignore = [];
     this.runs = [];
-    // NOTE: the properties below are NOT saved in model file, but persist
+    // NOTE: The properties below are NOT saved in model file, but persist
     // during a modeling session so that the modeler can switch between
     // experiments in the viewer without losing the viewer settings for this
-    // experiment
+    // experiment.
     this.reference_configuration = 0;
     this.selected_variable = '';
     this.selected_statistic = 'mean';
     this.selected_scale = 'val';
     this.selelected_color_scale = 'no';
     this.active_combination_index = -1;
-    // Set of combination indices to be displayed in chart
+    // Set of combination indices to be displayed in chart.
     this.chart_combinations = [];
-    // String to store original model settings while executing experiment runs
+    // String to store original model settings while executing experiment runs.
     this.original_model_settings = '';
-    // NOTE: clearRuns adds some more properties -- see below
+    // NOTE: clearRuns adds some more properties -- see below.
     this.clearRuns();
   }
   
   clearRuns() {
     // NOTE: separated from basic initialization so that it can be called
-    // when the modeler clicks on the "Clear results" button
-    // @@TO DO: prepare for UNDO
+    // when the modeler clicks on the "Clear results" button.
+    // @@TO DO: prepare for UNDO.
     this.runs.length = 0;
     this.single_run = -1;
     this.completed = false;
@@ -11884,30 +11571,28 @@ class Experiment {
   }
 
   resetScaledVectors() {
-    // Sets the scaled results vectors to NULL for all runs 
-    for(let i = 0; i < this.runs.length; i++) {
-      this.runs[i].resetScaledVectors();
-    }
+    // Set the scaled results vectors to NULL for all runs.
+    for(const r of this.runs) r.resetScaledVectors();
   }
 
   get type() {
-    // Behave like an entity w.r.t. documentation
+    // Behave like an entity w.r.t. documentation.
     return 'Experiment';
   }
   
   get displayName() {
-    // Behave like an entity w.r.t. documentation
+    // Behave like an entity w.r.t. documentation.
     return this.title;
   }
   
   get activeCombination() {
-    // Returns the list of active selectors
+    // Return the list of active selectors.
     if(this.active_combination_index < 0) return [];
     return this.combinations[this.active_combination_index];
   }
   
   get iteratorRangeString() {
-    // Returns the iterator ranges as "from,to" pairs separated by |
+    // Return the iterator ranges as "from,to" pairs separated by |
     const ir = [];
     for(let i = 0; i < 3; i++) {
       ir.push(this.iterator_ranges[i].join(','));
@@ -11916,23 +11601,23 @@ class Experiment {
   }
   
   parseIteratorRangeString(s) {
-    // Parses `s` as "from,to" pairs, ignoring syntax errors
+    // Parse `s` as "from,to" pairs, ignoring syntax errors.
     if(s) {
       const ir = s.split('|');
-      // Add 2 extra substrings to have at least 3
+      // Add 2 extra substrings to have at least 3.
       ir.push('', '');
       for(let i = 0; i < 3; i++) {
         const r = ir[i].split(',');
-        // Likewise add extra substring to have at least 2
+        // Likewise add extra substring to have at least 2.
         r.push('');
-        // Parse integers, defaulting to 0
+        // Parse integers, defaulting to 0.
         this.iterator_ranges[i] = [safeStrToInt(r[0], 0), safeStrToInt(r[1], 0)];
       }
     }
   }
   
   updateIteratorDimensions() {
-    // Create iterator selectors for each index variable having a relevant range
+    // Create iterator selectors for each index variable having a relevant range.
     this.iterator_dimensions = [];
     const il = ['i', 'j', 'k'];
     for(let i = 0; i < 3; i++) {
@@ -11941,7 +11626,7 @@ class Experiment {
         const
             sel = [],
             k = il[i] + '=';
-        // NOTE: iterate from FROM to TO limit also when FROM > TO
+        // NOTE: Iterate from FROM to TO limit also when FROM > TO.
         if(r[0] <= r[1]) {
           for(let j = r[0]; j <= r[1]; j++) {
             sel.push(k + j);
@@ -11957,26 +11642,24 @@ class Experiment {
   }
   
   matchingCombinationIndex(sl) {
-    // Returns index of combination with most selectors in common with `sl`
+    // Return index of combination with most selectors in common with `sl`.
     let high = 0,
         index = false;
-    // NOTE: results of current run are not available yet, hence length-1
-    for(let i = 0; i < this.active_combination_index; i++) {
-      const l = intersection(sl, this.combinations[i]).length;
+    // NOTE: Results of current run are not available yet, hence length-1.
+    for(let ci = 0; ci < this.active_combination_index; ci++) {
+      const l = intersection(sl, this.combinations[ci]).length;
       if(l > high) {
         high = l;
-        index = i;
+        index = ci;
       }
     }
-    // No matching selectors => return FALSE
+    // NOTE: If no matching selectors, return value is FALSE.
     return index;
   }
   
   isDimensionSelector(s) {
-    // Returns TRUE if `s` is a dimension selector in this experiment
-    for(let i = 0; i < this.dimensions.length; i++) {
-      if(this.dimensions[i].indexOf(s) >= 0) return true;
-    }
+    // Return TRUE if `s` is a dimension selector in this experiment.
+    for(const dim of this.dimensions) if(dim.indexOf(s) >= 0) return true;
     if(this.settings_selectors.indexOf(s) >= 0) return true;
     if(this.combination_selectors.indexOf(s) >= 0) return true;
     if(this.actor_selectors.indexOf(s) >= 0) return true;
@@ -11985,48 +11668,41 @@ class Experiment {
   
   get asXML() {
     let d = '';
-    for(let i = 0; i < this.dimensions.length; i++) {
-      d += `<dim>${xmlEncoded(this.dimensions[i].join(','))}</dim>`;
+    for(const dim of this.dimensions) {
+      d += `<dim>${xmlEncoded(dim.join(','))}</dim>`;
     }
     let ct = '';
-    for(let i = 0; i < this.charts.length; i++) {
-      ct += `<chart-title>${xmlEncoded(this.charts[i].title)}</chart-title>`;
+    for(const c of this.charts) {
+      ct += `<chart-title>${xmlEncoded(c.title)}</chart-title>`;
     }
     let ss = '';
-    for(let i = 0; i < this.settings_selectors.length; i++) {
-      ss += `<ssel>${xmlEncoded(this.settings_selectors[i])}</ssel>`;
+    for(const sel of this.settings_selectors) {
+      ss += `<ssel>${xmlEncoded(sel)}</ssel>`;
     }
     let sd = '';
-    for(let i = 0; i < this.settings_dimensions.length; i++) {
-      const dim =
-          `<sdim>${xmlEncoded(this.settings_dimensions[i].join(','))}</sdim>`;
+    for(const s of this.settings_dimensions) {
+      const dim = `<sdim>${xmlEncoded(s.join(','))}</sdim>`;
       if(sd.indexOf(dim) < 0) sd += dim;
     }
     let cs = '';
-    for(let i = 0; i < this.combination_selectors.length; i++) {
-      cs += `<csel>${xmlEncoded(this.combination_selectors[i])}</csel>`;
+    for(const s of this.combination_selectors) {
+      cs += `<csel>${xmlEncoded(s)}</csel>`;
     }
     let cd = '';
-    for(let i = 0; i < this.combination_dimensions.length; i++) {
-      const dim =
-          `<cdim>${xmlEncoded(this.combination_dimensions[i].join(','))}</cdim>`;
+    for(const d of this.combination_dimensions) {
+      const dim = `<cdim>${xmlEncoded(d.join(','))}</cdim>`;
       if(cd.indexOf(dim) < 0) cd += dim;
     }
     let as = '';
-    for(let i = 0; i < this.actor_selectors.length; i++) {
-      as += this.actor_selectors[i].asXML;
-    }
+    for(const s of this.actor_selectors) as += s.asXML;
     let cti = '';
-    for(let i = 0; i < this.clusters_to_ignore.length; i++) {
-      const cs = this.clusters_to_ignore[i];
+    for(const cs of this.clusters_to_ignore) {
       cti += '<cluster-to-ignore><cluster>' + xmlEncoded(cs.cluster.displayName) +
           '</cluster><selectors>' + xmlEncoded(cs.selectors) +
           '</selectors></cluster-to-ignore>';
     }
     let r = '';
-    for(let i = 0; i < this.runs.length; i++) {
-      r += this.runs[i].asXML;
-    }
+    for(const run of this.runs) r += run.asXML;
     return ['<experiment configuration-dims="', this.configuration_dims,
       '" column_scenario-dims="', this.column_scenario_dims,
       (this.completed ? '" completed="1' : ''),
@@ -12067,7 +11743,7 @@ class Experiment {
     this.completed = nodeParameterValue(node, 'completed') === '1';
     this.time_started = safeStrToInt(nodeParameterValue(node, 'started'));
     this.time_stopped = safeStrToInt(nodeParameterValue(node, 'stopped'));
-    // Restore last download dialog settings for this experiment 
+    // Restore last download dialog settings for this experiment.
     this.download_settings = {
         variables: nodeParameterValue(node, 'variables') || 'selected',
         runs: nodeParameterValue(node, 'runs') || 'selected',
@@ -12081,195 +11757,164 @@ class Experiment {
       };
     this.title = xmlDecoded(nodeContentByTag(node, 'title'));
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
-    let c, n = childNodeByTag(node, 'dimensions');
+    let n = childNodeByTag(node, 'dimensions');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'dim') {
-          this.dimensions.push(xmlDecoded(nodeContent(c)).split(','));
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'dim') {
+        this.dimensions.push(xmlDecoded(nodeContent(c)).split(','));
       }
     }
     n = nodeContentByTag(node, 'plot-dimensions');
     if(n) {
       this.plot_dimensions = n.split(',');
+      // NOTE: String parts must be converted to integers.
       for(let i = 0; i < this.plot_dimensions.length; i++) {
         this.plot_dimensions[i] = parseInt(this.plot_dimensions[i]);
       }
     }
     n = childNodeByTag(node, 'chart-titles');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'chart-title') {
-          const ci = MODEL.indexOfChart(xmlDecoded(nodeContent(c)));
-          // Double-check: only add existing charts
-          if(ci >= 0) this.charts.push(MODEL.charts[ci]);
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'chart-title') {
+        const ci = MODEL.indexOfChart(xmlDecoded(nodeContent(c)));
+        // Double-check: only add existing charts.
+        if(ci >= 0) this.charts.push(MODEL.charts[ci]);
       }
     }
     n = childNodeByTag(node, 'settings-selectors');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'ssel') {
-          this.settings_selectors.push(xmlDecoded(nodeContent(c)));
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'ssel') {
+        this.settings_selectors.push(xmlDecoded(nodeContent(c)));
       }
     }
     n = childNodeByTag(node, 'settings-dimensions');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'sdim') {
-          this.settings_dimensions.push(xmlDecoded(nodeContent(c)).split(','));
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'sdim') {
+        this.settings_dimensions.push(xmlDecoded(nodeContent(c)).split(','));
       }
     }
     n = childNodeByTag(node, 'combination-selectors');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'csel') {
-          this.combination_selectors.push(xmlDecoded(nodeContent(c)));
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'csel') {
+        this.combination_selectors.push(xmlDecoded(nodeContent(c)));
       }
     }
     n = childNodeByTag(node, 'combination-dimensions');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'cdim') {
-          this.combination_dimensions.push(xmlDecoded(nodeContent(c)).split(','));
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'cdim') {
+        this.combination_dimensions.push(xmlDecoded(nodeContent(c)).split(','));
       }
     }
     n = childNodeByTag(node, 'actor-selectors');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'asel') {
-          const as = new ActorSelector();
-          as.initFromXML(c);
-          this.actor_selectors.push(as);
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'asel') {
+        const as = new ActorSelector();
+        as.initFromXML(c);
+        this.actor_selectors.push(as);
       }
     }
-    this.excluded_selectors = xmlDecoded(
-        nodeContentByTag(node, 'excluded-selectors'));
+    this.excluded_selectors = xmlDecoded(nodeContentByTag(node, 'excluded-selectors'));
     n = childNodeByTag(node, 'clusters-to-ignore');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'cluster-to-ignore') {
-          const
-            cdn = xmlDecoded(nodeContentByTag(c, 'cluster')),
-            cl = MODEL.objectByName(cdn);
-          if(cl) {
-            this.clusters_to_ignore.push({cluster: cl,
-                selectors: xmlDecoded(nodeContentByTag(c, 'selectors'))
-              });
-          } else {
-            UI.warn(`Unknown cluster set to ignore: "${cdn}"`);
-          }
+      for(const c of n.childNodes) if(c.nodeName === 'cluster-to-ignore') {
+        const
+          cdn = xmlDecoded(nodeContentByTag(c, 'cluster')),
+          cl = MODEL.objectByName(cdn);
+        if(cl) {
+          this.clusters_to_ignore.push({cluster: cl,
+              selectors: xmlDecoded(nodeContentByTag(c, 'selectors'))
+            });
+        } else {
+          UI.warn(`Unknown cluster set to ignore: "${cdn}"`);
         }
       }
     }
     n = childNodeByTag(node, 'runs');
     if(n && n.childNodes) {
-      for(let i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'experiment-run') {
-          const xr = new ExperimentRun(this, i);
-          xr.initFromXML(c);
-          this.runs.push(xr);
-        }
+      let r = 0;
+      for(const c of n.childNodes) if(c.nodeName === 'experiment-run') {
+        const xr = new ExperimentRun(this, r);
+        xr.initFromXML(c);
+        this.runs.push(xr);
+        r++;
       }
     }
   }
   
   hasDimension(d) {
-    // Returns dimension index if any dimension contains any selector in
-    // dimension `d`, or -1 otherwise
-    for(let i = 0; i < this.dimensions.length; i++) {
-      const xd = this.dimensions[i].slice();
+    // Return dimension index if any dimension contains any selector in
+    // dimension `d`, or -1 otherwise.
+    for(let index = 0; index < this.dimensions.length; index++) {
+      const xd = this.dimensions[index].slice();
       this.expandCombinationSelectors(xd);
-      if(intersection(xd, d).length > 0) return i;
+      if(intersection(xd, d).length > 0) return index;
     }
     return -1;
   }
   
   removeDimension(d) {
-    // Removes dimension `d` from list and returns its old index
-    for(let i = 0; i < this.dimensions.length; i++) {
-      if(intersection(this.dimensions[i], d).length > 0) {
-        this.dimensions.splice(i, 1);
-        return i;
+    // Remove dimension `d` from list and return its old index.
+    for(let index = 0; index < this.dimensions.length; index++) {
+      if(intersection(this.dimensions[index], d).length > 0) {
+        this.dimensions.splice(index, 1);
+        return index;
       }
     }
     return -1;
   }
 
   reduceDimension(d) {
-    // Reduces dimension that includes `d` to `d`, and returns its old index
-    for(let i = 0; i < this.dimensions.length; i++) {
-      const sl = intersection(this.dimensions[i], d);
+    // Reduce dimension that includes `d` to just `d`, and return its old index.
+    for(let index = 0; index < this.dimensions.length; index++) {
+      const sl = intersection(this.dimensions[index], d);
       if(sl.length > 0) {
-        this.dimensions[i] = sl;
-        return i;
+        this.dimensions[index] = sl;
+        return index;
       }
     }
     return -1;
   }
 
   updateActorDimension() {
-    // Remove actor dimension (if in the list)
+    // Remove actor dimension (if in the list).
     let adi = -1;
     if(this.actor_dimensions.length > 0) {
       adi = this.hasDimension(this.actor_dimensions[0]);
     }
-    // Infer new actor dimension (all actor selectors)
+    // Infer new actor dimension (all actor selectors).
     this.actor_dimensions.length = 0;
     if(this.actor_selectors.length > 0) {
       const d = [];
-      for(let i = 0; i < this.actor_selectors.length; i++) {
-        d.push(this.actor_selectors[i].selector);
-      }
+      for(const as of this.actor_selectors) d.push(as.selector);
       this.actor_dimensions.push(d);
-      // If actor dimension was in dimension list, replace it by the new one
+      // If actor dimension was in dimension list, replace it by the new one.
       if(adi >= 0) this.dimensions[adi] = d;
     }
   }
   
   get allDimensionSelectors() {
     const sl = Object.keys(MODEL.listOfAllSelectors);
-    // Add selectors of actor, iterator and settings dimensions
+    // Add selectors of actor, iterator and settings dimensions.
     return sl;
   }
 
   orthogonalSelectors(c) {
-    // Returns TRUE iff the selectors in set `c` all are elements of
-    // different experiment dimensions
+    // Return TRUE iff the selectors in set `c` all are elements of
+    // different experiment dimensions.
     const
-        // Make a copy of `c` so it can be safely expanded
+        // Make a copy of `c` so it can be safely expanded.
         xc = c.slice(),
-        // Start with a copy of all model dimensions
+        // Start with a copy of all model dimensions.
         dl = MODEL.dimensions.slice(),
         issues = [];
-    // Add dimensions defined for this experiment
-    for(let i = 0; i < this.settings_dimensions.length; i++) {
-      dl.push(this.settings_dimensions[i]);
-    }
-    for(let i = 0; i < this.actor_dimensions.length; i++) {
-      dl.push(this.actor_dimensions[i]);
-    }
-    // Expand `c` as it may contain combination selectors
+    // Add dimensions defined for this experiment.
+    for(const d of this.settings_dimensions) dl.push(d);
+    for(const d of this.actor_dimensions) dl.push(d);
+    // Expand `c` as it may contain combination selectors.
     this.expandCombinationSelectors(xc);
     // Check for all these dimensions that `c` contains known selectors
-    // and that no two or more selectors occur in the same dimension
+    // and that no two or more selectors occur in the same dimension.
     let unknown = xc.slice();
-    for(let i = 0; i < dl.length; i++) {
-      const idc = intersection(dl[i], xc);
+    for(const d of dl) {
+      const idc = intersection(d, xc);
       unknown = complement(unknown, idc);
       if(idc.length > 1) {
         const pair = idc.join(' & ');
@@ -12296,22 +11941,22 @@ class Experiment {
     // selector defined as C1 = (B, C2) with A and B being "normal"
     // selectors, then C1 must be removed from `cs`, while B and the
     // expansion of C2 must be appended to `cs`.
-    // NOTE: the original selectors C1 and C2 must be removed because
+    // NOTE: The original selectors C1 and C2 must be removed because
     // *dimension* selectors cannot be a used as "normal" selectors
-    // (e.g., for dataset modifiers, actor settings or model setting)
-    // NOTE: traverse `cs` in reverse order to ensure that deleting and
-    // appending produce the intended result
+    // (e.g., for dataset modifiers, actor settings or model setting).
+    // NOTE: Traverse `cs` in reverse order to ensure that deleting and
+    // appending produce the intended result.
     for(let i = cs.length - 1; i >= 0; i--) {
       const s = cs[i];
-      // Check whether selector `s` defines a combination
-      for(let j = 0; j < this.combination_selectors.length; j++) {
-        const tuple = this.combination_selectors[j].split('|');
+      // Check whether selector `s` defines a combination.
+      for(const sel of this.combination_selectors) {
+        const tuple = sel.split('|');
         if(tuple[0] === s) {
           // First remove `s` from the original set...
           cs.splice(i, 1);
-          // Let `xs` be the selector set to replace `s`
+          // Let `xs` be the selector set to replace `s`.
           const xs = tuple[1].split(' ');
-          // Recursively expand `xs`, as it may contain combination selectors
+          // Recursively expand `xs`, as it may contain combination selectors.
           this.expandCombinationSelectors(xs);
           // ... and append its expansion
           cs.push(...xs);
@@ -12322,12 +11967,11 @@ class Experiment {
   
   orthogonalCombinationDimensions(sl) {
     // Returns TRUE iff the expansions of the selectors in set `sl`
-    // are mutually exclusive
+    // are mutually exclusive.
     const
         xl = {},
         issues = {};
-    for(let i = 0; i < sl.length; i++) {
-      const s = sl[i];
+    for(const s of sl) {
       xl[s] = [s];
       this.expandCombinationSelectors(xl[s]);
       issues[s] = [];
@@ -12347,11 +11991,8 @@ class Experiment {
     }
     if(!ok) {
       const il = [];
-      for(let i = 0; i < sl.length; i++) {
-        const s = sl[i];
-        if(issues[s].length > 0) {
-          il.push(`${s} (${issues[s].join('; ')})`);
-        }
+      for(const s of sl) if(issues[s].length > 0) {
+        il.push(`${s} (${issues[s].join('; ')})`);
       }
       UI.warn('Combination dimension is not orthogonal: ' + il.join(', '));
     }
@@ -12359,17 +12000,17 @@ class Experiment {
   }
   
   inferAvailableDimensions() {
-    // Creates list of dimensions that are orthogonal to those already
-    // selected for this experiment
+    // Create list of dimensions that are orthogonal to those already
+    // selected for this experiment.
     this.available_dimensions.length = 0;
     // For efficiency, do not use hasDimension but expand the dimensions
     // that are already selected once, and define a lookup function that
-    // checks for orthogonality
+    // checks for orthogonality.
     const
         axes = [],
         orthogonal = (d) => {
-            for(let i = 0; i < axes.length; i++) {
-              if(intersection(axes[i], d).length > 0) return false;
+            for(const a of axes) {
+              if(intersection(a, d).length > 0) return false;
             }
             return true;
           };
@@ -12377,29 +12018,23 @@ class Experiment {
       axes.push(this.dimensions[i].slice());
       this.expandCombinationSelectors(axes[i]);
     }
-    for(let i = 0; i < MODEL.dimensions.length; i++) {
-      const d = MODEL.dimensions[i];
-      if(orthogonal(d)) this.available_dimensions.push(d);
+    for(const d of MODEL.dimensions) if(orthogonal(d)) {
+      this.available_dimensions.push(d);
     }
-    for(let i = 0; i < this.settings_dimensions.length; i++) {
-      const d = this.settings_dimensions[i];
-      if(orthogonal(d)) this.available_dimensions.push(d);
+    for(const d of this.settings_dimensions) if(orthogonal(d)) {
+      this.available_dimensions.push(d);
     }
-    for(let i = 0; i < this.iterator_dimensions.length; i++) {
-      const d = this.iterator_dimensions[i];
-      if(orthogonal(d)) this.available_dimensions.push(d);
+    for(const d of this.iterator_dimensions) if(orthogonal(d)) {
+      this.available_dimensions.push(d);
     }
-    for(let i = 0; i < this.actor_dimensions.length; i++) {
-      const d = this.actor_dimensions[i];
-      if(orthogonal(d)) this.available_dimensions.push(d);
+    for(const d of this.actor_dimensions) if(orthogonal(d)) {
+      this.available_dimensions.push(d);
     }
-    for(let i = 0; i < this.combination_dimensions.length; i++) {
-      // NOTE: combination dimensions must be expanded before checking...
-      const
-          d = this.combination_dimensions[i],
-          xd = d.slice();
+    for(const d of this.combination_dimensions) {
+      // NOTE: Combination dimensions must be expanded before checking...
+      const xd = d.slice();
       this.expandCombinationSelectors(xd);
-      // ... but the original combination dimension must be added
+      // ... but the original combination dimension must be added.
       if(orthogonal(xd)) this.available_dimensions.push(d);
     }
   }
@@ -12408,37 +12043,36 @@ class Experiment {
     // Creates list of dimensions without excluded selectors
     this.actual_dimensions.length = 0;
     const excsel = this.excluded_selectors.split(' ');
-    for(let i = 0; i < this.dimensions.length; i++) {
-      const d = complement(this.dimensions[i], excsel);
-      if(d.length > 0) this.actual_dimensions.push(d);
+    for(const d of this.dimensions) {
+      const dim = complement(d, excsel);
+      if(dim.length > 0) this.actual_dimensions.push(dim);
     }
   }
 
   inferCombinations(n=0, s=[]) {
-    // Recursive function that creates list of selector combinations
+    // Recursive function that creates list of selector combinations.
     if(n == 0) this.combinations.length = 0;
     if(n >= this.actual_dimensions.length) {
-      // NOTE: do not push an empty selector list (can occur if no dimensions)
+      // NOTE: Do not push an empty selector list (can occur if no dimensions).
       if(s.length > 0) this.combinations.push(s);
-      // NOTE: combinations may include *dimension* selectors
-      // These then must be "expanded"
+      // NOTE: Combinations may include *dimension* selectors.
+      // These then must be "expanded".
       this.expandCombinationSelectors(s);
       return;
     }
-    const d = this.actual_dimensions[n];
-    // Always include dimension, even if it contains only 1 selector
-    for(let i = 0; i < d.length; i++) {
+    // Always include dimension, even if it contains only 1 selector.
+    for(const dim of this.actual_dimensions[n]) {
       const ss = s.slice();
-      ss.push(d[i]);
+      ss.push(dim);
       this.inferCombinations(n + 1, ss);
     }
   }
   
   renameSelectorInDimensions(olds, news) {
-    // Update the combination dimensions that contain `olds`
-    for(let i = 0; i < this.settings_dimensions.length; i++) {
-      const si = this.settings_dimensions[i].indexOf(olds);
-      if(si >= 0) this.settings_dimensions[i][si] = news;
+    // Update the combination dimensions that contain `olds`.
+    for(const sd of this.settings_dimensions) {
+      const si = sd.indexOf(olds);
+      if(si >= 0) sd[si] = news;
     }
     for(let i = 0; i < this.combination_selectors.length; i++) {
       const
@@ -12454,39 +12088,34 @@ class Experiment {
   }
 
   mayBeIgnored(c) {
-    // Returns TRUE iff cluster `c` is on the list to be ignored
-    for(let i = 0; i < this.clusters_to_ignore.length; i++) {
-      if(this.clusters_to_ignore[i].cluster === c) return true;
-    }
+    // Return TRUE iff cluster `c` is on the list to be ignored.
+    for(const cti of this.clusters_to_ignore) if(cti.cluster === c) return true;
     return false;
   }
 
   inferVariables() {
-    // Create list of distinct variables in charts
+    // Create list of distinct variables in charts.
     this.variables.length = 0;
-    for(let i = 0; i < this.charts.length; i++) {
-      const c = this.charts[i];
-      for(let j = 0; j < c.variables.length; j++) {
+    for(const c of this.charts) {
+      for(const cv of c.variables) {
         let new_name = true;
-        for(let k = 0; k < this.variables.length; k++) {
-          if(c.variables[j].displayName === this.variables[k].displayName) {
-            new_name = false;
-            break;
-          }
+        for(const v of this.variables) if(cv.displayName === v.displayName) {
+          new_name = false;
+          break;
         }
-        // Only add if if the variable name is new
-        if(new_name) this.variables.push(c.variables[j]);
+        // Only add if if the variable name is new.
+        if(new_name) this.variables.push(cv);
       }
     }
   }
   
   resultIndex(dn) {
     // Return index of result for chart variable or outcome dataset having
-    // display name `dn` (or -1 if not found)
+    // display name `dn` (or -1 if not found).
     if(this.variables.length === 0) this.inferVariables();
-    for(let i = 0; i < this.variables.length; i++) {
-      if(this.variables[i].displayName === dn) {
-        return i;
+    for(let index = 0; index < this.variables.length; index++) {
+      if(this.variables[index].displayName === dn) {
+        return index;
       }
     }
     // NOTE: Variables are stored first, outcomes second, equations last,
@@ -12517,8 +12146,8 @@ class Experiment {
   }
 
   get resultsAsCSV() {
-    // Return results as specfied by the download settings
-    // NOTE: no runs => no results => return empty string
+    // Return results as specfied by the download settings.
+    // NOTE: No runs => no results => return empty string.
     if(this.runs.length === 0) return '';
     const
         // Local function to convert number to string
@@ -12555,43 +12184,41 @@ class Experiment {
             exceptions: `${quo}Exceptions${quo}${sep}`,
             run: []
           };
-    for(let i = 0; i < this.combinations.length; i++) {
-      if(i < this.runs.length &&
-          (allruns || this.chart_combinations.indexOf(i) >= 0)) {
-        data.run.push(i);
+    for(let r = 0; r < this.combinations.length; r++) {
+      if(r < this.runs.length &&
+          (allruns || this.chart_combinations.indexOf(r) >= 0)) {
+        data.run.push(r);
       }
     }
     let series_length = 0,
-        // By default, assume all variables to be output
+        // By default, assume all variables to be output.
         start = 0,
         stop = this.runs[0].results.length;
     if(this.download_settings.variables === 'selected') {
-      // Only one variable
+      // Only one variable.
       start = this.resultIndex(this.selected_variable);
       stop = start + 1;
     }
-    for(let i = 0; i < data.run.length; i++) {
-      const
-          rnr = data.run[i],
-          r = this.runs[rnr];
+    for(const rnr of data.run) {
+      const r = this.runs[rnr];
       data.nr += r.number;
       data.combi += quo + this.combinations[rnr].join('|') + quo;
-      // Run duration in seconds
+      // Run duration in seconds.
       data.rsecs += numval((r.time_recorded - r.time_started) * 0.001, 4);
       data.ssecs += numval(r.solver_seconds, 4);
       data.warnings += r.warning_count;
-      for(let j = start; j < stop; j++) {
+      for(let vi = start; vi < stop; vi++) {
         // Add empty cells for run attributes
         data.nr += sep;
         data.combi += sep;
         data.rsecs += sep;
         data.ssecs += sep;
         data.warnings += sep;
-        const rr = r.results[j];
+        const rr = r.results[vi];
         if(rr) {
           data.variable += rr.displayName + sep;
           // Series may differ in length; the longest determines the
-          // number of rows of series data to be added
+          // number of rows of series data to be added.
           series_length = Math.max(series_length, rr.vector.length);
           if(this.download_settings.statistics) {
             data.N += rr.N + sep;
@@ -12605,7 +12232,7 @@ class Experiment {
             data.exceptions += rr.exceptions + sep;
           }
         } else {
-          console.log('No run results for ', this.variables[vars[j]].displayName);
+          console.log('No run results for ', this.variables[vars[vi]].displayName);
         }
       }
     }
@@ -12613,7 +12240,7 @@ class Experiment {
     if(this.download_settings.solver) {
       ds.push(data.rsecs, data.ssecs, data.warnings);
     }
-    // Always add the row with variable names
+    // Always add the row with variable names.
     ds.push(data.variable);
     if(this.download_settings.statistics) {
       ds.push(data.N, data.sum, data.mean, data.variance, data.minimum,
@@ -12622,17 +12249,16 @@ class Experiment {
     if(this.download_settings.series) {
       ds.push('t');
       const row = [];
-      for(let i = 0; i < series_length; i++) {
+      for(let t = 0; t < series_length; t++) {
         row.length = 0;
-        row.push(i);
-        for(let j = 0; j < data.run.length; j++) {
-          const rnr = data.run[j];
-          for(let k = start; k < stop; k++) {
-            const rr = this.runs[rnr].results[k];
+        row.push(t);
+        for(const rnr of data.run) {
+          for(let vi = start; vi < stop; vi++) {
+            const rr = this.runs[rnr].results[vi];
             if(rr) {
-              // NOTE: only experiment variables have vector data
+              // NOTE: Only experiment variables have vector data.
               if(rr.x_variable && i <= rr.N) {
-                row.push(numval(rr.vector[i], prec));
+                row.push(numval(rr.vector[t], prec));
               } else {
                 row.push('');
               }
@@ -12714,12 +12340,9 @@ class BoundLine {
     bl.contour_path = this.contour_path;
     bl.url = this.url;
     bl.point_data.length = 0;
-    for(let i = 0; i < this.point_data.length; i++) {
-      bl.point_data.push(this.point_data[i].slice());
-    }
+    for(const pd of this.point_data) bl.point_data.push(pd.slice());
     bl.selectors.length = 0;
-    for(let i = 0; i < this.selectors.length; i++) {
-      const s = this.selectors[i];
+    for(const s of this.selectors) {
       bl.selectors.push(new BoundlineSelector(s.boundline, s.selector,
           s.expression.text, s.grouping));
     }
@@ -12736,17 +12359,13 @@ class BoundLine {
   get selectorList() {
     // Return list of selector names only.
     const sl = [];
-    for(let i = 0; i < this.selectors.length; i++) {
-      sl.push(this.selectors[i].selector);
-    }
+    for(const sel of this.selectors) sl.push(sel.selector);
     return sl;
   }
 
   selectorByName(name) {
-    // Return index of selector `n` in the list, or null if not found.
-    for(let i = 0; i < this.selectors.length; i++) {
-      if(this.selectors[i].selector === name) return this.selectors[i];
-    }
+    // Return selector having name `name`, or NULL if not found.
+    for(const sel of this.selectors) if(sel.selector === name) return sel;
     return null;
   }
   
@@ -12840,10 +12459,7 @@ class BoundLine {
   get pointsDataString() {
     // Return point coordinates in data format (semicolon-separated numbers).
     const pd = [];
-    for(let i = 0; i < this.points.length; i++) {
-      const p = this.points[i];
-      pd.push(p[0], p[1]);
-    }
+    for(const p of this.points) pd.push(p[0], p[1]);
     return pd.join(';');
   }
 
@@ -12851,9 +12467,7 @@ class BoundLine {
     // Return the highest number of points that this boundline can have.
     this.restorePoints();
     let n = this.points.length;
-    for(let i = 0; i < this.point_data.length; i++) {
-      n = Math.max(n, this.point_data[i].length);
-    }
+    for(const pd of this.point_data) n = Math.max(n, pd.length);
     const bls = this.selectors[this.activeSelectorIndex];
     if(bls.grouping) {
       const x = bls.expression;
@@ -12910,13 +12524,11 @@ class BoundLine {
     // floating point numbers, with N-digit precision to keep model files
     // compact (default: N = 8)
     let d = [];
-    for(let i = 0; i < this.point_data.length; i++) {
-      const
-          opd = this.point_data[i],
-          pd = [];
-      for(let j = 0; j < opd.length; j++) {
+    for(const opd of this.point_data) {
+      const pd = [];
+      for(const v of opd) {
         // Convert number to string with the desired precision.
-        const f = opd[j].toPrecision(CONFIGURATION.dataset_precision);
+        const f = v.toPrecision(CONFIGURATION.dataset_precision);
         // Then parse it again, so that the number will be represented
         // (by JavaScript) in the most compact representation.
         pd.push(parseFloat(f));
@@ -12934,14 +12546,9 @@ class BoundLine {
     this.point_data.length = 0;
     str= str.trim();
     if(str) {
-      const lines = str.split('\n');
-      for(let i = 0; i < lines.length; i++) {
-        const
-            numbers = lines[i].split(';'),
-            pd = [];
-        for(let i = 0; i < numbers.length; i++) {
-          pd.push(parseFloat(numbers[i].trim()));
-        }
+      for(const l of str.split('\n')) {
+        const pd = [];
+        for(const n of l.split(';')) pd.push(parseFloat(n.trim()));
         this.validatePoints(pd);
         this.point_data.push(pd);
       }
@@ -12957,9 +12564,7 @@ class BoundLine {
         '</contour><url>', xmlEncoded(this.url),
         '</url><point-data>', xmlEncoded(this.pointDataString),
         '</point-data><selectors>'];
-    for(let i = 0; i < this.selectors.length; i++) {
-      xml.push(this.selectors[i].asXML);
-    }
+    for(const sel of this.selectors) xml.push(sel.asXML);
     xml.push('</selectors></bound-line>');
     return xml.join('');
   }
@@ -12980,15 +12585,12 @@ class BoundLine {
     if(n && n.childNodes && n.childNodes.length) {
       // NOTE: Only overwrite default selector if XML specifies selectors.
       this.selectors.length = 0;
-      for(let i = 0; i < n.childNodes.length; i++) {
-        const c = n.childNodes[i];
-        if(c.nodeName === 'boundline-selector') {
-          const
-              s = xmlDecoded(nodeContentByTag(c, 'selector')),
-              bls = new BoundlineSelector(this, s);
-          bls.initFromXML(c);
-          this.selectors.push(bls);
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'boundline-selector') {
+        const
+            s = xmlDecoded(nodeContentByTag(c, 'selector')),
+            bls = new BoundlineSelector(this, s);
+        bls.initFromXML(c);
+        this.selectors.push(bls);
       }
     }
   }
@@ -13034,8 +12636,7 @@ class BoundLine {
   get constrainsY() {
     // Return TRUE if this bound line constrains Y in some way.
     if(this.type === VM.EQ) return true;
-    for(let j = 0; j < this.points.length; j++) {
-      const p = this.points[j];
+    for(const p of this.points) {
       // LE bound line constrains when not at 100%, GE when not at 0%.
       if(this.type === VM.LE && p[1] < 100 || this.type === VM.GE && p[1] > 0) {
         return true;
@@ -13153,9 +12754,7 @@ class Constraint {
   
   reset() {
     // Reset run-dependent properties.
-    for(let i = 0; i < this.bound_lines.length; i++) {
-      this.bound_lines[i].current = -1;
-    }
+    for(const bl of this.bound_lines) bl.current = -1;
     // Slack information is a "sparse vector" that is filled after solving.
     this.slack_info = {};
   }
@@ -13206,9 +12805,7 @@ class Constraint {
   
   get setsEquality() {
     // Return TRUE iff this constraint has an EQ bound line.
-    for(let i = 0; i < this.bound_lines.length; i++) {
-      if(this.bound_lines[i].type === VM.EQ) return true;
-    }
+    for(const bl of this.bound_lines) if(bl.type === VM.EQ) return true;
     return false;
   }
   
@@ -13235,8 +12832,7 @@ class Constraint {
         x = (fn.level[t] - lbx) / rx * 100,
         y = (tn.level[t] - lby) / ry * 100;
     // ... and then check whether (%X, %Y) lies on the bound line.
-    for(let i = 0; i < this.bound_lines.length; i++) {
-      const bl = this.bound_lines[i];
+    for(const bl of this.bound_lines) {
       // Bound line does NOT constrain when Y is on its own bound.
       if((bl.type === VM.LE && Math.abs(y - 100) < VM.NEAR_ZERO) ||
           (bl.type === VM.GE && Math.abs(y) < VM.NEAR_ZERO)) continue;
@@ -13279,9 +12875,7 @@ class Constraint {
       '</from-owner><to-name>', xmlEncoded(this.to_node.name),
       '</to-name><to-owner>', xmlEncoded(this.to_node.actor.name),
       '</to-owner><bound-lines>'].join('');
-    for(let i = 0; i < this.bound_lines.length; i++) {
-      xml += this.bound_lines[i].asXML;
-    }
+    for(const bl of this.bound_lines) xml += bl.asXML;
     return xml + '</bound-lines><share-of-cost>' + this.share_of_cost +
       '</share-of-cost><notes>' + cmnts + '</notes></constraint>';
   }
@@ -13296,13 +12890,10 @@ class Constraint {
     if(n && n.childNodes) {
       // NOTE: only overwrite default lines if XML specifies bound lines
       this.bound_lines.length = 0;
-      for(let i = 0; i < n.childNodes.length; i++) {
-        const c = n.childNodes[i];
-        if(c.nodeName === 'bound-line') {
-          const bl = new BoundLine(this);
-          bl.initFromXML(c);
-          this.bound_lines.push(bl);
-        }
+      for(const c of n.childNodes) if(c.nodeName === 'bound-line') {
+        const bl = new BoundLine(this);
+        bl.initFromXML(c);
+        this.bound_lines.push(bl);
       }
     }
     this.share_of_cost = safeStrToFloat(
@@ -13327,8 +12918,8 @@ class Constraint {
     // Clear the current bound lines (if any)
     this.bound_lines.length = 0;
     // NOTE: use the GET property "copy", NOT the Javascript function copy() !! 
-    for(let i = 0; i < c.bound_lines.length; i++) {
-      const bl = c.bound_lines[i].copy;
+    for(const l of c.bound_lines) {
+      const bl = l.copy;
       // Take "ownership" of this bound line copy
       bl.constraint = this;
       this.bound_lines.push(bl);
@@ -13348,8 +12939,8 @@ class Constraint {
   }
 
   get visibleNodes() {
-    // Returns tuple [from, to] where TRUE indicates that this node is
-    // visible in the focal cluster
+    // Return tuple [from, to] where TRUE indicates that this node is
+    // visible in the focal cluster.
     const
         fc = MODEL.focal_cluster,
         fv = (this.from_node instanceof Process ?
@@ -13362,17 +12953,15 @@ class Constraint {
   }
   
   get hasArrow() {
-    // Returns TRUE if both nodes are visible
+    // Return TRUE if both nodes are visible.
     const vn = this.visibleNodes;
     return vn[0] && vn[1];
   }
 
   get baseLine() {
-    // Returns the "base" bound line Y >= 0 (for any X) if it exists
-    for(let i = 0; i < this.bound_lines.length; i++) {
-      const
-          bl = this.bound_lines[i],
-          p = bl.points;
+    // Return the "base" bound line Y >= 0 (for any X) if it exists.
+    for(const bl of this.bound_lines) {
+      const p = bl.points;
       if(bl.type === VM.GE && p.length === 2 &&
           p[0][0] ===   0 && p[0][1] === 0 &&
           p[1][0] === 100 && p[1][1] === 0 ) return bl;
@@ -13381,8 +12970,8 @@ class Constraint {
   }
   
   addBoundLine() {
-    // Adds a new bound line to this constraint, and returns this new line
-    // NOTE: Returns the "base" bound line Y >= 0 (for any X) if it already
+    // Add a new bound line to this constraint, and returns this new line.
+    // NOTE: Return the "base" bound line Y >= 0 (for any X) if it already
     //       exists and has no associated dataset.
     let bl = this.baseLine;
     if(bl && bl.point_data.length === 0) return bl;
@@ -13392,21 +12981,21 @@ class Constraint {
   }
   
   deleteBoundLine(bl) {
-    // Removes a boundline from this constraint
+    // Remove a boundline from this constraint.
     if(!bl) return;
     const bi = this.bound_lines.indexOf(bl);
     if(bi >= 0) {
-      // Remove this one line from the list
+      // Remove this one line from the list.
       this.bound_lines.splice(bi, 1);
       if(this.bound_lines.length === 0) {
-        // NOTE: constraint must have at least one boundline
+        // NOTE: Constraint must have at least one boundline.
         this.bound_lines.push(new BoundLine(this));
       }
     }
   }
   
   containsPoint(x, y) {
-    // Returns TRUE if the point (x, y) lies within the 12x12 thumbnail
+    // Return TRUE if the point (x, y) lies within the 12x12 thumbnail
     // chart area of this constraint (either in the middle of the curved
     // arrow or at the top of its one visible node)
     return this.midpoint && Math.abs(x - this.midpoint[0]) <= 6 &&
