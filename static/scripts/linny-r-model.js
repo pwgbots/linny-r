@@ -1656,11 +1656,9 @@ class LinnyRModel {
     // of the diagram because notes are not connected to arrows.
     // However, when notes relate to nearby nodes, preserve their relative
     // position to this node.
-    for(const n of fc.notes) if(n.selected) {
+    for(const n of fc.notes) {
       const nbn = n.nearbyNode;
       n.nearby_pos = (nbn ? {node: nbn, dx: n.x - nbn.x, dy: n.y - nbn.y} : null);
-    } else {
-        n.nearby_pos = null;
     }
     for(const p of fc.processes) {
       move = p.alignToGrid() || move;
@@ -1672,14 +1670,11 @@ class LinnyRModel {
       move = c.alignToGrid() || move;
     }
     if(move) {
-      // Reposition "associated" notes -- only when selected!
-      for(const n of fc.notes) if(n.selected) {
-        const nbp = n.nearby_pos;
-        if(nbp) {
-          // Adjust (x, y) so as to retain the relative position.
-          n.x = nbp.node.x + nbp.dx;
-          n.y = nbp.node.y + nbp.dy;
-        }
+      // Reposition "associated" notes.
+      for(const n of fc.notes) if(n.nearby_pos) {
+        // Adjust (x, y) so as to retain the relative position.
+        n.x = n.nearby_pos.node.x + n.nearby_pos.dx;
+        n.y = n.nearby_pos.node.y + n.nearby_pos.dy;
         n.nearby_pos = null;
       }
       UI.drawDiagram(this);
@@ -1706,7 +1701,7 @@ class LinnyRModel {
       n.x += dx;
       n.y += dy;
     }
-    // NOTE: force drawing, because SVG must immediately be downloadable.
+    // NOTE: Force drawing, because SVG must immediately be downloadable.
     UI.drawDiagram(this);
     // If dragging, add (dx, dy) to the properties of the top "move" UndoEdit.
     if(UI.dragged_node) UNDO_STACK.addOffset(dx, dy);
