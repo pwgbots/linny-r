@@ -354,7 +354,7 @@ class GUIChartManager extends ChartManager {
   }
   
   updateDialog() {
-    // Refreshes all dialog fields to display actual MODEL chart properties
+    // Refreshe all dialog fields to display actual MODEL chart properties.
     this.updateSelector();
     let c = null;
     if(this.chart_index >= 0) {
@@ -425,14 +425,16 @@ class GUIChartManager extends ChartManager {
       } else {
         UI.disableButtons(d_btn);
       }
-      // If the Edit variable dialog is showing, update its header
+      // If the Edit variable dialog is showing, update its header.
       if(this.variable_index >= 0 && !UI.hidden('variable-dlg')) {
         document.getElementById('variable-dlg-name').innerHTML =
               c.variables[this.variable_index].displayName;
       }
     }
+    // Finder dialog may need to update its "add variables to chart" button
+    if(FINDER.visible) FINDER.updateDialog();
     this.add_variable_modal.element('obj').value = 0;
-    // Update variable dropdown list of the "add variable" modal
+    // Update variable dropdown list of the "add variable" modal.
     X_EDIT.updateVariableBar('add-');
     this.stretchChart(0);
   }
@@ -737,7 +739,16 @@ class GUIChartManager extends ChartManager {
     // First hide the "Add variable" modal.
     this.add_variable_modal.hide();
     // Do not prompt for selection if there is only 1 match.
-    if(indices.length < 2) chart.addWildcardVariables(dsm, indices);
+    if(indices.length < 2) {
+      if(indices.length) {
+        chart.addWildcardVariables(dsm, indices);
+      } else if(dsm.selector.startsWith(':')) {
+        UI.notify('Plotting methods is work-in-progress!');
+      } else {
+        UI.notify(`Variable "${dsm.displayName}" cannot be plotted`);
+      }
+      return;
+    }
     md.chart = chart;
     md.modifier = dsm;
     md.indices = indices;
@@ -764,7 +775,7 @@ class GUIChartManager extends ChartManager {
         c = md.chart,
         dsm = md.modifier,
         indices = [];
-    if(c && dsm && il) {
+    if(c && dsm) {
       for(const index of md.indices) {
         if(UI.boxChecked('wcv-box-'+ index)) indices.push(index);
       }

@@ -2868,8 +2868,8 @@ NOTE: * and ? will be interpreted as wildcards"
         <input id="xp-settings-selector-string" type="text" autocomplete="off"
                title="Can specifiy time step, simulation period, block length and look-ahead.
 Example: s=0.5h  t=1-480  b=24  l=24
-When modeling power grids, -c indicates &ldquo;ignore Kirchhoff's Voltage Law&rdquo;,
--k &ldquo;ignore Kirchhoff's Voltage Law&rdquo;, and -l &ldquo;ignore power losses&rdquo;">
+When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
+-k &ldquo;disregard Kirchhoff's Voltage Law&rdquo;, and -l &ldquo;disregard power losses&rdquo;">
       </div>
     </div>
   </div>
@@ -3059,12 +3059,17 @@ where X can be one or several of these letters: ABCDELPQ">
     <div id="finder-status">
       <span id="finder-count"></span> found
     </div>
-    <img id="finder-edit-btn" class="btn enab"
-         src="images/edit.png"
-         title="Edit attributes">
-    <img id="finder-copy-btn" class="btn enab"
-         src="images/table-to-clpbrd.png"
-         title="Copy entity attributes to clipboard">
+    <div id="finder-status-buttons">
+      <img id="finder-edit-btn" class="btn enab"
+           src="images/edit.png"
+           title="Edit attributes">
+      <img id="finder-chart-btn" class="btn enab"
+           src="images/chart.png"
+           title="Add attribute to chart">
+      <img id="finder-copy-btn" class="btn enab"
+           src="images/table-to-clpbrd.png"
+           title="Copy entity attributes to clipboard">
+    </div>
     <div id="finder-separator"></div>
     <div id="finder-item-header">(no item selected)</div>
     <div id="finder-item-scroll-area">
@@ -3077,6 +3082,28 @@ where X can be one or several of these letters: ABCDELPQ">
       </table>
     </div>
     <div id="finder-resize" class="resizer"></div>
+  </div>
+
+  <!-- the CONFIRM ADD CHART VARIABLES modal asks to confirm to add a
+       specific attribute of the filtered entities to the current chart -->
+  <div id="confirm-add-chart-variables-modal" class="modal">
+    <div id="confirm-add-chart-variables-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Add to chart
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div style="margin: 2px; padding-right: 2px; white-space: nowrap">
+        <select id="confirm-add-chart-variables-attribute"></select>
+        of <span id="confirm-add-chart-variables-count"></span>
+      </div>
+      <div>
+        <div id="confirm-add-chart-variables-stacked" class="box clear"></div>
+        <div style="display:inline-block; vertical-align:top; margin-top: 3px">
+          Display as stacked areas
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- the MONITOR dialog shows solver progress and messages, and model equations -->

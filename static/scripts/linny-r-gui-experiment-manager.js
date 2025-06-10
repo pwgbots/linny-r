@@ -1278,9 +1278,11 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
       const
           md = this.settings_selector_modal,
           sc = md.element('code'),
-          ss = md.element('string').toLowerCase(),
-          code = sc.value.replace(/[^\w\+\-\%]/g, ''),
-          value = ss.value.trim().replace(',', '.'),
+          ss = md.element('string'),
+          // NOTE: Simply remove invalid characters from selector, but accept
+          // '=' here to permit associating settings with iterator selectors. 
+          code = sc.value.replace(/[^\w\+\-\%\=]/g, ''),
+          value = ss.value.trim().toLowerCase().replace(',', '.'),
           add =  this.edited_selector_index < 0;
       // Remove selector if either field has been cleared
       if(code.length === 0 || value.length === 0) {
@@ -1288,7 +1290,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
           x.settings_selectors.splice(this.edited_selector_index, 1);
         }
       } else {
-        // Check for uniqueness of code
+        // Check for uniqueness of code.
         for(let i = 0; i < x.settings_selectors.length; i++) {
           // NOTE: ignore selector being edited, as this selector can be renamed
           if(i != this.edited_selector_index &&
@@ -1299,7 +1301,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
           }
         }
         // Check for valid syntax -- canonical example: s=0.25h t=1-100 b=12 l=6
-        const re = /^(s\=\d+(\.?\d+)?(yr?|wk?|d|h|m|min|s)\s+)?(t\=\d+(\-\d+)?\s+)?(b\=\d+\s+)?(l=\d+\s+)?(\-[ckl]+)?$/i;
+        const re = /^(s\=\d+(\.?\d+)?(yr?|wk?|d|h|m|min|s)\s+)?(t\=\d+(\-\d+)?\s+)?(b\=\d+\s+)?(l=\d+\s+)?(\-[ckl]+\s+)?$/i;
         if(!re.test(value + ' ')) {
           UI.warn(`Invalid settings "${value}"`);
           ss.focus();

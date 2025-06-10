@@ -46,7 +46,10 @@ class Finder {
     this.filter_input.addEventListener('input', () => FINDER.changeFilter());
     this.edit_btn = document.getElementById('finder-edit-btn');
     this.edit_btn.addEventListener(
-        'click', (event) => FINDER.editAttributes());
+        'click', () => FINDER.editAttributes());
+    this.chart_btn = document.getElementById('finder-chart-btn');
+    this.chart_btn.addEventListener(
+        'click', () => FINDER.confirmAddChartVariables());
     this.copy_btn = document.getElementById('finder-copy-btn');
     this.copy_btn.addEventListener(
         'click', (event) => FINDER.copyAttributesToClipboard(event.shiftKey));
@@ -54,6 +57,13 @@ class Finder {
     this.item_table = document.getElementById('finder-item-table');
     this.expression_table = document.getElementById('finder-expression-table');
         
+    // The Confirm add chart variables modal.
+    this.add_chart_variables_modal = new ModalDialog('confirm-add-chart-variables');
+    this.add_chart_variables_modal.ok.addEventListener(
+        'click', () => FINDER.addVariablesToChart());
+    this.add_chart_variables_modal.cancel.addEventListener(
+        'click', () => FINDER.add_chart_variables_modal.hide());
+
     // Attribute headers are used by Finder to output entity attribute values.
     this.attribute_headers = {
         A: 'ACTORS:\tWeight\tCash IN\tCash OUT\tCash FLOW',
@@ -301,15 +311,32 @@ class Finder {
     this.edit_btn.style.display = 'none';
     this.copy_btn.style.display = 'none';
     if(n > 0) {
-      this.copy_btn.style.display = 'block';
+      this.copy_btn.style.display = 'inline-block';
+      if(CHART_MANAGER.visible && CHART_MANAGER.chart_index >= 0) {
+        const ca = this.commonAttributes;
+        if(ca.length) {
+          this.chart_btn.title = 'Add ' + pluralS(n, 'variable') +
+              ' to selected chart';
+          this.chart_btn.style.display = 'inline-block';
+        }
+      }
       n = this.entityGroup.length;
       if(n > 0) {
         this.edit_btn.title = 'Edit attributes of ' +
             pluralS(n, this.entities[0].type.toLowerCase());
-        this.edit_btn.style.display = 'block';
+        this.edit_btn.style.display = 'inline-block';
       }
     }
     this.updateRightPane();
+  }
+  
+  get commonAttributes() {
+    // Returns list of attributes that all filtered entities have in common.
+    let ca = Object.keys(VM.attribute_names);
+    for(const et of this.filtered_types) {
+      ca = intersection(ca, VM.attribute_codes[et]);
+    }
+    return ca;
   }
   
   get entityGroup() {
@@ -317,22 +344,65 @@ class Finder {
     // while excluding (no actor), (top cluster), datasets and equations.
     const
         eg = [],
-        n = this.entities.length;
-    if(n > 0) {
-      const ft = this.filtered_types[0];
-      if(this.filtered_types.length === 1 && 'DE'.indexOf(ft) < 0) {
-        for(const e of this.entities) {
-          // Exclude "no actor" and top cluster.
-          if(e.name && e.name !== '(no_actor)' && e.name !== '(top_cluster)' &&
-              // Also exclude actor cash flow data products because
-              // many of their properties should not be changed.
-              !e.name.startsWith('$')) {
-            eg.push(e);
-          }
+        ft = this.filtered_types[0];
+    if(this.filtered_types.length === 1 && 'DE'.indexOf(ft) < 0) {
+      for(const e of this.entities) {
+        // Exclude "no actor" and top cluster.
+        if(e.name && e.name !== '(no_actor)' && e.name !== '(top_cluster)' &&
+            // Also exclude actor cash flow data products because
+            // many of their properties should not be changed.
+            !e.name.startsWith('$')) {
+          eg.push(e);
         }
       }
     }
     return eg;
+  }
+  
+  confirmAddChartVariables() {
+    // Show confirmation dialog to add variables to chart.
+    const
+        md = this.add_chart_variables_modal,
+        n = this.entities.length,
+        ca = this.commonAttributes;
+    let html,
+        et = '1 entity';
+    if(this.filtered_types.length === 1) {
+      et = pluralS(n, this.entities[0].type.toLowerCase());
+    } else if(n !== 1) {
+      et = `${n} entities`;
+    }
+    for(const a of ca) {
+      html += `<option value="${a}">${VM.attribute_names[a]}</option>`;
+    }
+    md.element('attribute').innerHTML = html;
+    md.element('count').innerText = et;
+    md.show();
+  }
+  
+  addVariablesToChart() {
+    // Add selected attribute for each filtered entity as chart variable
+    // to the selected chart.
+    const
+        md = this.add_chart_variables_modal,
+        ci = CHART_MANAGER.chart_index;
+    // Double-check whether chart exists.
+    if(ci < 0 || ci >= MODEL.charts.length) {
+      console.log('ANOMALY: No chart for index', ci);
+    }
+    const
+        c = MODEL.charts[ci],
+        a = md.element('attribute').value,
+        s = UI.boxChecked('confirm-add-chart-variables-stacked'),
+        enl = [];
+    for(const e of this.entities) enl.push(e.name);
+    enl.sort((a, b) => UI.compareFullNames(a, b, true));
+    for(const en of enl) {
+      const vi = c.addVariable(en, a);
+      if(vi !== null) c.variables[vi].stacked = s;
+    }
+    CHART_MANAGER.updateDialog();
+    md.hide();
   }
   
   updateRightPane() {

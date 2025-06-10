@@ -321,7 +321,6 @@ class Expression {
     if((typeof number !== 'number' ||
         (this.isStatic && !this.isWildcardExpression)) &&
         !this.isMethod) return this.vector;
-//console.log('HERE choosing wcnr', number, this);
     // Method expressions are not "numbered" but differentiate by the
     // entity to which they are applied. Their "vector number" is then
     // inferred by looking up this entity in a method object list.
@@ -336,9 +335,7 @@ class Expression {
     }
     // Use the vector for the wildcard number (create it if necessary).
     if(!this.wildcard_vectors.hasOwnProperty(number)) {
-//console.log('HERE adding wc vector', number, this);
       this.wildcard_vectors[number] = [];
-//console.log('HERE adding wc vector', number, this.wildcard_vectors);
       if(this.isStatic) {
         this.wildcard_vectors[number][0] = VM.NOT_COMPUTED;
       } else {
@@ -1302,10 +1299,10 @@ class ExpressionParser {
       // NOTE: Some attributes make the method expression level-dependent.
       this.is_level_based = this.is_level_based ||
          VM.level_based_attr.indexOf(attr) >= 0;
-      // NOTE: Postpone check whether method will make the expression
-      // dynamic to after the expression has been parsed and the exact
-      // set of eligible entities and the set of attributes is known.
-      
+      // NOTE: Simply assume that callin a method makes the expression
+      // dynamic.
+      this.is_static = false;
+      this.log('assumed to be dynamic because method is used');
       // Colon-prefixed variables in method expressions are similar to
       // wildcard variables, so the same VM instruction is coded for,
       // except that the entity that is the object of the method will
@@ -2051,19 +2048,6 @@ class ExpressionParser {
         this.error = 'Missing operator';
       } else if(this.concatenating && !(this.owner instanceof BoundLine)) {
         this.error = 'Invalid parameter list';
-      }
-    }
-    // When compiling a method, check for all eligible prefixes whether
-    // they might make the expression dynamic.
-    if(this.is_static && this.eligible_prefixes) {
-      for(const ep of Object.keys(this.eligible_prefixes)) {
-        for(const p of ep) {
-          if(p instanceof Dataset && p.mayBeDynamic) {
-            this.is_static = false;
-            this.log('dynamic because some modifiers of eligible datasets are dynamic');
-            break;
-          }
-        }
       }
     }
     if(this.TRACE || DEBUGGING) console.log('PARSED', this.ownerName, ':',
@@ -6942,15 +6926,16 @@ function VMI_push_method(x, args) {
   const
       t = tot[0],
       v = mex.result(t);
+  // Trace only now that time step t has been computed.
+  if(DEBUGGING) {
+    console.log('push method:',
+        (mex.method_object ? mex.method_object.displayName : 'PREFIX=' + mex.method_object_prefix),
+        method.selector, tot[1] + (tot[2] ? ':' + tot[2] : ''), 'value =', VM.sig4Dig(v));
+  }
+  x.push(v);
   // Clear the method object & prefix -- just to be neat.
   mex.method_object = null;
   mex.method_object_prefix = '';
-  // Trace only now that time step t has been computed.
-  if(DEBUGGING) {
-    console.log('push method:', obj.displayName, method.selector,
-        tot[1] + (tot[2] ? ':' + tot[2] : ''), 'value =', VM.sig4Dig(v));
-  }
-  x.push(v);
 }
 
 function VMI_push_wildcard_entity(x, args) {

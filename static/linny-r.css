@@ -5034,24 +5034,20 @@ img.finder {
   width: 50%;
 }
 
-/* NOTE: Finder buttons are initially invisible */
-
-#finder-edit-btn {
+#finder-status-buttons {
   position: absolute;
-  height: 16px;
-  width: 16px;
-  bottom: 1px;
-  right: calc(50% + 24px);
-  display: none;
+  bottom: 0px;
+  right: calc(50% + 1px);
 }
 
+/* NOTE: Finder buttons are initially invisible */
+
+#finder-edit-btn,
+#finder-chart-btn,
 #finder-copy-btn {
-  position: absolute;
-  height: 16px;
-  width: 16px;
-  bottom: 1px;
-  right: calc(50% + 1px);
-  display: none; /* NOTE: button is initially invisible */
+  height: 15px;
+  width: 15px;
+  display: none;
 }
 
 #finder-separator {
@@ -5099,6 +5095,14 @@ img.finder {
   border-top: 1px solid Silver;
 }
 
+#confirm-add-chart-variables-dlg {
+  width: min-content;
+  height: min-content;
+}
+
+#confirm-add-chart-variables-attribute {
+  font-size: 12px;
+}
 
 /* the MONITOR DIALOG displays solver progress and messages */
 #monitor-dlg {
