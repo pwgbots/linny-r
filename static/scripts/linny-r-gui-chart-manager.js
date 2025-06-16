@@ -744,6 +744,7 @@ class GUIChartManager extends ChartManager {
         chart.addWildcardVariables(dsm, indices);
       } else if(dsm.selector.startsWith(':')) {
         UI.notify('Plotting methods is work-in-progress!');
+        console.log('HERE dsm', dsm, 'expr', dsm.expression.text, 'indices', indices);
       } else {
         UI.notify(`Variable "${dsm.displayName}" cannot be plotted`);
       }

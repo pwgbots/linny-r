@@ -1114,13 +1114,13 @@ class ConstraintEditor {
   }
   
   showDialog(group=[]) {
-    this.from_node = MODEL.objectByName(this.from_name.innerHTML);
-    this.to_node = MODEL.objectByName(this.to_name.innerHTML);
-    // Double-check that these nodes exist
+    this.from_node = MODEL.objectByName(this.from_name.innerText);
+    this.to_node = MODEL.objectByName(this.to_name.innerText);
+    // Double-check that these nodes exist.
     if(!(this.from_node && this.to_node)) {
       throw 'ERROR: Unknown constraint node(s)';
     }
-    // See if existing constraint is edited
+    // See if existing constraint is edited.
     this.edited_constraint = this.from_node.doesConstrain(this.to_node);
     if(this.edited_constraint) {
       // Make a working copy, as the constraint must be changed only when

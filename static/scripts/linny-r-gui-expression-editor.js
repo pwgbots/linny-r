@@ -257,15 +257,20 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
     // the dataset and the selector as extra parameters for the parser.
     let own = null,
         sel = '';
-    if(!this.edited_input_id && DATASET_MANAGER.edited_expression) {
-      own = DATASET_MANAGER.selected_dataset;
-      sel = DATASET_MANAGER.selected_modifier.selector;
-    } else if(!this.edited_input_id && EQUATION_MANAGER.edited_expression) {
-      own = MODEL.equations_dataset;
-      sel = EQUATION_MANAGER.selected_modifier.selector;
-    } else if(!this.edited_input_id && CONSTRAINT_EDITOR.edited_expression) {
-      own = CONSTRAINT_EDITOR.selected;
-      sel = CONSTRAINT_EDITOR.selected_selector;
+    if(!this.edited_input_id) {
+      if(DATASET_MANAGER.edited_expression) {
+        own = DATASET_MANAGER.selected_dataset;
+        sel = DATASET_MANAGER.selected_modifier.selector;
+      } else if(EQUATION_MANAGER.edited_expression) {
+        own = MODEL.equations_dataset;
+        sel = EQUATION_MANAGER.selected_modifier.selector;
+      } else if(CONSTRAINT_EDITOR.edited_expression) {
+        own = CONSTRAINT_EDITOR.selected;
+        sel = CONSTRAINT_EDITOR.selected_selector;
+      } else if(UI.modals.datasetgroup.showing) {
+        own = UI.modals.datasetgroup.selected_ds;
+        sel = UI.modals.datasetgroup.selected_selector;
+      }
     } else {
       own = UI.edited_object;
       sel = this.edited_input_id.split('-').pop();
@@ -298,6 +303,8 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
       } else if(CONSTRAINT_EDITOR.edited_expression) {
         // NOTE: Boundline selector expressions may result in a grouping.
         CONSTRAINT_EDITOR.modifyExpression(xp.expr, xp.concatenating);
+      } else if(UI.modals.datasetgroup.showing) {
+        UI.modals.datasetgroup.modifyExpression(xp.expr);
       }
       UI.modals.expression.hide();
       return true;

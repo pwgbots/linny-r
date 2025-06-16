@@ -32,7 +32,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// CLASS GUIDatasetManager provides the dataset dialog functionality
+// CLASS GUIDatasetManager provides the dataset dialog functionality.
 class GUIDatasetManager extends DatasetManager {
   constructor() {
     super();
@@ -44,7 +44,7 @@ class GUIDatasetManager extends DatasetManager {
         'click', (event) => UI.toggleDialog(event));
     document.getElementById('ds-new-btn').addEventListener(
          // Shift-click on New button => add prefix of selected dataset
-         // (if any) to the name field of the dialog
+         // (if any) to the name field of the dialog.
         'click', () => DATASET_MANAGER.promptForDataset(event.shiftKey));
     document.getElementById('ds-data-btn').addEventListener(
         'click', () => DATASET_MANAGER.editData());
@@ -58,14 +58,14 @@ class GUIDatasetManager extends DatasetManager {
         'click', () => DATASET_MANAGER.deleteDataset());
     document.getElementById('ds-filter-btn').addEventListener(
         'click', () => DATASET_MANAGER.toggleFilter());
-    // Update when filter input text changes 
+    // Update when filter input text changes.
     this.filter_text = document.getElementById('ds-filter-text');
     this.filter_text.addEventListener(
         'input', () => DATASET_MANAGER.changeFilter());
     this.dataset_table = document.getElementById('dataset-table');
-    // Data properties pane
+    // Data properties pane.
     this.properties = document.getElementById('dataset-properties');
-    // Toggle buttons at bottom of dialog
+    // Toggle buttons at bottom of dialog.
     this.blackbox = document.getElementById('dataset-blackbox');
     this.blackbox.addEventListener(
         'click', () => DATASET_MANAGER.toggleBlackBox());
@@ -75,7 +75,7 @@ class GUIDatasetManager extends DatasetManager {
     this.io_box = document.getElementById('dataset-io');
     this.io_box.addEventListener(
         'click', () => DATASET_MANAGER.toggleImportExport());
-    // Modifier pane buttons
+    // Modifier pane buttons.
     document.getElementById('ds-add-modif-btn').addEventListener(
         'click', () => DATASET_MANAGER.promptForSelector('new'));
     document.getElementById('ds-rename-modif-btn').addEventListener(
@@ -86,9 +86,9 @@ class GUIDatasetManager extends DatasetManager {
         'click', () => DATASET_MANAGER.deleteModifier());
     document.getElementById('ds-convert-modif-btn').addEventListener(
         'click', () => DATASET_MANAGER.promptToConvertModifiers());
-    // Modifier table
+    // Modifier table.
     this.modifier_table = document.getElementById('dataset-modif-table');
-    // Modal dialogs
+    // Modal dialogs.
     this.new_modal = new ModalDialog('new-dataset');
     this.new_modal.ok.addEventListener(
         'click', () => DATASET_MANAGER.newDataset());
@@ -170,7 +170,8 @@ class GUIDatasetManager extends DatasetManager {
   }
   
   enterKey() {
-    // Open "edit" dialog for the selected dataset or modifier expression
+    // Open "edit" dialog for the selected dataset or modifier expression.
+    if(!this.focal_table) this.focal_table = this.dataset_table;
     const srl = this.focal_table.getElementsByClassName('sel-set');
     if(srl.length > 0) {
       const r = this.focal_table.rows[srl[0].rowIndex];
@@ -190,7 +191,8 @@ class GUIDatasetManager extends DatasetManager {
   }
   
   upDownKey(dir) {
-    // Select row above or below the selected one (if possible)
+    // Select row above or below the selected one (if possible).
+    if(!this.focal_table) this.focal_table = this.dataset_table;
     const srl = this.focal_table.getElementsByClassName('sel-set');
     if(srl.length > 0) {
       let r = this.focal_table.rows[srl[0].rowIndex + dir];
@@ -206,11 +208,24 @@ class GUIDatasetManager extends DatasetManager {
     }
   }
   
+  expandToShow(name) {
+    // Expand all prefix rows for dataset having `name` so as to make it visible.
+    const pn = UI.prefixesAndName(name);
+    if(pn.length > 1) {
+      pn.pop();
+      while(pn.length) {
+        addDistinct(pn.join(UI.PREFIXER).toLowerCase(), this.expanded_rows);
+        pn.pop();
+      }
+      this.updateDialog();
+    }
+  }
+  
   hideCollapsedRows() {
-    // Hides all rows except top level and immediate children of expanded.
+    // Hide all rows except top level and immediate children of expanded.
     for(const row of this.dataset_table.rows) {
       const
-          // Get the first DIV in the first TD of this row
+          // Get the first DIV in the first TD of this row.
           first_div = row.firstChild.firstElementChild,
           btn = first_div.dataset.prefix === 'x';
       let p = row.dataset.prefix,
@@ -218,18 +233,18 @@ class GUIDatasetManager extends DatasetManager {
           show = !p || x;
       if(btn) {
         const btn_div = row.getElementsByClassName('tree-btn')[0];
-        // Special expand/collapse row
+        // Special expand/collapse row.
         if(show) {
-          // Set triangle to point down 
+          // Set triangle to point down.
           btn_div.innerText = '\u25BC';
         } else {
-          // Set triangle to point right 
+          // Set triangle to point right. 
           btn_div.innerText = '\u25BA';
-          // See whether "parent prefix" is expanded
+          // See whether "parent prefix" is expanded.
           p = p.split(UI.PREFIXER);
           p.pop();
           p = p.join(UI.PREFIXER);
-          // If so, then also show the row
+          // If so, then also show the row.
           show = (!p || this.expanded_rows.indexOf(p) >= 0);
         }
       }
@@ -238,7 +253,7 @@ class GUIDatasetManager extends DatasetManager {
   }
   
   togglePrefixRow(e) {
-    // Shows list items of the next prefix level
+    // Show list items of the next prefix level.
     let r = e.target;
     while(r.tagName !== 'TR') r = r.parentNode;
     const
@@ -246,7 +261,7 @@ class GUIDatasetManager extends DatasetManager {
         i = this.expanded_rows.indexOf(p);
     if(i >= 0) {
       this.expanded_rows.splice(i, 1);
-      // Also remove all prefixes that have `p` as prefix
+      // Also remove all prefixes that have `p` as prefix.
       for(let j = this.expanded_rows.length - 1; j >= 0; j--) {
         if(this.expanded_rows[j].startsWith(p + UI.PREFIXER)) {
           this.expanded_rows.splice(j, 1);
@@ -259,7 +274,7 @@ class GUIDatasetManager extends DatasetManager {
   }
   
   rowByPrefix(prefix) {
-    // Returns first table row with the specified prefix
+    // Return the first table row with the specified prefix.
     if(!prefix) return null;
     let lcp = prefix.toLowerCase(),
         pl = lcp.split(': ');
@@ -278,12 +293,12 @@ class GUIDatasetManager extends DatasetManager {
   }
 
   selectPrefixRow(e) {
-    // Selects expand/collapse prefix row
+    // Select expand/collapse prefix row.
     this.focal_table = this.dataset_table;
-    // NOTE: `e` can also be a string specifying the prefix to select
+    // NOTE: `e` can also be a string specifying the prefix to select.
     let r = e.target || this.rowByPrefix(e);
     if(!r) return;
-    // Modeler may have clicked on the expand/collapse triangle;
+    // Modeler may have clicked on the expand/collapse triangle.
     const toggle = r.classList.contains('tree-btn');
     while(r.tagName !== 'TR') r = r.parentNode;
     this.selected_prefix_row = r;
@@ -1047,7 +1062,7 @@ class GUIDatasetManager extends DatasetManager {
   }
   
   editData() {
-    // Show the Edit time series dialog
+    // Show the Edit time series dialog.
     const
         ds = this.selected_dataset,
         md = this.series_modal,
@@ -1057,7 +1072,7 @@ class GUIDatasetManager extends DatasetManager {
       md.element('unit').value = ds.scale_unit;
       cover.style.display = (ds.array ? 'block' : 'none');
       md.element('time-scale').value = VM.sig4Dig(ds.time_scale);
-      // Add options for time unit selector
+      // Add options for time unit selector.
       const ol = [];
       for(let u in VM.time_unit_shorthand) {
         if(VM.time_unit_shorthand.hasOwnProperty(u)) {
@@ -1067,7 +1082,7 @@ class GUIDatasetManager extends DatasetManager {
         }
       }
       md.element('time-unit').innerHTML = ol.join('');
-      // Add options for(dis)aggregation method selector
+      // Add options for(dis)aggregation method selector.
       ol.length = 0;
       for(let i = 0; i < this.methods.length; i++) {
         ol.push(['<option value="', this.methods[i],
@@ -1075,12 +1090,12 @@ class GUIDatasetManager extends DatasetManager {
             '">', this.method_names[i], '</option>'].join(''));
       }
       md.element('method').innerHTML = ol.join('');
-      // Update the "periodic" box
+      // Update the "periodic" box.
       UI.setBox('series-periodic', ds.periodic);
-      // Update the "array" box
+      // Update the "array" box.
       UI.setBox('series-array', ds.array);
       md.element('url').value = ds.url;
-      // Show data as decimal numbers (JS default notation) on separate lines
+      // Show data as decimal numbers (JS default notation) on separate lines.
       this.series_data.value = ds.data.join('\n');
       md.show('default');
     }

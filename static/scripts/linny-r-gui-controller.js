@@ -75,6 +75,11 @@ class ModalDialog {
     // Make this modal dialog invisible.
     this.modal.style.display = 'none';
   }
+  
+  get showing() {
+    // Return TRUE iff this modal dialog is visible.
+    return this.modal.style.display === 'block';
+  }
 
 } // END of class ModalDialog
 
@@ -85,15 +90,19 @@ class ModalDialog {
 // such that fields[name] is the entity property name that corresponds
 // with the DOM input element for that property. For example, for the
 // process group properties dialog, fields['LB'] = 'lower_bound' to
-// indicate that the DOM element having id="process_LB" corresponds to
+// indicate that the DOM element having id="process-LB" corresponds to
 // the property `p.lower_bound` of process `p`.
 class GroupPropertiesDialog extends ModalDialog {
   constructor(id, fields) {
     super(id);
+    // `fields` is the object that relates HTML elements to properties.
     this.fields = fields;
     // `group` holds the entities (all of the same type) that should be
     // updated when the OK-button of the dialog is clicked.
     this.group = [];
+    // `selected_ds` is the dataset that was selected in the Finder when
+    // opening this dialog, or the first dataset in the group list.
+    this.selected_ds = null;
     // `initial_values` is a "dictionary" with (field name, value) entries
     // that hold the initial values of the group-editable properties.
     this.initial = {};
@@ -123,28 +132,58 @@ class GroupPropertiesDialog extends ModalDialog {
         e.addEventListener('keydown', fnc);
       }
     }
+    const spe = this.element('prefix');
+    if(spe) {
+      spe.addEventListener('keydown', fnc);
+      document.getElementById('dsg-add-modif-btn').addEventListener(
+          'click', () => UI.modals.datasetgroup.promptForSelector('Add'));
+      document.getElementById('dsg-rename-modif-btn').addEventListener(
+          'click', () => UI.modals.datasetgroup.promptForSelector('Rename'));
+      document.getElementById('dsg-edit-modif-btn').addEventListener(
+          'click', () => UI.modals.datasetgroup.editExpression());
+      document.getElementById('dsg-delete-modif-btn').addEventListener(
+          'click', () => UI.modals.datasetgroup.deleteModifier());
+      this.selector_modal = new ModalDialog('group-selector');
+      this.selector_modal.ok.addEventListener(
+          'click', () => UI.modals.datasetgroup.selectorAction());
+      this.selector_modal.cancel.addEventListener(
+          'click', () => UI.modals.datasetgroup.selector_modal.hide());
+    }
   }
 
   resetFields() {
     // Remove all class names from fields that relate to their "same"
     // and "changed status, and reset group-related properties.
-    for(let name in this.fields) if(this.initial.hasOwnProperty(name)) {
-      const cl = this.element(name).classList;
-      while(cl.length > 0 && cl.item(cl.length - 1).indexOf('same-') >= 0) {
-        cl.remove(cl.item(cl.length - 1));
+    function stripClassList(e) {
+      if(e) {
+        const cl = e.classList;
+        while(cl.length > 0 && cl.item(cl.length - 1).indexOf('same-') >= 0) {
+          cl.remove(cl.item(cl.length - 1));
+        }
       }
     }
+    for(let name in this.fields) if(this.initial.hasOwnProperty(name)) {
+      stripClassList(this.element(name));
+    }
+    stripClassList(this.element('prefix'));
     this.element('group').innerText = '';
-    let e = this.element('name');
-    if(e) e.disabled = false;
-    e = this.element('actor');
-    if(e) e.disabled = false;
-    e = this.element('cluster');
-    if(e) e.disabled = false;
+    for(const id of ['name', 'actor', 'cluster']) {
+      const e = this.element(id);
+      if(e) e.disabled = false;
+    }
+    const e = this.element('io');
+    if(e) e.style.display = 'block';
     this.group.length = 0;
     this.initial = {};
     this.same = {};
     this.changed = {};
+    this.shared_prefix = '';
+    this.selectors = {};
+    this.selected_selector = '';
+    this.default_selectors = [];
+    this.new_defsel = false;
+    this.same_defsel = true;
+    this.last_time_clicked = 0;
   }
   
   setFields(obj) {
@@ -196,23 +235,212 @@ class GroupPropertiesDialog extends ModalDialog {
         this.same[name] = same;
       }
     }
+    // For the dataset group dialog, more fields must be determined.
+    if(obj instanceof Dataset) {
+      // Determine the longest prefix shared by ALL datasets in the group.
+      this.shared_prefix = UI.sharedPrefix(obj.name, obj.name);
+      for(const ds of this.group) {
+        const sp = UI.sharedPrefix(obj.name, ds.name);
+        if(sp && this.shared_prefix.startsWith(sp)) {
+          this.shared_prefix = sp;
+        } else if(!sp.startsWith(this.shared_prefix)) {
+          this.shared_prefix = '';
+          break;
+        }
+      }
+      this.element('prefix').value = this.shared_prefix;
+      // Determine the set of all dataset modifier selectors while counting
+      // the number of occurrences of each selector and checking whether
+      // the modifier expressions are identical.
+      // NOTE: Here, too, take `obj` as the reference object.
+      this.selectors = {};
+      this.selected_selector = '';
+      this.default_selectors = [];
+      this.new_defsel = false;
+      this.same_defsel = true;
+      if(obj.default_selector) {
+        this.default_selectors.push(UI.nameToID(obj.default_selector));
+      }
+      for(const k of Object.keys(obj.modifiers)) {
+        const dsm = obj.modifiers[k];
+        this.selectors[k] = {
+            count: 1,
+            sel: dsm.selector,
+            expr: dsm.expression.text,
+            same_x: true,
+            new_s: false,
+            new_x: false,
+            deleted: false
+          };
+      }
+      // Then iterate over all datasets, excluding `obj`.
+      for(const ds of this.group) if(ds !== obj) {
+        const defsel = UI.nameToID(ds.default_selector);
+        if(this.default_selectors.indexOf(defsel) < 0) this.same_defsel = false;
+        if(defsel) addDistinct(defsel, this.default_selectors);
+        for(const k of Object.keys(ds.modifiers)) {
+          const
+              dsm = ds.modifiers[k],
+              s = this.selectors[k];
+          if(s) {
+            s.count++;
+            s.same_x = s.same_x && dsm.expression.text === s.expr;
+          } else {
+            this.selectors[k] = {
+                count: 1,
+                sel: dsm.selector,
+                expr: dsm.expression.text,
+                same_x: true,
+                new_s: false,
+                new_x: false,
+                deleted: false
+              };
+          }
+        }
+      }
+      // Selectors are not "same" when they do not apply to all datasets
+      // in the group.
+      const n = this.group.length;
+      for(const k of Object.keys(this.selectors)) {
+        const s = this.selectors[k];
+        s.same_s = s.count === n;
+      }
+      this.updateModifierList();
+    }
+  }
+  
+  updateModifierList() {
+    // Display the modifier set for a dataset group.
+    const
+        trl = [],
+        not = (x) => { return (x === false ? 'not-' : ''); },
+        mdef = (this.new_defsel !== false ? this.new_defsel :
+            (this.default_selectors.length ? this.default_selectors[0] : '')),
+        sdef = not(this.same_defsel),
+        cdef = not(this.new_defsel);
+    for(const k of Object.keys(this.selectors)) {
+      const
+          s = this.selectors[k],
+          ms = (s.new_s === false ? s.sel : s.new_s),
+          mx = (s.new_x === false ? s.expr : s.new_x),
+          wild = (ms.indexOf('*') >= 0 || ms.indexOf('?') >= 0),
+          clk = `" onclick="UI.modals.datasetgroup.selectGroupSelector(event, \'${k}\'`;
+      // Do not display deleted modifiers.
+      if(s.deleted) continue;
+      trl.push(['<tr id="dsgs-', k, '" class="dataset-modif',
+          (k === this.selected_selector ? ' sel-set' : ''),
+          '"><td class="dataset-selector',
+          ` ${not(s.same_s)}same-${not(s.new_s)}changed`,
+          (wild ? ' wildcard' : ''),
+          '" title="Shift-click to ', (s.defsel ? 'clear' : 'set as'),
+          ' default modifier', clk, ', false);">',
+          (k === mdef ||
+              (this.new_defsel === false && this.default_selectors.indexOf(k) >= 0) ?
+                  `<img src="images/solve-${sdef}same-${cdef}changed.png" ` +
+                  'style="height: 14px; width: 14px; margin: 0 1px -3px -1px;">' : ''),
+          (wild ? wildcardFormat(ms, true) : ms),
+          '</td><td class="dataset-expression',
+          ` ${not(s.same_x)}same-${not(s.new_x)}changed`, clk,
+          ', true);">', mx, '</td></tr>'
+        ].join(''));
+    }
+    this.element('modif-table').innerHTML = trl.join('');
+    if(this.selected_selector) UI.scrollIntoView(
+        document.getElementById('dsg-' + this.selected_selector));
+    const btns = 'dsg-rename-modif dsg-edit-modif dsg-delete-modif';
+    if(this.selected_selector) {
+      UI.enableButtons(btns);
+    } else {
+      UI.disableButtons(btns);
+    }
   }
 
+  selectGroupSelector(event, id, x=true) {
+    // Select modifier selector, or when double-clicked, edit its expression when
+    // x = TRUE, or the name of the modifier when x = FALSE.
+    const edit = event.altKey || this.doubleClicked(id);
+    this.selected_selector = id;
+    if(edit) {
+      this.last_time_clicked = 0;
+      if(x) {
+        this.editExpression();
+      } else {
+        this.promptForSelector('Rename');
+      }
+      return;
+    }
+    if(event.shiftKey) {
+      // Toggle new default selector.
+      this.new_defsel = (this.new_defsel === id ? '' : id);
+    }
+    this.updateModifierList();
+  }
+  
+  doubleClicked(s) {
+    const
+        now = Date.now(),
+        dt = now - this.last_time_clicked;
+    this.last_time_clicked = now;
+    if(s === this.selected_selector) {
+      // Consider click to be "double" if it occurred less than 300 ms ago.
+      if(dt < 300) {
+        this.last_time_clicked = 0;
+        return true;
+      }
+    }
+    this.clicked_selector = s;
+    return false;
+  }
+  
+  enterKey() {
+    // Open "edit" dialog for the selected modifier.
+    const
+        tbl = this.element('modif-table'),
+        srl = tbl.getElementsByClassName('sel-set');
+    if(srl.length > 0) {
+      const r = tbl.rows[srl[0].rowIndex];
+      if(r) {
+        // Emulate a double-click on the second cell to edit the expression.
+        this.last_time_clicked = Date.now();
+        r.cells[1].dispatchEvent(new Event('click'));
+      }
+    }
+  }
+  
+  upDownKey(dir) {
+    // Select row above or below the selected one (if possible).
+    const
+        tbl = this.element('modif-table'),
+        srl = tbl.getElementsByClassName('sel-set');
+    if(srl.length > 0) {
+      let r = tbl.rows[srl[0].rowIndex + dir];
+      while(r && r.style.display === 'none') {
+        r = (dir > 0 ? r.nextSibling : r.previousSibling);
+      }
+      if(r) {
+        UI.scrollIntoView(r);
+        // NOTE: Cell, not row, listens for onclick event.
+        r.cells[1].dispatchEvent(new Event('click'));
+      }
+    }
+  }
+  
   show(attr, obj) {
     // Make dialog visible with same/changed status and disabled name,
     // actor and cluster fields.
     // NOTE: Cluster dialog is also used to *add* a new cluster, and in
-    // that case no fields should be set
+    // that case no fields should be set.
     if(obj) this.setFields(obj);
     if(obj && this.group.length > 0) {
       this.element('group').innerText = `(N=${this.group.length})`;
-      // Disable name, actor and cluster fields if they exist.
-      let e = this.element('name');
-      if(e) e.disabled = true;
-      e = this.element('actor');
-      if(e) e.disabled = true;
-      e = this.element('cluster');
-      if(e) e.disabled = true;
+      // Disable name, actor, and cluster fields if they exist.
+      for(const id of ['name', 'actor', 'cluster']) {
+        const e = this.element(id);
+        if(e) e.disabled = true;
+      }
+      // Hide io field if it exists.
+      const e = this.element('io');
+      if(e) e.style.display = 'none';
       // Set the right colors to reflect same and changed status.
       this.highlightModifiedFields();
     }
@@ -231,6 +459,7 @@ class GroupPropertiesDialog extends ModalDialog {
     // Set the CSS classes of fields so that they reflect their "same"
     // and "changed" status.
     if(this.group.length === 0) return;
+    const not = {false: 'not-', true: ''};
     for(let name in this.initial) if(this.initial.hasOwnProperty(name)) {
       const
           iv = this.initial[name],
@@ -238,7 +467,6 @@ class GroupPropertiesDialog extends ModalDialog {
           // for which `same[name]` is TRUE iff all entities had identical
           // values for the property identified by `name` when the dialog
           // was opened.
-          not = {false: 'not-', true: ''},
           same = `${not[this.same[name]]}same`,
           el = this.element(name);
       let changed = false,
@@ -261,9 +489,19 @@ class GroupPropertiesDialog extends ModalDialog {
         // Compute current value as Boolean.
         const v = (type === 'box' ? state ==='checked' : state === 'eq');
         changed = (v !== iv);
+        // When array box for dataset group is (un)checked, the time aspects
+        // cover div must be hidden (shown).
+        if(name === 'array') {
+          this.element('no-time-msg').style.display = (v ? 'block' : 'none');
+        }
       }
       this.changed[name] = changed;
       el.className = `${type} ${state} ${same}-${not[changed]}changed`.trim();
+    }
+    const spe = this.element('prefix');
+    if(spe) {
+      const changed = spe.value !== this.shared_prefix;
+      spe.className = `same-${not[changed]}changed`;
     }
   }
   
@@ -313,7 +551,104 @@ class GroupPropertiesDialog extends ModalDialog {
       }
     }
   }
+
+  promptForSelector(action) {
+    // Open the group selector modal for the specified action.
+    let ms = '',
+        md = this.selector_modal;
+    if(action === 'Rename') {
+      ms = this.selectors[this.selected_selector].sel;
+    }
+    md.element('action').innerText = action;
+    md.element('name').value = ms;
+    md.show('name');
+  }
   
+  selectorAction() {
+    // Perform the specified selector action.
+    const
+        md = this.selector_modal,
+        action = md.element('action').innerText,
+        ne = md.element('name'),
+        ms = MODEL.validSelector(ne.value);
+    if(!ms) {
+      ne.focus();
+      return;
+    }
+    const ok = (action === 'Add' ? this.addSelector(ms) : this.renameSelector(ms));
+    if(ok) {
+      md.hide();
+      this.updateModifierList();
+    }
+  }
+
+  addSelector(ms) {
+    // Create a new selector and adds it to the list.
+    const k = UI.nameToID(ms);
+    if(!this.selectors.hasOwnProperty(k)) {
+      this.selectors[k] = {
+          count: 1,
+          sel: ms,
+          expr: '',
+          same_x: true,
+          new_s: ms,
+          new_x: '',
+          deleted: false
+        };
+    }
+    this.selected_selector = k;
+    return true;
+  }
+  
+  renameSelector(ms) {
+    // Record the new name for this selector as property `new_s`.
+    if(this.selected_selector) {
+      const sel = this.selectors[this.selected_selector];
+      // NOTES:
+      // (1) When renaming, the old name is be preserved.
+      // (2) Name changes do not affect the key of the selector.
+      // (3) When the new name is identical to the original, record this
+      //     by setting `new_s` to FALSE.
+      sel.new_s = (ms === sel.sel ? false : ms);
+    }
+    return true;
+  }
+  
+  editExpression() {
+    // Open the Expression editor for the selected expression.
+    const sel = this.selectors[this.selected_selector];
+    if(sel) {
+      const md = UI.modals.expression;
+      md.element('property').innerHTML = '(dataset group)' +
+          UI.OA_SEPARATOR + sel.sel;
+      md.element('text').value = sel.new_x || sel.expr;
+      document.getElementById('variable-obj').value = 0;
+      X_EDIT.updateVariableBar();
+      X_EDIT.clearStatusBar();
+      md.show('text');
+    }
+  }
+
+  modifyExpression(x) {
+    // Record the new expression for the selected selector.
+    // NOTE: Expressions are compiled when changes are saved.
+    const sel = this.selectors[this.selected_selector];
+    // NOTE: When the new expression is identical to the original,
+    // record this by setting `new_x` to FALSE.
+    if(sel) sel.new_x = (x === sel.expr ? false : x);
+    this.updateModifierList();
+  }
+
+  deleteModifier() {
+    // Record that the selected modifier should be deleted.
+    const sel = this.selectors[this.selected_selector];
+    if(sel) {
+      sel.deleted = true;
+      this.selected_selector = '';
+      this.updateModifierList();
+    }
+  }
+
 } // END of class GroupPropertiesDialog
 
 
@@ -499,6 +834,17 @@ class GUIController extends Controller {
         'no-links': 'no_links'
       });
     
+    // The Dataset group modal.
+    this.modals.datasetgroup = new GroupPropertiesDialog('datasetgroup', {
+        'default': 'default_value',
+        'unit': 'scale_unit',
+        'periodic': 'periodic',
+        'array': 'array',
+        'time-scale': 'time_scale',
+        'time-unit': 'time_unit',
+        'method': 'method'
+      });
+  
     // Initially, no dialog being dragged or resized.
     this.dr_dialog = null;
     
@@ -809,6 +1155,11 @@ class GUIController extends Controller {
     // Products have an import/export togglebox.
     this.modals.product.element('io').addEventListener('click',
         () => UI.toggleImportExportBox('product'));
+
+    this.modals.datasetgroup.ok.addEventListener('click',
+        () => FINDER.updateDatasetGroupProperties());
+    this.modals.datasetgroup.cancel.addEventListener('click',
+        () => UI.modals.datasetgroup.hide());
 
     this.modals.link.ok.addEventListener('click',
         () => UI.updateLinkProperties());
@@ -2154,9 +2505,9 @@ class GUIController extends Controller {
     // dragging its endpoint).
     } else if(this.constraining_node) {
       if(this.on_node && this.constraining_node.canConstrain(this.on_node)) {
-        // display constraint editor
-        CONSTRAINT_EDITOR.from_name.innerHTML = this.constraining_node.displayName;
-        CONSTRAINT_EDITOR.to_name.innerHTML = this.on_node.displayName;
+        // Display constraint editor.
+        CONSTRAINT_EDITOR.from_name.innerText = this.constraining_node.displayName;
+        CONSTRAINT_EDITOR.to_name.innerText = this.on_node.displayName;
         CONSTRAINT_EDITOR.showDialog();
       }
       this.linking_node = null;
@@ -2312,15 +2663,16 @@ class GUIController extends Controller {
         while(i < inp.length && inp[i].disabled) i++;
         if(i < inp.length) {
           inp[i].focus();
-        } else if(['constraint-modal', 'boundline-data-modal',
+        } else if(['datasetgroup-modal', 'constraint-modal', 'boundline-data-modal',
             'xp-clusters-modal'].indexOf(topmod.id) >= 0) {
-          // NOTE: Constraint modal, boundline data modal and "ignore clusters" modal must NOT close
-          // when Enter is pressed, but only de-focus the input field.
+          // NOTE: These modals must NOT close when Enter is pressed, but only
+          // de-focus the input field.
           e.target.blur();
         } else {
           const btns = topmod.getElementsByClassName('ok-btn');
           if(btns.length > 0) btns[0].dispatchEvent(new Event('click'));
         }
+        if(topmod.id === 'datasetgroup-modal') UI.modals.datasetgroup.enterKey();
       } else if(this.dr_dialog_order.length > 0) {
         // Send ENTER key event to the top draggable dialog.
         const last = this.dr_dialog_order.length - 1;
@@ -2334,15 +2686,22 @@ class GUIController extends Controller {
       // Prevent backspace to be interpreted (by FireFox) as "go back in browser".
       e.preventDefault();
     } else if(ttag === 'BODY') {
-      // Constraint Editor accepts arrow keys.
-      if(topmod && topmod.id === 'constraint-modal') {
-        if(code.startsWith('Arrow')) {
+      // Dataset group modal and Constraint Editor accept arrow keys.
+      if(topmod) {
+        if(topmod.id === 'constraint-modal' && code.startsWith('Arrow')) {
           e.preventDefault();
           CONSTRAINT_EDITOR.arrowKey(e);
           return;
         }
+        if(topmod.id === 'datasetgroup-modal' &&
+            (code === 'ArrowUp' || code === 'ArrowDown')) {
+          e.preventDefault();
+          // NOTE: Pass key direction as -1 for UP and +1 for DOWN.
+          UI.modals.datasetgroup.upDownKey(e.keyCode - 39);
+          return;
+        }
       }
-      // Up and down arrow keys.
+      // Lists in draggable dialogs respond to up and down arrow keys.
       if(code === 'ArrowUp' || code === 'ArrowDown') {
         e.preventDefault();
         // Send event to the top draggable dialog.

@@ -1078,49 +1078,63 @@ class LinnyRModel {
     return ss.length > 0;
   }
 
-  renamePrefixedDatasets(old_prefix, new_prefix) {
+  renamePrefixedDatasets(old_prefix, new_prefix, subset=null) {
     // Rename all datasets having the specified old prefix so that they
     // have the specified new prefix UNLESS this would cause name conflicts.
+    // NOTE: If `subset` is defined, limit renaming to the datasets it contains.
     const
         oldkey = old_prefix.toLowerCase().split(UI.PREFIXER).join(':_'),
         newkey = new_prefix.toLowerCase().split(UI.PREFIXER).join(':_'),
-        dsl = [];
+        dskl = [];
     // No change if new prefix is identical to old prefix.
     if(old_prefix !== new_prefix) { 
       for(let k in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(k)) {
-        if(k.startsWith(oldkey)) dsl.push(k);
+        if(k.startsWith(oldkey) &&
+            (!subset || subset.indexOf(MODEL.datasets[k]) >= 0)) dskl.push(k);
       }
       // NOTE: No check for name conflicts needed when name change is
       // merely some upper/lower case change.
       if(newkey !== oldkey) {
         let nc = 0;
-        for(const ds of dsl) {
-          const nk = newkey + ds.substring(oldkey.length);
+        for(const k of dskl) {
+          const nk = newkey + k.substring(oldkey.length);
           if(MODEL.datasets[nk]) nc++;
         }
         if(nc) {
-          UI.warn('Renaming ' + pluralS(dsl.length, 'dataset') +
+          UI.warn('Renaming ' + pluralS(dskl.length, 'dataset') +
               ' would cause ' + pluralS(nc, 'name conflict'));
           return false;
         }
       }
       // Reset counts of effects of a rename operation.
-      this.entity_count = 0;
+      this.variable_count = 0;
       this.expression_count = 0;
       // Rename datasets one by one, suppressing notifications.
-      for(const ds of dsl) {
-        const d = MODEL.datasets[ds];
-        d.rename(d.displayName.replace(old_prefix, new_prefix), false);
+      // NOTE: Make a list of renamed datasets.
+      const rdsl = [];
+      for(const k of dskl) {
+        const
+            ds = this.datasets[k],
+            // NOTE: When old prefix is empty string, add instead of replace.
+            nn = (old_prefix ? ds.displayName.replace(old_prefix, new_prefix) :
+                new_prefix + ds.displayName);
+        rdsl.push(ds.rename(nn, false));
       }
-      let msg = 'Renamed ' + pluralS(dsl.length, 'dataset').toLowerCase();
-      if(MODEL.variable_count) msg += ', and updated ' +
-          pluralS(MODEL.variable_count, 'variable') + ' in ' +
-          pluralS(MODEL.expression_count, 'expression');
-      UI.notify(msg);
-      if(EXPERIMENT_MANAGER.selected_experiment) {
-        EXPERIMENT_MANAGER.selected_experiment.inferVariables();
+      if(subset) {
+        // Update the specified subset so it contains the renamed datasets.
+        subset.length = 0;
+        subset.push(...rdsl);
+      } else {
+        let msg = 'Renamed ' + pluralS(dskl.length, 'dataset').toLowerCase();
+        if(this.variable_count) msg += ', and updated ' +
+            pluralS(this.variable_count, 'variable') + ' in ' +
+            pluralS(this.expression_count, 'expression');
+        UI.notify(msg);
+        if(EXPERIMENT_MANAGER.selected_experiment) {
+          EXPERIMENT_MANAGER.selected_experiment.inferVariables();
+        }
+        UI.updateControllerDialogs('CDEFJX');
       }
-      UI.updateControllerDialogs('CDEFJX');
     }
     return true;
   }
@@ -9006,16 +9020,16 @@ class Dataset {
     this.black_box = false;
     this.outcome = false;
     this.parent_anchor = 0;
-    // URL indicates that data must be read from external source
+    // URL indicates that data must be read from external source.
     this.url = '';
     // Array `data` will contain modeler-defined values, starting at *dataset*
-    // time step t = 1
+    // time step t = 1.
     this.data = [];
     // Array `vector` will contain data values on model time scale, starting at
-    // *model* time step t = 0
+    // *model* time step t = 0.
     this.vector = [];
     this.modifiers = {};
-    // Selector to be used when model is run normally, i.e., no experiment
+    // Selector to be used when model is run normally, i.e., no experiment.
     this.default_selector = '';
   }
 

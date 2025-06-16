@@ -256,14 +256,45 @@ class Finder {
         }
       }
       // Also allow search for scale unit names.
-      if(et.indexOf('U') >= 0) {
-        imgs += '<img src="images/scale.png">';
+      if(et === 'U') {
+        imgs = '<img src="images/scale.png">';
         for(let k in MODEL.products) if(MODEL.products.hasOwnProperty(k)) {
           if(fp && !k.startsWith(UI.BLACK_BOX) && patternMatch(
               MODEL.products[k].scale_unit, this.filter_pattern)) {
             enl.push(k);
             this.entities.push(MODEL.products[k]);
             addDistinct('Q', this.filtered_types);
+          }
+        }
+        for(let k in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(k)) {
+          if(fp && !k.startsWith(UI.BLACK_BOX)) {
+            const ds = MODEL.datasets[k];
+            if(ds !== MODEL.equations_dataset && patternMatch(
+                ds.scale_unit, this.filter_pattern)) {
+              enl.push(k);
+              this.entities.push(MODEL.datasets[k]);
+              addDistinct('D', this.filtered_types);
+            }
+          }
+        }
+      }
+      // Also allow search for dataset modifier selectors.
+      if(et.indexOf('S') >= 0) {
+        imgs = '<img src="images/dataset.png">';
+        for(let k in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(k)) {
+          if(fp && !k.startsWith(UI.BLACK_BOX)) {
+            const ds = MODEL.datasets[k];
+            if(ds !== MODEL.equations_dataset) {
+              for(let mk in ds.modifiers) if(ds.modifiers.hasOwnProperty(mk)) {
+                if(patternMatch(
+                    ds.modifiers[mk].selector, this.filter_pattern)) {
+                  enl.push(k);
+                  this.entities.push(MODEL.datasets[k]);
+                  addDistinct('D', this.filtered_types);
+                  break;
+                }
+              }
+            }
           }
         }
       }
@@ -341,11 +372,11 @@ class Finder {
   
   get entityGroup() {
     // Returns the list of filtered entities if all are of the same type,
-    // while excluding (no actor), (top cluster), datasets and equations.
+    // while excluding (no actor), (top cluster), and equations.
     const
         eg = [],
         ft = this.filtered_types[0];
-    if(this.filtered_types.length === 1 && 'DE'.indexOf(ft) < 0) {
+    if(this.filtered_types.length === 1 && ft !== 'E') {
       for(const e of this.entities) {
         // Exclude "no actor" and top cluster.
         if(e.name && e.name !== '(no_actor)' && e.name !== '(top_cluster)' &&
@@ -601,7 +632,7 @@ class Finder {
     // look only for the entity types denoted by these letters.
     let ft = this.filter_input.value,
         et = VM.entity_letters;
-    if(/^(\*|U|M|[ABCDELPQ]+)\?/i.test(ft)) {
+    if(/^(\*|U|M|S|[ABCDELPQ]+)\?/i.test(ft)) {
       ft = ft.split('?');
       // NOTE: *? denotes "all entity types except constraints".
       et = (ft[0] === '*' ? 'ACDELPQ' : ft[0].toUpperCase());
@@ -644,6 +675,7 @@ class Finder {
         if(UI.hidden('dataset-dlg')) {
           UI.buttons.dataset.dispatchEvent(new Event('click'));
         }
+        DATASET_MANAGER.expandToShow(obj.name);
         DATASET_MANAGER.selected_dataset = obj;
         DATASET_MANAGER.updateDialog();
       } else if(obj instanceof DatasetModifier) {
@@ -777,9 +809,162 @@ class Finder {
       UI.showLinkPropertiesDialog(e, 'R', false, group);
     } else if(e instanceof Cluster) {
       UI.showClusterPropertiesDialog(e, group);
+    } else if(e instanceof Dataset) {
+      this.showDatasetGroupDialog(e, group);
     }
   }
   
+  showDatasetGroupDialog(ds, dsl) {
+    // Initialize fields with properties of first element of `dsl`.
+    if(!dsl.length) return;
+    const md = UI.modals.datasetgroup;
+    md.group = dsl;
+    md.selected_ds = ds;
+    md.element('no-time-msg').style.display = (ds.array ? 'block' : 'none');
+    md.show('prefix', ds);
+  }
+  
+  updateDatasetGroupProperties() {
+    // Update properties of selected group of datasets.
+    const md = UI.modals.datasetgroup;
+    if(!md.group.length) return;
+    // Reduce multiple spaces to a single space.
+    let prefix = md.element('prefix').value.replaceAll(/\s+/gi, ' ').trim();
+    // Trim trailing colons (also when they have spaces between them).
+    while(prefix.endsWith(':')) prefix = prefix.slice(0, -1).trim();
+    // Count the updated chart variables and expressions.
+    let cv_cnt = 0,
+        xr_cnt = 0;
+    // Only rename datasets if prefix has been changed.
+    if(prefix !== md.shared_prefix) {
+      // Check whether prefix is valid.
+      if(prefix && !UI.validName(prefix)) {
+        UI.warn(`Invalid prefix "${prefix}"`);
+        return;
+      }
+      // Add the prefixer ": " to make it a true prefix.
+      if(prefix) prefix += UI.PREFIXER;
+      let old_prefix = md.shared_prefix;
+      if(old_prefix) old_prefix += UI.PREFIXER;
+      // Check whether prefix will create name conflicts.
+      let nc = 0;
+      for(const ds of md.group) {
+        let nn = ds.name;
+        if(nn.startsWith(old_prefix)) {
+          nn = nn.replace(old_prefix, prefix);
+          const obj = MODEL.objectByName(nn);
+          if(obj && obj !== ds) {
+            console.log('Anticipated name conflict with', obj.type,
+                obj.displayName);
+            nc++;
+          }
+        }
+      }
+      if(nc > 0) {
+        UI.warn(`Prefix "${prefix}" will result in` +
+            pluralS(nc, 'name conflict'));
+        return;
+      }
+      // Rename the datasets -- this may affect the group.
+      MODEL.renamePrefixedDatasets(old_prefix, prefix, md.group);
+      cv_cnt += MODEL.variable_count;
+      xr_cnt += MODEL.expression_count;
+    }
+    // Validate input field values.
+    const dv = UI.validNumericInput('datasetgroup-default', 'default value');
+    if(dv === false) return;
+    const ts = UI.validNumericInput('datasetgroup-time-scale', 'time step');
+    if(ts === false) return;
+    // No issues => update *only the modified* properties of all datasets in
+    // the group.
+    const data = {
+        'default': dv,
+        'unit': md.element('unit').value.trim(),
+        'periodic': UI.boxChecked('datasetgroup-periodic'),
+        'array': UI.boxChecked('datasetgroup-array'),
+        'time-scale': ts,
+        'time-unit': md.element('time-unit').value,
+        'method': md.element('method').value
+      };
+    for(let name in md.fields) if(md.changed[name]) {
+      const
+          prop = md.fields[name],
+          value = data[name];
+      for(const ds of md.group) ds[prop] = value;
+    }
+    // Also update the dataset modifiers.
+    const dsv_list = MODEL.datasetVariables;
+    for(const ds of md.group) {
+      for(const k of Object.keys(md.selectors)) {
+        const sel = md.selectors[k];
+        if(ds.modifiers.hasOwnProperty(k)) {
+           // If dataset `ds` has selector with key `k`,
+           // first check if it has been deleted.
+          if(sel.deleted) {
+            // If so, delete this modifier it from `ds`.
+            if(k === ds.default_selector) ds.default_selector = '';
+            delete ds.modifiers[k];
+          } else {
+            // If not deleted, check whether the selector was renamed.
+            const dsm = ds.modifiers[k];
+            let s = k;
+            if(sel.new_s) {
+              // If so, let `s` be the key for new selector.
+              s = UI.nameToID(sel.new_s);
+              dsm.selector = sel.new_s;
+              if(s !== k) {
+                // Add modifier with its own selector key.
+                ds.modifiers[s] = ds.modifiers[k];
+                delete ds.modifiers[k];
+              }
+              // Always update all chart variables referencing dataset + old selector.
+              for(const v of dsv_list) {
+                if(v.object === ds && v.attribute === sel.sel) {
+                  v.attribute = sel.new_s;
+                  cv_cnt++;
+                }
+              }
+              // Also replace old selector in all expressions (count these as well).
+              xr_cnt += MODEL.replaceAttributeInExpressions(
+                  ds.name + '|' + sel.sel, sel.new_s);
+            }
+            // NOTE: Keep original expression unless a new expression is specified.
+            if(sel.new_x) {
+              dsm.expression.text = sel.new_x;
+              // Clear code so the expresion will be recompiled.
+              dsm.expression.code = null;
+            }
+          }
+        } else {
+          // If dataset `ds` has NO selector with key `k`, add the (new) selector.
+          let s = sel.sel,
+              id = k;
+          if(sel.new_s) {
+            s = sel.new_s;
+            id = UI.nameToID(sel.new_s);
+          }
+          const dsm = new DatasetModifier(ds, s);
+          dsm.expression.text = (sel.new_x === false ? sel.expr : sel.new_x);
+          ds.modifiers[id] = dsm;
+        }
+      }
+      // Set the new default selector (if changed).
+      if(md.new_defsel !== false) ds.default_selector = md.new_defsel;
+    }
+    // Notify modeler of changes (if any).
+    const msg = [];
+    if(cv_cnt) msg.push(pluralS(cv_cnt, ' chart variable'));
+    if(xr_cnt) msg.push(pluralS(xr_cnt, ' expression variable'));
+    if(msg.length) {
+      UI.notify('Updated ' +  msg.join(' and '));
+    }
+    MODEL.cleanUpScaleUnits();
+    MODEL.updateDimensions();
+    md.hide();
+    // Also update the draggable dialogs that may be affected.
+    UI.updateControllerDialogs('CDEFIJX');
+  }
+
   copyAttributesToClipboard(shift) {
     // Copy relevant entity attributes as tab-separated text to clipboard.
     // NOTE: All entity types have "get" method `attributes` that returns an
