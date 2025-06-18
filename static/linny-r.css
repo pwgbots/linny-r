@@ -396,6 +396,28 @@ input[type="text"]:disabled {
   background-color: #f4f0f2;
 }
 
+td.same-not-changed {
+  color: #5060b0;  
+  background-color: #f4f8ff; 
+}
+
+td.not-same-not-changed {
+  color: #b06050;
+  background-color: #fff6f4; 
+}
+
+td.same-changed {
+  color: #0000e0;
+  background-color: #f4f8ff; 
+  text-shadow: 0px 0px 10px #00b0ff;
+}
+
+td.not-same-changed {
+  color: #e00000;
+  background-color: #fff6f4; 
+  text-shadow: 0px 0px 10px #ff6000;
+}
+
 input[type="text"].same-not-changed {
   color: #5060b0;
   background-color: #f4f8ff; 
@@ -426,10 +448,12 @@ select.not-same-not-changed {
 
 select.same-changed {
   color: #0000e0;  
+  text-shadow: 0px 0px 10px #00b0ff;
 }
 
 select.not-same-changed {
   color: #e00000;  
+  text-shadow: 0px 0px 10px #ff6000;
 }
 
 textarea {
@@ -685,6 +709,7 @@ img.inline-cancel-btn:hover {
 #actor-group,
 #constraint-group,
 #cluster-group,
+#datasetgroup-group,
 #link-group,
 #process-group,
 #product-group {
@@ -1910,6 +1935,7 @@ td.export {
 
 #actor-export,
 #dataset-export,
+#datasetgroup-export,
 #product-export {
   position: absolute;
   bottom: 10px;
@@ -1921,6 +1947,7 @@ td.export {
 
 #actor-import,
 #dataset-import,
+#datasetgroup-import,
 #product-import {
   position: absolute;
   bottom: 9px;
@@ -2607,6 +2634,7 @@ div.io-box {
 #power-grids-table,
 #dataset-table,
 #dataset-modif-table,
+#datasetgroup-modif-table,
 #equation-table,
 #experiment-table,
 #experiment-dim-table,
@@ -2647,6 +2675,7 @@ div.io-box {
 }
 
 #dataset-outcome.not-selected,
+#datasetgroup-outcome.not-selected,
 #equation-outcome.not-selected {
   filter: saturate(0) contrast(50%) brightness(170%);
 }
@@ -2703,7 +2732,8 @@ div.io-box {
   left: calc(40% + 3px);
 }
 
-#dataset-modif-buttons > img.btn {
+#dataset-modif-buttons > img.btn,
+#datasetgroup-modif-buttons > img.btn {
   height: 20px;
   width: 20px;
 }
@@ -2727,6 +2757,11 @@ tr.variable:hover {
 
 tr.sel-set {
   background-color: #eff0ff;  
+}
+
+tr.sel-set > td,
+tr.dataset-modif:hover > td {
+  background-color: inherit !important;
 }
 
 tr.def-sel {
@@ -2931,11 +2966,13 @@ td.equation-expression-multi {
   color: #e0e0e0;
 }
 
-#dataset-blackbox.off {
+#dataset-blackbox.off,
+#datasetgroup-blackbox.off {
   color: #e0e0e0;
 }
 
-#dataset-blackbox.on {
+#dataset-blackbox.on,
+#datasetgroup-blackbox.on {
   color: #403848;
 }
 
@@ -2999,18 +3036,21 @@ td.equation-expression-multi {
 
 /* NOTE: New and Rename modals must be above boundline data modal */
 #new-selector-modal,
-#rename-selector-modal {
+#rename-selector-modal,
+#group-selector-modal {
   z-index: 102;
 }
 
 #new-selector-dlg,
-#rename-selector-dlg {
+#rename-selector-dlg,
+#group-selector-dlg {
   width: 215px;
   height: 45px;
 }
 
 #new-selector-name,
-#rename-selector-name {
+#rename-selector-name,
+#group-selector-name {
   position: absolute;
   bottom: 2px;
   left: 2px;
@@ -3018,7 +3058,8 @@ td.equation-expression-multi {
 }
 
 #new-selector-label,
-#rename-selector-label {
+#rename-selector-label,
+#group-selector-label {
   position: absolute;
   left: 110px;
   bottom: 5px;
@@ -5102,6 +5143,198 @@ img.finder {
 
 #confirm-add-chart-variables-attribute {
   font-size: 12px;
+}
+
+/* the DATASET GROUP modal permits editing properties of multiple datasets */
+#datasetgroup-dlg {
+  width: 440px;
+  height: 190px;
+}
+
+#datasetgroup-prefix-lbl {
+  position: absolute;
+  top: 25px;
+  left: 2px;
+}
+
+#datasetgroup-prefix {
+  position: absolute;
+  top: 24px;
+  left: 38px;
+  width: 121px;
+  font-size: 12px;
+}
+
+#datasetgroup-default-lbl {
+  position: absolute;
+  top: 48px;
+  left: 2px;
+}
+
+#datasetgroup-default {
+  position: absolute;
+  top: 47px;
+  left: 79px;
+  width: 80px;
+  font-size: 12px;
+}
+
+#datasetgroup-unit-lbl {
+  position: absolute;
+  top: 71px;
+  left: 2px;
+}
+
+#datasetgroup-unit {
+  position: absolute;
+  top: 70px;
+  left: 32px;
+  width: 70px;
+  font-size: 12px;
+}
+
+#datasetgroup-periodic {
+  position: absolute;
+  top: 90px;
+  left: 0px;  
+}
+
+#datasetgroup-periodic-lbl {
+  position: absolute;
+  top: 92px;
+  left: 22px;  
+}
+
+#datasetgroup-array {
+  position: absolute;
+  top: 90px;
+  left: 77px; 
+}
+
+#datasetgroup-array-lbl {
+  position: absolute;
+  top: 92px;
+  left: 99px;  
+}
+
+#datasetgroup-no-time-msg {
+  position: absolute;
+  top: 111px;
+  left: 1px;
+  width: 164px;
+  height: 31px;
+  z-index: 1;
+  background-color: inherit;
+  font-style: italic;
+  padding-top: 15px;
+  text-align: center;
+  display: none;
+}
+
+#datasetgroup-time-step-lbl {
+  position: absolute;
+  top: 113px;
+  left: 2px;
+}
+
+#datasetgroup-time-scale {
+  position: absolute;
+  top: 112px;
+  left: 60px;
+  width: 50px;
+  font-size: 12px;
+}
+
+#datasetgroup-time-unit {
+  position: absolute;
+  top: 113px;
+  left: 116px;
+  height: 19px;
+  width: 45px;
+  font-size: 12px;
+}
+
+#datasetgroup-method-lbl {
+  position: absolute;
+  top: 137px;
+  left: 2px;
+}
+
+#datasetgroup-method {
+  position: absolute;
+  top: 135px;
+  left: 50px;
+  height: 21px;
+  width: 111px;
+  font-size: 12px;
+}
+
+#datasetgroup-blackbox {
+  position: absolute;
+  bottom: 7px;
+  left: 124px;
+  width: 16px;
+  height: 16px;
+  font-size: 19px;
+  cursor: pointer;
+  color: #e0e0e0;
+}
+
+#datasetgroup-outcome {
+  position: absolute;
+  bottom: 1px;
+  left: 144px;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+#datasetgroup-io {
+  position: absolute;
+  bottom: -2px;
+  left: 144px;
+  font-size: 18px;
+  color: Silver;
+  cursor: pointer;
+}
+
+#datasetgroup-separator {
+  position: absolute;
+  top: 23px;
+  left: 165px;
+  height: 164px;
+  width: 3px;
+  border-left: 1.5px Silver ridge;
+}
+
+#datasetgroup-modif-header {
+  position: absolute;
+  top: 22px;
+  left: 170px;
+  font-style: italic;
+}
+
+#datasetgroup-modif-titles {
+  position: absolute;
+  top: 38px;
+  left: 170px;
+  font-weight: 600;
+}
+
+#datasetgroup-modif-scroll-area {
+  position: absolute;
+  top: 54px;
+  left: 170px;
+  width: 267px;
+  height: 110px;
+  overflow-y: auto;
+  border-top: 1px solid Silver;
+}
+
+#datasetgroup-modif-buttons {
+  position: absolute;
+  bottom: 1px;
+  left: 170px;
 }
 
 /* the MONITOR DIALOG displays solver progress and messages */

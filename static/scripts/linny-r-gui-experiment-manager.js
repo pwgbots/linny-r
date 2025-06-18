@@ -441,19 +441,25 @@ class GUIExperimentManager extends ExperimentManager {
   }
   
   newExperiment() {
-    const n = this.new_modal.element('name').value.trim();
-    const x = MODEL.addExperiment(n);
-    if(x) {
-      this.new_modal.hide();
-      this.selected_experiment = x;
-      this.updateDialog();
+    // NOTE: Title must be a "clean" name: no \ or | and spacing reduced to
+    // a single space to permit using it unambiguously in experiment result
+    // specifiers of variable names.
+    const n = UI.cleanName(this.new_modal.element('name').value);
+    if(n) {
+      const x = MODEL.addExperiment(n);
+      if(x) {
+        this.new_modal.hide();
+        this.selected_experiment = x;
+        this.updateDialog();
+      }
+    } else {
+      this.new_modal.element('name').focus();
+      return;
     }
   }
   
   promptForName() {
     if(this.selected_experiment) {
-      this.rename_modal.element('former-name').innerHTML =
-          this.selected_experiment.title;
       this.rename_modal.element('name').value = '';
       this.rename_modal.show('name');
     }
@@ -464,12 +470,16 @@ class GUIExperimentManager extends ExperimentManager {
       const
           nel = this.rename_modal.element('name'),
           n = UI.cleanName(nel.value);
-      // Show modeler the "cleaned" new name
+      // Show modeler the "cleaned" new name.
       nel.value = n;
-      // Keep prompt open if title is empty string
+      // Keep prompt open if cleaned title is empty string, or identifies
+      // an existing experiment.
+      nel.focus();
       if(n) {
-        // Warn modeler if name already in use for some experiment
-        if(MODEL.indexOfExperiment(n) >= 0) {
+        // Warn modeler if name already in use for some experiment, other than
+        // the selected experiment (as upper/lower case changes must be possible).
+        if(MODEL.indexOfExperiment(n) >= 0 &&
+            n.toLowerCase() !== this.selected_experiment.title.toLowerCase()) {
           UI.warn(`An experiment with title "${n}" already exists`);
         } else {
           this.selected_experiment.title = n;

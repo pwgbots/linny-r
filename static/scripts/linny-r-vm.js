@@ -671,30 +671,8 @@ class ExpressionParser {
     // 
     if(owner) {
       this.context_number = owner.numberContext;
-      // NOTE: The owner prefix includes the trailing colon+space.
-      if(owner instanceof Link || owner instanceof Constraint) {
-        // For links and constraints, it depends:
-        const
-            fn = owner.from_node.displayName,
-            tn = owner.to_node.displayName;
-        if(fn.indexOf(UI.PREFIXER) >= 0) {
-          if(tn.indexOf(UI.PREFIXER) >= 0) {
-            // If both nodes are prefixed, use the longest prefix that these
-            // nodes have in common.
-            this.owner_prefix = UI.sharedPrefix(fn, tn) + UI.PREFIXER;
-          } else {
-            // Use the FROM node prefix.
-            this.owner_prefix = UI.completePrefix(fn);
-          }
-        } else if(tn.indexOf(UI.PREFIXER) >= 0) {
-          // Use the TO node prefix.
-          this.owner_prefix = UI.completePrefix(tn);
-        }
-      } else if(owner === MODEL.equations_dataset) {
-        this.owner_prefix = UI.completePrefix(attribute);
-      } else {
-        this.owner_prefix = UI.completePrefix(owner.displayName);
-      }
+      this.owner_prefix = UI.entityPrefix(
+          owner === MODEL.equations_dataset ? attribute : owner.displayName);
       if(owner instanceof Dataset) {
         this.dataset = owner;
         // The attribute (if specified) is a dataset modifier selector.
@@ -848,30 +826,33 @@ class ExpressionParser {
         }
       }
     }
-    // Run specifier (optional) must be leading and braced
-    // Specifier format: {method$title|run} where method and title are
-    // optional -- NOTE: # in title or run is NOT seen as a wildcard
+    // Experiment result specifier (optional) must be leading and braced.
+    // Specifier format: {method$title|run} where method$ and title| are
+    // optional. The run specifier may be a # followed by a run number, or
+    // a comma- or space-separated list of selectors.
+    // NOTE: # in title or run is NOT seen as a wildcard.
     if(name.startsWith('{')) {
       s = name.split('}');
       if(s.length > 1) {
-        // Brace pair => interpret it as experiment result reference
+        // Brace pair => interpret it as experiment result reference.
         const x = {
             x: false, // experiment
             r: false, // run number
             v: false, // variable; if parametrized {n: name seg's, p: indices}  
             s: '',    // statistic
-            m: '',    // method
+            m: '',    // method 
             p: false, // periodic
             nr: false // run number range
           };
-        // NOTE: name should then be in the experiment's variable list
+        // NOTE: Name should then be in the experiment's variable list.
+        // This will be checked later, after validating the run specifier.
         name = s[1].trim();
         s = s[0].substring(1);
-        // Check for scaling method
-        // NOTE: simply ignore $ unless it indicates a valid method
+        // Check for a time scaling method (used only for dataset run results).
+        // NOTE: Simply ignore $ unless it indicates a valid method.
         const msep = s.indexOf('$');
         if(msep <= 5) {
-          // Be tolerant as to case
+          // Be tolerant as to case.
           let method = s.substring(0, msep).toUpperCase();
           if(method.endsWith('P')) {
             x.p = true;
@@ -879,70 +860,89 @@ class ExpressionParser {
           }
           if(['ABS', 'MEAN', 'SUM', 'MAX', ''].indexOf(method) >= 0) {
             x.m = method;
-            s = s.substring(msep + 1);
+            s = s.substring(msep + 1).trim();
           }
         }
-        s = s.split('#');
-        let rn = (s.length > 1 ? s[1].trim() : false);
-        // Experiment specifier may contain modifier selectors.
-        s = s[0].trim().split(UI.OA_SEPARATOR);
-        if(s.length > 1) {
-          // If so, the selector list may indicate the run number.
-          // NOTE: permit selectors to be separated by various characters.
-          x.r = s.slice(1).join('|').split(/[\|\,\.\:\;\/\s]+/g);
-        }
-        if(rn) {
-          // NOTE: Special notation for run numbers to permit modelers
-          // to chart results as if run numbers are on the time axis
-          // (with a given step size). The chart will be made as usual,
-          // i.e., plot a point for each time step t, but the value v[t]
-          // will then stay the same for the time interval that corresponds
-          // to simulation period length / number of runs.
-          // NOTE: This will fail to produce a meaningful chart when the
-          // simulation period is small compared to the number of runs.
-          if(rn.startsWith('n')) {
-            // #n may be followed by a range, or this range defaults to
-            // 0 - last run number. Of this range, the i-th number will
-            // be used, where i is computes as:
-            // floor(current time step * number of runs / period length)
-            const range = rn.substring(1);
-            // Call rangeToList only to validate the range syntax.
-            if(rangeToList(range)) {
-              x.nr = range;
-              this.is_static = false;
-              this.log('dynamic because experiment run number range');
-            } else {
-              msg = `Invalid experiment run number range "${range}"`;
-            }
+        // Now `s` may still have format title|run specifier.
+        let x_title = '',
+            run_spec = '';
+        s = s.split('|');
+        if(s.length > 2) {
+          msg = `Experiment result specifier may contain only one "|"`;
+        } else {
+          if(s.length == 2) {
+            run_spec = s.pop().trim();
+            x_title = s[0].trim();
           } else {
-            // Explicit run number is specified.
-            const n = parseInt(rn);
-            if(isNaN(n)) {
-              msg = `Invalid experiment run number "${rn}"`;
+            // No vertical bar => no title, only the run specifier.
+            run_spec = s[0].trim();
+          }
+          // Run specifier can start with a # sign... 
+          if(!run_spec.startsWith('#')) {
+            // ... and if not, it is assumed to be a list of modifier selectors
+            // that will identify (during problem set-up) a specific run.
+            // NOTE: Permit selectors to be separated by any combination
+            // of commas, semicolons and spaces.
+            x.r = run_spec.split(/[\,\;\/\s]+/g);
+            // NOTE: The VMI instruction accepts `x.r` to be a list of selectors
+            // or an integer number.
+          } else {
+            // If the specifier does start with a #, trim it...
+            run_spec = run_spec.substring(1);
+            // ... and then
+            // NOTE: Special notation for run numbers to permit modelers
+            // to chart results as if run numbers are on the time axis
+            // (with a given step size). The chart will be made as usual,
+            // i.e., plot a point for each time step t, but the value v[t]
+            // will then stay the same for the time interval that corresponds
+            // to simulation period length / number of runs.
+            // NOTE: This will fail to produce a meaningful chart when the
+            // simulation period is small compared to the number of runs.
+            if(run_spec.startsWith('n')) {
+              // #n may be followed by a range, or this range defaults to
+              // 0 - last run number. Of this range, the i-th number will
+              // be used, where i is computes as:
+              // floor(current time step * number of runs / period length)
+              const range = run_spec.substring(1);
+              // Call rangeToList only to validate the range syntax.
+              if(rangeToList(range)) {
+                x.nr = range;
+                this.is_static = false;
+                this.log('dynamic because experiment run number range');
+              } else {
+                msg = `Invalid experiment run number range "${range}"`;
+              }
             } else {
-              // Explicit run number overrules selector list.
-              x.r = n;
+              // Explicit run number is specified.
+              const n = parseInt(run_spec);
+              if(isNaN(n)) {
+                msg = `Invalid experiment run number "${run_spec}"`;
+              } else {
+                // NOTE: Negative run numbers are acceptable.
+                x.r = n;
+              }
             }
           }
         }
-        // NOTE: s[0] still holds the experiment title
-        s = s[0].trim();
-        if(s) {
-          // NOTE: title cannot be parametrized with a # wildcard
-          const n = MODEL.indexOfExperiment(s);
+        // NOTE: Experiment title cannot be parametrized with a # wildcard.
+        if(x_title) {
+          const n = MODEL.indexOfExperiment(x_title);
           if(n < 0) {
-            msg = `Unknown experiment "${s}"`;
+            msg = `Unknown experiment "${x_title}"`;
           } else {
             x.x = MODEL.experiments[n];
           }
         }
+        // END of code for parsing an experiment result specifier.
+        // Now proceed with parsing the variable name.
+        
         // Variable name may start with a (case insensitive) statistic
-        // specifier such as SUM or MEAN
+        // specifier such as SUM or MEAN.
         s = name.split('$');
         if(s.length > 1) {
           const stat = s[0].trim().toUpperCase();
-          // NOTE: simply ignore $ (i.e., consider it as part of the
-          // variable name) unless it is preceded by a valid statistic
+          // NOTE: Simply ignore $ (i.e., consider it as part of the
+          // variable name) unless it is preceded by a valid statistic.
           if(VM.outcome_statistics.indexOf(stat) >= 0) {
             x.s = stat;
             name = s[1].trim();
@@ -7145,7 +7145,7 @@ function VMI_push_dataset_modifier(x, args) {
 
 
 function VMI_push_run_result(x, args) {
-  // NOTE: the first argument specifies the experiment run results:
+  // NOTE: The first argument specifies the experiment run results:
   // x: experiment object (FALSE indicates: use current experiment)
   // r: integer number, or selector list
   // v: variable index (integer number), or identifier (string)
@@ -7156,12 +7156,13 @@ function VMI_push_run_result(x, args) {
   // t: if integer t > 0, use floor(current time step / t) as run number
   const
       rrspec = args[0],
-      // NOTE: when expression `x` for which this instruction is executed is
-      // a dataset modifier, use the time scale of the dataset, not of the
-      // model, because the dataset vector is scaled to the model time scale
+      // NOTE: When *expression* `x` for which this instruction is executed
+      // is a dataset modifier, use the time scale of the dataset, not of the
+      // model, because the dataset vector is scaled to the model time scale.
       model_dt = MODEL.timeStepDuration;
-  // NOTE: run result now defaults to UNDEFINED, because the VM handles errors
-  // better now (no call stack dump on "undefined" etc., but only on errors)
+  // NOTE: Run result can now default to UNDEFINED, because the VM now handles
+  // exceptional values better: no call stack dump on "undefined" etc., but
+  // only on real errors.
   let v = rrspec.dv || VM.UNDEFINED;
   if(rrspec && rrspec.hasOwnProperty('x')) {
     let xp = rrspec.x,
@@ -7170,12 +7171,14 @@ function VMI_push_run_result(x, args) {
     if(xp === false) xp = MODEL.running_experiment;
     if(xp instanceof Experiment) {
       if(Array.isArray(rn)) {
+        // Let the running experiment infer run number from selector list `rn`
+        // and its own "active combination" of selectors.
         rn = xp.matchingCombinationIndex(rn); 
       } else if(rn < 0) {
-        // Relative run number: use current run # + r (first run has number 0)
+        // Relative run number: use current run # + r (first run has number 0).
         rn += xp.active_combination_index;
       } else if(rrspec.nr !== false) {
-        // Run number inferred from local time step of expression
+        // Run number inferred from local time step of expression.
         const
             rl = VM.nr_of_time_steps,
             range = rangeToList(rrspec.nr, xp.runs.length - 1);
@@ -7186,9 +7189,9 @@ function VMI_push_run_result(x, args) {
           rn = (ri < l ? range[ri] : range[l - 1]);
         }
       }
-      // If variable is passed as identifier, get its index for the experiment
+      // If variable is passed as identifier, get its index for the experiment.
       if(typeof rri === 'string') rri = xp.resultIndex(rri);
-      // Then proceed only if run number and result index both make sense
+      // Then proceed only if run number and result index both make sense.
       const run_count = (xp.completed ? xp.runs.length :
           xp.active_combination_index);
       if(rn !== false && rn >= 0 && rn < run_count) {
@@ -7233,11 +7236,14 @@ function VMI_push_run_result(x, args) {
           } else {
             // No statistic => return the vector for local time step
             // using here, too, the delta-time-modifier to adjust the offsets
-            // for different time steps per experiment
+            // for different time steps per experiment.
             const tot = twoOffsetTimeStep(x.step[x.step.length - 1],
                 args[1], args[2], args[3], args[4], dtm, x);
             // Scale the (midpoint) time step (at current model run time scale)
-            // to the experiment run time scale and get the run result value
+            // to the experiment run time scale and get the run result value.
+            // NOTE: the .m property specifies the time scaling method, and
+            // the .p property whether the run result vector should be used as
+            // a periodic time series.
             v = rr.valueAtModelTime(tot[0], model_dt, rrspec.m, rrspec.p);
             if(DEBUGGING) {
               const trc = ['push run result: ', xp.title,

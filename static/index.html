@@ -1730,7 +1730,86 @@ Each line should represent the points of a different bound line.">
       </div>
     </div>
   </div>
+
+  <!-- the DATASET GROUP modal allows editing properties of multiple datasets -->
+  <div id="datasetgroup-modal" class="modal">
+    <div id="datasetgroup-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Dataset group properties
+        <span id="datasetgroup-group"></span>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div id="datasetgroup-prefix-lbl">Prefix:</div>
+      <input id="datasetgroup-prefix" type="text" autocomplete="off">
+      <div id="datasetgroup-default-lbl">Default value:</div>
+      <input id="datasetgroup-default" type="text" autocomplete="off">
+      <div id="datasetgroup-unit-lbl">Unit:</div>
+      <input id="datasetgroup-unit" type="text" list="units-data" autocomplete="off">
+      <div id="datasetgroup-periodic" class="box clear"></div>
+      <div id="datasetgroup-periodic-lbl">Periodic</div>
+      <div id="datasetgroup-array" class="box clear"></div>
+      <div id="datasetgroup-array-lbl">Array</div>
+      <div id="datasetgroup-no-time-msg">
+        Arrays ignore time dimension
+      </div>
+      <div id="datasetgroup-time-step-lbl">Time step:</div>
+      <input id="datasetgroup-time-scale" type="text" autocomplete="off">
+      <select id="datasetgroup-time-unit">
+        <option value="year">yr</option>
+        <option value="week">wk</option>
+        <option value="day">d</option>
+        <option value="hour">h</option>
+        <option value="minute">m</option>
+        <option value="second">s</option>
+      </select>
+      <div id="datasetgroup-method-lbl">Method:</div>
+      <select id="datasetgroup-method">
+        <option value="nearest">at nearest t</option>
+        <option value="w-mean">weighted mean</option>
+        <option value="w-sum">weighted sum</option>
+        <option value="max">maximum</option>
+      </select>
+      <div id="datasetgroup-separator"></div>
+      <div id="datasetgroup-modif-header">Modifiers</div>
+      <div id="datasetgroup-modif-titles">
+        <span>Selector</span>
+        <span style="margin-left: 35px">Expression</span>
+      </div>
+      <div id="datasetgroup-modif-scroll-area">
+        <table id="datasetgroup-modif-table">
+        </table>
+      </div>
+      <div id="datasetgroup-modif-buttons">
+        <img id="dsg-add-modif-btn" class="btn enab"
+             src="images/add-selector.png" title="Add new selector">
+        <img id="dsg-rename-modif-btn" class="btn disab" src="images/rename.png"
+             title="Rename selected modifier">
+        <img id="dsg-edit-modif-btn" class="btn disab"
+             src="images/edit.png" title="Edit expression of selected modifier">
+        <img id="dsg-delete-modif-btn" class="btn disab"
+             src="images/delete.png" title="Delete selected modifier"
+             style="margin-left: 20px">
+      </div>
+    </div>
+  </div>
   
+  <!-- the GROUP SELECTOR dialog prompts for a new selector -->
+  <div id="group-selector-modal" class="modal">
+    <div id="group-selector-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="group-selector-action">Add</span> selector
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="group-selector-name" type="text"
+             title="Can contain only alphanumeric characters, +, -, and %
+NOTE: * and ? will be interpreted as wildcards" 
+             maxlength="10" autocomplete="off">
+      <div id="group-selector-label">(1 to 10 characters)</div>
+    </div>
+  </div>
+
   <!-- The CLONE dialog prompts for a prefix -->
   <div id="clone-modal" class="modal">
     <div id="clone-dlg" class="inp-dlg">

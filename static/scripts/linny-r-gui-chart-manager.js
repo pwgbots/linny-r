@@ -331,7 +331,7 @@ class GUIChartManager extends ChartManager {
   }
   
   updateSelector() {
-    // Adds one option to the selector for each chart defined for the model.
+    // Add one option to the selector for each chart defined for the model.
     // NOTE: Add the "new chart" option if it is not in the list.
     MODEL.addChart(this.new_chart_title);
     if(this.chart_index < 0) this.chart_index = 0;
@@ -545,16 +545,16 @@ class GUIChartManager extends ChartManager {
   }
 
   selectChart() {
-    // Sets the selected chart to be the "active" chart
+    // Set the selected chart to be the "active" chart.
     const ci = parseInt(this.chart_selector.value);
-    // Deselect variable only if different chart is selected
+    // Deselect variable only if different chart is selected.
     if(ci !== this.chart_index) this.variable_index = -1;
     this.chart_index = ci;
     this.updateDialog();
   }
 
   promptForTitle() {
-    // Prompts modeler for a new title for the current chart
+    // Prompt modeler for a new title for the current chart.
     if(this.chart_index >= 0) {
       this.rename_chart_modal.show();
       const nct = document.getElementById('new-chart-title');
@@ -564,29 +564,29 @@ class GUIChartManager extends ChartManager {
   }
 
   renameChart() {
-    // Renames the current chart
+    // Rename the current chart.
     if(this.chart_index >= 0) {
-      const t = document.getElementById('new-chart-title').value.trim();
-      // Check if a chart with this title already exists
+      const t = UI.cleanName(document.getElementById('new-chart-title').value);
+      // Check if a chart with this title already exists.
       const ci = MODEL.indexOfChart(t);
       if(ci >= 0 && ci != this.chart_index) {
         UI.warn(`A chart with title "${t}" already exists`);
       } else {
         const c = MODEL.charts[this.chart_index];
-        // Remember the old title of the chart-to-be-renamed
+        // Remember the old title of the chart-to-be-renamed.
         const ot = c.title;
         c.title = t;
-        // If the default '(new chart)' has been renamed, create a new one
+        // If the default '(new chart)' has been renamed, create a new one.
         if(ot === this.new_chart_title) {
           MODEL.addChart(ot);
         }
-        // Update the chart index so that it points to the renamed chart
+        // Update the chart index so that it points to the renamed chart.
         this.chart_index = MODEL.indexOfChart(t);
         this.updateSelector();
-        // Redraw the chart if title is shown
+        // Redraw the chart if title is shown.
         if(c.show_title) this.drawChart();
       }
-      // Update experiment viewer in case its current experiment uses this chart
+      // Update dialogs that may refer to this chart.
       UI.updateControllerDialogs('CFX');
     }
     this.rename_chart_modal.hide();

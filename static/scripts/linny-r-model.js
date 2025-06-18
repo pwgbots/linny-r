@@ -856,8 +856,10 @@ class LinnyRModel {
 
   indexOfChart(t) {
     // Return the index of a chart having title `t` in the model's chart list.
+    // NOTE: Titles should not be case-sensitive.
+    t = t.toLowerCase();
     for(let index = 0; index < this.charts.length; index++) {
-      if(this.charts[index].title === t) return index;
+      if(this.charts[index].title.toLowerCase() === t) return index;
     }
     return -1;
   }
@@ -865,8 +867,11 @@ class LinnyRModel {
   indexOfExperiment(t) {
     // Return the index of an experiment having title `t` in the model's
     // experiment list.
+    // NOTE: Titles should not be case-sensitive.
+    t = t.toLowerCase();
     for(let index = 0; index < this.experiments.length; index++) {
-      if(this.experiments[index].title === t) return index;
+      // NOTE: Use nameToID to
+      if(this.experiments[index].title.toLowerCase() === t) return index;
     }
     return -1;
   }
@@ -11333,6 +11338,7 @@ class ExperimentRun {
   constructor(x, n) {
     this.experiment = x;
     this.number = n;
+    this.combination = [];
     this.time_started = 0;
     this.time_recorded = 0;
     this.time_steps = MODEL.end_period - MODEL.start_period + 1;
@@ -11344,6 +11350,8 @@ class ExperimentRun {
   }
   
   start() {
+    // Initialize this run.
+    this.combination = this.experiment.combinations[this.number].slice();
     this.time_started = new Date().getTime();
     this.time_recorded = 0;
     this.results = [];
@@ -11360,7 +11368,8 @@ class ExperimentRun {
         '" started="', this.time_started,
         '" recorded="', this.time_recorded,
         '"><x-title>', xmlEncoded(this.experiment.title),
-        '</x-title><time-steps>', this.time_steps,
+        '</x-title><x-combi>', this.combination.join(' '),
+        '</x-combi><time-steps>', this.time_steps,
         '</time-steps><delta-t>', this.time_step_duration,
         '</delta-t><results>', r,
         '</results><messages>', bm,
@@ -11377,6 +11386,7 @@ class ExperimentRun {
       UI.warn(`Run title "${t}" does not match experiment title "` +
           this.experiment.title + '"');
     }
+    this.combi = nodeContentByTag(node, 'x-combi').split(' ');
     this.time_steps = safeStrToInt(nodeContentByTag(node, 'time-steps'));
     this.time_step_duration = safeStrToFloat(nodeContentByTag(node, 'delta-t'));
     let n = childNodeByTag(node, 'results');
@@ -11557,7 +11567,6 @@ class Experiment {
     this.selected_statistic = 'mean';
     this.selected_scale = 'val';
     this.selelected_color_scale = 'no';
-    this.active_combination_index = -1;
     // Set of combination indices to be displayed in chart.
     this.chart_combinations = [];
     // String to store original model settings while executing experiment runs.
@@ -11567,7 +11576,7 @@ class Experiment {
   }
   
   clearRuns() {
-    // NOTE: separated from basic initialization so that it can be called
+    // NOTE: Separated from basic initialization so that it can be called
     // when the modeler clicks on the "Clear results" button.
     // @@TO DO: prepare for UNDO.
     this.runs.length = 0;
@@ -11575,7 +11584,7 @@ class Experiment {
     this.completed = false;
     this.time_started = 0;
     this.time_stopped = 0;
-    this.active_combination_index = 0;
+    this.active_combination_index = -1;
     this.chart_combinations.length = 0;
   }
 
@@ -11651,21 +11660,72 @@ class Experiment {
   }
   
   matchingCombinationIndex(sl) {
-    // Return index of combination with most selectors in common with `sl`.
-    let high = 0,
-        index = false;
-    // NOTE: Results of current run are not available yet, hence length-1.
-    for(let ci = 0; ci < this.active_combination_index; ci++) {
-      const l = intersection(sl, this.combinations[ci]).length;
-      if(l > high) {
-        high = l;
-        index = ci;
+    // Return the index of the run that can be inferred from selector list
+    // `sl`, or FALSE if results for this run are not yet available.
+    // NOTE: The selector list `sl` is a run specification that is *relative*
+    // to the active combination of the *running* experiment, which may be
+    // different from `this`. For example, consider an experiment with
+    // three dimensions A = {a1, a2, a3), B = {b1, b2} and C = {c1, c2, c3},
+    // and assume that the active combination is a2 + b2 + c2. Then the
+    // "matching" combination will be:
+    //  a2 + b2 + c2  if `sl` is empty
+    //  a2 + b1 + c2  if `sl` is [b1]
+    //  a1 + b3 + c2  if `sl` is [b3, a1]  (selector sequence)
+    // NOTES:
+    // (1) Elements of `sl` that are not element of A, B or C are ingnored.
+    // (2) `sl` should not contain more than 1 selector from the same dimension.
+    const
+        valid = [],
+        v_pos = {},
+        matching = [];
+    // First, retain only the (unique) valid selectors in `sl`.
+    for(const s of sl) if(valid.indexOf(s) < 0) {
+      for(const c of this.combinations) {
+        // NOTE: Because of the way combinations are constructed, the index of
+        // a valid selector in a combinations will always be the same.
+        const pos = c.indexOf(s);
+        // Conversely, when a new selector has the same position as a selector
+        // that was already validated, this new selector is disregarded.
+        if(pos >= 0 && !v_pos[pos]) {
+          valid.push(s);
+          v_pos[pos] = true;
+        }
       }
     }
-    // NOTE: If no matching selectors, return value is FALSE.
+    // Then build a list of indices of combinations that match all valid selectors.
+    // NOTE: The list of runs may not cover ALL combinations.
+    for(let ri = 0; ri < this.runs.length; ri++) {
+      if(intersection(valid, this.runs[ri].combination).length === valid.length) {
+        matching.push(ri);
+      }
+    }
+    // Results may already be conclusive:
+    if(!matching.length) return false;
+    // NOTE: If no experiment is running, there is no "active combination".
+    // This should not occur, but in then return the last (= most recent) match. 
+    if(matching.length === 1 || !MODEL.running_experiment) return matching.pop();
+    // If not conclusive, find the matching combination that -- for the remaining
+    // dimensions of the experiment -- has most selectors in common with
+    // the active combination of the *running* experiment.
+    const ac = MODEL.running_experiment.activeCombination;
+    let high = 0,
+        index = false;
+    for(const ri of matching) {
+      const c = this.runs[ri].combination;
+      let nm = 0;
+      // NOTE: Ignore the matching valid selectors.
+      for(let ci = 0; ci < c.length; ci++) {
+        if(!v_pos[ci] && ac.indexOf(c[ci]) >= 0) nm++;
+      }
+      // NOTE: Using >= ensures that index will be set even for 0 matching.
+      if(nm >= high) {
+        high = nm;
+        index = ri;
+      }
+    }
     return index;
   }
-  
+
   isDimensionSelector(s) {
     // Return TRUE if `s` is a dimension selector in this experiment.
     for(const dim of this.dimensions) if(dim.indexOf(s) >= 0) return true;

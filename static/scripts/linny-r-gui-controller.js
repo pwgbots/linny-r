@@ -625,6 +625,7 @@ class GroupPropertiesDialog extends ModalDialog {
       document.getElementById('variable-obj').value = 0;
       X_EDIT.updateVariableBar();
       X_EDIT.clearStatusBar();
+      X_EDIT.showPrefix(this.shared_prefix);
       md.show('text');
     }
   }

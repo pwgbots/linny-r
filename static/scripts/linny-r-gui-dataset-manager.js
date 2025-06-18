@@ -1218,7 +1218,8 @@ class GUIDatasetManager extends DatasetManager {
         UI.warn(`Invalid default value "${v}" in column ${i}`);
         return false;
       } else {
-        dsa.push([sf]);
+        // Push empty list, as this will become the actual dataset without default value.
+        dsa.push([]);
       }
     }
     for(let i = 2; i < n; i++) {
@@ -1227,7 +1228,7 @@ class GUIDatasetManager extends DatasetManager {
         UI.warn(`Number of values (${dsv.length}) on line ${i} does not match number of dataset names (${ncol})`);
         return false;
       }
-      for(let j = 0; j < dsv.length; j++) {
+      for(let j = 0; j < ncol; j++) {
         const
             v = dsv[j].trim(),
             sf = safeStrToFloat(v, '');
@@ -1235,6 +1236,7 @@ class GUIDatasetManager extends DatasetManager {
           UI.warn(`Invalid numerical value "${v}" for <strong>${dsn[j]}</strong> on line ${i}`);
           return false;
         }
+        dsa[j].push(sf);
       }
     }
     // Add or update datasets.

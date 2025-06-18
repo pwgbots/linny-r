@@ -197,9 +197,9 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
       let n = '',
           a = '';
       if(ids[0] === 'link') {
-        n = document.getElementById('link-from-name').innerHTML +
+        n = document.getElementById('link-from-name').innerText +
             UI.LINK_ARROW +
-            document.getElementById('link-to-name').innerHTML;
+            document.getElementById('link-to-name').innerText;
       } else {
         n = document.getElementById(ids[0] + '-name').value;
         if(ids[0] === 'process') {
@@ -218,6 +218,7 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
     this.obj.value = 0;
     this.updateVariableBar();
     this.clearStatusBar();
+    this.showPrefix(UI.entityPrefix(prop));
     md.show('text');
   }
  
@@ -315,7 +316,13 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
     this.status.style.backgroundColor = UI.color.dialog_background;
     this.status.innerHTML = '&nbsp;';
   }
-  
+
+  showPrefix(prefix) {  
+    // When editing an expression for a prefixed entity, show the prefix
+    // on the status line.
+    if(prefix) this.status.innerHTML = '<em>Prefix:</em> ' + prefix;
+  }
+
   namesByType(type) {
     // Returns a list of entity names of the specified types
     // (used only to generate the options of SELECT elements)

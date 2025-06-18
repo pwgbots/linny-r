@@ -279,19 +279,19 @@ class Controller {
   // Methods to ensure proper naming of entities.
 
   cleanName(name) {
-    // Returns `name` without the object-attribute separator |, backslashes,
+    // Return `name` without the object-attribute separator |, backslashes,
     // and leading and trailing whitespace, and with all internal whitespace
     // reduced to a single space.
     name = name.replace(this.OA_SEPARATOR, ' ')
         .replace(/\||\\/g, ' ').trim()
         .replace(/\s\s+/g, ' ');
-    // NOTE: this may still result in a single space, which is not a name
+    // NOTE: This may still result in a single space, which is not a name.
     if(name === ' ') return '';
     return name;
   }
   
   validName(name) {
-    // Returns TRUE if `name` is a valid Linny-R entity name. These names
+    // Return TRUE if `name` is a valid Linny-R entity name. These names
     // must not be empty strings, may not contain brackets, backslashes or
     // vertical bars, may not end with a colon, and must start with an
     // underscore, a letter or a digit.
@@ -361,19 +361,83 @@ class Controller {
     // Replace a leading colon in `name` by `prefix`.
     // If `name` identifies a link or a constraint, this is applied to
     // both node names.
+    // NOTE: To give the modeler more control over what to use as prefix,
+    // successive colons indicate that a shorter prefix should be used.
+    // For example, when the prefix is XXX: YYY: ZZZ, two colons mean
+    // "use only XXX: YYY:", three colons "use only XXX:", etc.
     const
         arrow = (name.indexOf(this.LINK_ARROW) >= 0 ?
             this.LINK_ARROW : this.CONSTRAINT_ARROW),
         nodes = name.split(arrow);
     for(let i = 0; i < nodes.length; i++) {
-      nodes[i] = nodes[i].replace(/^:\s*/, prefix)
+      // First check for the special case of just a leading colon plus
+      // possibly an entity attribute.
+      // NOTE:
+      const m = nodes[i].match(/^(:+)\s*(\|[^\|]*)/);
+      if(m) {
+        // Split prefix in parts.
+        const p = prefix.split(UI.PREFIXER);
+        // Remove last (empty!) substring.
+        p.pop();
+        // Shorten prefix by the number of successive colons minus 1.
+        for(let i = 1; i < m[1].length; i++) p.pop();
+        p.push('');
+        // New name is just the (shortened) prefix without its last ": ".
+        nodes[i] = p.join(UI.PREFIXER).replace(/:\s*$/, '') + m[2];
+      } else {
+        // Prefix is typically leading, so try to replace this first.
+        const m = nodes[i].match(/^(:+)/);
+        if(m) {
+          // Shorten prefix by the number of successive colons minus 1.
+          let p = prefix.split(UI.PREFIXER);
+          p.pop();
+          for(let i = 1; i < m[1].length; i++) p.pop();
+          p.push('');
+          nodes[i] = nodes[i].replace(/^:+\s*/, p.join(UI.PREFIXER));
+        } else {
+          // If no change, try to replace an embedded double prefix.
           // NOTE: An embedded double prefix, e.g., "xxx: : yyy" indicates
           // that the second colon+space should be replaced by the prefix.
-          // This "double prefix" may occur only once in an entity name,
-          // hence no global regexp.
-          .replace(/(\w+):\s+:\s+(\w+)/, `$1: ${prefix}$2`);
+          const m = nodes[i].match(/(\w+):\s+(:+)\s+(\w+)/);
+          if(m) {
+            // Shorten prefix by the number of successive colons minus 1.
+            let p = prefix.split(UI.PREFIXER);
+            p.pop();
+            for(let i = 1; i < m[2].length; i++) p.pop();
+            p.push('');
+            prefix = p.join(UI.PREFIXER);
+            nodes[i] = `${m[1]}: ${prefix}${m[3]}`;
+          }
+        }
+      }
     }
     return nodes.join(arrow);
+  }
+
+  entityPrefix(name) {
+    // Return the prefix of `name` with its trailing colon+space.
+    const
+        arrow = (name.indexOf(this.LINK_ARROW) >= 0 ?
+            this.LINK_ARROW : this.CONSTRAINT_ARROW),
+        nodes = name.split(arrow);
+    if(nodes.length === 1) return this.completePrefix(name);
+    // For names of links and constraints, it depends:
+    const
+        fn = nodes[0],
+        tn = nodes[1];
+    if(fn.indexOf(UI.PREFIXER) >= 0) {
+      if(tn.indexOf(UI.PREFIXER) >= 0) {
+        // If BOTH nodes are prefixed, use the longest prefix that these
+        // nodes have in common...
+        return UI.sharedPrefix(fn, tn) + UI.PREFIXER;
+      }
+      // .. otherwise, return the FROM node prefix.
+      return UI.completePrefix(fn);
+    }
+    // No FROM node prefix => return the TO node prefix (if any)
+    if(tn.indexOf(UI.PREFIXER) >= 0) return UI.completePrefix(tn);
+    // No prefixers => empty prefix.
+    return '';
   }
   
   tailNumber(name) {
@@ -429,7 +493,6 @@ class Controller {
     return pan1.length - pan2.length;
   }
 
-  
   nameToID(name) {
     // Return a name in lower case with link arrow replaced by three
     // underscores, constraint link arrow by four underscores, and spaces
@@ -1272,7 +1335,7 @@ class ExperimentManager {
           MODEL.round_sequence = asel.round_sequence;
         }
       }
-      // Only now compute the simulation run time (number of time steps)
+      // Only now compute the simulation run time (number of time steps).
       xr.time_steps = MODEL.end_period - MODEL.start_period + 1;
       VM.callback = this.callback;
       // NOTE: Asynchronous call. All follow-up actions must be performed
@@ -1282,18 +1345,18 @@ class ExperimentManager {
   }
   
   processRun() {
-    // This method is called by the solveBlocks method of the Virtual Machine
+    // This method is called by the solveBlocks method of the Virtual Machine.
     const x = MODEL.running_experiment;
     if(!x) return;
     const aci = x.active_combination_index;
     if(MODEL.solved) {
-      // NOTE: addresults will call processRestOfRun when completed
+      // NOTE: addresults will call processRestOfRun when completed.
       x.runs[aci].addResults();
     } else {
       // Do not add results...
       UI.warn(`Model run #${aci} incomplete -- results will be invalid`);
-      // ... but do perform the usual post-processing
-      // NOTE: when sensitivity analysis is being performed, switch back to SA
+      // ... but do perform the usual post-processing.
+      // NOTE: When sensitivity analysis is being performed, switch back to SA.
       if(SENSITIVITY_ANALYSIS.experiment) {
         SENSITIVITY_ANALYSIS.processRestOfRun();
       } else {
