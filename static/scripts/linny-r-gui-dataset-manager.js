@@ -11,7 +11,7 @@ for the Linny-R Dataset Manager dialog.
 */
 
 /*
-Copyright (c) 2017-2024 Delft University of Technology
+Copyright (c) 2017-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -56,15 +56,11 @@ class GUIDatasetManager extends DatasetManager {
         'click', () => DATASET_MANAGER.load_csv_modal.show());
     document.getElementById('ds-delete-btn').addEventListener(
         'click', () => DATASET_MANAGER.deleteDataset());
-    document.getElementById('ds-filter-btn').addEventListener(
-        'click', () => DATASET_MANAGER.toggleFilter());
-    // Update when filter input text changes.
-    this.filter_text = document.getElementById('ds-filter-text');
-    this.filter_text.addEventListener(
-        'input', () => DATASET_MANAGER.changeFilter());
     this.dataset_table = document.getElementById('dataset-table');
-    // Data properties pane.
+    // Data properties pane below the dataset scroll area.
     this.properties = document.getElementById('dataset-properties');
+    // Number of prefixed datasets is displayed at bottom of left pane.
+    this.prefixed_count = document.getElementById('dataset-prefixed-count');
     // Toggle buttons at bottom of dialog.
     this.blackbox = document.getElementById('dataset-blackbox');
     this.blackbox.addEventListener(
@@ -144,12 +140,13 @@ class GUIDatasetManager extends DatasetManager {
   reset() {
     super.reset();
     this.selected_prefix_row = null;
+    this.selected_dataset = null;
     this.selected_modifier = null;
     this.edited_expression = null;
-    this.filter_pattern = null;
     this.clicked_object = null;
     this.last_time_clicked = 0;
     this.focal_table = null;
+    this.prefixed_datasets = [];
     this.expanded_rows = [];
   }
   
@@ -291,6 +288,17 @@ class GUIDatasetManager extends DatasetManager {
     for(const r of this.dataset_table.rows) if(r.dataset.prefix === lcp) return r;
     return null;
   }
+  
+  datasetsByPrefix(prefix) {
+    // Return the list of datasets having the specified prefix.
+    const
+        pid = UI.nameToID(prefix + UI.PREFIXER),
+        dsl = [];
+    for(const k of Object.keys(MODEL.datasets)) {
+      if(k.startsWith(pid)) dsl.push(k);
+    }
+    return dsl;
+  }
 
   selectPrefixRow(e) {
     // Select expand/collapse prefix row.
@@ -302,6 +310,7 @@ class GUIDatasetManager extends DatasetManager {
     const toggle = r.classList.contains('tree-btn');
     while(r.tagName !== 'TR') r = r.parentNode;
     this.selected_prefix_row = r;
+    this.prefixed_datasets = this.datasetsByPrefix(r.dataset.prefix);
     const sel = this.dataset_table.getElementsByClassName('sel-set');
     this.selected_dataset = null;
     if(sel.length > 0) {
@@ -311,7 +320,7 @@ class GUIDatasetManager extends DatasetManager {
     r.classList.add('sel-set');
     if(!e.target) r.scrollIntoView({block: 'center'});
     if(toggle || e.altKey || this.doubleClicked(r)) this.togglePrefixRow(e);
-    UI.enableButtons('ds-rename');      
+    this.updatePanes();      
   }
   
   updateDialog() {
@@ -321,18 +330,13 @@ class GUIDatasetManager extends DatasetManager {
         dnl = [],
         sd = this.selected_dataset,
         ioclass = ['', 'import', 'export'];
-    for(let d in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(d) &&
-         // NOTE: do not list "black-boxed" entities
-        !d.startsWith(UI.BLACK_BOX) &&
-        // NOTE: do not list the equations dataset
-        MODEL.datasets[d] !== MODEL.equations_dataset) {
-      if(!this.filter_pattern || this.filter_pattern.length === 0 ||
-          patternMatch(MODEL.datasets[d].displayName, this.filter_pattern)) {
-        dnl.push(d);
-      }
+    for(let d in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(d)) {
+      // NOTE: Do not list "black-boxed" entities or the equations dataset.
+      if(!d.startsWith(UI.BLACK_BOX) &&
+          MODEL.datasets[d] !== MODEL.equations_dataset) dnl.push(d);
     }
     dnl.sort((a, b) => UI.compareFullNames(a, b, true));
-    // First determine indentation levels, prefixes and names 
+    // First determine indentation levels, prefixes and names.
     const
         indent = [],
         pref_ids = [],
@@ -341,11 +345,11 @@ class GUIDatasetManager extends DatasetManager {
         xids = [];
     for(const dn of dnl) {
       const pref = UI.prefixesAndName(MODEL.datasets[dn].name);
-      // NOTE: only the name part (so no prefixes at all) will be shown
+      // NOTE: Only the name part (so no prefixes at all) will be shown.
       names.push(pref.pop());
       indent.push(pref.length);
-      // NOTE: ignore case but join again with ": " because prefixes
-      // can contain any character; only the prefixer is "reserved"
+      // NOTE: Ignore case but join again with ": " because prefixes
+      // can contain any character; only the prefixer is "reserved".
       const pref_id = pref.join(UI.PREFIXER).toLowerCase();
       pref_ids.push(pref_id);
       pref_names[pref_id] = pref;
@@ -363,11 +367,11 @@ class GUIDatasetManager extends DatasetManager {
       } else {
         ind_div = '';
       }
-      // NOTE: empty string should not add a collapse/expand row
+      // NOTE: Empty string should not add a collapse/expand row.
       if(pid && pid != prev_id && xids.indexOf(pid) < 0) {
         // NOTE: XX: aa may be followed by XX: YY: ZZ: bb, which requires
         // *two* collapsable lines: XX: YY and XX: YY: ZZ: before adding
-        // XX: YY: ZZ: bb
+        // XX: YY: ZZ: bb.
         const
             ps = pid.split(UI.PREFIXER),
             pps = prev_id.split(UI.PREFIXER),
@@ -375,20 +379,20 @@ class GUIDatasetManager extends DatasetManager {
             pns = pn.join(UI.PREFIXER),
             lpl = [];
         let lindent = 0;
-        // Ignore identical leading prefixes
+        // Ignore identical leading prefixes.
         while(ps.length > 0 && pps.length > 0 && ps[0] === pps[0]) {
           lpl.push(ps.shift());
           pps.shift();
           pn.shift();
           lindent++;
         }
-        // Add a "collapse" row for each new prefix
+        // Add a "collapse" row for each new prefix.
         while(ps.length > 0) {
           lpl.push(ps.shift());
           lindent++;
           const lpid = lpl.join(UI.PREFIXER);
           dl.push(['<tr data-prefix="', lpid,
-              '" data-prefix-name="', pns, '" class="dataset"',
+              '" data-prefix-name="', pns.slice(0, lpid.length), '" class="dataset"',
               'onclick="DATASET_MANAGER.selectPrefixRow(event);"><td>',
               // NOTE: data-prefix="x" signals that this is an extra row
               (lindent > 0 ?
@@ -398,7 +402,7 @@ class GUIDatasetManager extends DatasetManager {
               '<div data-prefix="x" class="tree-btn">',
               (this.expanded_rows.indexOf(lpid) >= 0 ? '\u25BC' : '\u25BA'),
               '</div>', pn.shift(), '</td></tr>'].join(''));
-          // Add to the list to prevent multiple c/x-rows for the same prefix
+          // Add to the list to prevent multiple c/x-rows for the same prefix.
           xids.push(lpid);
         }
       }
@@ -437,6 +441,7 @@ class GUIDatasetManager extends DatasetManager {
         sd = this.selected_dataset,
         btns = 'ds-data ds-clone ds-delete ds-rename';
     if(sd) {
+      this.prefixed_count.style.display = 'none';
       this.properties.style.display = 'block';
       document.getElementById('dataset-default').innerHTML =
           VM.sig4Dig(sd.default_value) +
@@ -469,8 +474,22 @@ class GUIDatasetManager extends DatasetManager {
       UI.enableButtons(btns);
     } else {
       this.properties.style.display = 'none';
+      const
+          pdsl = this.prefixed_datasets.length,
+          npds = pluralS(pdsl, 'dataset');
+      this.prefixed_count.innerText = npds;
+      this.prefixed_count.style.display = (pdsl ? 'block' : 'none');
       UI.disableButtons(btns);
-      if(this.selected_prefix_row) UI.enableButtons('ds-rename');
+      if(this.selected_prefix_row) {
+        UI.enableButtons('ds-rename ds-delete', true);
+        document.getElementById('ds-rename-btn')
+            .title = `Rename ${npds} by changing prefix "${this.selectedPrefix}"`;
+        document.getElementById('ds-delete-btn')
+            .title = `Delete ${npds} having prefix "${this.selectedPrefix}"`;        
+      } else {
+        document.getElementById('ds-rename-btn').title = 'Rename selected dataset';
+        document.getElementById('ds-delete-btn').title = 'Delete selected dataset';
+      }
     }
     this.updateModifiers();
   }
@@ -555,37 +574,14 @@ class GUIDatasetManager extends DatasetManager {
     if(d) DOCUMENTATION_MANAGER.update(d, shift);
   }
   
-  toggleFilter() {
-    const
-        btn = document.getElementById('ds-filter-btn'),
-        bar = document.getElementById('ds-filter-bar'),
-        dsa = document.getElementById('dataset-scroll-area');
-    if(btn.classList.toggle('stay-activ')) {
-      bar.style.display = 'block';
-      dsa.style.top = '81px';
-      dsa.style.height = 'calc(100% - 141px)';
-      this.changeFilter();
-    } else {
-      bar.style.display = 'none';
-      dsa.style.top = '62px';
-      dsa.style.height = 'calc(100% - 122px)';
-      this.filter_pattern = null; 
-      this.updateDialog();
-    }
-  }
-  
-  changeFilter() {
-    this.filter_pattern = patternList(this.filter_text.value);
-    this.updateDialog();
-  }
-  
   selectDataset(event, id) {
-    // Select dataset, or edit it when Alt- or double-clicked
+    // Select dataset, or edit it when Alt- or double-clicked.
     this.focal_table = this.dataset_table;
     const
         d = MODEL.datasets[id] || null,
         edit = event.altKey || this.doubleClicked(d);
     this.selected_dataset = d;
+    this.prefixed_datasets.length = 0;
     if(d && edit) {
       this.last_time_clicked = 0;
       this.editData();
@@ -748,18 +744,34 @@ class GUIDatasetManager extends DatasetManager {
       this.updateDialog();
     }    
   }
+  
+  get selectedAsList() {
+  // Return list of datasets selected directly or by prefix.
+    const dsl = [];
+    // Prevent including the equations dataset (just in case).
+    if(this.selected_dataset && this.selected_dataset !== MODEL.equations_dataset) {
+      dsl.push(this.selected_dataset);
+    } else {
+      // NOTE: List of prefixed datasets contains keys, not objects.
+      for(const k of this.prefixed_datasets) {
+        const ds = MODEL.datasets[k];
+        if(ds !== MODEL.equations_dataset) dsl.push();
+      }
+    }
+    return dsl;
+  }
 
   deleteDataset() {
-    const d = this.selected_dataset;
-    // Double-check, just in case...
-    if(d && d !== MODEL.equations_dataset) {
-      MODEL.removeImport(d);
-      MODEL.removeExport(d);
-      delete MODEL.datasets[d.identifier];
-      this.selected_dataset = null;
-      this.updateDialog();
-      MODEL.updateDimensions();      
+    // Delete selected dataset(s).
+    for(const ds of this.selectedAsList) {
+      MODEL.removeImport(ds);
+      MODEL.removeExport(ds);
+      delete MODEL.datasets[ds.identifier];
     }
+    this.selected_dataset = null;
+    this.prefixed_datasets.length = 0;
+    this.updateDialog();
+    MODEL.updateDimensions();      
   }
   
   toggleBlackBox() {

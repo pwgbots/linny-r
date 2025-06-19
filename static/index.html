@@ -1942,17 +1942,7 @@ NOTE: * and ? will be interpreted as wildcards"
            title="Delete selected dataset"
            style="position: absolute; right: 2px">
     </div>
-    <div id="dataset-header">
-      Datasets
-      <img id="ds-filter-btn" class="btn enab" src="images/filter.png"
-           title="Filter on name">
-    </div>
-    <div id="ds-filter-bar">
-      <input id="ds-filter-text" type="text"
-             placeholder="(name filtering pattern)"
-             title="Pattern may contain logical & (AND), | (OR) and ^ (NOT)
-Start with = to find exact match, with ~ to match first characters">
-    </div>
+    <div id="dataset-header">Datasets</div>
     <div id="dataset-scroll-area">
       <table id="dataset-table">
       </table>
@@ -1984,6 +1974,7 @@ Start with = to find exact match, with ~ to match first characters">
         <div id="dataset-export">&uarr;</div>
       </div>
     </div>
+    <div id="dataset-prefixed-count" class="blink"></div>
     <div id="dataset-separator"></div>
     <div id="dataset-modif-header">(no dataset selected)</div>
     <div id="dataset-modif-ds-name"></div>

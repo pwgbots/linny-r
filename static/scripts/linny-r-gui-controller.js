@@ -845,7 +845,7 @@ class GUIController extends Controller {
         'time-unit': 'time_unit',
         'method': 'method'
       });
-  
+    
     // Initially, no dialog being dragged or resized.
     this.dr_dialog = null;
     
@@ -1225,6 +1225,12 @@ class GUIController extends Controller {
     // Ensure that all modal windows respond to ESCape
     // (and more in general to other special keys).
     document.addEventListener('keydown', (event) => UI.checkModals(event));
+    // Ensure that all modal dialogs "swallow" mousedown events, as otherwise
+    // these may alo be processed by the main window drawing canvas.
+    for(const modal of document.getElementsByClassName('modal')) {
+      modal.addEventListener('mousedown', (event) => event.stopPropagation());
+    }
+  
   }
   
   setConstraintUnderCursor(c) {
@@ -1927,18 +1933,19 @@ class GUIController extends Controller {
   // Button functionality
   //
   
-  enableButtons(btns) {
+  enableButtons(btns, blink=false) {
     for(const btn of btns.trim().split(/\s+/)) {
       const b = document.getElementById(btn + '-btn');
-      b.classList.remove('disab', 'activ');
+      b.classList.remove('disab', 'activ', 'blink');
       b.classList.add('enab');
+      if(blink) b.classList.add('blink');
     }
   }
   
   disableButtons(btns) {
     for(const btn of btns.trim().split(/\s+/)) {
       const b = document.getElementById(btn + '-btn'); 
-      b.classList.remove('enab', 'activ', 'stay-activ');
+      b.classList.remove('enab', 'activ', 'stay-activ', 'blink');
       b.classList.add('disab');
     }
   }
@@ -2632,17 +2639,11 @@ class GUIController extends Controller {
   // Handler for keyboard events
   //
   
-  checkModals(e) {
-    // Respond to Escape, Enter and shortcut keys.
-    const
-        ttype = e.target.type,
-        ttag = e.target.tagName,
-        modals = document.getElementsByClassName('modal');
-    // Modal dialogs: hide on ESC and move to next input on ENTER.
+  get topModal() {
+    // Return the topmost visible modal dialog, or NULL if none are showing.
+    const modals = document.getElementsByClassName('modal');
     let maxz = 0,
-        topmod = null,
-        code = e.code,
-        alt = e.altKey;
+        topmod = null;
     for(const m of modals) {
       const
           cs = window.getComputedStyle(m),
@@ -2652,6 +2653,18 @@ class GUIController extends Controller {
         maxz = z;
       }
     }
+    return topmod;
+  }
+  
+  checkModals(e) {
+    // Respond to Escape, Enter and shortcut keys.
+    const
+        ttype = e.target.type,
+        ttag = e.target.tagName,
+        code = e.code,
+        alt = e.altKey,
+        topmod = this.topModal;
+    // Modal dialogs: hide on ESC and move to next input on ENTER.
     // NOTE: Consider only the top modal (if any is showing).
     if(code === 'Escape') {
       e.stopImmediatePropagation();

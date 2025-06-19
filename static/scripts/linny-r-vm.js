@@ -951,7 +951,13 @@ class ExpressionParser {
         // Variable name may start with a colon to denote that the owner
         // prefix should be added.
         name = UI.colonPrefixedName(name, this.owner_prefix);
-        if(x.x) {
+        // First check whether name refers to a valid attribute of an
+        // existing model entity.
+        const check = MODEL.validVariable(name);
+        if(check !== true) {
+          // If not TRUE, check will be an error message. 
+          msg = check;
+        } else if(x.x) {
           // Look up name in experiment outcomes list.
           x.v = x.x.resultIndex(name);
           if(x.v < 0 && name.indexOf('#') >= 0 &&
@@ -989,7 +995,26 @@ class ExpressionParser {
           if(x.r === false && x.t === false) {
             msg = 'Experiment run not specified';
           } else if(x.v === false) {
-            msg = `No experiments have variable "${name}" as result`;
+            // NOTE: Variable may not be defined as outcome of any experiment.
+            // This will be handled at runtime by VMI_push_run_result, but
+            // it will be helpful to notify modelers at compile time when an
+            // experiment is running, and also when they are editing an
+            // expression (so when a modal dialog is showing).
+            const
+                notice = `No experiments have variable "${name}" as result`,
+                tm = UI.topModal;
+            // NOTE: Only notify when expression-editing modals are showing.
+            if(tm) {
+              const mid = tm.id.replace('-modal', '');
+              if(['actor', 'note', 'link', 'boundline-data', 'process',
+                    'product', 'equation', 'expression'].indexOf(mid) >= 0) {
+                UI.notify(notice);
+              }
+            }
+            if(MODEL.running_experiment) {
+              // Log message only for block 1.
+              VM.logMessage(1, VM.WARNING + notice);
+            }
           }
         }
         if(msg) {
@@ -2310,6 +2335,17 @@ class VirtualMachine {
       L: 'link',
       P: 'process',
       Q: 'product'
+    };
+    // Reverse lookup for entity letter codes.
+    this.entity_letter_codes = {
+      actor: 'A',
+      constraint: 'B',
+      cluster: 'C',
+      dataset: 'D',
+      equation: 'E',
+      link: 'L',
+      process: 'P',
+      product: 'Q'
     };
     this.entity_letters = 'ABCDELPQ';
     // Standard attributes of Linny-R entities.

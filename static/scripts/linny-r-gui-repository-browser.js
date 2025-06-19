@@ -289,6 +289,8 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
         'click', () => REPOSITORY_BROWSER.performInclusion());
     this.include_modal.cancel.addEventListener(
         'click', () => REPOSITORY_BROWSER.cancelInclusion());
+    this.include_modal.element('prefix').addEventListener(
+        'blur', () => REPOSITORY_BROWSER.suggestBindings());
     this.include_modal.element('actor').addEventListener(
         'blur', () => REPOSITORY_BROWSER.updateActors());
 
@@ -612,6 +614,22 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
     md.element('actor').value = '';
     md.element('scroll-area').innerHTML = IO_CONTEXT.parameterTable;
     md.show('prefix');
+  }
+  
+  suggestBindings() {
+    // Select for each "Cluster: XXX" drop-down the one that matches the
+    // value of the prefix input field.
+    const
+        md = this.include_modal,
+        prefix = md.element('prefix').value.trim(),
+        sa = md.element('scroll-area'),
+        sels = sa.querySelectorAll('select');
+    for(const sel of sels) {
+      const
+          oid = UI.nameToID(prefix) + ':_' + sel.id,
+          ids = [...sel.options].map(o => o.value);
+      if(ids.indexOf(oid) >= 0) sel.value = oid;
+    }
   }
   
   updateActors() {

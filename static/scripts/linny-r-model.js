@@ -501,6 +501,30 @@ class LinnyRModel {
     return this.namedObjectByID(UI.nameToID(name));
   }
   
+  validVariable(name) {
+    // Return TRUE if `name` references an entity plus valid attribute.
+    const
+        ea = name.split('|'),
+        en = ea[0].trim(),
+        e = this.objectByName(en);
+    if(!e) return `Unknown model entity "${en}"`;
+    const
+        ao = ea[1].split('@'),
+        a = ao[0].trim();
+    // Valid if no attribute, as all entity types have a default attribute. 
+    if(!a) return true;
+    // Attribute should be valid for the entity type.
+    const
+        et = e.type.toLowerCase(),
+        ac = VM.attribute_codes[VM.entity_letter_codes[et]];
+    if(ac.indexOf(a) >= 0 || (e instanceof Cluster && a.startsWith('=')) ||
+        (e instanceof Dataset && e.modifiers.hasOwnProperty(a.toLowerCase()))) {
+      return true;
+    }
+    if(e instanceof Dataset) return `Dataset ${e.displayName} has no modifier "${a}"`;
+    return `Invalid attribute "${a}"`;
+  }
+  
   setByType(type) {
     // Return a "dictionary" object with entities of the specified types
     if(type === 'Process') return this.processes;
@@ -4370,22 +4394,24 @@ class IOBinding {
         datastyle = (this.is_data ?
             '; text-decoration: 1.5px dashed underline' : '');
     let html = ['<tr class="', ioc[this.io_type],  '-param">',
-        '<td style="padding-bottom:2px">',
-        '<span style="font-style:normal; font-weight:normal', datastyle, '">',
+        '<td style="padding-bottom: 2px">',
+        '<span style="font-style: normal; font-weight: normal', datastyle, '">',
         this.entity_type, ':</span> ', this.name_in_module].join('');
     if(this.io_type === 1) {
       // An IMPORT binding generates two rows: the formal name (in the module)
-      // and the actual name (in the current model) as dropdown box
-      // NOTE: the first (default) option is the *prefixed* formal name, which
-      // means that the parameter is not bound to an entity in the current model
+      // and the actual name (in the current model) as dropdown box.
+      // NOTE: The first (default) option is the *prefixed* formal name, which
+      // means that the parameter is not bound to an entity in the current model.
       html += ['<br>&rdca;<select id="', this.id, '" name="', this.id,
-          '" class="i-param"><option value="_CLUSTER">Cluster: ',
+          '" class="i-param"><option value="_CLUSTER" style="color: purple">Cluster: ',
           this.name_in_module, '</option>'].join('');
       const
           s = MODEL.setByType(this.entity_type),
-          index = Object.keys(s).sort();
+          tail = ':_' + this.name_in_module.toLowerCase(),
+          index = Object.keys(s).sort(
+              (a, b) => compareTailFirst(a, b, tail));
       if(s === MODEL.datasets) {
-        // NOTE: do not list the model equations as dataset
+        // NOTE: Do not list the model equations as dataset.
         const i = index.indexOf(UI.EQUATIONS_DATASET_ID);
         if(i >= 0) index.splice(i, 1);
       }
@@ -4467,12 +4493,14 @@ class IOContext {
   }
 
   actualName(n, an='') {
-    // Returns the actual name for a parameter with formal name `n`
+    // Return the actual name for a parameter with formal name `n`
     // (and for processes and clusters: with actor name `an` if specified and
-    // not "(no actor)")
-    // NOTE: do not modify (no actor), nor the "dataset dot"
+    // not "(no actor)").
+    // NOTE: Do not modify (no actor), nor the "dataset dot".
     if(n === UI.NO_ACTOR || n === '.') return n;
-    // NOTE: the top cluster of the included model has the prefix as its name
+    // NOTE: Do not modify "prefix-relative" variables.
+    if(n.startsWith(':')) return n;
+    // NOTE: The top cluster of the included model has the prefix as its name.
     if(n === UI.TOP_CLUSTER_NAME || n === UI.FORMER_TOP_CLUSTER_NAME) {
       return this.prefix;
     }
@@ -4489,7 +4517,7 @@ class IOContext {
       return n;
     }
     // All other entities are prefixed
-    return (this.prefix ? this.prefix + ': ' : '') + n;
+    return (this.prefix ? this.prefix + UI.PREFIXER : '') + n;
   }
   
   get clusterName() {
@@ -4581,19 +4609,19 @@ class IOContext {
   }
   
   supersede(obj) {
-    // Logs that entity `obj` is superseded, i.e., that this entity already
+    // Log that entity `obj` is superseded, i.e., that this entity already
     // exists in the current model, and is initialized anew from the XML of
     // the model that is being included. The log is shown to modeler afterwards.
     addDistinct(obj.type + UI.PREFIXER + obj.displayName, this.superseded);
   }
   
   rewrite(x, n1='', n2='') {
-    // Replaces entity names of variables used in expression `x` by their
-    // actual name after inclusion
-    // NOTE: when strings `n1` and `n2` are passed, replace entity name `n1`
+    // Replace entity names of variables used in expression `x` by their
+    // actual name after inclusion.
+    // NOTE: When strings `n1` and `n2` are passed, replace entity name `n1`
     // by `n2` in all variables (this is not IO-related, but used when the
-    // modeler renames an entity)
-    // NOTE: nothing to do if expression contains no variables 
+    // modeler renames an entity).
+    // NOTE: Nothing to do if expression contains no variables.
     if(x.text.indexOf('[') < 0) return;
     const rcnt = this.replace_count;
     let s = '',
@@ -4607,28 +4635,28 @@ class IOContext {
     while(true) {
       p = x.text.indexOf('[', q + 1);
       if(p < 0) {
-        // No more '[' => add remaining part of text, and quit
+        // No more '[' => add remaining part of text, and quit.
         s += x.text.slice(q + 1);
         break;
       }
-      // Add part from last ']' up to new '['
+      // Add part from last ']' up to new '['.
       s += x.text.slice(q + 1, p);
       // Find next ']'
       q = indexOfMatchingBracket(x.text, p);
-      // Get the bracketed text (without brackets)
+      // Get the bracketed text (without brackets).
       ss = x.text.slice(p + 1, q);
-      // Separate into variable and attribute + offset string (if any)
+      // Separate into variable and attribute + offset string (if any).
       vb = ss.lastIndexOf('|');
       if(vb >= 0) {
         v = ss.slice(0, vb);
-        // NOTE: attribute string includes the vertical bar '|'
+        // NOTE: Attribute string includes the vertical bar '|'.
         a = ss.slice(vb);
       } else {
-        // Separate into variable and offset string (if any)
+        // Separate into variable and offset string (if any).
         vb = ss.lastIndexOf('@');
         if(vb >= 0) {
           v = ss.slice(0, vb);
-          // NOTE: attribute string includes the "at" sign '@'
+          // NOTE: Attribute string includes the "at" sign '@'.
           a = ss.slice(vb);
         } else {
           v = ss;
@@ -4650,12 +4678,13 @@ class IOContext {
           brace = '';
         }
       }
-      // NOTE: patterns used to compute statistics must not be rewritten 
+      // NOTE: Patterns used to compute statistics must not be rewritten.
       let doit = true;
       stat = v.split('$');
       if(stat.length > 1 && VM.statistic_operators.indexOf(stat[0]) >= 0) {
         if(brace) {
-          // NOTE: this does not hold for statistics for experiment outcomes
+          // NOTE: This does not hold for statistics for experiment outcomes,
+          // because there no patterns but actual names are used.
           brace += stat[0] + '$';
           v = stat.slice(1).join('$');
         } else {
@@ -4663,21 +4692,21 @@ class IOContext {
         }
       }
       if(doit) {
-        // NOTE: when `n1` and `n2` have been specified, compare `v` with `n1`,
-        // and if matching, replace it by `n2`
+        // NOTE: When `n1` and `n2` have been specified, compare `v` with `n1`,
+        // and if matching, replace it by `n2`.
         if(n1 && n2) {
           // NOTE: UI.replaceEntity handles link names by replacing either the
-          // FROM or TO node name if it matches with `n1`
+          // FROM or TO node name if it matches with `n1`.
           const r = UI.replaceEntity(v, n1, n2);
-          // Only replace `v` by `r` in case of a match
+          // Only replace `v` by `r` in case of a match.
           if(r) {
             this.replace_count++;
             v = r;
           }
         } else {
           // When `n1` and `n2` are NOT specified, rewrite the variable
-          // using the parameter bindings
-          // NOTE: link variables contain TWO entity names
+          // using the parameter bindings.
+          // NOTE: Link variables contain TWO entity names.
           if(v.indexOf(UI.LINK_ARROW) >= 0) {
             const ln = v.split(UI.LINK_ARROW);
             v = this.actualName(ln[0]) + UI.LINK_ARROW + this.actualName(ln[1]);
@@ -4686,24 +4715,24 @@ class IOContext {
           }
         }
       }
-      // Add [actual name|attribute string] while preserving "by reference"
+      // Add [actual name|attribute string] while preserving "by reference".
       s += `[${brace}${by_ref}${v}${a}]`;
     }
-    // Increase expression count when 1 or more variables were replaced
+    // Increase expression count when 1 or more variables were replaced.
     if(this.replace_count > rcnt) this.expression_count++;
-    // Replace the original expression by the new one
+    // Replace the original expression by the new one.
     x.text = s;
-    // Force expression to recompile
+    // Force expression to recompile.
     x.code = null;
   }
   
   addedNode(node) {
-    // Record that node was added
+    // Record that node was added.
     this.added_nodes.push(node);
   }
 
   addedLink(link) {
-    // Record that link was added
+    // Record that link was added.
     this.added_links.push(link);
   }
 
@@ -9196,12 +9225,17 @@ class Dataset {
     // Data is stored simply as semicolon-separated floating point numbers,
     // with N-digit precision to keep model files compact (default: N = 8).
     let d = [];
-    for(const v of this.data) {
-      // Convert number to string with the desired precision.
-      const f = v.toPrecision(CONFIGURATION.dataset_precision);
-      // Then parse it again, so that the number will be represented
-      // (by JavaScript) in the most compact representation.
-      d.push(parseFloat(f));
+    // NOTE: Guard against empty strings and other invalid data.
+    for(const v of this.data) if(v) {
+      try {
+        // Convert number to string with the desired precision.
+        const f = v.toPrecision(CONFIGURATION.dataset_precision);
+        // Then parse it again, so that the number will be represented
+        // (by JavaScript) in the most compact representation.
+        d.push(parseFloat(f));
+      } catch(err) {
+        console.log('-- Notice: dataset', this.displayName, 'has invalid data', v);
+      }
     }
     return d.join(';');
   }

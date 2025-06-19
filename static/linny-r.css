@@ -284,6 +284,7 @@ img.off {
   }
 }
 
+div.blink,
 img.blink {
   animation: blink 1s step-start 0s infinite;
 }
@@ -2663,6 +2664,15 @@ div.io-box {
   left: 2px;
   width: 40%;
   height: 59px;
+}
+
+#dataset-prefixed-count {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  max-width: 40%;
+  color: #700090;
+  font-weight: bold;
 }
 
 #dataset-outcome {

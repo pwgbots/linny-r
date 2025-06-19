@@ -303,9 +303,19 @@ function markFirstDifference(s1, s2) {
 //
 
 function ciCompare(a, b) {
-  // Performs case-insensitive comparison that does differentiate
-  // between accented characters (as this differentiates between identifiers)
+  // Perform case-insensitive comparison that does differentiate
+  // between accented characters (as this differentiates between identifiers).
   return a.localeCompare(b, undefined, {sensitivity: 'accent'});
+}
+
+function compareTailFirst(a, b, tail) {
+  // Sort strings while prioritizing the group of elements that end on `tail`.
+  const
+      a_tail = a.endsWith(tail),
+      b_tail = b.endsWith(tail);
+  if(a_tail && !b_tail) return -1;
+  if(!a_tail && b_tail) return 1;
+  return ciCompare(a, b);
 }
 
 function endsWithDigits(str) {
@@ -1143,6 +1153,7 @@ if(NODE) module.exports = {
   differences: differences,
   markFirstDifference: markFirstDifference,
   ciCompare: ciCompare,
+  compareTailFirst: compareTailFirst,
   endsWithDigits: endsWithDigits,
   indexOfMatchingBracket: indexOfMatchingBracket,
   monoSpaced: monoSpaced,
