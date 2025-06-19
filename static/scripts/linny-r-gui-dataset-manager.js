@@ -1261,7 +1261,7 @@ class GUIDatasetManager extends DatasetManager {
           ods = MODEL.namedObjectByID(id),
           ds = ods || MODEL.addDataset(n);
       // NOTE: `ds` will now be either a new dataset or an existing one.
-      if(ds) {
+      if(ds instanceof Dataset) {
         // Keep track of added/updated datasets.
         const
             odv = ds.default_value,
@@ -1274,6 +1274,8 @@ class GUIDatasetManager extends DatasetManager {
           added++;
         }
         ds.computeStatistics();
+      } else {
+        UI.warn(`Name conflict: ${ds.type} "${ds.displayName}" already exists`);
       }
     }
     // Notify modeler of changes (if any).
