@@ -1710,14 +1710,14 @@ class GUIController extends Controller {
   //
   
   draggableDialog(d) {
-    // Make dialog draggable
+    // Make dialog draggable.
     const
         dlg = document.getElementById(d + '-dlg'),
         hdr = document.getElementById(d + '-hdr');
     let cx = 0,
         cy = 0;
     if(dlg && hdr) {
-      // NOTE: dialogs are draggable only by their header
+      // NOTE: Dialogs are draggable only by their header.
       hdr.onmousedown = dialogHeaderMouseDown;
       dlg.onmousedown = dialogMouseDown;
       return dlg;
@@ -1728,13 +1728,13 @@ class GUIController extends Controller {
     
     function dialogMouseDown(e) {
       e = e || window.event;
-      // NOTE: no `preventDefault` so the header will also receive it
-      // Find the dialog element
+      // NOTE: No `preventDefault`, as this disables selector elements.
+      // Find the dialog element.
       let de = e.target;
       while(de && !de.id.endsWith('-dlg')) { de = de.parentElement; }
-      // Moves the dialog (`this`) to the top of the order
+      // Move the dialog (`this`) to the top of the order.
       const doi = UI.dr_dialog_order.indexOf(de);
-      // NOTE: do not reorder when already at end of list (= at top)
+      // NOTE: Do not reorder when already at end of list (= at top).
       if(doi >= 0 && doi !== UI.dr_dialog_order.length - 1) {
         UI.dr_dialog_order.splice(doi, 1);
         UI.dr_dialog_order.push(de);
@@ -1745,12 +1745,12 @@ class GUIController extends Controller {
     function dialogHeaderMouseDown(e) {
       e = e || window.event;
       e.preventDefault();
-      // Find the dialog element
+      // Find the dialog element.
       let de = e.target;
       while(de && !de.id.endsWith('-dlg')) { de = de.parentElement; }
-      // Record the affected dialog
+      // Record the affected dialog.
       UI.dr_dialog = de;
-      // Get the mouse cursor position at startup
+      // Get the mouse cursor position at startup.
       cx = e.clientX;
       cy = e.clientY;
       document.onmouseup = stopDragDialog;
@@ -2258,6 +2258,8 @@ class GUIController extends Controller {
     this.net_move_y = 0;
     // Get the paper coordinates indicated by the cursor.
     const cp = this.paper.cursorPosition(e.pageX, e.pageY);
+    this.mouse_x = cp[0];
+    this.mouse_y = cp[1];
     this.mouse_down_x = cp[0];
     this.mouse_down_y = cp[1];
     // De-activate "stay active" buttons if dysfunctional, or if SHIFT,

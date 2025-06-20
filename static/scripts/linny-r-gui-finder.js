@@ -949,7 +949,16 @@ class Finder {
         }
       }
       // Set the new default selector (if changed).
-      if(md.new_defsel !== false) ds.default_selector = md.new_defsel;
+      if(md.new_defsel !== false) {
+        // NOTE: `new_defsel` is a key; the actual selector name may have upper case
+        // letters, so get the selector name.
+        const dsm = ds.modifiers[md.new_defsel];
+        if(dsm) {
+          ds.default_selector = dsm.selector;
+        } else {
+          throw(`Unknown selector: ${md.new_defsel}`);
+        }
+      }
     }
     // Notify modeler of changes (if any).
     const msg = [];

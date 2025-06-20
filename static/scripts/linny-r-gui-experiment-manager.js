@@ -844,8 +844,8 @@ class GUIExperimentManager extends ExperimentManager {
   }
   
   showInfo(n, shift) {
-    // Display documentation for the n-th experiment defined in the model
-    // NOTE: skip when viewer is showing!
+    // Display documentation for the n-th experiment defined in the model.
+    // NOTE: Skip when viewer is showing!
     if(!UI.hidden('experiment-viewer')) return;
     if(n < MODEL.experiments.length) {
       // NOTE: mouse move over title in viewer passes n = -1 
@@ -856,7 +856,7 @@ class GUIExperimentManager extends ExperimentManager {
   
   showRunInfo(n, shift) {
     // Display information on the n-th combination if docu-viewer is visible
-    // and cursor is moved over run cell while Shift button is held down
+    // and cursor is moved over run cell while Shift button is held down.
     if(shift && DOCUMENTATION_MANAGER.visible) {
       const info = this.runInfo(n);
       if(info) {

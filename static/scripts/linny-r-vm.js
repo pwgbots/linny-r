@@ -7204,7 +7204,13 @@ function VMI_push_run_result(x, args) {
     let xp = rrspec.x,
         rn = rrspec.r,
         rri = rrspec.v;
-    if(xp === false) xp = MODEL.running_experiment;
+    if(xp === false) {
+      // If no experiment is specified, use the running experiment.
+      // NOTE: To facilitate testing a "single run" without using the
+      // Experiment manager, default to the experiment that is selected
+      // in the Experiment manager (but not "running").
+      xp = MODEL.running_experiment || EXPERIMENT_MANAGER.selected_experiment;
+    }
     if(xp instanceof Experiment) {
       if(Array.isArray(rn)) {
         // Let the running experiment infer run number from selector list `rn`
@@ -7212,7 +7218,22 @@ function VMI_push_run_result(x, args) {
         rn = xp.matchingCombinationIndex(rn); 
       } else if(rn < 0) {
         // Relative run number: use current run # + r (first run has number 0).
-        rn += xp.active_combination_index;
+        if(xp === MODEL.running_experiment) {
+          rn += xp.active_combination_index;
+        } else if(xp.chart_combinations.length) {
+          // Modeler has selected one or more runs in the viewer table.
+          // FInd the highest number of a selected run that has been performed.
+          let last = -1;
+          for(const ccn of xp.chart_combinations) {
+            if(ccn > last && ccn < xp.runs.length) last = ccn;
+          }
+          // If no performed runs are selected, use the last performed run. 
+          if(last < 0) last = xp.runs.length - 1;
+          rn += last;
+        } else {
+          // Choose the run relative to the total number of completed runs.
+          rn += xp.runs.length - 1;
+        }
       } else if(rrspec.nr !== false) {
         // Run number inferred from local time step of expression.
         const

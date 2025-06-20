@@ -1266,30 +1266,30 @@ class ExperimentManager {
   }
 
   startExperiment(n=-1) {
-    // Recompile expressions, as these may have been changed by the modeler
+    // Recompile expressions, as these may have been changed by the modeler.
     MODEL.compileExpressions();
-    // Start sequence of solving model parametrizations
+    // Start sequence of solving model parametrizations.
     const x = this.selected_experiment;
     if(x) {
-      // Store original model settings
+      // Store original model settings.
       x.original_model_settings = MODEL.settingsString;
       x.original_round_sequence = MODEL.round_sequence;
-      // NOTE: switch off run chart display
+      // NOTE: Switch off run chart display.
       CHART_MANAGER.setRunsChart(false);
       // When Chart manager is showing, close it and notify modeler that charts
-      // should not be viewed during experiments
+      // should not be viewed during experiments.
       if(CHART_MANAGER.visible) {
         UI.buttons.chart.dispatchEvent(new Event('click'));
         UI.notify(UI.NOTICE.NO_CHARTS);
       }
-      // Change the buttons -- will return TRUE if experiment was paused
+      // Change the buttons -- will return TRUE if experiment was paused.
       const paused = this.resumeButtons();
       if(x.completed && n >= 0) {
         x.single_run = n; 
         x.active_combination_index = n;
         MODEL.running_experiment = x;
       } else if(!paused) {
-        // Clear previous run results (if any) unless resuming
+        // Clear previous run results (if any) unless resuming.
         x.clearRuns();
         x.inferVariables();
         x.time_started = new Date().getTime();
@@ -1369,11 +1369,14 @@ class ExperimentManager {
     // Perform post-processing after run results have been added.
     const x = MODEL.running_experiment;
     if(!x) return;
-    const aci = x.active_combination_index;
+    const
+        aci = x.active_combination_index,
+        single = (aci == x.single_run);
     // Always add solver messages.
     x.runs[aci].addMessages();
     const n = x.combinations.length;
-    if(!VM.halted && aci < n - 1 && aci != x.single_run) {
+    if(!VM.halted && aci < n - 1 && !single) {
+      // Continue with the next run.
       if(this.must_pause) {
         this.pausedButtons(aci);
         this.must_pause = false;
@@ -1384,12 +1387,13 @@ class ExperimentManager {
         // NOTE: When executing a remote command, wait for 1 second to
         // allow enough time for report writing.
         if(RECEIVER.active && RECEIVER.experiment) {
-          UI.setMessage('Reporting run #' + (x.active_combination_index - 1));
+          UI.setMessage('Reporting run #' + aci);
           delay = 1000;
         }
         setTimeout(() => EXPERIMENT_MANAGER.runModel(), delay);
       }
     } else {
+      // Stop the run sequence.
       x.time_stopped = new Date().getTime();
       if(x.single_run >= 0) {
         x.single_run = -1;
@@ -1409,18 +1413,19 @@ class ExperimentManager {
         RECEIVER.experiment = '';
         RECEIVER.callBack();
       }
-      // Restore original model settings
+      // Restore original model settings.
       MODEL.running_experiment = null;
       MODEL.parseSettings(x.original_model_settings);
       MODEL.round_sequence = x.original_round_sequence;
       // Reset the Virtual Machine so t=0 at the status line,
       // and ALL expressions are reset as well.
-      VM.reset();
+      if(!single) VM.reset();
       this.readyButtons();
     }
     this.drawTable();
     // Reset the model, as results of last run will be showing still.
-    UI.resetModel();
+    // NOTE: Do NOT do this after a single run.
+    if(!single) UI.resetModel();
     CHART_MANAGER.resetChartVectors();
     // NOTE: Clear chart only when done; charts do not update when an
     // experiment is running.
