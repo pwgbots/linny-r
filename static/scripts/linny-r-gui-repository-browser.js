@@ -774,7 +774,6 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
 
   promptForUpdate(repo, file, node) {
     // Add entities defined in the parsed XML tree with root `node`.
-    IO_CONTEXT = new IOContext(repo, file, node);
     this.included_modules = MODEL.includedModules;
     const
         md = this.update_modal,
@@ -782,6 +781,9 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
         keys = Object.keys(this.included_modules).sort(compareWithTailNumbers),
         // Use file name without tail number as basis for comparison.
         fwot = file.replace(/\-\d+$/, '');
+    // Do not prompt if no modules referenced by clusters.
+    if(!keys.length) return;
+    IO_CONTEXT = new IOContext(repo, file, node);
     let max = 0,
         index = -1,
         mcnt = '';
@@ -857,6 +859,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
       for(const k of MODEL.datasetKeysByPrefix(cn)) {
         this.obsolete_items.push(MODEL.datasets[k]);
       }
+      for(const e of MODEL.equationsByPrefix(cn)) this.obsolete_items.push(e);
       for(const c of MODEL.chartsByPrefix(cn)) this.obsolete_items.push(c);
     }
     const
@@ -869,13 +872,15 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
       const html = [];
       for(const item of this.obsolete_items.sort(
           (a, b) => {
-            if(a.type === b.type) return ciCompare(a.displayName, b.displayName);
-            return (a instanceof Dataset ? -1 : 1);
+            const
+                at = a.type,
+                bt = b.type,
+                order = ['Dataset', 'Equation', 'Chart'];
+            if(at === bt) return ciCompare(a.displayName, b.displayName);
+            return order.indexOf(at) - order.indexOf(bt);
           })) {
-        html.push('<div><img src="images/',
-            (item instanceof Dataset ? 'dataset' : 'chart'),
-            '.png" class="sbtn">',
-            item.displayName, '</div>');
+        html.push('<div><img src="images/', item.type.toLowerCase(),
+            '.png" class="sbtn">', item.displayName, '</div>');
       }
       remove_list.innerHTML = html.join('');
       remove_div.style.display = 'block';
@@ -933,9 +938,10 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
     for(const item of this.obsolete_items) {
       if(item instanceof Dataset) {
         delete MODEL.datasets[item.identifier];
-      } else {
-        const index = MODEL.charts.indexOf(item);
-        if(index >= 0) MODEL.charts.splice(index, 1);
+      } else if(item instanceof DatasetModifier) {
+        delete MODEL.equations_dataset.modifiers[UI.nameToID(item.selector)];
+      } else if(item instanceof Chart) {
+        MODEL.deleteChart(MODEL.charts.indexOf(item));
       }
     }
     // NOTE: The included module list contains clusters.

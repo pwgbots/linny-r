@@ -637,13 +637,7 @@ class GUIChartManager extends ChartManager {
   deleteChart() {
     // Delete the shown chart (if any).
     if(this.chart_index >= 0) {
-      // NOTE: Do not delete the default chart, but clear it instead.
-      if(MODEL.charts[this.chart_index].title === this.new_chart_title) {
-        MODEL.charts[this.chart_index].reset();
-      } else {
-        MODEL.charts.splice(this.chart_index, 1);
-        this.chart_index = -1;
-      }
+      MODEL.deleteChart(this.chart_index);
       // Also update the experiment viewer, because this chart may be
       // one of the output charts of the selected experiment.
       UI.updateControllerDialogs('CFX');

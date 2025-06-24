@@ -457,11 +457,22 @@ class LinnyRModel {
     // Return the list of datasets having the specified prefix.
     const
         pid = UI.nameToID(prefix + UI.PREFIXER),
-        dsl = [];
+        kl = [];
     for(const k of Object.keys(this.datasets)) {
-      if(k.startsWith(pid)) dsl.push(k);
+      if(k.startsWith(pid)) kl.push(k);
     }
-    return dsl;
+    return kl;
+  }
+  
+  equationsByPrefix(prefix) {
+    // Return the list of datasets having the specified prefix.
+    const
+        pid = UI.nameToID(prefix + UI.PREFIXER),
+        el = [];
+    for(const k of Object.keys(this.equations_dataset.modifiers)) {
+      if(k.startsWith(pid)) el.push(this.equations_dataset.modifiers[k]);
+    }
+    return el;    
   }
 
   chartByID(id) {
@@ -1638,6 +1649,26 @@ class LinnyRModel {
           return 1;
         });
     return c;
+  }
+  
+  deleteChart(index) {
+    // Delete chart from model.
+    if(index < 0 || index >= this.charts.length) return false;
+    const c = this.charts[index];
+    // NOTE: Do not delete the default chart, but clear it instead.
+    if(c.title === CHART_MANAGER.new_chart_title) {
+      c.reset();
+      return false;
+    }
+    // Remove chart from all experiments.
+    for(const x of this.experiments) {
+      const index = x.charts.indexOf(c);
+      if(index >= 0) x.charts.splice(index, 1);
+    }
+    // Remove chart from model.
+    this.charts.splice(index, 1);
+    CHART_MANAGER.chart_index = -1;
+    return true;
   }
   
   addExperiment(title, node=null) {
@@ -9673,6 +9704,12 @@ class ChartVariable {
     this.line_width = lw;
     this.visible = vis;
     this.sorted = sort;
+  }
+  
+  get type() {
+    // NOTE: Charts are not entities, but the dialogs may inquire their type
+    // for sorting and presentation (e.g., to determine icon name).
+    return 'Chart';
   }
   
   get displayName() {
