@@ -914,6 +914,8 @@ NOTE: Products directly linked to such processes should have a proportional unit
              title="Include module in current model">
         <img id="repo-load-btn" class="btn disab" src="images/open.png"
              title="Load model from repository">
+        <img id="repo-update-btn" class="btn disab" src="images/update.png"
+             title="Update clusters that have been included in the model">
         <img id="repo-store-btn" class="btn enab" src="images/store.png"
              title="Store model as module in repository">
         <img id="repo-black-box-btn" class="btn enab" src="images/black-box.png"
@@ -1061,9 +1063,6 @@ NOTE: Products directly linked to such processes should have a proportional unit
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div style="margin:2px; background-color: Yellow">
-        <strong>NOTE:</strong> <em>This action cannot be undone!</em>
-      </div>
       <div style="margin:2px">
         <label>Cluster:</label>
         <input id="include-prefix" type="text"
@@ -1078,6 +1077,38 @@ NOTE: Products directly linked to such processes should have a proportional unit
         Parameter bindings:
       </div>
       <div id="include-scroll-area">
+      </div>
+    </div>
+  </div>  
+
+  <!-- the UPDATE dialog prompts for a module name -->
+  <div id="update-modal" class="modal">
+    <div id="update-dlg" class="inp-dlg" style="min-width: 320px">
+      <div class="dlg-title">
+        Update clusters previously included from a module
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div style="padding: 2px">
+        <div>
+          Update using module: <span id="update-name"></span>
+        </div>
+        <div>
+          <label>Clusters based on:</label>
+          <select id="update-module">
+          </select>
+          <div id="update-count" class="update-cc"></div>
+        </div>
+        <div id="update-issues">
+          <div id="update-issues-header"></div>
+          <div id="update-issues-area"></div>
+        </div>
+        <div id="update-remove">
+          <div id="update-remove-header">
+            <span id="update-remove-count"></span> will be removed
+          </div>
+          <div id="update-remove-area"></div>
+        </div>
       </div>
     </div>
   </div>  

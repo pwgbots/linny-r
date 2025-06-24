@@ -289,17 +289,6 @@ class GUIDatasetManager extends DatasetManager {
     return null;
   }
   
-  datasetsByPrefix(prefix) {
-    // Return the list of datasets having the specified prefix.
-    const
-        pid = UI.nameToID(prefix + UI.PREFIXER),
-        dsl = [];
-    for(const k of Object.keys(MODEL.datasets)) {
-      if(k.startsWith(pid)) dsl.push(k);
-    }
-    return dsl;
-  }
-
   selectPrefixRow(e) {
     // Select expand/collapse prefix row.
     this.focal_table = this.dataset_table;
@@ -310,7 +299,7 @@ class GUIDatasetManager extends DatasetManager {
     const toggle = r.classList.contains('tree-btn');
     while(r.tagName !== 'TR') r = r.parentNode;
     this.selected_prefix_row = r;
-    this.prefixed_datasets = this.datasetsByPrefix(r.dataset.prefix);
+    this.prefixed_datasets = MODEL.datasetKeysByPrefix(r.dataset.prefix);
     const sel = this.dataset_table.getElementsByClassName('sel-set');
     this.selected_dataset = null;
     if(sel.length > 0) {
@@ -746,7 +735,7 @@ class GUIDatasetManager extends DatasetManager {
   }
   
   get selectedAsList() {
-  // Return list of datasets selected directly or by prefix.
+    // Return list of datasets selected directly or by prefix.
     const dsl = [];
     // Prevent including the equations dataset (just in case).
     if(this.selected_dataset && this.selected_dataset !== MODEL.equations_dataset) {
@@ -1243,12 +1232,14 @@ class GUIDatasetManager extends DatasetManager {
       for(let j = 0; j < ncol; j++) {
         const
             v = dsv[j].trim(),
-            sf = safeStrToFloat(v, '');
-        if(sf === '' && v !== '') {
+            sf = safeStrToFloat(v, NaN);
+        // NOTE: Ignore empty strings, but this may "shift up" numerical values on later rows.
+        if(isNaN(sf) && v !== '') {
           UI.warn(`Invalid numerical value "${v}" for <strong>${dsn[j]}</strong> on line ${i}`);
           return false;
+        } else if(!isNaN(sf)) {
+          dsa[j].push(sf);
         }
-        dsa[j].push(sf);
       }
     }
     // Add or update datasets.

@@ -319,7 +319,7 @@ function compareTailFirst(a, b, tail) {
 }
 
 function endsWithDigits(str) {
-  // Returns trailing digts of `str` (empty string will evaluate as FALSE)
+  // Return trailing digts of `str` (empty string will evaluate as FALSE).
   let i = str.length - 1,
       c = str[i],
       d = '';
@@ -332,8 +332,8 @@ function endsWithDigits(str) {
 }
 
 function indexOfMatchingBracket(str, offset) {
-  // Returns index of closing bracket, ignoring matched [...] inside
-  // NOTE: starts at offset + 1, assuming that character at offset = '['
+  // Return index of closing bracket, ignoring matched [...] inside.
+  // NOTE: Start at offset + 1, assuming that character at offset = '['.
   let ob = 0, c;
   for(let i = offset + 1; i < str.length; i++) {
     c = str.charAt(i);
@@ -347,12 +347,12 @@ function indexOfMatchingBracket(str, offset) {
       }
     }
   }
-  // No matching bracket => return -1
+  // No matching bracket => return -1.
   return -1;
 }
 
 function monoSpaced(vbl) {
-  // Removes all non-essential spaces from variable reference `vbl`.
+  // Remove all non-essential spaces from variable reference `vbl`.
   // First reduce all whitespace to a single space.
   return vbl.replace(/\s+/g, ' ')
        // Then remove spaces after the opening bracket.
@@ -834,13 +834,11 @@ function customizeXML(str) {
   // and then load it again for the customization to be performed.
   if(str.indexOf('!!CUSTOMIZE</name><author>') >= 0) {
     // Modify `str` -- by default, do nothing, but typical modifications
-    // will replace RexEx patterns by other strings.
-    
-/*
+    // will replace RexEx patterns by other strings.    
+
     const
-        re = /xyz/gi,
-        r = 'abc';
-*/
+        re = /pattern/g,
+        r = 'replacement';
 
     // Trace the changes to the console.
     console.log('Customizing:', re, r);

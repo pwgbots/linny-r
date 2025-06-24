@@ -441,9 +441,9 @@ class LinnyRModel {
   }  
   
   namedObjectByID(id) {
-    // NOTE: not only entities, but also equations are "named objects", meaning
+    // NOTE: Not only entities, but also equations are "named objects", meaning
     // that their name must be unique in a model (unlike the titles of charts
-    // and experiments)
+    // and experiments).
     let obj = this.nodeBoxByID(id);
     if(obj) return obj;
     obj = this.actorByID(id);
@@ -453,11 +453,33 @@ class LinnyRModel {
     return this.equationByID(id);
   }
   
+  datasetKeysByPrefix(prefix) {
+    // Return the list of datasets having the specified prefix.
+    const
+        pid = UI.nameToID(prefix + UI.PREFIXER),
+        dsl = [];
+    for(const k of Object.keys(this.datasets)) {
+      if(k.startsWith(pid)) dsl.push(k);
+    }
+    return dsl;
+  }
+
   chartByID(id) {
     if(!id.startsWith(this.chart_id_prefix)) return null;
     const n = parseInt(endsWithDigits(id));
     if(isNaN(n) || n >= this.charts.length) return null;
     return this.charts[n];
+  }
+  
+  chartsByPrefix(prefix) {
+    // Return the list of charts having a title with the specified prefix.
+    const
+        pid = prefix + UI.PREFIXER,
+        cl = [];
+    for(const c of this.charts) {
+      if(c.title.startsWith(pid)) cl.push(c);
+    }
+    return cl;
   }
   
   objectByID(id) {
@@ -526,15 +548,16 @@ class LinnyRModel {
   }
   
   setByType(type) {
-    // Return a "dictionary" object with entities of the specified types
-    if(type === 'Process') return this.processes;
-    if(type === 'Product') return this.products;
-    if(type === 'Cluster') return this.clusters;
-    // NOTE: the returned "dictionary" also contains the equations dataset
-    if(type === 'Dataset') return this.datasets;
-    if(type === 'Link') return this.links;
-    if(type === 'Constraint') return this.constraints;
-    if(type === 'Actor') return this.actors;
+    // Return a "dictionary" object with entities of the specified types.
+    type = type.toLowerCase();
+    if(type === 'process') return this.processes;
+    if(type === 'product') return this.products;
+    if(type === 'cluster') return this.clusters;
+    // NOTE: The returned "dictionary" also contains the equations dataset.
+    if(type === 'dataset') return this.datasets;
+    if(type === 'link') return this.links;
+    if(type === 'constraint') return this.constraints;
+    if(type === 'actor') return this.actors;
     return {};
   }
   
@@ -561,6 +584,24 @@ class LinnyRModel {
       }
     }
     return list;
+  }
+  
+  get includedModules() {
+    // Returns a look-up object {name: count} for modules that
+    // have been included.
+    const im = {};
+    for(const k of Object.keys(this.clusters)) {
+      const c = this.clusters[k];
+      if(c.module) {
+        const n = c.module.name;
+        if(im.hasOwnProperty(n)) {
+          im[n].push(c);
+        } else {
+          im[n] = [c];
+        }
+      }
+    }
+    return im;
   }
   
   endsWithMethod(name) {
@@ -1583,7 +1624,7 @@ class LinnyRModel {
     // If chart with given title exists, do not add a new instance.
     const ci = this.indexOfChart(title);
     if(ci >= 0) return this.charts[ci];
-    // Otherwise, add it. NOTE: unlike datasets, charts are not "entities".
+    // Otherwise, add it. NOTE: Unlike datasets, charts are not "entities".
     let c = new Chart();
     c.title = title;
     if(node) c.initFromXML(node);
@@ -1769,9 +1810,9 @@ class LinnyRModel {
 
   deselect(obj) {
     obj.selected = false;
-    let i = this.selection.indexOf(obj);
-    if(i >= 0) {
-      this.selection.splice(i, 1);
+    const index = this.selection.indexOf(obj);
+    if(index >= 0) {
+      this.selection.splice(index, 1);
       this.selection_related_arrows.length = 0;
     }
     UI.drawObject(obj);
@@ -2386,8 +2427,8 @@ class LinnyRModel {
     UI.removeShape(node.shape);
     if(node instanceof Process) {
       // Remove process from the cluster containing it
-      const i = node.cluster.processes.indexOf(node);
-      if(i >= 0) node.cluster.processes.splice(i, 1);
+      const index = node.cluster.processes.indexOf(node);
+      if(index >= 0) node.cluster.processes.splice(index, 1);
       delete this.processes[node.identifier];
     } else {
       // Remove product from parameter lists.
@@ -2410,11 +2451,11 @@ class LinnyRModel {
       return;
     }
     // First remove link from outputs list of its FROM node.
-    let i = link.from_node.outputs.indexOf(link);
-    if(i >= 0) link.from_node.outputs.splice(i, 1);
+    const oi = link.from_node.outputs.indexOf(link);
+    if(oi >= 0) link.from_node.outputs.splice(oi, 1);
     // Also remove link from inputs list of its TO node.
-    i = link.to_node.inputs.indexOf(link);
-    if(i >= 0) link.to_node.inputs.splice(i, 1);
+    const ii = link.to_node.inputs.indexOf(link);
+    if(ii >= 0) link.to_node.inputs.splice(ii, 1);
     // Prepare for redraw
     link.from_node.cluster.clearAllProcesses();
     link.to_node.cluster.clearAllProcesses();
@@ -2467,8 +2508,8 @@ class LinnyRModel {
       this.deleteCluster(c.sub_clusters[i], false); 
     }
     // Remove the cluster from its parent's subcluster list.
-    let i = c.cluster.sub_clusters.indexOf(c);
-    if(i >= 0) c.cluster.sub_clusters.splice(i, 1);
+    const index = c.cluster.sub_clusters.indexOf(c);
+    if(index >= 0) c.cluster.sub_clusters.splice(index, 1);
     UI.removeShape(c.shape);
     // Finally, remove the cluster from the model.
     delete this.clusters[c.identifier];
@@ -2798,146 +2839,120 @@ class LinnyRModel {
     } // END IF *not* including a model
 
     // Declare some local variables that will be used a lot.
-    let i,
-        c,
-        name,
+    let name,
         actor,
         fn,
         tn,
         n = childNodeByTag(node, 'scaleunits');
-    // Scale units are not "entities", and can be included "as is"
-    if(n && n.childNodes) {
-      for(i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'scaleunit') {
-          this.addScaleUnit(xmlDecoded(nodeContentByTag(c, 'name')),
-              nodeContentByTag(c, 'scalar'),
-              xmlDecoded(nodeContentByTag(c, 'base-unit')));
-        }
+    // Scale units are not "entities", and can be included "as is".
+    if(n) {
+      for(const c of n.childNodes) if(c.nodeName === 'scaleunit') {
+        this.addScaleUnit(xmlDecoded(nodeContentByTag(c, 'name')),
+            nodeContentByTag(c, 'scalar'),
+            xmlDecoded(nodeContentByTag(c, 'base-unit')));
       }
     }
-    // Power grids are not "entities", and can be included "as is"
+    // Power grids are not "entities", and can be included "as is".
     n = childNodeByTag(node, 'powergrids');
-    if(n && n.childNodes) {
-      for(i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'grid') {
-          this.addPowerGrid(nodeContentByTag(c, 'id'), c);
-        }
+    if(n) {
+      for(const c of n.childNodes) if(c.nodeName === 'grid') {
+        this.addPowerGrid(nodeContentByTag(c, 'id'), c);
       }
     }
-    // When including a model, actors may be bound to an existing actor
+    // When including a model, actors may be bound to an existing actor.
     n = childNodeByTag(node, 'actors');
-    if(n && n.childNodes) {
-      for(i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'actor') {
-          name = xmlDecoded(nodeContentByTag(c, 'name'));
-          if(IO_CONTEXT) name = IO_CONTEXT.actualName(name);
-          this.addActor(name, c);
-        }
+    if(n) {
+      for(const c of n.childNodes) if(c.nodeName === 'actor') {
+        name = xmlDecoded(nodeContentByTag(c, 'name'));
+        if(IO_CONTEXT) name = IO_CONTEXT.actualName(name);
+        this.addActor(name, c);
       }
     }
-    // When including a model, processes MUST be prefixed
+    // When including a model, processes MUST be prefixed.
     n = childNodeByTag(node, 'processes');
-    if(n && n.childNodes) {
-      for(i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'process') {
-          name = xmlDecoded(nodeContentByTag(c, 'name'));
-          actor = xmlDecoded(nodeContentByTag(c, 'owner'));
-          if(IO_CONTEXT) {
-            actor = IO_CONTEXT.actualName(actor);
-            name = IO_CONTEXT.actualName(name, actor);
-          }
-          this.addProcess(name, actor, c);
+    if(n) {
+      for(const c of n.childNodes) if(c.nodeName === 'process') {
+        name = xmlDecoded(nodeContentByTag(c, 'name'));
+        actor = xmlDecoded(nodeContentByTag(c, 'owner'));
+        if(IO_CONTEXT) {
+          actor = IO_CONTEXT.actualName(actor);
+          name = IO_CONTEXT.actualName(name, actor);
         }
+        this.addProcess(name, actor, c);
       }
     }
-    // When including a model, products may be bound to an existing product
+    // When including a model, products may be bound to an existing product.
     n = childNodeByTag(node, 'products');
-    if(n && n.childNodes) {
-      for(i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'product') {
-          name = xmlDecoded(nodeContentByTag(c, 'name'));
-          if(IO_CONTEXT) name = IO_CONTEXT.actualName(name);
-          this.addProduct(name, c);
-        }
+    if(n) {
+      for(const c of n.childNodes) if(c.nodeName === 'product') {
+        name = xmlDecoded(nodeContentByTag(c, 'name'));
+        if(IO_CONTEXT) name = IO_CONTEXT.actualName(name);
+        this.addProduct(name, c);
       }
     }
-    // When including a model, link nodes may be bound to existing nodes
+    // When including a model, link nodes may be bound to existing nodes.
     n = childNodeByTag(node, 'links');
-    if(n && n.childNodes) {
-      for(i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'link') {
-          name = xmlDecoded(nodeContentByTag(c, 'from-name'));
-          actor = xmlDecoded(nodeContentByTag(c, 'from-owner'));
+    if(n) {
+      for(const c of n.childNodes) if(c.nodeName === 'link') {
+        name = xmlDecoded(nodeContentByTag(c, 'from-name'));
+        actor = xmlDecoded(nodeContentByTag(c, 'from-owner'));
+        if(IO_CONTEXT) {
+          actor = IO_CONTEXT.actualName(actor);
+          name = IO_CONTEXT.actualName(name, actor);
+        }
+        if(actor != UI.NO_ACTOR) name += ` (${actor})`;
+        fn = this.nodeBoxByID(UI.nameToID(name));
+        if(fn) {
+          name = xmlDecoded(nodeContentByTag(c, 'to-name'));
+          actor = xmlDecoded(nodeContentByTag(c, 'to-owner'));
           if(IO_CONTEXT) {
             actor = IO_CONTEXT.actualName(actor);
             name = IO_CONTEXT.actualName(name, actor);
           }
           if(actor != UI.NO_ACTOR) name += ` (${actor})`;
-          fn = this.nodeBoxByID(UI.nameToID(name));
-          if(fn) {
-            name = xmlDecoded(nodeContentByTag(c, 'to-name'));
-            actor = xmlDecoded(nodeContentByTag(c, 'to-owner'));
-            if(IO_CONTEXT) {
-              actor = IO_CONTEXT.actualName(actor);
-              name = IO_CONTEXT.actualName(name, actor);
-            }
-            if(actor != UI.NO_ACTOR) name += ` (${actor})`;
-            tn = this.nodeBoxByID(UI.nameToID(name));
-            if(tn) this.addLink(fn, tn, c);
-          }
+          tn = this.nodeBoxByID(UI.nameToID(name));
+          if(tn) this.addLink(fn, tn, c);
         }
       }
     }
-    // When including a model, constraint nodes may be bound to existing nodes
+    // When including a model, constraint nodes may be bound to existing nodes.
     n = childNodeByTag(node, 'constraints');
-    if(n && n.childNodes) {
-      for(i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'constraint') {
-          name = xmlDecoded(nodeContentByTag(c, 'from-name'));
-          actor = xmlDecoded(nodeContentByTag(c, 'from-owner'));
+    if(n) {
+      for(const c of n.childNodes) if(c.nodeName === 'constraint') {
+        name = xmlDecoded(nodeContentByTag(c, 'from-name'));
+        actor = xmlDecoded(nodeContentByTag(c, 'from-owner'));
+        if(IO_CONTEXT) {
+          actor = IO_CONTEXT.actualName(actor);
+          name = IO_CONTEXT.actualName(name, actor);
+        }
+        if(actor != UI.NO_ACTOR) name += ` (${actor})`;
+        fn = this.nodeBoxByID(UI.nameToID(name));
+        if(fn) {
+          name = xmlDecoded(nodeContentByTag(c, 'to-name'));
+          actor = xmlDecoded(nodeContentByTag(c, 'to-owner'));
           if(IO_CONTEXT) {
             actor = IO_CONTEXT.actualName(actor);
             name = IO_CONTEXT.actualName(name, actor);
           }
           if(actor != UI.NO_ACTOR) name += ` (${actor})`;
-          fn = this.nodeBoxByID(UI.nameToID(name));
-          if(fn) {
-            name = xmlDecoded(nodeContentByTag(c, 'to-name'));
-            actor = xmlDecoded(nodeContentByTag(c, 'to-owner'));
-            if(IO_CONTEXT) {
-              actor = IO_CONTEXT.actualName(actor);
-              name = IO_CONTEXT.actualName(name, actor);
-            }
-            if(actor != UI.NO_ACTOR) name += ` (${actor})`;
-            tn = this.nodeBoxByID(UI.nameToID(name));
-            if(tn) this.addConstraint(fn, tn, c);
-          }
+          tn = this.nodeBoxByID(UI.nameToID(name));
+          if(tn) this.addConstraint(fn, tn, c);
         }
       }
     }
     n = childNodeByTag(node, 'clusters');
-    if(n && n.childNodes) {
-      for(i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'cluster') {
-          name = xmlDecoded(nodeContentByTag(c, 'name'));
-          actor = xmlDecoded(nodeContentByTag(c, 'owner'));
-          // When including a model, clusters MUST be prefixed
-          if(IO_CONTEXT) {
-            actor = IO_CONTEXT.actualName(actor);
-            // NOTE: actualName will rename the top cluster of an included
-            // model to just the prefix
-            name = IO_CONTEXT.actualName(name, actor);
-          }
-          this.addCluster(name, actor, c);
+    if(n) {
+      for(const c of n.childNodes) if(c.nodeName === 'cluster') {
+        name = xmlDecoded(nodeContentByTag(c, 'name'));
+        actor = xmlDecoded(nodeContentByTag(c, 'owner'));
+        // When including a model, clusters MUST be prefixed
+        if(IO_CONTEXT) {
+          actor = IO_CONTEXT.actualName(actor);
+          // NOTE: actualName will rename the top cluster of an included
+          // model to just the prefix
+          name = IO_CONTEXT.actualName(name, actor);
         }
+        this.addCluster(name, actor, c);
       }
     }
     // Clear the default (empty) equations dataset, or it will block adding it
@@ -2949,7 +2964,7 @@ class LinnyRModel {
     this.loading_datasets.length = 0;
     this.max_time_to_load = 0;
     n = childNodeByTag(node, 'datasets');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'dataset') {
         name = xmlDecoded(nodeContentByTag(c, 'name'));
         // NOTE: when including a module, dataset parameters may be bound to
@@ -2961,7 +2976,7 @@ class LinnyRModel {
         if(IO_CONTEXT) {
           if(name === UI.EQUATIONS_DATASET_NAME) {
             const mn = childNodeByTag(c, 'modifiers');
-            if(mn && mn.childNodes) {
+            if(mn) {
               for(const cc of mn.childNodes) if(cc.nodeName === 'modifier') {
                 this.equations_dataset.addModifier(
                     xmlDecoded(nodeContentByTag(cc, 'selector')),
@@ -2980,23 +2995,20 @@ class LinnyRModel {
     if(!this.equations_dataset){
       this.equations_dataset = this.addDataset(UI.EQUATIONS_DATASET_NAME);
     }
-    // NOTE: when including a model, charts MUST be prefixed
+    // NOTE: When including a model, charts MUST be prefixed.
     n = childNodeByTag(node, 'charts');
-    if(n && n.childNodes) {
-      for(i = 0; i < n.childNodes.length; i++) {
-        c = n.childNodes[i];
-        if(c.nodeName === 'chart') {
-          name = xmlDecoded(nodeContentByTag(c, 'title'));
-          if(IO_CONTEXT) {
-            // NOTE: only include charts with one or more variables
-            const vn = childNodeByTag(c, 'variables');
-            if(vn && vn.childNodes && vn.childNodes.length > 0) {
-              name = IO_CONTEXT.actualName(name);
-              this.addChart(name, c);
-            }
-          } else {
+    if(n) {
+      for(const c of n.childNodes) if(c.nodeName === 'chart') {
+        name = xmlDecoded(nodeContentByTag(c, 'title'));
+        if(IO_CONTEXT) {
+          // NOTE: Only include charts with one or more variables.
+          const vn = childNodeByTag(c, 'variables');
+          if(vn && vn.childNodes && vn.childNodes.length > 0) {
+            name = IO_CONTEXT.actualName(name);
             this.addChart(name, c);
           }
+        } else {
+          this.addChart(name, c);
         }
       }
     }
@@ -3013,27 +3025,21 @@ class LinnyRModel {
       this.base_case_selectors = xmlDecoded(
           nodeContentByTag(node, 'base-case-selectors'));
       n = childNodeByTag(node, 'sensitivity-parameters');
-      if(n && n.childNodes) {
-        for(i = 0; i < n.childNodes.length; i++) {
-          c = n.childNodes[i];
-          if(c.nodeName === 'sa-parameter') {
-            this.sensitivity_parameters.push(xmlDecoded(nodeContent(c)));
-          }
+      if(n) {
+        for(const c of n.childNodes) if(c.nodeName === 'sa-parameter') {
+          this.sensitivity_parameters.push(xmlDecoded(nodeContent(c)));
         }
       }
       n = childNodeByTag(node, 'sensitivity-outcomes');
-      if(n && n.childNodes) {
-        for(i = 0; i < n.childNodes.length; i++) {
-          c = n.childNodes[i];
-          if(c.nodeName === 'sa-outcome') {
-            this.sensitivity_outcomes.push(xmlDecoded(nodeContent(c)));
-          }
+      if(n) {
+        for(const c of n.childNodes) if(c.nodeName === 'sa-outcome') {
+          this.sensitivity_outcomes.push(xmlDecoded(nodeContent(c)));
         }
       }
       this.sensitivity_delta = safeStrToFloat(
           nodeContentByTag(node, 'sensitivity-delta'));
       n = childNodeByTag(node, 'sensitivity-runs');
-      if(n && n.childNodes) {
+      if(n) {
         // NOTE: Use a "dummy experiment object" as parent for SA runs.
         const dummy = {title: SENSITIVITY_ANALYSIS.experiment_title};
         for(const c of n.childNodes) if(c.nodeName === 'experiment-run') {
@@ -3043,17 +3049,17 @@ class LinnyRModel {
         }
       }
       n = childNodeByTag(node, 'experiments');
-      if(n && n.childNodes) {
+      if(n) {
         for(const c of n.childNodes) if(c.nodeName === 'experiment') {
           this.addExperiment(xmlDecoded(nodeContentByTag(c, 'title')), c);
         }
       }
       n = childNodeByTag(node, 'imports');
-      if(n && n.childNodes) {
+      if(n) {
         for(const c of n.childNodes) if(c.nodeName === 'import') this.addImport(c);
       }
       n = childNodeByTag(node, 'exports');
-      if(n && n.childNodes) {
+      if(n) {
         for(const c of n.childNodes) if(c.nodeName === 'export') this.addExport(c);
       }
       // Add the default chart (will add it only if absent).
@@ -3061,7 +3067,7 @@ class LinnyRModel {
       // Infer dimensions of experimental design space.
       this.inferDimensions();
       // Set the current time step (if specified).
-      let s = nodeParameterValue(node, 'current');
+      const s = nodeParameterValue(node, 'current');
       if(s) {
         this.current_time_step = Math.min(this.end_period,
             Math.max(this.start_period, safeStrToInt(s)));
@@ -3074,8 +3080,8 @@ class LinnyRModel {
       // to minimize conversion effort, set SoC for SINGLE links OUT of processes
       // to 100%.
       if(legacy_model) {
-        for(let l in this.links) if(this.links.hasOwnProperty(l)) {
-          l = this.links[l];
+        for(let k in this.links) if(this.links.hasOwnProperty(k)) {
+          const l = this.links[k];
           // NOTE: Preserve non-zero SoC values, as these have been specified
           // by the modeler.
           if(l.from_node instanceof Process &&
@@ -3085,8 +3091,10 @@ class LinnyRModel {
         }
       }
     }
-    // Recompile expressions so that level-based properties are set
-    this.compileExpressions();
+    // Recompile expressions so that level-based properties are set.
+    // NOTE: When a series of modules is included, skip this step until
+    // the last inclusion.
+    if(!IO_CONTEXT || IO_CONTEXT.recompile) this.compileExpressions();
   }
 
   get asXML() {
@@ -4358,7 +4366,7 @@ class IOBinding {
     this.is_data = data;
     this.name_in_module = n;
     if(iot === 2) {
-      // For export parameters, the actual name IS the formal name
+      // For export parameters, the actual name IS the formal name.
       this.actual_id = this.id;
       this.actual_name = n;
     } else {
@@ -4386,8 +4394,16 @@ class IOBinding {
     throw `Invalid binding: "${an}" is not of type ${this.entity_type}`;
   }
   
+  get asXML() {
+    // Return an XML string that encodes this binding.
+    return ['<iob type="', this.io_type, '" name="', xmlEncoded(this.name_in_module),
+        '" entity="', VM.entity_letter_codes[this.entity_type.toLowerCase()],
+        (this.is_data ? ' data="1"' : ''), '">',
+        xmlEncoded(this.actual_name), '</iob>'].join('');
+  }
+  
   get asHTML() {
-    // Returns an HTML string that represents the table rows for this binding
+    // Return an HTML string that represents the table rows for this binding.
     if(this.io_type === 0) return '';
     const
         ioc = ['no', 'i', 'o'],
@@ -4433,7 +4449,7 @@ class IOBinding {
 // CLASS IOContext
 class IOContext {
   constructor(repo='', file='', node=null) {
-    // Get the import/export interface of the model to be included
+    // Get the import/export interface of the model to be included.
     this.prefix = '';
     this.bindings = {};
     // Keep track which entities are superseded by "exports"
@@ -4441,16 +4457,19 @@ class IOContext {
     // Keep track which entities are added or superseded (to select them)
     this.added_nodes = [];
     this.added_links = [];
-    // Count number of replaced entities in expressions
+    // Count number of replaced entities in expressions.
     this.replace_count = 0;
     this.expression_count = 0;
-    // IOContext can be "dummy" when used to rename expression variables
+    // NOTE: IOContext can be "dummy" when used to rename expression variables.
     if(!repo || !file || !node) return;
+    // When updating, set `recompile` to false for all but the last include
+    // so as to prevent compiler warnings due to missing datasets.
+    this.recompile = true;
     this.xml = node;
     this.repo_name = repo;
     this.file_name = file;
     let n = childNodeByTag(node, 'imports');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'import') {
         // NOTE: IO type 1 indicates import.
         this.addBinding(1, xmlDecoded(nodeContentByTag(c, 'type')),
@@ -4459,7 +4478,7 @@ class IOContext {
       }
     }
     n = childNodeByTag(node, 'exports');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'export') {
         // NOTE: IO type 2 indicates export.
         this.addBinding(2, xmlDecoded(nodeContentByTag(c, 'type')),
@@ -4470,14 +4489,14 @@ class IOContext {
   }
   
   addBinding(iot, et, data, n) {
-    // Adds a new binding (IO type, entity type, is-data, formal name)
-    // to this context
+    // Add a new binding (IO type, entity type, is-data, formal name)
+    // to this context.
     this.bindings[UI.nameToID(n)] = new IOBinding(iot, et, data, n);
   }
 
   bind(fn, an) {
-    // Binds the formal name `fn` of an entity in a module to the actual
-    // name `an` it will have in the current model
+    // Bind the formal name `fn` of an entity in a module to the actual
+    // name `an` it will have in the current model.
     const id = UI.nameToID(fn);
     if(this.bindings.hasOwnProperty(id)) {
       this.bindings[id].bind(an);
@@ -4487,9 +4506,31 @@ class IOContext {
   }
   
   isBound(n) {
+    // Return the IO type of the binding if name `n` is a module parameter.
     const id = UI.nameToID(n);
     if(this.bindings.hasOwnProperty(id)) return this.bindings[id].io_type;
     return 0;
+  }
+  
+  isBinding(obj) {
+    // Return the binding if `obj` is bound by this IOContext, otherwise NULL.
+    const
+        an = obj.displayName,
+        et = obj.type;
+    for(const k of Object.keys(this.bindings)) {
+      const iob = this.bindings[k];
+      if(iob.entity_type === et && iob.actual_name === an) return iob;
+    }
+    return null;
+  }
+  
+  get copyOfBindings() {
+    // Return a deep copy of the bindings object.
+    const copy = {};
+    for(const k of Object.keys(this.bindings)) {
+      copy[k] = Object.assign({}, this.bindings[k]);
+    }
+    return copy;
   }
 
   actualName(n, an='') {
@@ -4511,23 +4552,23 @@ class IOContext {
     }
     const id = UI.nameToID(n + an);
     if(this.bindings.hasOwnProperty(id)) {
-      // NOTE: return actual name WITHOUT the actor name
+      // NOTE: Return actual name WITHOUT the actor name.
       n = this.bindings[id].actual_name;
       if(an) n = n.slice(0, n.length - an.length);
       return n;
     }
-    // All other entities are prefixed
+    // All other entities are prefixed.
     return (this.prefix ? this.prefix + UI.PREFIXER : '') + n;
   }
   
   get clusterName() {
-    // Returns full cluster name, i.e., prefix plus actor name if specified
+    // Return full cluster name, i.e., prefix plus actor name if specified.
     if(this.actor_name) return `${this.prefix} (${this.actor_name})`;
     return this.prefix;
   }
   
   get parameterTable() {
-    // Returns the HTML for the parameter binding table in the include dialog
+    // Return the HTML for the parameter binding table in the include dialog.
     if(Object.keys(this.bindings).length === 0) {
       return '<div style="margin-top:2px"><em>This module has no parameters.</em></div>';
     }
@@ -4540,9 +4581,9 @@ class IOContext {
   }
   
   bindParameters() {
-    // Binds parameters as specified in the INCLUDE MODULE dialog
+    // Bind parameters as specified in the INCLUDE MODULE dialog.
     const pref = (this.prefix ? this.prefix + UI.PREFIXER : '');
-    // Compute sum of (x, y) of imported products
+    // Compute sum of (x, y) of imported products.
     let np = 0,
         x = 0,
         y = 0,
@@ -4552,17 +4593,17 @@ class IOContext {
     for(let id in this.bindings) if(this.bindings.hasOwnProperty(id)) {
       const b = this.bindings[id];
       if(b.io_type === 1) {
-        // Get the selector for this parameter
+        // Get the selector for this parameter.
         // NOTE: IO_CONTEXT is instantiated *exclusively* by the Repository
-        // browser, so that GUI dialog will exist when IO_CONTEXT is not NULL
+        // browser, so that GUI dialog will exist when IO_CONTEXT is not NULL.
         const e = REPOSITORY_BROWSER.parameterBinding(b.id);
         if(e && e.selectedIndex >= 0) {
-          // Modeler has selected the actual parameter => set its name
+          // Modeler has selected the actual parameter => set its name.
           const v = e.options[e.selectedIndex].value;
           if(v !== '_CLUSTER') {
             b.actual_name = e.options[e.selectedIndex].text;
             b.actual_id = v;
-            // If imported product, add its (x, y) to the centroid (x, y)
+            // If imported product, add its (x, y) to the centroid (x, y).
             if(b.entity_type === 'Product') {
               const p = MODEL.products[v];
               if(p) {
@@ -4583,13 +4624,13 @@ class IOContext {
           }
         }
         if(b.actual_id === '') {
-          // By default, bind import parameter to itself (create a local entity)
+          // By default, bind import parameter to itself (create a local entity).
           b.actual_name = pref + b.name_in_module;
           b.actual_id = UI.nameToID(b.actual_name);
         }
       }
     }
-    // NOTE: calculate centroid of non-data products if possible
+    // NOTE: Calculate centroid of non-data products if possible.
     if(np > 1) {
       this.centroid_x = Math.round(x / np);
       this.centroid_y = Math.round(y / np);
@@ -4600,7 +4641,7 @@ class IOContext {
       this.centroid_x = Math.round(x + dx + 50);
       this.centroid_y = Math.round(y + dy + 50);
     } else {
-      // Position new cluster in upper-left quadrant of view
+      // Position new cluster in upper-left quadrant of view.
       const cp = UI.pointInViewport(0.25, 0.25);
       this.centroid_x = cp[0];
       this.centroid_y = cp[1];      
@@ -5114,7 +5155,7 @@ class Note extends ObjectWithXYWH {
   constructor(cluster) {
     super(cluster);
     const dt = new Date();
-    // NOTE: use timestamp in msec to generate a unique identifier
+    // NOTE: Use timestamp in msec to generate a unique identifier.
     this.timestamp = dt.getTime();
     this.contents = '';
     this.lines = [];
@@ -5132,7 +5173,7 @@ class Note extends ObjectWithXYWH {
   }
   
   get clusterPrefix() {
-    // Returns the name of the cluster containing this note, followed
+    // Return the name of the cluster containing this note, followed
     // by a colon+space, except when this cluster is the top cluster.
     if(this.cluster === MODEL.top_cluster) return '';
     return this.cluster.displayName + UI.PREFIXER;
@@ -5146,8 +5187,8 @@ class Note extends ObjectWithXYWH {
   }
   
   get number() {
-    // Returns the number of this note if specified (e.g. as #123).
-    // NOTE: this only applies to notes having note fields.
+    // Return the number of this note if specified (e.g. as #123).
+    // NOTE: This only applies to notes having note fields.
     const m = this.contents.replace(/\s+/g, ' ')
         .match(/^[^\]]*#(\d+).*\[\[[^\]]+\]\]/);
     if(m) return m[1];
@@ -5155,7 +5196,7 @@ class Note extends ObjectWithXYWH {
   }
   
   get numberContext() {
-    // Returns the string to be used to evaluate #. For notes this is
+    // Return the string to be used to evaluate #. For notes, this is
     // their note number if specified, otherwise the number context of a
     // nearby node, and otherwise the number context of their cluster.
     let n = this.number;
@@ -5166,7 +5207,7 @@ class Note extends ObjectWithXYWH {
   }
   
   get nearbyNode() {
-    // Returns a node in the cluster of this note that is closest to this
+    // Return a node in the cluster of this note that is closest to this
     // note (Euclidian distance between center points), but with at most
     // 30 pixel units between their rims.
     const
@@ -5585,14 +5626,13 @@ class NodeBox extends ObjectWithXYWH {
     n = `<em>${this.type}:</em> ${n}`;
     // For clusters, add how many processes and products they contain.
     if(this instanceof Cluster) {
-      let d = '';
+      let dl = [];
       if(this.all_processes) {
-        const dl = [];
-        dl.push(pluralS(this.all_processes.length, 'process'));
-        dl.push(pluralS(this.all_products.length, 'product'));
-        d = dl.join(', ').toLowerCase();
+        dl.push(pluralS(this.all_processes.length, 'process').toLowerCase());
+        dl.push(pluralS(this.all_products.length, 'product').toLowerCase());
       }
-      if(d) n += `<span class="node-details">${d}</span>`;
+      if(this.module) dl.push(`included from <span class="mod-name">${this.module.name}</span>`);
+      if(dl.length) n += `<span class="node-details">${dl.join(', ')}</span>`;
     }
     if(!MODEL.solved) return n;
     const g = this.grid;
@@ -6055,11 +6095,11 @@ class Arrow {
 
 } // END of class Arrow
 
-
 // CLASS Cluster
 class Cluster extends NodeBox {
   constructor(cluster, name, actor) {
     super(cluster, name, actor);
+    this.module = null;
     this.processes = [];
     this.product_positions = [];
     this.sub_clusters = [];
@@ -6170,6 +6210,16 @@ class Cluster extends NodeBox {
     // Clusters have no attribute expressions => always return null.
     return null;
   }
+  
+  get moduleAsXML() {
+    if(!this.module) return '';
+    const xml = ['<module name="', xmlEncoded(this.module.name), '">'];
+    for(const k of Object.keys(this.module.bindings)) {
+      xml.push(this.module.bindings[k].asXML);
+    }
+    xml.push('</module>');
+    return xml.join('');
+  }
 
   get asXML() {
     let xml;
@@ -6181,7 +6231,8 @@ class Cluster extends NodeBox {
             (this.toBeBlackBoxed ? ' is-black-boxed="1"' : '');
     xml = ['<cluster', flags, '><name>', xmlEncoded(this.blackBoxName),
         '</name><owner>', xmlEncoded(this.actor.name),
-        '</owner><x-coord>', this.x,
+        '</owner>', this.moduleAsXML,
+        '<x-coord>', this.x,
         '</x-coord><y-coord>', this.y,
         '</y-coord><comments>', cmnts,
         '</comments><process-set>'].join('');
@@ -6220,18 +6271,34 @@ class Cluster extends NodeBox {
     this.black_box = nodeParameterValue(node, 'black-box') === '1';
     this.is_black_boxed = nodeParameterValue(node, 'is-black-boxed') === '1';
         
-    // NOTE: to compensate for a shameful bug in an earlier version, look
-    // for "product-positions" node and for "notes" node in the process-set,
-    // as it may have been put there instead of in the cluster node itself
     let name,
         actor,
-        n = childNodeByTag(node, 'process-set');
+        n = childNodeByTag(node, 'module');
+    if(n) {
+      this.module = {
+          name: xmlDecoded(nodeParameterValue(n, 'name')),
+          bindings: {}
+        };
+      for(const c of n.childNodes) if(c.nodeName === 'iob') {
+        const
+            iot = parseInt(nodeParameterValue(c, 'type')),
+            et = capitalized(VM.entity_names[nodeParameterValue(c, 'entity')]),
+            iob = new IOBinding(iot, et,
+                nodeParameterValue(c, 'data') === '1',
+                xmlDecoded(nodeParameterValue(c, 'name')));
+        iob.actual_name = nodeContent(c);
+        this.module.bindings[iob.id] = iob;
+      }
+    }
+    n = childNodeByTag(node, 'process-set');
+    // NOTE: To compensate for a shameful bug in an earlier version, look
+    // for "product-positions" node and for "notes" node in the process-set,
+    // as it may have been put there instead of in the cluster node itself.
     const
         hidden_pp = childNodeByTag(n, 'product-positions'),
         hidden_notes = childNodeByTag(n, 'notes');
-    // (if they exist, these nodes will be used a bit further down)
-
-    if(n && n.childNodes) {
+    // If they exist, these nodes will be used a bit further down.
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'process-name') {
         name = xmlDecoded(nodeContent(c));
         if(IO_CONTEXT) {
@@ -6257,7 +6324,7 @@ class Cluster extends NodeBox {
       }
     }
     n = childNodeByTag(node, 'sub-clusters');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'cluster') {
         // Refocus on this cluster because addCluster may change focus if it
         // contains subclusters.
@@ -6275,7 +6342,7 @@ class Cluster extends NodeBox {
     }
     // NOTE: the part " || hidden_pp" is to compensate for a bug -- see earlier note.
     n = childNodeByTag(node, 'product-positions') || hidden_pp;
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'product-position') {
         name = xmlDecoded(nodeContentByTag(c, 'product-name'));
         if(IO_CONTEXT) name = IO_CONTEXT.actualName(name);
@@ -6284,7 +6351,7 @@ class Cluster extends NodeBox {
       }
     }
     n = childNodeByTag(node, 'notes') || hidden_notes;
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'note') {
         const note = new Note(this);
         note.initFromXML(c);
@@ -6696,35 +6763,6 @@ class Cluster extends NodeBox {
       }
     }
 
-/*  DISABLED -- idea was OK but this results in many additional links
-    that clutter the diagram; representing these lines by block arrows
-    produces better results
-    
-    // Special case: P1 --> Q with process Q outside this cluster that
-    // produces some other product P2 which has a position in this cluster
-    if(p instanceof Product && q instanceof Process && cq === null) {
-      let p2 = null,
-          i = 0,
-          ll = (p_to_q ? q.outputs : q.inputs);
-      while(!p2 && i < ll.length) {
-        const n = (p_to_q ? ll[i].to_node : ll[i].from_node);
-        if(this.indexOfProduct(n) >= 0) {
-          p2 = n;
-        } else {
-          i++;
-        }
-      }
-      if(p2) {
-        if(p_to_q) {
-          this.addArrow(lnk, p, p2);
-        } else {
-          this.addArrow(lnk, p2, p);
-        }
-        return;
-      }
-    }
-*/
-
     // If P and Q are both processes, while either one is not visible,
     // the arrow will be unique (as each process is in only ONE cluster)
     // and connect either a process node to a cluster node, or two
@@ -6855,28 +6893,29 @@ class Cluster extends NodeBox {
   deleteProduct(p, with_xml=true) {
     // Remove "placeholder" of product `p` from this cluster, and
     // remove `p` from the model if there are no other clusters
-    // containing a "placeholder" for `p`
+    // containing a "placeholder" for `p`.
     // Always set "selected" attribute to FALSE (or the product will
-    // still be drawn in red)
+    // still be drawn in red).
     p.selected = false;
     let i = this.indexOfProduct(p);
     if(i < 0) return false;
     // Append XML for product positions unlesss deleting from a cluster
-    // that is being deleted
+    // that is being deleted.
     if(with_xml) UNDO_STACK.addXML(this.product_positions[i].asXML);
-    // Remove product position of `p` in this cluster
+    // Remove product position of `p` in this cluster.
     this.product_positions.splice(i, 1);
-    // Do not delete product from this cluster unless it has NO links to
-    // processes in other clusters
-    if(!p.allLinksInCluster(this)) {
-      // NOTE: removing only the product position DOES affect the
-      // diagram, so prepare for redraw
+    // Do not delete product from this cluster if it has links to
+    // processes in other clusters, of if this cluster is updating
+    // and binds the product as parameter.
+    if(!p.allLinksInCluster(this) || (IO_CONTEXT && IO_CONTEXT.isBinding(p))) {
+      // NOTE: Removing only the product position DOES affect the
+      // diagram, so prepare for redraw.
       this.clearAllProcesses();
       return false;
     }
     // If no clusters contain `p`, delete it from the model entirely
-    // (incl. all links to and from `p`). NOTE: such deletions WILL
-    // append their undo XML
+    // (incl. all links to and from `p`). NOTE: Such deletions WILL
+    // append their undo XML.
     MODEL.deleteNode(p);
     return true;
   }
@@ -9513,7 +9552,7 @@ class Dataset {
       this.unpackDataString(xmlDecoded(nodeContentByTag(node, 'data')));
     }
     const n = childNodeByTag(node, 'modifiers');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'modifier') {
         this.addModifier(xmlDecoded(nodeContentByTag(c, 'selector')), c);
       }
@@ -10002,7 +10041,7 @@ class Chart {
     this.legend_position = nodeContentByTag(node, 'legend-position');
     this.variables.length = 0;
     const n = childNodeByTag(node, 'variables');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'chart-variable') {
         const v = new ChartVariable(this);
         // NOTE: Variable may refer to deleted entity => do not add.
@@ -11424,13 +11463,13 @@ class ExperimentRun {
     this.time_steps = safeStrToInt(nodeContentByTag(node, 'time-steps'));
     this.time_step_duration = safeStrToFloat(nodeContentByTag(node, 'delta-t'));
     let n = childNodeByTag(node, 'results');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'run-result') {
         this.results.push(new ExperimentRunResult(this, c));
       }
     }
     n = childNodeByTag(node, 'messages');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'block-msg') {
         this.block_messages.push(new BlockMessages(c));
       }
@@ -11861,7 +11900,7 @@ class Experiment {
     this.title = xmlDecoded(nodeContentByTag(node, 'title'));
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     let n = childNodeByTag(node, 'dimensions');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'dim') {
         this.dimensions.push(xmlDecoded(nodeContent(c)).split(','));
       }
@@ -11875,7 +11914,7 @@ class Experiment {
       }
     }
     n = childNodeByTag(node, 'chart-titles');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'chart-title') {
         const ci = MODEL.indexOfChart(xmlDecoded(nodeContent(c)));
         // Double-check: only add existing charts.
@@ -11883,31 +11922,31 @@ class Experiment {
       }
     }
     n = childNodeByTag(node, 'settings-selectors');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'ssel') {
         this.settings_selectors.push(xmlDecoded(nodeContent(c)));
       }
     }
     n = childNodeByTag(node, 'settings-dimensions');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'sdim') {
         this.settings_dimensions.push(xmlDecoded(nodeContent(c)).split(','));
       }
     }
     n = childNodeByTag(node, 'combination-selectors');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'csel') {
         this.combination_selectors.push(xmlDecoded(nodeContent(c)));
       }
     }
     n = childNodeByTag(node, 'combination-dimensions');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'cdim') {
         this.combination_dimensions.push(xmlDecoded(nodeContent(c)).split(','));
       }
     }
     n = childNodeByTag(node, 'actor-selectors');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'asel') {
         const as = new ActorSelector();
         as.initFromXML(c);
@@ -11916,7 +11955,7 @@ class Experiment {
     }
     this.excluded_selectors = xmlDecoded(nodeContentByTag(node, 'excluded-selectors'));
     n = childNodeByTag(node, 'clusters-to-ignore');
-    if(n && n.childNodes) {
+    if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'cluster-to-ignore') {
         const
           cdn = xmlDecoded(nodeContentByTag(c, 'cluster')),
@@ -11931,7 +11970,7 @@ class Experiment {
       }
     }
     n = childNodeByTag(node, 'runs');
-    if(n && n.childNodes) {
+    if(n) {
       let r = 0;
       for(const c of n.childNodes) if(c.nodeName === 'experiment-run') {
         const xr = new ExperimentRun(this, r);
@@ -12360,7 +12399,7 @@ class Experiment {
             const rr = this.runs[rnr].results[vi];
             if(rr) {
               // NOTE: Only experiment variables have vector data.
-              if(rr.x_variable && i <= rr.N) {
+              if(rr.x_variable && vi <= rr.N) {
                 row.push(numval(rr.vector[t], prec));
               } else {
                 row.push('');
@@ -12685,7 +12724,7 @@ class BoundLine {
           xmlDecoded(nodeContentByTag(node, 'point-data')));
     }
     const n = childNodeByTag(node, 'selectors');
-    if(n && n.childNodes && n.childNodes.length) {
+    if(n.length) {
       // NOTE: Only overwrite default selector if XML specifies selectors.
       this.selectors.length = 0;
       for(const c of n.childNodes) if(c.nodeName === 'boundline-selector') {
@@ -12990,7 +13029,7 @@ class Constraint {
     this.soc_direction = safeStrToInt(
         nodeParameterValue(node, 'soc-direction'), 1);
     const n = childNodeByTag(node, 'bound-lines');
-    if(n && n.childNodes) {
+    if(n) {
       // NOTE: only overwrite default lines if XML specifies bound lines
       this.bound_lines.length = 0;
       for(const c of n.childNodes) if(c.nodeName === 'bound-line') {

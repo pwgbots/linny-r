@@ -1955,7 +1955,7 @@ class Paper {
     let l = (MODEL.solved ? proc.actualLevel(MODEL.t) : VM.NOT_COMPUTED),
         lb = proc.lower_bound.result(MODEL.t),
         ub = (proc.equal_bounds ? lb : proc.upper_bound.result(MODEL.t));
-    // NOTE: by default, lower bound = 0 (but do show exceptional values)
+    // NOTE: By default, lower bound = 0 (but do show exceptional values).
     if(lb === VM.UNDEFINED && !proc.lower_bound.defined) lb = 0;
     let hw,
         hh,
@@ -2766,6 +2766,15 @@ class Paper {
         'h-', w - shadow_width, 'v-', shadow_width,
         'h', w - 2*shadow_width, 'z'],
         {fill:stroke_color, stroke:stroke_color, 'stroke-width':stroke_width});
+    if(clstr.module) {
+      // Add three white dots at middle of bottom shade.
+      const
+          ely = y + hh - shadow_width / 2,
+          elfill = {fill: 'white'};
+      clstr.shape.addEllipse(x - 4, ely, 1, 1, elfill);
+      clstr.shape.addEllipse(x, ely, 1, 1, elfill);
+      clstr.shape.addEllipse(x + 4, ely, 1, 1, elfill);
+    }
     // Set fill color if slack used by some product contained by this cluster
     if(MODEL.t in clstr.slack_info) {
       const s = clstr.slack_info[MODEL.t];

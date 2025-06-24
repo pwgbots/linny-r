@@ -607,6 +607,11 @@ span.node-details {
   margin-left: 15px;
 }
 
+span.mod-name {
+  font-style: normal;
+  color: #403080;  
+}
+
 #issue-panel {
   display: none;
   background-color: Yellow;
@@ -705,6 +710,11 @@ img.inline-cancel-btn {
 img.cancel-btn:hover,
 img.inline-cancel-btn:hover {
   filter: brightness(120%);
+}
+
+img.ok-btn.disab {
+  filter: saturate(0%) brightness(150%) contrast(70%);
+  pointer-events: none;
 }
 
 #actor-group,
@@ -4152,8 +4162,9 @@ td.sa-not-run {
 
 #xp-ignore-count {
   position: absolute;
-  right: 14px;
+  right: 2px;
   bottom: 3px;
+  width: 18px;
   height: 16px;
   font-size: 9px;
   color: #806070;
@@ -4882,6 +4893,7 @@ span.sd-clear {
 }
 
 #paste-dlg,
+#update-dlg,
 #include-dlg {
   width: 320px;
   height: min-content;
@@ -4907,15 +4919,42 @@ span.sd-clear {
   margin-left: 9px;
 }
 
+#update-name {
+  font-family: monospace;
+  font-size: 14px;
+}
+
+div.update-cc {
+  display: inline-block;
+  margin-left: 6px;
+  font-style: italic;
+  color: Gray;
+}
+
+#update-remove-header,
+#update-issues-header {
+  font-weight: bold;
+  margin: 4px 2px 2px 2px;
+}
+
 #paste-scroll-area,
-#include-scroll-area {
-  margin: 2px;
+#include-scroll-area,
+#update-remove-area,
+#update-issues-area {
+  margin: 0 2px;
   height: min-content;
   max-height: 350px !important;
   width: calc(100% - 4px);
   border-top: none;
   overflow-x: hidden;
   overflow-y: auto;
+}
+
+#update-remove-area,
+#update-issues-area {
+  max-height: 150px !important;
+  background-color: white;
+  border: 1px solid Silver;
 }
 
 div.paste-tactic {

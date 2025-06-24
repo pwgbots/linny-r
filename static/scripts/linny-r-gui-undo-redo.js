@@ -255,14 +255,13 @@ class UndoStack {
     // (2) Set "selected" attribute of objects to FALSE, as the selection will
     //     be restored from UndoEdit.
     const n = parseXML(MODEL.xml_header + `<edits>${xml}</edits>`);
-    if(n && n.childNodes) {
+    if(n) {
       const
-          li = [],
-          ppi = [],
-          ci = [];  
-      for(let i = 0; i < n.childNodes.length; i++) {
-        const c = n.childNodes[i];
-      // Immediately restore "independent" entities ...
+          ln = [],
+          ppn = [],
+          cn = [];  
+      for(const c of n.childNodes) {
+        // Immediately restore "independent" entities ...
         if(c.nodeName === 'dataset') {
           MODEL.addDataset(xmlDecoded(nodeContentByTag(c, 'name')), c);
         } else if(c.nodeName === 'actor') {
@@ -280,37 +279,33 @@ class UndoStack {
           obj.selected = false;
         } else if(c.nodeName === 'chart') {
           MODEL.addChart(xmlDecoded(nodeContentByTag(c, 'title')), c);
-        // ... but merely collect indices of other entities.
+        // ... but merely collect child nodes for other entities.
         } else if(c.nodeName === 'link' || c.nodeName === 'constraint') {
-          li.push(i);
+          ln.push(c);
         } else if(c.nodeName === 'product-position') {
-          ppi.push(i);
+          ppn.push(c);
         } else if(c.nodeName === 'cluster') {
-          ci.push(i);
+          cn.push(c);
         }
       }
-      // NOTE: Collecting the indices of links, product positions and clusters
+      // NOTE: Collecting the child nodes forlinks, product positions and clusters
       // saves the effort to iterate over ALL childnodes again.
       // First restore links and constraints.
-      for(const i of li) {
-        const c = n.childNodes[i];
-        // Double-check that this node defines a link or a constraint.
-        if(c.nodeName === 'link' || c.nodeName === 'constraint') {
-          let name = xmlDecoded(nodeContentByTag(c, 'from-name'));
-          let actor = xmlDecoded(nodeContentByTag(c, 'from-owner'));
+      for(const c of ln) {
+        let name = xmlDecoded(nodeContentByTag(c, 'from-name'));
+        let actor = xmlDecoded(nodeContentByTag(c, 'from-owner'));
+        if(actor != UI.NO_ACTOR) name += ` (${actor})`;
+        let fn = MODEL.nodeBoxByID(UI.nameToID(name));
+        if(fn) {
+          name = xmlDecoded(nodeContentByTag(c, 'to-name'));
+          actor = xmlDecoded(nodeContentByTag(c, 'to-owner'));
           if(actor != UI.NO_ACTOR) name += ` (${actor})`;
-          let fn = MODEL.nodeBoxByID(UI.nameToID(name));
-          if(fn) {
-            name = xmlDecoded(nodeContentByTag(c, 'to-name'));
-            actor = xmlDecoded(nodeContentByTag(c, 'to-owner'));
-            if(actor != UI.NO_ACTOR) name += ` (${actor})`;
-            let tn = MODEL.nodeBoxByID(UI.nameToID(name));
-            if(tn) {
-              if(c.nodeName === 'link') {
-                MODEL.addLink(fn, tn, c).selected = false;
-              } else {
-                MODEL.addConstraint(fn, tn, c).selected = false;
-              }
+          let tn = MODEL.nodeBoxByID(UI.nameToID(name));
+          if(tn) {
+            if(c.nodeName === 'link') {
+              MODEL.addLink(fn, tn, c).selected = false;
+            } else {
+              MODEL.addConstraint(fn, tn, c).selected = false;
             }
           }
         }
@@ -319,39 +314,33 @@ class UndoStack {
       // NOTE: These correspond to the products that were part of the
       // selection; all other product positions are restored as part of their
       // containing clusters.
-      for(const i of ppi) {
-        const c = n.childNodes[i];
-        // Double-check that this node defines a product position.
-        if(c.nodeName === 'product-position') {
-          const obj = MODEL.nodeBoxByID(UI.nameToID(
-            xmlDecoded(nodeContentByTag(c, 'product-name'))));
-          if(obj) {
-            obj.selected = false;
-            MODEL.focal_cluster.addProductPosition(obj).initFromXML(c);
-          }
+      for(const c of ppn) {
+        const obj = MODEL.nodeBoxByID(UI.nameToID(
+          xmlDecoded(nodeContentByTag(c, 'product-name'))));
+        if(obj) {
+          obj.selected = false;
+          MODEL.focal_cluster.addProductPosition(obj).initFromXML(c);
         }
       }
       // Lastly, restore clusters.
       // NOTE: Store focal cluster, because this may change while initializing
       // a cluster from XML.
       const fc = MODEL.focal_cluster;
-      for(const i of ci) {
-        const c = n.childNodes[i];
-        if(c.nodeName === 'cluster') {
-          const obj = MODEL.addCluster(xmlDecoded(nodeContentByTag(c, 'name')),
-            xmlDecoded(nodeContentByTag(c, 'owner')), c);
-          obj.selected = false;
-
+      for(const c of cn) {
+        const obj = MODEL.addCluster(xmlDecoded(nodeContentByTag(c, 'name')),
+          xmlDecoded(nodeContentByTag(c, 'owner')), c);
+        obj.selected = false;
+/*
 // TEMPORARY trace (remove when done testing)
 if (MODEL.focal_cluster === fc) {
   console.log('NO refocus needed');
 } else {
   console.log('Refocusing from ... to ... : ', MODEL.focal_cluster, fc);
 }
-          // Restore original focal cluster because addCluster may shift focus
-          // to a sub-cluster.
-          MODEL.focal_cluster = fc;
-        }
+*/
+        // Restore original focal cluster because addCluster may shift focus
+        // to a sub-cluster.
+        MODEL.focal_cluster = fc;
       }
     }
     MODEL.clearSelection();
@@ -443,7 +432,7 @@ if (MODEL.focal_cluster === fc) {
         // First check whether product P needs to be restored.
         if(!p && ue.xml) {
           const n = parseXML(MODEL.xml_header + `<edits>${ue.xml}</edits>`);
-          if(n && n.childNodes) {
+          if(n && n.childNodes.length) {
             let c = n.childNodes[0];
             if(c.nodeName === 'product') {
               p = MODEL.addProduct(

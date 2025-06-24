@@ -224,10 +224,10 @@ class ActorManager {
   }
   
   showEditActorDialog(name, expr) {
-    // Display modal for editing properties of one actor
+    // Display modal for editing properties of one actor.
     this.actor_span.innerHTML = name;
     this.actor_name.value = name;
-    // Do not allow modification of the name '(no actor)'
+    // Do not allow modification of the name '(no actor)'.
     if(name === UI.NO_ACTOR) {
       this.actor_name.disabled = true;
       this.actor_io.style.display = 'none';
@@ -242,22 +242,22 @@ class ActorManager {
   
   modifyActorEntry() {
     // This method is called when the modeler submits the "actor properties"
-    // dialog
+    // dialog.
     let n = this.actor_span.innerHTML,
         nn = UI.NO_ACTOR,
         x = this.actor_weight.value.trim(),
         xp = new ExpressionParser(x);
     if(n !== UI.NO_ACTOR) {
       nn = this.actor_name.value.trim();
-      // NOTE: prohibit colons in actor names to avoid confusion with
-      // prefixed entities
+      // NOTE: Prohibit colons in actor names to avoid confusion with
+      // prefixed entities.
       if(!UI.validName(nn) || nn.indexOf(':') >= 0) {
         UI.warn(UI.WARNING.INVALID_ACTOR_NAME);
         return false;
       }
     }
     if(xp.error) {
-      // NOTE: do not pass the actor, as its name is being edited as well
+      // NOTE: Do not pass the actor, as its name is being edited as well.
       UI.warningInvalidWeightExpression(null, xp.error);
       return false;
     }

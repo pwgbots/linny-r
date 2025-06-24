@@ -7675,7 +7675,13 @@ function VMI_add(x) {
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('ADD (' + d.join(', ') + ')');
-    x.retop(d[0] + d[1]);
+    if(Math.abs(d[0]) === VM.PLUS_INFINITY) {
+      x.retop(d[0]);
+    } else if(Math.abs(d[1]) === VM.PLUS_INFINITY) {
+      x.retop(d[1]);
+    } else {
+      x.retop(d[0] + d[1]);
+    }
   }
 }
 
@@ -7685,17 +7691,27 @@ function VMI_sub(x) {
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('SUB (' + d.join(', ') + ')');
-    x.retop(d[0] - d[1]);
+    if(d[0] === VM.PLUS_INFINITY || d[1] === VM.MINUS_INFINITY) {
+      x.retop(VM.PLUS_INFINITY);
+    } else if(d[0] === VM.MINUS_INFINITY || d[1] === VM.PLUS_INFINITY) {
+      x.retop(VM.MINUS_INFINITY);
+    } else {
+      x.retop(d[0] + d[1]);
+    }
   }
 }
 
 function VMI_mul(x) {
   // Pop the top number on the stack, and multiply it with the new
-  // top number
+  // top number.
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('MUL (' + d.join(', ') + ')');
-    x.retop(d[0] * d[1]);
+    if(Math.abs(d[0]) === VM.PLUS_INFINITY || Math.abs(d[1]) === VM.PLUS_INFINITY) {
+      x.retop(VM.PLUS_INFINITY * Math.sign(d[0] * d[1]));
+    } else {
+      x.retop(d[0] * d[1]);
+    }
   }
 }
 
@@ -7707,7 +7723,19 @@ function VMI_div(x) {
     if(DEBUGGING) console.log('DIV (' + d.join(', ') + ')');
     if(Math.abs(d[1]) <= VM.NEAR_ZERO) {
       x.retop(VM.DIV_ZERO);
+    } else if(Math.abs(d[0]) === VM.PLUS_INFINITY) {
+      if(Math.abs(d[1]) === VM.PLUS_INFINITY) {
+        // Treat INF / INF as 1.
+        x.retop(Math.sign(d[0]) * Math.sign(d[1]));
+      } else {
+        // Push the + or - infinity value.
+        x.retop(d[0]);
+      }
+    } else if(Math.abs(d[1]) === VM.PLUS_INFINITY) {
+      // Treat N / Infinity as 0 for any non-infinite value of N.
+      x.retop(0);
     } else {
+      // Standard division.
       x.retop(d[0] / d[1]);
     }
   }
@@ -7722,7 +7750,19 @@ function VMI_div_zero(x) {
     if(DEBUGGING) console.log('DIV-ZERO (' + d.join(', ') + ')');
     if(Math.abs(d[1]) <= VM.NEAR_ZERO) {
       x.retop(d[0]);
+    } else if(Math.abs(d[0]) === VM.PLUS_INFINITY) {
+      if(Math.abs(d[1]) === VM.PLUS_INFINITY) {
+        // Treat INF / INF as 1.
+        x.retop(Math.sign(d[0]) * Math.sign(d[1]));
+      } else {
+        // Push the + or - infinity value.
+        x.retop(d[0]);
+      }
+    } else if(Math.abs(d[1]) === VM.PLUS_INFINITY) {
+      // Treat N / Infinity as 0 for any non-infinite value of N.
+      x.retop(0);
     } else {
+      // Standard division.
       x.retop(d[0] / d[1]);
     }
   }
@@ -7738,6 +7778,9 @@ function VMI_mod(x) {
     if(DEBUGGING) console.log('DIV (' + d.join(', ') + ')');
     if(Math.abs(d[1]) <= VM.NEAR_ZERO) {
       x.retop(VM.DIV_ZERO);
+    } else if(Math.abs(d[0]) === VM.PLUS_INFINITY || Math.abs(d[1]) === VM.PLUS_INFINITY) {
+      // If either operand is infinite, return 0 as remainder.
+      x.retop(0);
     } else {
       x.retop(d[0] % d[1]);  // % is the modulo operator in JavaScript.
     }
@@ -7759,7 +7802,16 @@ function VMI_power(x) {
   const d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('POWER (' + d.join(', ') + ')');
-    x.retop(Math.pow(d[0], d[1]));
+    const r = Math.pow(d[0], d[1]);
+    if(isNaN(r)) {
+      x.retop(VM.BAD_CALC);
+    } else if(r >= VM.PLUS_INFINITY) {
+      x.retop(VM.PLUS_INFINITY);
+    } else if(r <= VM.MINUS_INFINITY) {
+      x.retop(VM.MINUS_INFINITY);
+    } else {
+      x.retop(r);
+    }
   }
 }
 
@@ -7771,6 +7823,8 @@ function VMI_sqrt(x) {
     if(DEBUGGING) console.log('SQRT ' + d);
     if(d < 0) {
       x.retop(VM.BAD_CALC);
+    } else if (d === VM.PLUS_INFINITY) {
+      x.retop(VM.PLUS_INFINITY);
     } else {
       x.retop(Math.sqrt(d));
     }
@@ -7782,7 +7836,12 @@ function VMI_sin(x) {
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('SIN ' + d);
-    x.retop(Math.sin(d));
+    const r = Math.sin(d);
+    if(isNaN(r) || Math.abs(d) === VM.PLUS_INFINITY) {
+      x.retop(VM.BAD_CALC);
+    } else {
+      x.retop(r);
+    }
   }
 }
 
@@ -7791,7 +7850,12 @@ function VMI_cos(x) {
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('COS ' + d);
-    x.retop(Math.cos(d));
+    const r = Math.cos(d);
+    if(isNaN(r) || Math.abs(d) === VM.PLUS_INFINITY) {
+      x.retop(VM.BAD_CALC);
+    } else {
+      x.retop(r);
+    }
   }
 }
 
@@ -7800,7 +7864,12 @@ function VMI_atan(x) {
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('ATAN ' + d);
-    x.retop(Math.atan(d));
+    const r = Math.atan(d);
+    if(isNaN(r) || Math.abs(d) === VM.PLUS_INFINITY) {
+      x.retop(VM.BAD_CALC);
+    } else {
+      x.retop(r);
+    }
   }
 }
 
@@ -7812,6 +7881,8 @@ function VMI_ln(x) {
     if(DEBUGGING) console.log('LN ' + d);
     if(d < 0) {
       x.retop(VM.BAD_CALC);
+    } else if(d === VM.PLUS_INFINITY) {
+      x.retop(VM.PLUS_INFINITY);
     } else {
       x.retop(Math.log(d));
     }
@@ -7823,7 +7894,13 @@ function VMI_exp(x) {
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('EXP ' + d);
-    x.retop(Math.exp(d));
+    if(d === VM.PLUS_INFINITY) {
+      x.retop(VM.PLUS_INFINITY);
+    } else if(d === VM.MINUS_INFINITY) {
+      x.retop(0);
+    } else {
+      x.retop(Math.exp(d));
+    }
   }
 }
 
@@ -7833,12 +7910,16 @@ function VMI_log(x) {
   let d = x.pop();
   if(d !== false) {
     if(DEBUGGING) console.log('LOG (' + d.join(', ') + ')');
-    try {
-      d = Math.log(d[1]) / Math.log(d[0]);
-    } catch(err) {
-      d = VM.BAD_CALC;
+    if(Math.abs(d[0]) === VM.PLUS_INFINITY || Math.abs(d[1]) === VM.PLUS_INFINITY) {
+      x.retop(VM.BAD_CALC);
+    } else {
+      try {
+        d = Math.log(d[1]) / Math.log(d[0]);
+      } catch(err) {
+        d = VM.BAD_CALC;
+      }
+      x.retop(d);
     }
-    x.retop(d);
   }
 }
 

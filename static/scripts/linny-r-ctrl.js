@@ -311,6 +311,12 @@ class Controller {
         (name.startsWith(this.BLACK_BOX) || name[0].match(/[\w]/));
   }
   
+  realActorName(name) {
+    // Return `name` unless it is '(no actor)'; then return empty string.
+    if(name === this.NO_ACTOR) return '';
+    return name;
+  }
+  
   prefixesAndName(name, key=false) {
     // Returns name split exclusively at '[non-space]: [non-space]'
     let sep = this.PREFIXER,

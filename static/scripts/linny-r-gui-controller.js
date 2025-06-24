@@ -2979,7 +2979,7 @@ class GUIController extends Controller {
   // 
 
   validNames(nn, an='') {
-    // Check whether names meet conventions; if not, warn user
+    // Check whether names meet conventions. If not, warn user.
     if(!UI.validName(nn) || nn.indexOf(UI.BLACK_BOX) >= 0) {
       this.warningInvalidName(nn);
       return false;
@@ -3148,10 +3148,10 @@ class GUIController extends Controller {
     UI.info_line.classList.remove(...UI.info_line.classList);
   }
 
-  setMessage(msg, type=null) {
+  setMessage(msg, type=null, cause=null) {
     // Display `msg` on infoline unless no type (= plain text) and some
     // info, warning or error message is already displayed.
-    super.setMessage(msg, type);
+    super.setMessage(msg, type, cause);
     const types = ['notification', 'warning', 'error'];
     let d = new Date(),
         t = d.getTime(),
@@ -3666,7 +3666,7 @@ class GUIController extends Controller {
     // proceed to paste.
     const
         md = this.paste_modal,
-        mapping = Object.assign(md.mapping, {}),
+        mapping = Object.assign({}, md.mapping),
         tc = (mapping.top_clusters ?
             Object.keys(mapping.top_clusters).sort(ciCompare) : []),
         ft = (mapping.from_to ?
@@ -3908,8 +3908,8 @@ class GUIController extends Controller {
     mapping.shared_prefix = sp;
     mapping.from_prefix = (fpn ? sp + fpn + UI.PREFIXER : sp);
     mapping.to_prefix = (tpn ? sp + tpn + UI.PREFIXER : sp);
-    mapping.from_actor = (ca === UI.NO_ACTOR ? '' : ca);
-    mapping.to_actor = (fca === UI.NO_ACTOR ? '' : fca);
+    mapping.from_actor = UI.realActorName(ca);
+    mapping.to_actor = UI.realActorName(fca);
     // Prompt for mapping when pasting to the same model and cluster.
     if(parseInt(mts) === MODEL.time_created.getTime() &&
         ca === fca && mapping.from_prefix === mapping.to_prefix &&
@@ -4546,8 +4546,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     md.group = group;
     md.element('action').innerText = 'Edit';
     md.element('name').value = c.name;
-    md.element('actor').value = (c.actor.name == UI.NO_ACTOR ?
-        '' : c.actor.name);
+    md.element('actor').value = UI.realActorName(c.actor.name);
     md.element('options').style.display = 'block';
     this.setBox('cluster-collapsed', c.collapsed);
     this.setBox('cluster-ignore', c.ignore);

@@ -115,13 +115,16 @@ class Repository {
       .catch((err) => UI.warn(UI.WARNING.NO_CONNECTION, err));
   }
 
-  loadModule(n, include=false) {
-    // Loads Linny-R model with index `n` from this repository
+  loadModule(n, include=false, update=false) {
+    // Load Linny-R model with index `n` from this repository.
     // NOTES:
-    // (1) when `include` is FALSE, this function behaves as the `loadModel`
+    // (1) When `include` is FALSE, this function behaves as the `loadModel`
     //     method of FileManager; when `include` is TRUE, the module is included
-    //     as a cluster (with parameterization via an IO context)
-    // (2) loading a module requires no authentication
+    //     as a cluster (with parameterization via an IO context).
+    // (2) When `update` is TRUE, all clusters that were previously included
+    //     using the specified module are replaced by clusters for the (new)
+    //     module using the bindings inferred from the existing cluster.
+    // (3) Loading a module requires no authentication.
     fetch('repo/', postData({
           action: 'load',
           repo: this.name,
@@ -135,12 +138,18 @@ class Repository {
         })
       .then((data) => {
           if(data !== '' && UI.postResponseOK(data)) {
-            // Server returns Linny-R model file
+            // Server returns Linny-R model file.
             if(include) {
-              // Include module into current model
-              REPOSITORY_BROWSER.promptForInclusion(
-                  this.name, this.module_names[n],
-                  parseXML(data.replace(/%23/g, '#')));
+              const xml = parseXML(data.replace(/%23/g, '#'));
+              if(update) {
+                // Include module into current model.
+                REPOSITORY_BROWSER.promptForUpdate(
+                    this.name, this.module_names[n], xml);
+              } else {
+                // Include module into current model.
+                REPOSITORY_BROWSER.promptForInclusion(
+                    this.name, this.module_names[n], xml);
+              }
             } else {
               if(UI.loadModelFromXML(data)) {
                 UI.notify(`Model <tt>${this.module_names[n]}</tt> ` +
@@ -153,8 +162,8 @@ class Repository {
   }
 
   storeModelAsModule(name, black_box=false) {
-    // Stores the current model in this repository
-    // NOTE: this requires authentication
+    // Store the current model in this repository.
+    // NOTE: This requires authentication.
     UI.waitingCursor();
     fetch('repo/', postData({
           action: 'store',
@@ -246,6 +255,8 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
         'click', () => REPOSITORY_BROWSER.includeModule());
     document.getElementById('repo-load-btn').addEventListener(
         'click', () => REPOSITORY_BROWSER.confirmLoadModuleAsModel());
+    document.getElementById('repo-update-btn').addEventListener(
+        'click', () => REPOSITORY_BROWSER.includeModule(true));
     document.getElementById('repo-store-btn').addEventListener(
         'click', () => REPOSITORY_BROWSER.promptForStoring());
     document.getElementById('repo-black-box-btn').addEventListener(
@@ -293,6 +304,14 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
         'blur', () => REPOSITORY_BROWSER.suggestBindings());
     this.include_modal.element('actor').addEventListener(
         'blur', () => REPOSITORY_BROWSER.updateActors());
+
+    this.update_modal = new ModalDialog('update');
+    this.update_modal.ok.addEventListener(
+        'click', () => REPOSITORY_BROWSER.performUpdate());
+    this.update_modal.cancel.addEventListener(
+        'click', () => REPOSITORY_BROWSER.cancelUpdate());
+    this.update_modal.element('module').addEventListener(
+        'change', () => REPOSITORY_BROWSER.checkUpdateBindings());
 
     this.confirm_load_modal = new ModalDialog('confirm-load-from-repo');
     this.confirm_load_modal.ok.addEventListener(
@@ -566,6 +585,13 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
     this.modules_count.innerHTML = pluralS(mcount, 'module');
     if(this.module_index >= 0) {
       UI.enableButtons('repo-load repo-include');
+      // Enable update button only when model contains included clusters.
+      const ninc = Object.keys(MODEL.includedModules).length;
+      if(ninc) {
+        UI.enableButtons(' repo-update');
+      } else {
+        UI.disableButtons(' repo-update');
+      }
       // NOTE: Only allow deletion from local host repository.
       if(this.repository_index === 0 && this.isLocalHost) {
         UI.enableButtons(' repo-delete');
@@ -573,7 +599,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
         UI.disableButtons(' repo-delete');
       }
     } else {  
-      UI.disableButtons('repo-load repo-include repo-delete');
+      UI.disableButtons('repo-load repo-include repo-update repo-delete');
     }
   }
   
@@ -604,6 +630,10 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
     }
     this.updateModulesTable();
   }
+  
+  //
+  // Methods that implement the inclusion of the selected module.
+  //
 
   promptForInclusion(repo, file, node) {
     // Add entities defined in the parsed XML tree with root `node`.
@@ -631,7 +661,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
       if(ids.indexOf(oid) >= 0) sel.value = oid;
     }
   }
-  
+    
   updateActors() {
     // Add actor (if specified) to model, and then updates the selector options
     // for each actor binding selector.
@@ -709,8 +739,11 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
         `<strong>${IO_CONTEXT.repo_name}</strong>${counts}`);
     // Get the containing cluster.
     obj = MODEL.objectByName(IO_CONTEXT.clusterName);
-    // Position it in the focal cluster.
     if(obj instanceof Cluster) {
+      // Record from which module it has been included with what bindings.
+      obj.module = {name: IO_CONTEXT.file_name,
+          bindings: IO_CONTEXT.copyOfBindings};
+      // Position it in the focal cluster.
       obj.x = IO_CONTEXT.centroid_x;
       obj.y = IO_CONTEXT.centroid_y;
       obj.clearAllProcesses();
@@ -734,6 +767,254 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
     IO_CONTEXT = null;
     this.include_modal.hide();
   }
+  
+  //
+  // Methods that implement updating of perviously included clusters.
+  //
+
+  promptForUpdate(repo, file, node) {
+    // Add entities defined in the parsed XML tree with root `node`.
+    IO_CONTEXT = new IOContext(repo, file, node);
+    this.included_modules = MODEL.includedModules;
+    const
+        md = this.update_modal,
+        options = [],
+        keys = Object.keys(this.included_modules).sort(compareWithTailNumbers),
+        // Use file name without tail number as basis for comparison.
+        fwot = file.replace(/\-\d+$/, '');
+    let max = 0,
+        index = -1,
+        mcnt = '';
+    for(const k of keys) {
+      const tn = endsWithDigits(k);
+      if(tn && k === `${fwot}-${tn}`) {
+        max = Math.max(max, parseInt(tn));
+        index = options.length;
+        mcnt = `(${pluralS(this.included_modules[k].length, 'cluster')})`;
+      }
+      options.push('<option value="', k, '">', k, '</option>');
+    }
+    if(index >= 0) options[index].replace('">', '" selected>');
+    md.element('name').innerHTML = IO_CONTEXT.file_name;
+    md.element('module').innerHTML = options.join('');
+    md.element('count').innerText = mcnt;
+    md.element('issues').style.display = 'none';
+    md.element('remove').style.display = 'none';
+    md.show('module');
+    this.checkUpdateBindings();
+  }
+  
+  checkUpdateBindings() {
+    // Verify that all module parameters are bound by the previous
+    // bindings, or that such binding can be inferred.
+    const
+        md = this.update_modal,
+        mkey = md.element('module').value,
+        iml = this.included_modules[mkey],
+        mcnt = `(${pluralS(iml.length, 'cluster')})`,
+        missing_params = {},
+        cnlist = [];
+    for(const im of iml) cnlist.push(safeDoubleQuotes(im.displayName));
+    md.element('count').innerText = mcnt;
+    md.element('count').title = cnlist.sort().join('\n');
+    this.obsolete_items = [];
+    // Check bindings of the included clusters.
+    for(const im of iml) {
+      const
+          cn = im.name,
+          iob = im.module.bindings,
+          bk = Object.keys(iob),
+          ck = Object.keys(IO_CONTEXT.bindings),
+          missing = complement(ck, bk);
+      if(missing.length) {
+        // Try to match name in module with existing prefixed entity in model.
+        for(let mi = missing.length - 1; mi >= 0; mi++) {
+          const mb = IO_CONTEXT.bindings[missing[mi]];
+          if(mb.io_type === 2) {
+            // Actual name = formal name, so known.
+            missing.splice(mi, 1);
+          } else {
+            const
+                pent = cn + UI.PREFIXER + mb.name_in_module,
+                obj = MODEL.objectByName(pent);
+            if(obj && obj.type === mb.entity_type) {
+              mb.actual_name = pent;
+              console.log('HERE -- completed original bindings', mb);
+            } else {
+              console.log('HERE -- incomplete original bindings', obj, mb);
+            }
+          }
+        }
+      }
+      // If not resolved, add module to the missing record.
+      for(const m of missing) {
+        if(missing_params.hasOwnProperty(m)) {
+          missing_params[m].push(im);
+        } else {
+          missing_params[m] = [im];
+        }
+      }
+      for(const k of MODEL.datasetKeysByPrefix(cn)) {
+        this.obsolete_items.push(MODEL.datasets[k]);
+      }
+      for(const c of MODEL.chartsByPrefix(cn)) this.obsolete_items.push(c);
+    }
+    const
+        remove_div = md.element('remove'),
+        remove_count = md.element('remove-count'),
+        remove_list = md.element('remove-area');
+    if(this.obsolete_items.length) {
+      remove_count.innerHTML = pluralS(this.obsolete_items.length,
+          'obsolete item');
+      const html = [];
+      for(const item of this.obsolete_items.sort(
+          (a, b) => {
+            if(a.type === b.type) return ciCompare(a.displayName, b.displayName);
+            return (a instanceof Dataset ? -1 : 1);
+          })) {
+        html.push('<div><img src="images/',
+            (item instanceof Dataset ? 'dataset' : 'chart'),
+            '.png" class="sbtn">',
+            item.displayName, '</div>');
+      }
+      remove_list.innerHTML = html.join('');
+      remove_div.style.display = 'block';
+    } else {
+      remove_count.innerHTML = '';
+      remove_list.innerHTML = '';
+      remove_div.style.display = 'none';
+    }
+    const
+        issues_div = md.element('issues'),
+        issues_header = md.element('issues-header'),
+        issues_list = md.element('issues-area'),
+        mpkeys = Object.keys(missing_params);
+    if(mpkeys.length) {
+      // When parameters are missing, report this...
+      issues_header.innerHTML = pluralS(mpkeys.length, 'unresolved parameter');
+      const html = [];
+      for(const k of mpkeys) {
+        const mb = IO_CONTEXT.bindings[k];
+        cnlist.length = 0;
+        for(const im of missing_params[k]) {
+          cnlist.push(safeDoubleQuotes(im.displayName));
+        }
+        html.push('<div>', mb.name_in_module,
+            '<span class="update-cc" title="', cnlist.sort().join('\n'),
+            '">(in ', pluralS(cnlist.length, 'cluster'), ')</span></div>');
+      }
+      issues_list.innerHTML = html.join('');
+      issues_div.style.display = 'block';
+      // ... and disable the OK button so that no update can be performed.
+      md.ok.classList.add('disab');
+      IO_CONTEXT = null;
+    } else {
+      // No issues report.
+      issues_header.innerHTML = '';
+      issues_list.innerHTML = '';
+      issues_div.style.display = 'none';
+      // Enable the OK button so that update can be performed.
+      md.ok.classList.remove('disab');
+    }
+  }
+  
+  performUpdate() {
+    // Update all eligible previously included modules.
+    if(!IO_CONTEXT) {
+      UI.alert('Cannot update modules without context');
+      return;
+    }
+    const
+        md = this.update_modal,
+        mkey = md.element('module').value,
+        iml = this.included_modules[mkey];
+    MODEL.clearSelection();
+    // Delete obsolete items from the model.
+    for(const item of this.obsolete_items) {
+      if(item instanceof Dataset) {
+        delete MODEL.datasets[item.identifier];
+      } else {
+        const index = MODEL.charts.indexOf(item);
+        if(index >= 0) MODEL.charts.splice(index, 1);
+      }
+    }
+    // NOTE: The included module list contains clusters.
+    const last = iml[iml.length - 1];
+    // Ensure that expressions are recompiled only after the last inclusion.
+    for(const c of iml) this.updateCluster(c, c === last);
+    // Notify modeler of the scope of the update.
+    let counts = `: ${pluralS(IO_CONTEXT.added_nodes.length, 'node')}, ` +
+        pluralS(IO_CONTEXT.added_links.length, 'link');
+    if(IO_CONTEXT.superseded.length > 0) {
+      counts += ` (superseded ${IO_CONTEXT.superseded.length})`;
+      console.log('SUPERSEDED:', IO_CONTEXT.superseded);
+    }
+    UI.notify(`Model updated using <tt>${IO_CONTEXT.file_name}</tt> from ` +
+        `<strong>${IO_CONTEXT.repo_name}</strong>${counts}`);
+    // Reset the IO context.
+    IO_CONTEXT = null;
+    this.update_modal.hide();
+    MODEL.cleanUpActors();
+    MODEL.focal_cluster.clearAllProcesses();
+    UI.drawDiagram(MODEL);
+    UI.updateControllerDialogs('CDEFJX');
+  }
+  
+  updateCluster(c, last) {
+    // Update perviously included cluster `c`.
+    // Remember the XY-position of the cluster. 
+    const 
+        cx = c.x,
+        cy = c.y;
+    // The name of `c` will be used again as prefix.
+    IO_CONTEXT.prefix = c.name;
+    IO_CONTEXT.actor_name = UI.realActorName(c.actor.name);
+    // NOTE: `last` = TRUE indicates that expressions must be recompiled
+    // only after updating this cluster.
+    IO_CONTEXT.recompile = last;
+    // Copy the original bindings to the IO context.
+    const ob = c.module.bindings;
+    for(const k of Object.keys(ob)) {
+      // NOTE: Only copy bindings for parameters of the module used for updating.
+      if(IO_CONTEXT.bindings.hasOwnProperty(k)) {
+        const nb = IO_CONTEXT.bindings[k];
+        nb.actual_name = ob[k].actual_name;
+        nb.actual_id = UI.nameToID(nb.actual_name);
+      }
+    }
+    // Delete `c` from the model without adding its XML (UNDO to be implemented).
+    MODEL.deleteCluster(c, false);
+    // NOTE: Including may affect focal cluster, so store it...
+    const fc = MODEL.focal_cluster;
+    MODEL.initFromXML(IO_CONTEXT.xml);
+    // ... and restore it afterwards.
+    MODEL.focal_cluster = fc;
+    // Get the newly added cluster.
+    const nac = MODEL.objectByName(IO_CONTEXT.clusterName);
+    if(nac instanceof Cluster) {
+      // Record from which module it has been included with what bindings.
+      nac.module = {name: IO_CONTEXT.file_name,
+          bindings: IO_CONTEXT.copyOfBindings};
+      // Give the updated cluster the same position as the original one.
+      nac.x = cx;
+      nac.y = cy;
+      // Prepare for redraw.
+      nac.clearAllProcesses();
+      return true;
+    }
+    UI.alert('Update failed to create a cluster');
+    return false;
+  }
+
+  cancelUpdate() {
+    // Clear the IO context and closes the update dialog.
+    IO_CONTEXT = null;
+    this.update_modal.hide();
+  }
+  
+  //
+  // Methods for storing/loading a module in/from a repository
+  //
 
   promptForStoring() {
     if(this.repository_index >= 0) {
@@ -792,11 +1073,11 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
     }
   }
   
-  includeModule() {
+  includeModule(update=false) {
     // Include selected module into the current model.
     if(this.repository_index >= 0 && this.module_index >= 0) {
       const r = this.repositories[this.repository_index];
-      r.loadModule(this.module_index, true);
+      r.loadModule(this.module_index, true, update);
     }
   }
 
