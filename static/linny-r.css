@@ -3029,6 +3029,14 @@ td.equation-expression-multi {
   cursor: pointer;
 }
 
+#equation-info {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  color: Gray;
+  font-style: italic;
+}
+
 /* NOTE: Rename equation modal must be above Edit variable modal */
 #rename-equation-modal {
   z-index: 110;
@@ -3557,6 +3565,16 @@ img.v-disab {
   height: 20px;
   width: 20px;
   margin-left: 4px;
+}
+
+#chart-prefix-div {
+  display: inline-block;
+  margin-left: 12px;
+}
+
+#chart-prefix {
+  font-size: 9px !important;
+  max-width: 80px;
 }
 
 #chart-time-div {
