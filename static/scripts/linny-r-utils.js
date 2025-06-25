@@ -866,8 +866,8 @@ function cleanXML(node) {
 }
 
 function parseXML(xml) {
-  // Parses string `xml` into an XML document, and returns its root node
-  // (or null if errors)
+  // Parse string `xml` into an XML document, and returns its root node
+  // (or null if errors).
   xml = XML_PARSER.parseFromString(customizeXML(xml), 'application/xml');
   const
       de = xml.documentElement,
@@ -878,8 +878,8 @@ function parseXML(xml) {
 }
 
 function childNodeByTag(node, tag) {
-  // Returns the XML child node of `node` having node name `tag`, or NULL if
-  // no such child node exists
+  // Return the XML child node of `node` having node name `tag`, or NULL if
+  // no such child node exists.
   let cn = null;
   for (let i = 0; i < node.childNodes.length; i++) {
     if(node.childNodes[i].tagName === tag) {
@@ -891,19 +891,19 @@ function childNodeByTag(node, tag) {
 }
 
 function nodeContentByTag(node, tag) {
-  // Returns the text content of the child node of `node` having name `tag`,
-  // or the empty string if no such node exists
+  // Return the text content of the child node of `node` having name `tag`,
+  // or the empty string if no such node exists.
   return nodeContent(childNodeByTag(node, tag));
 }
 
 function nodeContent(node) {
-  // Returns the text content of XML element `node`
+  // Return the text content of XML element `node`.
   if(node) {
-    // For text nodes, return their value
+    // For text nodes, return their value.
     if(node.nodeType === 3) return node.nodeValue;
-    // For empty nodes, return empty string
+    // For empty nodes, return empty string.
     if(node.childNodes.length === 0) return '';
-    // If first child is text, return its value
+    // If first child is text, return its value.
     const fcn = node.childNodes.item(0);
     if(fcn && fcn.nodeType === 3) return fcn.nodeValue;
     console.log('UNEXPECTED XML', fcn.nodeType, node);
@@ -912,8 +912,8 @@ function nodeContent(node) {
 }
 
 function nodeParameterValue(node, param) {
-  // Returns the value of parameter `param` as string if `node` has
-  // this parameter, otherwise the empty string
+  // Return the value of parameter `param` as string if `node` has
+  // this parameter, otherwise the empty string.
   const a = node.getAttribute(param);
   return a || '';
 }

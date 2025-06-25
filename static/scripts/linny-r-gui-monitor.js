@@ -209,8 +209,9 @@ class GUIMonitor {
         `ERROR at t=${t}: ` + VM.errorMessage(err);
     for(const x of VM.call_stack) {
       // For equations, only show the attribute.
-      const ons = (x.object === MODEL.equations_dataset ? '' :
-          x.object.displayName + '|');
+      const ons = (x.object === MODEL.equations_dataset ?
+          (x.attribute.startsWith(':') ? x.method_object_prefix : '') :
+              x.object.displayName + '|');
       vlist.push(ons + x.attribute);
       // Trim spaces around all object-attribute separators in the expression.
       xlist.push(x.text.replace(/\s*\|\s*/g, '|'));

@@ -309,7 +309,7 @@ class Expression {
     if(DEBUGGING) {
       // Show the "time step stack" for --START and --STOP
       if(action.startsWith('--') || action.startsWith('"')) {
-        action = `[${step.join(', ')}] ${action}`;
+        action = `[${this.step.join(', ')}] ${action}`;
       }
       console.log(action);
     }
@@ -2903,7 +2903,11 @@ class VirtualMachine {
         vlist = [],
         xlist = [];
     for(const x of this.call_stack) {
-      vlist.push(x.object.displayName + '|' + x.attribute);
+      // For equations, only show the attribute.
+      const ons = (x.object === MODEL.equations_dataset ?
+          (x.attribute.startsWith(':') ? x.method_object_prefix : '') :
+              x.object.displayName + '|');
+      vlist.push(ons + x.attribute);
       // Trim spaces around all object-attribute separators in the
       // expression as entered by the modeler.
       xlist.push(x.text.replace(/\s*\|\s*/g, '|'));
@@ -6933,7 +6937,8 @@ function VMI_push_method(x, args) {
   // and possibly also the entity to be used as its object.
   // NOTE: Methods can only be called "as is" (without prefix) in a
   // method expression. The object of such "as is" method calls is
-  // the object of the calling method expression `x`.
+  // the object of the calling method expression `x`, or for chart
+  // variables the method object selected for the chart.
   const
       method = args[0].meq,
       mex = method.expression,

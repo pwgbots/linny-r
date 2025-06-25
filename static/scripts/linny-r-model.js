@@ -2161,7 +2161,9 @@ class LinnyRModel {
     // Move all selected nodes to cluster `c`.
     // NOTE: The relative position of the selected notes is presserved,
     // but the nodes are positioned to the right of the diagram of `c`
-    // with a margin of 50 pixels. 
+    // with a margin of 50 pixels.
+    // NOTE: No dropping if the selection contains one note.
+    if(this.selection.length === 1 && this.selection[0] instanceof Note) return;
     const
         space = 50,
         rmx = c.rightMarginX + space,
@@ -5130,38 +5132,41 @@ class ObjectWithXYWH {
 
 // CLASS NoteField: numeric value of "field" [[variable]] in note text 
 class NoteField {
-  constructor(n, f, o, u='1', m=1, w=false) {
+  constructor(n, f, o, u='1', m=1, w=false, p='') {
     // `n` is the note that "owns" this note field
     // `f` holds the unmodified tag string [[dataset]] to be replaced by
     // the value of vector or expression `o` for the current time step;
     // if specified, `u` is the unit of the value to be displayed,
-    // `m` is the multiplier for the value to be displayed, and `w` is
-    // the wildcard number to use in a wildcard equation
+    // `m` is the multiplier for the value to be displayed, `w` is
+    // the wildcard number to use in a wildcard equation, and `p` is
+    // the prefix to use for a method equation.
     this.note = n;
     this.field = f;
     this.object = o;
     this.unit = u;
     this.multiplier = m;
     this.wildcard_number = (w ? parseInt(w) : false);
+    this.prefix = p;
   }
   
   get value() {
-    // Returns the numeric value of this note field as a numeric string
-    // followed by its unit (unless this is 1)
-    // If object is the note, this means field [[#]] (note number context)
-    // If this is undefined (empty string) display a double question mark
+    // Return the numeric value of this note field as a numeric string
+    // followed by its unit (unless this is 1).
+    // If object is the note, this means field [[#]] (note number context).
+    // If this is undefined (empty string) display a double question mark.
     if(this.object === this.note) return this.note.numberContext || '\u2047';
     let v = VM.UNDEFINED;
     const t = MODEL.t;
     if(Array.isArray(this.object)) {
-      // Object is a vector
+      // Object is a vector.
       if(t < this.object.length) v = this.object[t];
     } else if(this.object.hasOwnProperty('c') &&
         this.object.hasOwnProperty('u')) {
-      // Object holds link lists for cluster balance computation
+      // Object holds link lists for cluster balance computation.
       v = MODEL.flowBalance(this.object, t);
     } else if(this.object instanceof Expression) {
-      // Object is an expression
+      // Object is an expression.
+      this.object.method_object_prefix = this.prefix;
       v = this.object.result(t, this.wildcard_number);
     } else if(typeof this.object === 'number') {
       v = this.object;
@@ -5235,6 +5240,14 @@ class Note extends ObjectWithXYWH {
     n = this.nearbyNode;
     if(n) return n.numberContext;
     return this.cluster.numberContext;
+  }
+  
+  get methodPrefix() {
+    // Return the most likely candidate prefix to be used for method fields.
+    const n = this.nearbyNode;
+    if(n instanceof Cluster) return n.name;
+    if(this.cluster === MODEL.top_cluster) return '';
+    return this.cluster.name;
   }
   
   get nearbyNode() {
@@ -5389,12 +5402,22 @@ class Note extends ObjectWithXYWH {
       if(!obj) {
         const m = MODEL.equations_dataset.modifiers[UI.nameToID(ena[0])];
         if(m) {
-          UI.warn('Methods cannot be evaluated without prefix');
+          const mp = this.methodPrefix;
+          if(mp) {
+            if(m.expression.isEligible(mp)) {
+              this.fields.push(new NoteField(this, tag, m.expression, to_unit,
+                  multiplier, false, mp));
+            } else {
+              UI.warn(`Prefix "${mp}" is not eligible for method "${m.selector}"`);
+            }
+          } else {
+            UI.warn('Methods cannot be evaluated without prefix');
+          }
         } else {
           UI.warn(`Unknown model entity "${en}"`);
         }
       } else if(obj instanceof DatasetModifier) {
-        // NOTE: equations are (for now) dimenssonless => unit '1'.
+        // NOTE: Equations are (for now) dimensionless => unit '1'.
         if(obj.dataset !== MODEL.equations_dataset) {
           from_unit = obj.dataset.scale_unit;
           multiplier = MODEL.unitConversionMultiplier(from_unit, to_unit);
@@ -9726,21 +9749,13 @@ class ChartVariable {
       // this indicates that it is a Wildcard selector or a method, and
       // that the specified result vector should be used.
       if(this.wildcard_index !== false) {
-        // NOTE: A wildcard index (a number) can also indicate that this
-        // variable is a method, so check for a leading colon.
-        if(eqn.startsWith(':')) {
-          // For methods, use "entity name or prefix: method" as variable
-          // name, so first get the method object prefix, expand it if
-          // it identifies a specific model entity, and then append the
-          // method name (leading colon replaced by the prefixer ": ").
-          const
-              mop = this.object.expression.method_object_list[this.wildcard_index],
-              obj = MODEL.objectByID(mop);
-          eqn = (obj ? obj.displayName : (mop || '')) +
-              UI.PREFIXER + eqn.substring(1);
-        } else {
-          eqn = eqn.replace('??', this.wildcard_index);
-        }
+        eqn = eqn.replace('??', this.wildcard_index);
+      } else if(eqn.startsWith(':')) {
+        // For methods, use "entity name or prefix: method" as variable
+        // name, so first get the method object prefix, expand it if
+        // it identifies a specific model entity, and then append the
+        // method name (leading colon replaced by the prefixer ": ").
+        eqn = this.chart.prefix + UI.PREFIXER + eqn.substring(1);
       }
       return eqn + sf;
     }
@@ -9759,8 +9774,8 @@ class ChartVariable {
   }
   
   get asXML() {
-    // NOTE: a "black-boxed" model can comprise charts showing "anonymous"
-    // entities, so the IDs of these entities must then be changed
+    // NOTE: A "black-boxed" model can comprise charts showing "anonymous"
+    // entities, so the IDs of these entities must then be changed.
     let id = this.object.identifier;
     if(MODEL.black_box_entities.hasOwnProperty(id)) {
       id = UI.nameToID(MODEL.black_box_entities[id]);
@@ -9780,7 +9795,7 @@ class ChartVariable {
   }
   
   get lowestValueInVector() {
-    // Returns the computed statistical minimum OR vector[0] (if valid & lower) 
+    // Return the computed statistical minimum OR vector[0] (if valid & lower).
     let v = this.minimum;
     if(this.vector.length > 0) v = this.vector[0];
     if(v < VM.MINUS_INFINITY || v > VM.PLUS_INFINITY || v > this.minimum) {
@@ -9790,7 +9805,7 @@ class ChartVariable {
   }
 
   get highestValueInVector() {
-    // Returns the computed statistical maximum OR vector[0] (if valid & higher) 
+    // Return the computed statistical maximum OR vector[0] (if valid & higher).
     let v = this.maximum;
     if(this.vector.length > 0) v = this.vector[0];
     if(v < VM.MINUS_INFINITY || v > VM.PLUS_INFINITY || v < this.maximum) {
@@ -9801,12 +9816,12 @@ class ChartVariable {
 
   initFromXML(node) {
     let id = xmlDecoded(nodeContentByTag(node, 'object-id'));
-    // NOTE: automatic conversion of former top cluster name
+    // NOTE: Automatic conversion of former top cluster name.
     if(id === UI.FORMER_TOP_CLUSTER_NAME.toLowerCase()) {
       id = UI.nameToID(UI.TOP_CLUSTER_NAME);
     }
     if(IO_CONTEXT) {
-      // NOTE: actualName also works for entity IDs
+      // NOTE: actualName also works for entity IDs.
       id = UI.nameToID(IO_CONTEXT.actualName(id));
     }
     const obj = MODEL.objectByID(id);
@@ -9847,7 +9862,7 @@ class ChartVariable {
     }
     // Compute vector and statistics only if vector is still empty.
     if(this.vector.length > 0) return;
-    // NOTE: expression vectors start at t = 0 with initial values that
+    // NOTE: Expression vectors start at t = 0 with initial values that
     // should not be included in statistics.
     let v,
         av = null,
@@ -9868,7 +9883,7 @@ class ChartVariable {
           this.chart.time_scale, tsteps, 1);
       t_end = tsteps;
     } else {
-      // Get the variable's own value (number, vector or expression)
+      // Get the variable's own value (number, vector or expression).
       if(this.object instanceof Dataset) {
         if(this.attribute) {
           av = this.object.attributeExpression(this.attribute);
@@ -9886,7 +9901,7 @@ class ChartVariable {
       }
       t_end = MODEL.end_period - MODEL.start_period + 1;
     }
-    // NOTE: when a chart combines run results with dataset vectors, the
+    // NOTE: When a chart combines run results with dataset vectors, the
     // latter may be longer than the # of time steps displayed in the chart.
     t_end = Math.min(t_end, this.chart.total_time_steps);
     this.N = t_end;
@@ -9902,7 +9917,9 @@ class ChartVariable {
       } else if(av instanceof Expression) {
         // Attribute value is an expression. If this chart variable has
         // its wildcard vector index set, evaluate the expression with
-        // this index as context number.
+        // this index as context number. Likewise, set the method object
+        // prefix.
+        av.method_object_prefix = this.chart.prefix;
         v = av.result(t, this.wildcard_index);
       } else {
         // Attribute value must be a number.
@@ -10040,7 +10057,8 @@ class Chart {
     this.value_range = 0;
     this.show_title = true;
     this.legend_position = 'none';
-    this.variables = [];    
+    this.preferred_prefix = '';
+    this.variables = [];
     // SVG string to display the chart
     this.svg = '';
     // Properties of rectangular chart area 
@@ -10052,7 +10070,34 @@ class Chart {
   }
   
   get displayName() {
+    // Charts are identified by their title. 
     return this.title;
+  }
+
+  get prefix() {
+    // The prefix is used to further specify method variables.
+    if(this.preferred_prefix) return this.preferred_prefix;
+    const parts = this.title.split(UI.PREFIXER);
+    parts.pop();
+    // Now `parts` is empty when the title contains no colon+space.
+    return parts.join(UI.PREFIXER);
+  }
+  
+  get possiblePrefixes() {
+    // Return list of prefixes that are eligible for all method variables.
+    let pp = null;
+    for(const v of this.variables) {
+      if(v.object instanceof DatasetModifier && v.object.selector.startsWith(':')) {
+        if(pp) {
+          pp = intersection(pp, Object.keys(v.object.expression.eligible_prefixes));
+        } else {
+          pp = Object.keys(v.object.expression.eligible_prefixes);
+        }
+      }
+    }
+    if(pp) pp.sort();
+    // Always return a list.
+    return pp || [];
   }
   
   get asXML() {
@@ -10125,10 +10170,10 @@ class Chart {
     const eq = obj instanceof DatasetModifier;
     // No equation and no attribute specified? Then assume default.
     if(!eq && a === '') a = obj.defaultAttribute;
-    if(eq && (n.indexOf('??') >= 0 || obj.expression.isMethod)) {
-      // Special case: for wildcard equations and methods, prompt the
-      // modeler which wildcard possibilities to add UNLESS this is an
-      // untitled "dummy" chart used to report outcomes.
+    if(eq && n.indexOf('??') >= 0) {
+      // Special case: for wildcard equations, prompt the modeler which
+      // wildcard possibilities to add UNLESS this is an untitled "dummy" chart
+      // used to report outcomes.
       if(this.title) {
         CHART_MANAGER.promptForWildcardIndices(this, obj);
       } else {
@@ -12436,7 +12481,7 @@ class Experiment {
             const rr = this.runs[rnr].results[vi];
             if(rr) {
               // NOTE: Only experiment variables have vector data.
-              if(rr.x_variable && vi <= rr.N) {
+              if(rr.x_variable && t <= rr.N) {
                 row.push(numval(rr.vector[t], prec));
               } else {
                 row.push('');

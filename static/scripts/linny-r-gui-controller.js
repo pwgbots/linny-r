@@ -726,7 +726,7 @@ class GUIController extends Controller {
     this.dbl_clicked_node = null;
     this.target_cluster = null;
     this.constraint_under_cursor = null;
-    this.last_up_down_without_move = Date.now();
+    this.last_up_down_without_move = {up: 0, down: 0};
     // Keyboard shortcuts: Ctrl-x associates with menu button ID.
     this.shortcuts = {
       'A': 'actors',
@@ -1672,15 +1672,15 @@ class GUIController extends Controller {
     }
   }
 
-  get doubleClicked() {
-    // Return TRUE when a "double-click" occurred
+  doubleClicked(ud) {
+    // Return TRUE when a "double-click" occurred.
     const
         now = Date.now(),
-        dt = now - this.last_up_down_without_move;
-    this.last_up_down_without_move = now;
+        dt = now - this.last_up_down_without_move[ud];
+    this.last_up_down_without_move[ud] = now;
     // Consider click to be "double" if it occurred less than 300 ms ago
     if(dt < 300) {
-      this.last_up_down_without_move = 0;
+      this.last_up_down_without_move[ud] = 0;
       return true;
     }
     return false;
@@ -2230,7 +2230,9 @@ class GUIController extends Controller {
       }
       // When dragging a selection over a cluster, change cursor to "cell" to
       // indicate that selected process(es) will be moved into the cluster.
-      if(this.dragged_node) {
+      // NOTE: Do not do this when the dragged selection is just a single note!
+      if(this.dragged_node &&
+          !(this.dragged_node instanceof Note && MODEL.selection.length < 2)) {
         // NOTE: Cursor will always be over the dragged node, so do not indicate
         // "drop here?" unless dragged over a different cluster.
         if(this.on_cluster &&  this.on_cluster !== this.dragged_node) {
@@ -2312,14 +2314,8 @@ class GUIController extends Controller {
       return;
     } // END IF Ctrl
   
-    // Clear selection unless SHIFT pressed or mouseDown while hovering
-    // over a SELECTED node or link.
-    if(!(e.shiftKey ||
-        (this.on_node && MODEL.selection.indexOf(this.on_node) >= 0) ||
-        (this.on_cluster && MODEL.selection.indexOf(this.on_cluster) >= 0) ||
-        (this.on_note && MODEL.selection.indexOf(this.on_note) >= 0) ||
-        (this.on_link && MODEL.selection.indexOf(this.on_link) >= 0) ||
-        (this.on_constraint && MODEL.selection.indexOf(this.on_constraint) >= 0))) {
+    // Clear selection unless SHIFT pressed or double-clicking.
+    if(!(this.doubleClicked('down') || e.shiftKey)) {
       MODEL.clearSelection();
       UI.drawDiagram(MODEL);
     }
@@ -2538,7 +2534,7 @@ class GUIController extends Controller {
           absdx = Math.abs(this.net_move_x),
           absdy = Math.abs(this.net_move_y),
           sigmv = (MODEL.align_to_grid ? MODEL.grid_pixels / 4 : 2.5);
-      if(this.doubleClicked) {
+      if(this.doubleClicked('up')) {
         // Ignore insignificant move.
         if(absdx < sigmv && absdy < sigmv) {
           // Undo the move and remove the action from the UNDO-stack.
@@ -2584,13 +2580,15 @@ class GUIController extends Controller {
         this.paper.container.style.cursor = 'pointer';
         // NOTE: Cursor will always be over the selected cluster (while dragging).
         if(this.on_cluster && !this.on_cluster.selected) {
-          UNDO_STACK.push('drop', this.on_cluster);
-          MODEL.dropSelectionIntoCluster(this.on_cluster);
-          this.on_node = null;
-          this.on_note = null;
-          this.target_cluster = null;
-          // Redraw cluster to erase its orange "target corona".
-          UI.paper.drawCluster(this.on_cluster);
+          if(!(this.dragged_node instanceof Note && MODEL.selection.length < 2)) {
+            UNDO_STACK.push('drop', this.on_cluster);
+            MODEL.dropSelectionIntoCluster(this.on_cluster);
+            // Redraw cluster to erase its orange "target corona".
+            UI.paper.drawCluster(this.on_cluster);
+            this.on_node = null;
+            this.on_note = null;
+            this.target_cluster = null;
+          }
         }
         // Only now align to grid.
         MODEL.alignToGrid();
@@ -2599,11 +2597,11 @@ class GUIController extends Controller {
   
     // Then check whether the user is clicking on a link.
     } else if(this.on_link) {
-      if(this.doubleClicked) {
+      if(this.doubleClicked('up')) {
         this.showLinkPropertiesDialog(this.on_link);
       }
     } else if(this.on_constraint) {
-      if(this.doubleClicked) {
+      if(this.doubleClicked('up')) {
         this.showConstraintPropertiesDialog(this.on_constraint);
       }
     }
@@ -3713,6 +3711,14 @@ class GUIController extends Controller {
             
     // AUXILIARY FUNCTIONS
     
+    function namedObjects() {
+      // Return TRUE iff XML contains named objects.
+      for(const cn of entities_node.childNodes) {
+        if(cn.nodeName !== 'note') return true;
+      }
+      return false;
+    }
+    
     function fullName(node) {
       // Return full entity name inferred from XML node data.
       if(node.nodeName === 'from-to' || node.nodeName === 'selc') {
@@ -3848,7 +3854,18 @@ class GUIController extends Controller {
           fn = fullName(node),
           mn = mappedName(fn);
       let obj;
-      if(et === 'process' && !MODEL.processByID(UI.nameToID(mn))) {
+      if(et === 'note') {
+        // Ensure that copy had new time stamp.
+        let cn = childNodeByTag(node, 'timestamp').firstChild;
+        cn.nodeValue = new Date().getTime().toString();
+        cn = childNodeByTag(node, 'x-coord').firstChild;
+        // Move note a bit right and down.
+        cn.nodeValue = (safeStrToInt(cn.nodeValue, 0) + 12).toString();
+        cn = childNodeByTag(node, 'y-coord').firstChild;
+        cn.nodeValue = (safeStrToInt(cn.nodeValue, 0) + 12).toString();
+        obj = MODEL.addNote(node);
+        if(obj) new_entities.push(obj);
+      } else if(et === 'process' && !MODEL.processByID(UI.nameToID(mn))) {
         const
            na = nameAndActor(mn),
            new_actor = !MODEL.actorByID(UI.nameToID(na[1]));
@@ -3913,7 +3930,8 @@ class GUIController extends Controller {
     // Prompt for mapping when pasting to the same model and cluster.
     if(parseInt(mts) === MODEL.time_created.getTime() &&
         ca === fca && mapping.from_prefix === mapping.to_prefix &&
-        !(mapping.prefix || mapping.actor || mapping.increment)) {
+        !(mapping.prefix || mapping.actor || mapping.increment) &&
+        namedObjects()) {
       // Prompt for names of selected cluster nodes.
       if(selc_node.childNodes.length && !mapping.prefix) {
         mapping.top_clusters = {};

@@ -112,6 +112,10 @@ class GUIChartManager extends ChartManager {
     this.svg_container.addEventListener(
         'mouseleave', (event) => CHART_MANAGER.updateTimeStep(event, false));
     this.time_step = document.getElementById('chart-time-step');
+    this.prefix_div = document.getElementById('chart-prefix-div');
+    this.prefix_selector = document.getElementById('chart-prefix');
+    this.prefix_selector.addEventListener(
+        'change', () => CHART_MANAGER.selectPrefix());
     document.getElementById('chart-toggle-chevron').addEventListener(
         'click', () => CHART_MANAGER.toggleControlPanel());
     document.getElementById('chart-stats-btn').addEventListener(
@@ -354,8 +358,9 @@ class GUIChartManager extends ChartManager {
   }
   
   updateDialog() {
-    // Refreshe all dialog fields to display actual MODEL chart properties.
+    // Refresh all dialog fields to display actual MODEL chart properties.
     this.updateSelector();
+    this.prefix_div.style.display = 'none';
     let c = null;
     if(this.chart_index >= 0) {
       c = MODEL.charts[this.chart_index];
@@ -390,6 +395,19 @@ class GUIChartManager extends ChartManager {
           '</td></tr>'].join(''));
       }
       this.variables_table.innerHTML = ol.join('');
+      const
+          cp = c.prefix,
+          pp = c.possiblePrefixes,
+          html = [];
+      if(pp.length) {
+        for(const p of pp) {
+          const cap = capitalized(p);
+          html.push('<option value="', cap, '"', (cap === cp ? ' selected' : ''), '>',
+              cap, '</option>');
+        }
+        this.prefix_div.style.display = 'inline-block';
+      }
+      this.prefix_selector.innerHTML = html.join('');
     } else {
       this.variable_index = -1;
     }
@@ -437,6 +455,15 @@ class GUIChartManager extends ChartManager {
     // Update variable dropdown list of the "add variable" modal.
     X_EDIT.updateVariableBar('add-');
     this.stretchChart(0);
+  }
+  
+  selectPrefix() {
+    // Set the preferred prefix for this chart. This will override the
+    // title prefix (if any).
+    if(this.chart_index >= 0) {
+      MODEL.charts[this.chart_index].preferred_prefix = this.prefix_selector.value;
+    }
+    this.updateDialog();
   }
   
   showSortingMenu() {
@@ -594,27 +621,31 @@ class GUIChartManager extends ChartManager {
   
   cloneChart() {
     // Create a new chart that is identical to the current one.
-    if(this.chart_index >= 0) {
-      let c = MODEL.charts[this.chart_index],
-          nt = c.title + '-copy';
-      while(MODEL.indexOfChart(nt) >= 0) {
-        nt += '-copy';
-      }
-      const nc = MODEL.addChart(nt);
-      // Copy properties of `c` to `nc`;
-      nc.histogram = c.histogram;
-      nc.bins = c.bins;
-      nc.show_title = c.show_title;
-      nc.legend_position = c.legend_position;
-      for(const cv of c.variables) {
-        const nv = new ChartVariable(nc);
-        nv.setProperties(cv.object, cv.attribute, cv.stacked,
-            cv.color, cv.scale_factor, cv.line_width, cv.sorted);
-        nc.variables.push(nv);
-      }
-      this.chart_index = MODEL.indexOfChart(nc.title);
-      this.updateDialog();
-    }    
+    if(this.chart_index < 0) return;
+    const
+        c = MODEL.charts[this.chart_index],
+        pp = c.possiblePrefixes;
+    let nt = c.title;
+    if(pp) {
+      // Remove title prefix (if any), and add selected one.
+      nt = c.prefix + UI.PREFIXER + nt.split(UI.PREFIXER).pop();
+    }
+    // If title is not new, keep adding a suffix until it is new.
+    while(MODEL.indexOfChart(nt) >= 0) nt += '-copy';
+    const nc = MODEL.addChart(nt);
+    // Copy properties of `c` to `nc`;
+    nc.histogram = c.histogram;
+    nc.bins = c.bins;
+    nc.show_title = c.show_title;
+    nc.legend_position = c.legend_position;
+    for(const cv of c.variables) {
+      const nv = new ChartVariable(nc);
+      nv.setProperties(cv.object, cv.attribute, cv.stacked,
+          cv.color, cv.scale_factor, cv.line_width, cv.sorted);
+      nc.variables.push(nv);
+    }
+    this.chart_index = MODEL.indexOfChart(nc.title);
+    this.updateDialog();
   }
 
   toggleRunResults() {
@@ -736,9 +767,6 @@ class GUIChartManager extends ChartManager {
     if(indices.length < 2) {
       if(indices.length) {
         chart.addWildcardVariables(dsm, indices);
-      } else if(dsm.selector.startsWith(':')) {
-        UI.notify('Plotting methods is work-in-progress!');
-        console.log('HERE dsm', dsm, 'expr', dsm.expression.text, 'indices', indices);
       } else {
         UI.notify(`Variable "${dsm.displayName}" cannot be plotted`);
       }
