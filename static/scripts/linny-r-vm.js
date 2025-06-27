@@ -7706,7 +7706,7 @@ function VMI_sub(x) {
     } else if(d[0] === VM.MINUS_INFINITY || d[1] === VM.PLUS_INFINITY) {
       x.retop(VM.MINUS_INFINITY);
     } else {
-      x.retop(d[0] + d[1]);
+      x.retop(d[0] - d[1]);
     }
   }
 }

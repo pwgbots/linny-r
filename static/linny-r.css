@@ -1397,18 +1397,22 @@ td.a-weight {
 }
 
 td.import,
-td.export {
+td.export,
+div.import,
+div.export {
   font-weight: 600;
   text-decoration-line: underline;
   text-decoration-style: dotted;
 }
 
-td.import {
+td.import,
+div.import {
   color: #b00000;
 }
 
-td.export {
-  color: #00000b;
+td.export,
+div.export {
+  color: #0000b0;
 }
 
 /* styles for the SERVER dialog */
