@@ -2359,6 +2359,7 @@ class VirtualMachine {
       'CP':  'cost price',
       'HCP': 'highest cost price',
       'CF':  'cash flow',
+      'MCF': 'marginal cash flow',
       'CI':  'cash in',
       'CO':  'cash out',
       'W':   'weight',
@@ -2371,7 +2372,7 @@ class VirtualMachine {
     // NOTE: Defaults are level (L), link flow (F), cluster cash flow (CF),
     // actor cash flow (CF); dataset value (no attribute).
     // NOTE: Exogenous properties first, then the computed properties.
-    this.process_attr = ['LB', 'UB', 'IL', 'LCF', 'L', 'CI', 'CO', 'CF', 'CP'];
+    this.process_attr = ['LB', 'UB', 'IL', 'LCF', 'L', 'CI', 'CO', 'CF', 'MCF', 'CP'];
     this.product_attr = ['LB', 'UB', 'IL', 'P', 'L', 'CP', 'HCP'];
     this.cluster_attr = ['CI', 'CO', 'CF'];
     this.link_attr = ['R', 'D', 'SOC', 'F'];
@@ -2397,7 +2398,7 @@ class VirtualMachine {
       for(const a of ac) this.entity_attribute_names[el].push(a);
     }
     // Level-based attributes are computed only AFTER optimization.
-    this.level_based_attr = ['L', 'CP',  'HCP', 'CF', 'CI', 'CO', 'F', 'A'];
+    this.level_based_attr = ['L', 'CP',  'HCP', 'CF', 'MCF', 'CI', 'CO', 'F', 'A'];
     this.object_types = ['Process', 'Product', 'Cluster', 'Link', 'Constraint',
         'Actor', 'Dataset', 'Equation'];
     this.type_attributes = [this.process_attr, this.product_attr,
@@ -5139,13 +5140,18 @@ class VirtualMachine {
         // Cash flows of process p are now known.
         p.cash_in[b] = ci;
         p.cash_out[b] = co;
-        p.cash_flow[b] = ci - co;
+        const
+            cf = ci - co,
+            apl = Math.abs(p.level[b]);
+        p.cash_flow[b] = cf;
+        // Marginal cash flow is considered 0 when process level = 0.
+        p.marginal_cash_flow[b] = (apl < VM.NEAR_ZERO ? 0 : cf / apl);
         // Also add these flows to all parent clusters of the process.
         let c = p.cluster;
         while(c) {
           c.cash_in[b] += ci;
           c.cash_out[b] += co;
-          c.cash_flow[b] += ci - co;
+          c.cash_flow[b] += cf;
           c = c.cluster;
         }
       }
@@ -7388,14 +7394,13 @@ function VMI_push_statistic(x, args) {
   // If so, trim the 'NZ'
   if(nz) stat = stat.slice(0, -2);
   // Now t1 ... t2 is the range of time steps to iterate over for each variable
-  let obj,
-      vlist = [];
+  const vlist = [];
   for(let t = t1; t <= t2; t++) {
     // Get the list of values.
     // NOTE: Variables may be vectors or expressions.
     for(const obj of list) {
       if(Array.isArray(obj)) {
-        // Object is a vector
+        // Object is a vector.
         if(t < obj.length) {
           v = obj[t];
         } else {

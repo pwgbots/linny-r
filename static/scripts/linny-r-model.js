@@ -3395,13 +3395,22 @@ class LinnyRModel {
       }
     }
     sl.push('_____Datasets');
-    for(obj in this.datasets) {
-      if(this.datasets.hasOwnProperty(obj) && !obj.startsWith(UI.BLACK_BOX) &&
-          obj !== UI.EQUATIONS_DATASET_ID) {
-        sl.push(this.datasets[obj].displayName, this.datasets[obj].comments);
+    for(const k of Object.keys(this.datasets)) {
+      if(!k.startsWith(UI.BLACK_BOX) && k !== UI.EQUATIONS_DATASET_ID) {
+        const ds = this.datasets[k]; 
+        sl.push(ds.displayName, ds.comments);
+        const keys = Object.keys(ds.modifiers).sort(compareSelectors);
+        if(keys.length) {
+          for(const k of keys) {
+            const m = ds.modifiers[k];
+            // NOTE: The trailing arrow signals the Documentation manager that
+            // this (name, documentation) pair is a dataset modifier.
+            sl.push(`${m.selector}&nbsp;&rarr;` , m.expression.text);
+          }
+        }
       }
     }
-    const keys = Object.keys(this.equations_dataset.modifiers); 
+    const keys = Object.keys(this.equations_dataset.modifiers).sort(); 
     sl.push('_____Equations');
     for(const k of keys) {
       const m = this.equations_dataset.modifiers[k];
@@ -3486,6 +3495,7 @@ class LinnyRModel {
       this.cleanVector(p.level, p.initial_level.result(1));
       this.cleanVector(p.cost_price, VM.UNDEFINED);
       this.cleanVector(p.cash_flow, 0, 0);
+      this.cleanVector(p.marginal_cash_flow, 0, 0);
       this.cleanVector(p.cash_in, 0, 0);
       this.cleanVector(p.cash_out, 0, 0);
       // NOTE: `start_ups` is a list of time steps when start-up occurred.
@@ -4407,7 +4417,17 @@ class IOBinding {
       this.actual_name = '';
     }
   }
-  
+
+  get copy() {
+    // Return a copy of this binding.
+    const copy = new IOBinding(this.io_type, this.entity_type,
+        this.is_data, this.name_in_module);
+    copy.id = this.id;
+    copy.actual_name = this.actual_name;
+    copy.actual_id = this.actual_id;
+    return copy;
+  }
+
   bind(an) {
     // Establish a binding with actual name `an` if this entity is known to be
     // of the correct type (and for products also a matching data property)
@@ -4561,7 +4581,7 @@ class IOContext {
     // Return a deep copy of the bindings object.
     const copy = {};
     for(const k of Object.keys(this.bindings)) {
-      copy[k] = Object.assign({}, this.bindings[k]);
+      copy[k] = this.bindings[k].copy;
     }
     return copy;
   }
@@ -5458,7 +5478,7 @@ class Note extends ObjectWithXYWH {
               from_unit = '1';
             }
           }
-        } else if(attr === 'CI' || attr === 'CO' || attr === 'CF') {
+        } else if(['CI', 'CO', 'CF', 'MCF'].indexOf(attr) >= 0) {
           from_unit = MODEL.currency_unit;
         }
         // If still no value, `attr` may be an expression-type attribute.
@@ -5672,6 +5692,20 @@ class NodeBox extends ObjectWithXYWH {
     return this.name;
   }
   
+  get bindingsAsString() {
+    if(!this.module) return '';
+    const bk = Object.keys(this.module.bindings);
+    if(bk.length) {
+      const list = [pluralS(bk.length, 'binding') + ':'];
+      for(const k of bk) {
+        const b = this.module.bindings[k];
+        list.push(`&#8227;&nbsp;${b.name_in_module}&nbsp;&rarrlp;&nbsp;${b.actual_name}`);
+      }
+      return list.join('\n');
+    }
+    return '(no bindings)';
+  }
+  
   get infoLineName() {
     // Return display name plus VM variable indices when debugging.
     let n = this.displayName;
@@ -5685,7 +5719,8 @@ class NodeBox extends ObjectWithXYWH {
         dl.push(pluralS(this.all_processes.length, 'process').toLowerCase());
         dl.push(pluralS(this.all_products.length, 'product').toLowerCase());
       }
-      if(this.module) dl.push(`included from <span class="mod-name">${this.module.name}</span>`);
+      if(this.module) dl.push('included from <span class="mod-name" title="' +
+          `${this.bindingsAsString}">${this.module.name}</span>`);
       if(dl.length) n += `<span class="node-details">${dl.join(', ')}</span>`;
     }
     if(!MODEL.solved) return n;
@@ -7842,8 +7877,9 @@ class Process extends Node {
     this.power_grid = null;
     this.length_in_km = 0;
     this.reactance = 0;
-    // Processes have 3 more result attributes: CP, CF, CI and CO
+    // Processes have 4 more result attributes: CF, MCF, CI and CO
     this.cash_flow = [];
+    this.marginal_cash_flow = [];
     this.cash_in = [];
     this.cash_out = [];
     // Production level changing from 0 to positive counts as "start up",
@@ -7898,6 +7934,7 @@ class Process extends Node {
       const t = MODEL.t;
       a.L = this.level[t];
       a.CF = this.cash_flow[t];
+      a.MCF = this.marginal_cash_flow[t];
       a.CI = this.cash_in[t];
       a.CO = this.cash_out[t];
       if(MODEL.infer_cost_prices) a.CP = this.cost_price[t];
@@ -8034,6 +8071,7 @@ class Process extends Node {
     // For processes, these are all vectors.
     if(a === 'L') return this.level;
     if(a === 'CF') return this.cash_flow;
+    if(a === 'MCF') return this.marginal_cash_flow;
     if(a === 'CI') return this.cash_in;
     if(a === 'CO') return this.cash_out;
     if(a === 'CP') return this.cost_price;

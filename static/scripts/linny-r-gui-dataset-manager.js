@@ -175,11 +175,11 @@ class GUIDatasetManager extends DatasetManager {
       if(r) {
         const e = new Event('click');
         if(this.focal_table === this.dataset_table) {
-          // Emulate Alt-click in the table to open the time series dialog
+          // Emulate Alt-click in the table to open the time series dialog.
           e.altKey = true;
           r.dispatchEvent(e);
         } else if(this.focal_table === this.modifier_table) {
-          // Emulate a double-click on the second cell to edit the expression
+          // Emulate a double-click on the second cell to edit the expression.
           this.last_time_clicked = Date.now();
           r.cells[1].dispatchEvent(e);
         }
@@ -576,7 +576,9 @@ class GUIDatasetManager extends DatasetManager {
       this.editData();
       return;
     }
-    this.updateDialog();
+    // NOTE: Updating entire dialog may be very time-consuming
+    // when model contains numerous prefixed datasets.
+    this.updatePanes();
   }
   
   selectModifier(event, id, x=true) {
@@ -1196,7 +1198,7 @@ class GUIDatasetManager extends DatasetManager {
       }
     }
     for(let i = 0; i < dsn.length; i++) {
-      const n = unquoteCSV(dsn[i].trim());
+      const n = UI.cleanName(unquoteCSV(dsn[i].trim()));
       if(!UI.validName(n)) {
         UI.warn(`Invalid dataset name "${n}" in column ${i}`);
         return false;
@@ -1265,8 +1267,10 @@ class GUIDatasetManager extends DatasetManager {
           added++;
         }
         ds.computeStatistics();
-      } else {
+      } else if(ds && ds.type) {
         UI.warn(`Name conflict: ${ds.type} "${ds.displayName}" already exists`);
+      } else {
+        UI.alert(`No dataset "${n}" added`);
       }
     }
     // Notify modeler of changes (if any).
