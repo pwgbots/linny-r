@@ -3075,10 +3075,12 @@ class LinnyRModel {
       if(n) {
         // NOTE: Use a "dummy experiment object" as parent for SA runs.
         const dummy = {title: SENSITIVITY_ANALYSIS.experiment_title};
+        let r = 0;
         for(const c of n.childNodes) if(c.nodeName === 'experiment-run') {
-          const xr = new ExperimentRun(dummy, i);
+          const xr = new ExperimentRun(dummy, r);
           xr.initFromXML(c);
           this.sensitivity_runs.push(xr);
+          r++;
         }
       }
       n = childNodeByTag(node, 'experiments');
@@ -10184,7 +10186,7 @@ class Chart {
     return '#c00000';
   }
 
-  addVariable(n, a) {
+  addVariable(n, a='') {
     // Add variable [entity name `n`|attribute `a`] to the chart unless
     // it is already in the variable list.
     let dn = n + UI.OA_SEPARATOR + a;
@@ -11197,9 +11199,9 @@ class ExperimentRunResult {
       this.x_variable = true;
       this.object_id = v.object.identifier;
       this.attribute = v.attribute;
-      this.was_ignored = MODEL.ignored_entities[this.object_id];
+      this.was_ignored = MODEL.ignored_entities[this.object_id] || false;
       if(this.was_ignored) {
-        // Chart variable entity was ignored => all results are undefined
+        // Chart variable entity was ignored => all results are undefined.
         this.vector = [];
         this.N = VM.UNDEFINED;
         this.sum = VM.UNDEFINED;
@@ -11236,6 +11238,11 @@ class ExperimentRunResult {
         // statistic.
         this.last = (this.vector.length > 0 ?
             this.vector[this.vector.length - 1] : VM.UNDEFINED);
+        // NOTE: For sensitivity analyses, the vector is NOT stored because
+        // the SA reports only the descriptive statistics.
+        if(this.run.experiment === SENSITIVITY_ANALYSIS.experiment) {
+          this.vector.length = 0;
+        }
       }
     } else if(v instanceof Dataset) {
       // This dataset will be an "outcome" dataset => store statistics only
@@ -11612,8 +11619,12 @@ class ExperimentRun {
     // NOTE: All equations are also considered to be outcomes EXCEPT
     // methods (selectors starting with a colon).
     this.eq_list = [];
-    const eml = Object.keys(MODEL.equations_dataset.modifiers);
-    for(const em of eml) if(!em.startsWith(':')) this.eq_list.push(em);
+    // NOTE: For sensitivity analyses, equations are NOT outcomes, as all
+    // SA outcomes must be specified explicitly.
+    if(this.experiment !== SENSITIVITY_ANALYSIS.experiment) {
+      const eml = Object.keys(MODEL.equations_dataset.modifiers);
+      for(const em of eml) if(!em.startsWith(':')) this.eq_list.push(em);
+    }
     const
         cv = this.experiment.variables.length,
         oc = this.oc_list.length,

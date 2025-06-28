@@ -124,7 +124,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     this.color_scales.rb.addEventListener('click', csf);
     this.color_scales.no.addEventListener('click', csf);
     document.getElementById('sa-copy-btn').addEventListener(
-        'click', () => SENSITIVITY_ANALYSIS.copyTableToClipboard());
+        'click', (event) => SENSITIVITY_ANALYSIS.copyTableToClipboard(event.shiftKey));
     document.getElementById('sa-copy-data-btn').addEventListener(
         'click', () => SENSITIVITY_ANALYSIS.copyDataToClipboard());
     this.outcome_name = document.getElementById('sa-outcome-name');
@@ -760,9 +760,8 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     this.updateData();
   }
   
-  copyTableToClipboard() {
-    UI.copyHtmlToClipboard(this.scroll_area.innerHTML);
-    UI.notify('Table copied to clipboard (as HTML)');
+  copyTableToClipboard(plain) {
+    UI.copyHtmlToClipboard(this.scroll_area.innerHTML, plain);
   }
   
   copyDataToClipboard() {

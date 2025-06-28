@@ -986,11 +986,14 @@ class SensitivityAnalysis {
           UI.alert(`Parameter ${p} is not a dataset or expression`);
         }
       }
+      // Create the SA chart having a variable for each SA outcome.
       this.chart = new Chart(this.chart_title);
       for(const o of MODEL.sensitivity_outcomes) {
         this.chart.addVariable(...o.split(UI.OA_SEPARATOR));
       }
+      // Create the SA experiment.
       this.experiment = new Experiment(this.experiment_title);
+      // Add the SA chart so the outcomes become result variables.
       this.experiment.charts = [this.chart];
       this.experiment.inferVariables();
       // This experiment always uses the same combination: the base selectors.

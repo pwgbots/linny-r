@@ -7269,12 +7269,12 @@ function VMI_push_run_result(x, args) {
               rr = r.results[rri],
               tsd = r.time_step_duration,
               // Get the delta-t multiplier: divide model time step duration
-              // by time step duration of the experiment run if they differ 
+              // by time step duration of the experiment run if they differ.
               dtm = (Math.abs(tsd - model_dt) < VM.NEAR_ZERO ? 1 : model_dt / tsd);
           let stat = rrspec.s;
-          // For outcome datasets without specific statistic, default to LAST
+          // For outcome datasets without specific statistic, default to LAST.
           if(!(stat || rr.x_variable)) stat = 'LAST';
-          // For a valid experiment variable, the default value is 0
+          // For a valid experiment variable, the default value is 0.
           v = 0;
           if(stat) {
             if(stat === 'LAST') {
@@ -7302,14 +7302,14 @@ function VMI_push_run_result(x, args) {
               console.log(trc.join(''));
             }
           } else {
-            // No statistic => return the vector for local time step
+            // No statistic => return the vector for local time step,
             // using here, too, the delta-time-modifier to adjust the offsets
             // for different time steps per experiment.
             const tot = twoOffsetTimeStep(x.step[x.step.length - 1],
                 args[1], args[2], args[3], args[4], dtm, x);
             // Scale the (midpoint) time step (at current model run time scale)
             // to the experiment run time scale and get the run result value.
-            // NOTE: the .m property specifies the time scaling method, and
+            // NOTE: The .m property specifies the time scaling method, and
             // the .p property whether the run result vector should be used as
             // a periodic time series.
             v = rr.valueAtModelTime(tot[0], model_dt, rrspec.m, rrspec.p);
