@@ -255,7 +255,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
     // Otherwise, display list of all dataset selectors in docu-viewer.
     if(DOCUMENTATION_MANAGER.visible) {
       const
-          ds_dict = MODEL.listOfAllSelectors,
+          ds_dict = MODEL.dictOfAllSelectors,
           html = [],
           sl = Object.keys(ds_dict).sort((a, b) => UI.compareFullNames(a, b, true));
       for(const s of sl) {
@@ -346,7 +346,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
         sl = this.base_selectors.value.replace(/[\;\,]/g, ' ').trim().replace(
             /[^a-zA-Z0-9\+\-\%\_\s]/g, '').split(/\s+/),
         bs = sl.join(' '),
-        sd = MODEL.listOfAllSelectors,
+        sd = MODEL.dictOfAllSelectors,
         us = [];
     for(const s of sl) if(s.length > 0 && !(s in sd)) us.push(s);
     if(us.length > 0) {

@@ -885,7 +885,7 @@ class ExpressionParser {
             // of commas, semicolons and spaces.
             x.r = run_spec.split(/[\,\;\/\s]+/g);
             // NOTE: The VMI instruction accepts `x.r` to be a list of selectors
-            // or an integer number.
+            // or an integer number. 
           } else {
             // If the specifier does start with a #, trim it...
             run_spec = run_spec.substring(1);
@@ -931,6 +931,20 @@ class ExpressionParser {
             msg = `Unknown experiment "${x_title}"`;
           } else {
             x.x = MODEL.experiments[n];
+          }
+        }
+        // If run specifier `x.r` is a list, check whether all elements in the
+        // list are selectors in a dimension of experiment `x.x` (if specified).
+        // If experiment is unknown, check against the list of all selectors
+        // defined in the model.
+        if(Array.isArray(x.r)) {
+          const
+              sl = (x.x instanceof Experiment ? x.x.allDimensionSelectors :
+                  Object.keys(MODEL.dictOfAllSelectors)),
+              unknown = complement(x.r, sl);
+          if(unknown.length) {
+            msg = pluralS(unknown.length, 'unknown selector') + ': <tt>' +
+                unknown.join(' ') + '</tt>';
           }
         }
         // END of code for parsing an experiment result specifier.
@@ -7325,6 +7339,8 @@ function VMI_push_run_result(x, args) {
       }
     }
   }
+  // Truncate near-zero values.
+  if(Math.abs(v) < VM.SIG_DIF_FROM_ZERO) v = 0;
   x.push(v);
 }
 
@@ -8413,11 +8429,16 @@ function VMI_set_bounds(args) {
       VM.variables[vi - 1][0],'] t = ', VM.t, ' LB = ', VM.sig4Dig(l),
       ', UB = ', VM.sig4Dig(u), fixed].join(''), l, u, inf_val);
   } else if(u < l) {
-    // Warn that "impossible" bounds would have been set...
-    const vk = vbl.displayName;
-    if(!VM.bound_issues[vk]) VM.bound_issues[vk] = [];
-    VM.bound_issues[vk].push(VM.t);
-    // ... and set LB to UB, so that lowest value is bounding.
+    // Check the difference, as this may be negligible.
+    if(u - l < VM.SIG_DIF_FROM_ZERO) {
+      u = Math.round(u * 1e5) / 1e5;
+    } else {
+      // If substantial, warn that "impossible" bounds would have been set.
+      const vk = vbl.displayName;
+      if(!VM.bound_issues[vk]) VM.bound_issues[vk] = [];
+      VM.bound_issues[vk].push(VM.t);
+    }
+    // Set LB to UB, so that lowest value is bounding.
     l = u;
   }
   // NOTE: Since the VM vectors for lower bounds and upper bounds are

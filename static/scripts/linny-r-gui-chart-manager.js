@@ -125,7 +125,7 @@ class GUIChartManager extends ChartManager {
     document.getElementById('chart-copy-data-btn').addEventListener(
         'click', () => CHART_MANAGER.copyData());
     document.getElementById('chart-copy-table-btn').addEventListener(
-        'click', () => CHART_MANAGER.copyTable());
+        'click', (event) => CHART_MANAGER.copyTable(event.shiftKey));
     document.getElementById('chart-save-btn').addEventListener(
         'click', () => CHART_MANAGER.downloadChart(event.shiftKey));
     document.getElementById('chart-widen-btn').addEventListener(
@@ -164,8 +164,8 @@ class GUIChartManager extends ChartManager {
         'click', (event) => CHART_MANAGER.copyPasteColor(event));
     // NOTE: Uses the color picker developed by James Daniel.
     this.color_picker = new iro.ColorPicker("#color-picker", {
-        width: 92,
-        height: 92,
+        width: 115,
+        height: 115,
         color: '#a00',
         markerRadius: 10,
         padding: 1,
@@ -391,7 +391,7 @@ class GUIChartManager extends ChartManager {
           (cv.visible ? ' checked' : ' clear'),
           '" onclick="CHART_MANAGER.toggleVariable(', i,
           ');"></div></td><td class="v-name vbl-', cv.sorted,
-          '">', cv.displayName,
+          (cv.absolute ? ' vbl-abs' : ''), '">', cv.displayName,
           '</td></tr>'].join(''));
       }
       this.variables_table.innerHTML = ol.join('');
@@ -641,7 +641,7 @@ class GUIChartManager extends ChartManager {
     for(const cv of c.variables) {
       const nv = new ChartVariable(nc);
       nv.setProperties(cv.object, cv.attribute, cv.stacked,
-          cv.color, cv.scale_factor, cv.line_width, cv.sorted);
+          cv.color, cv.scale_factor, cv.absolute, cv.line_width, cv.sorted);
       nc.variables.push(nv);
     }
     this.chart_index = MODEL.indexOfChart(nc.title);
@@ -844,6 +844,7 @@ class GUIChartManager extends ChartManager {
       const cv = MODEL.charts[this.chart_index].variables[this.variable_index];
       document.getElementById('variable-dlg-name').innerHTML = cv.displayName;
       UI.setBox('variable-stacked', cv.stacked);
+      UI.setBox('variable-absolute', cv.absolute);
       // Pass TRUE tiny flag to permit very small scaling factors.
       this.variable_modal.element('scale').value = VM.sig4Dig(cv.scale_factor, true);
       this.variable_modal.element('width').value = VM.sig4Dig(cv.line_width);
@@ -928,6 +929,7 @@ class GUIChartManager extends ChartManager {
           c = MODEL.charts[this.chart_index],
           cv = c.variables[this.variable_index];
       cv.stacked = UI.boxChecked('variable-stacked');
+      cv.absolute = UI.boxChecked('variable-absolute');
       cv.scale_factor = s;
       // Prevent negative or near-zero line width.
       cv.line_width = Math.max(0.001, w);
@@ -1092,9 +1094,9 @@ class GUIChartManager extends ChartManager {
     }
   }
   
-  copyTable() {
-    UI.copyHtmlToClipboard(this.table_panel.innerHTML);
-    UI.notify('Table copied to clipboard (as HTML)');
+  copyTable(plain) {
+    UI.copyHtmlToClipboard(this.table_panel.innerHTML, plain);
+    UI.notify('Table copied to clipboard (as ', (plain ? 'text' : 'HTML'), ')');
   }
   
   copyStatistics() {

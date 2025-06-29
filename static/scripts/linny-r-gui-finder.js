@@ -424,13 +424,17 @@ class Finder {
     const
         c = MODEL.charts[ci],
         a = md.element('attribute').value,
-        s = UI.boxChecked('confirm-add-chart-variables-stacked'),
+        abs = UI.boxChecked('confirm-add-chart-variables-absolute'),
+        stack = UI.boxChecked('confirm-add-chart-variables-stacked'),
         enl = [];
     for(const e of this.entities) enl.push(e.name);
     enl.sort((a, b) => UI.compareFullNames(a, b, true));
     for(const en of enl) {
       const vi = c.addVariable(en, a);
-      if(vi !== null) c.variables[vi].stacked = s;
+      if(vi !== null) {
+        c.variables[vi].absolute = abs;
+        c.variables[vi].stacked = stack;
+      }
     }
     CHART_MANAGER.updateDialog();
     md.hide();

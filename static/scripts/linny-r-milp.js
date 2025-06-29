@@ -488,6 +488,8 @@ module.exports = class MILPSolver {
     } else {
       inttol = Math.max(1e-9, Math.min(0.1, inttol));
     }
+    // Use integer tolerance setting as "near zero" threshold.
+    this.near_zero = inttol;
     // Default relative MIP gap is 1e-4.
     if(isNaN(mipgap)) {
       mipgap = 1e-4;
@@ -578,7 +580,8 @@ module.exports = class MILPSolver {
               x_values.push(0);
               col++;
             }
-            x_values.push(x_dict[v]);
+            // Return near-zero values as 0.
+            x_values.push(Math.abs(x_dict[v]) < this.near_zero ? 0 : x_dict[v]);
             col++;
           }
           // Add zeros to vector for remaining columns.

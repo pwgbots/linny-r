@@ -1037,11 +1037,11 @@ class LinnyRModel {
     // NOTE: A dimension is a list of one or more relevant selectors.
     this.dimensions.length = 0;
     // NOTE: Ignore the equations dataset.
-    for(let d in this.datasets) if(this.datasets.hasOwnProperty(d) &&
-        this.datasets[d] !== this.equations_dataset) {
+    for(let k in this.datasets) if(this.datasets.hasOwnProperty(k) &&
+        this.datasets[k] !== this.equations_dataset) {
       // Get the selector list for this dataset.
       // NOTE: Ignore wildcard selectors!
-      this.processSelectorList(this.datasets[d].plainSelectors);
+      this.processSelectorList(this.datasets[k].plainSelectors);
     }
     // Analyze constraint bound lines in the same way.
     for(let k in this.constraints) if(this.constraints.hasOwnProperty(k)) {
@@ -3339,9 +3339,9 @@ class LinnyRModel {
     return [c.dataAsString, c.statisticsAsString];
   }
     
-  get listOfAllSelectors() {
-    // Returns list of all dataset modifier selectors as a "dictionary"
-    // like so: {selector_1: [list of datasets], ...}
+  get dictOfAllSelectors() {
+    // Returns "dictionary" of all dataset modifier selectors like so:
+    // {selector_1: [list of datasets], ...}
     const ds_dict = {};
     for(let k in this.datasets) if(this.datasets.hasOwnProperty(k)) {
       const ds = this.datasets[k];
@@ -9757,13 +9757,14 @@ class ChartVariable {
     this.wildcard_index = false;
   }
   
-  setProperties(obj, attr, stck, clr, sf=1, lw=1, vis=true, sort='not') {
+  setProperties(obj, attr, stck, clr, sf=1, abs=false, lw=1, vis=true, sort='not') {
     // Sets the defining properties for this chart variable.
     this.object = obj;
     this.attribute = attr;
     this.stacked = stck;
     this.color = clr;
     this.scale_factor = sf;
+    this.absolute = abs;
     this.line_width = lw;
     this.visible = vis;
     this.sorted = sort;
@@ -9779,9 +9780,11 @@ class ChartVariable {
     // Returns the display name for this variable. This is the name of
     // the Linny-R entity and its attribute, followed by its scale factor
     // unless it equals 1 (no scaling).
-    const sf = (this.scale_factor === 1 ? '' :
-        // NOTE: Pass tiny = TRUE to permit very small scaling factors.
-        ` (x${VM.sig4Dig(this.scale_factor, true)})`);
+    const
+        bar = (this.absolute ? '\u2503' : ''),
+        sf = (this.scale_factor === 1 ? '' :
+            // NOTE: Pass tiny = TRUE to permit very small scaling factors.
+            ` (x${VM.sig4Dig(this.scale_factor, true)})`);
     // Display name of equation is just the equations dataset selector. 
     if(this.object instanceof DatasetModifier) {
       let eqn = this.object.selector;
@@ -9797,7 +9800,7 @@ class ChartVariable {
         // method name (leading colon replaced by the prefixer ": ").
         eqn = this.chart.prefix + UI.PREFIXER + eqn.substring(1);
       }
-      return eqn + sf;
+      return bar + eqn + bar + sf;
     }
     // NOTE: Same holds for "dummy variables" added for wildcard
     // dataset selectors.
@@ -9806,11 +9809,13 @@ class ChartVariable {
       if(this.wildcard_index !== false) {
         eqn = eqn.replace('??', this.wildcard_index);
       }
-      return eqn + sf;
+      return bar + eqn + bar + sf;
     }
     // NOTE: Do not display the vertical bar if no attribute is specified.
-    if(!this.attribute) return this.object.displayName + sf;
-    return this.object.displayName + UI.OA_SEPARATOR + this.attribute + sf;
+    if(!this.attribute) {
+      return bar + this.object.displayName + bar + sf;
+    }
+    return bar + this.object.displayName + '|' + this.attribute + bar + sf;
   }
   
   get asXML() {
@@ -9820,7 +9825,9 @@ class ChartVariable {
     if(MODEL.black_box_entities.hasOwnProperty(id)) {
       id = UI.nameToID(MODEL.black_box_entities[id]);
     }
-    const xml = ['<chart-variable', (this.stacked ? ' stacked="1"' : ''),
+    const xml = ['<chart-variable',
+        (this.stacked ? ' stacked="1"' : ''),
+        (this.absolute ? ' absolute="1"' : ''),
         (this.visible ? ' visible="1"' : ''),
         (this.wildcard_index !== false ?
             ` wildcard-index="${this.wildcard_index}"` : ''),
@@ -9878,6 +9885,7 @@ class ChartVariable {
         nodeParameterValue(node, 'stacked') === '1',
         nodeContentByTag(node, 'color'),
         safeStrToFloat(nodeContentByTag(node, 'scale-factor')),
+        nodeParameterValue(node, 'absolute') === '1',
         safeStrToFloat(nodeContentByTag(node, 'line-width')),
         nodeParameterValue(node, 'visible') === '1',
         nodeParameterValue(node, 'sorted') || 'not');
@@ -9972,7 +9980,10 @@ class ChartVariable {
         v = 0;
       }
       // Scale the value unless run result (these are already scaled!).
-      if(!rr) v *= this.scale_factor;
+      if(!rr) {
+        v *= this.scale_factor;
+        if(this.absolute) v = Math.abs(v);
+      }
       this.vector.push(v);
       // Do not include values for t = 0 in statistics.
       if(t > 0) {
@@ -10222,7 +10233,7 @@ class Chart {
       }
     } else {
       const v = new ChartVariable(this);
-      v.setProperties(obj, a, false, this.nextAvailableDefaultColor, 1, 1);
+      v.setProperties(obj, a, false, this.nextAvailableDefaultColor);
       this.variables.push(v);
     }
     return this.variables.length - 1;
@@ -11336,12 +11347,12 @@ class ExperimentRunResult {
     }
     // The vector MAY need to be scaled to model time by different methods,
     // but since this is likely to be rare, such scaling is performed
-    // "lazily", so the method-specific vectors are initially set to NULL.
+    // "lazily", so the method-specific vectors are initially empty.
     this.resetScaledVectors();
   }
 
   resetScaledVectors() {
-    // Set the special vectors to null, so they will be recalculated.
+    // Clear the special vectors, so they will be recalculated.
     this.scaled_vectors = {'NEAREST': [], 'MEAN': [], 'SUM': [], 'MAX': []};
   }
   
@@ -11929,7 +11940,7 @@ class Experiment {
     }
     return index;
   }
-
+  
   isDimensionSelector(s) {
     // Return TRUE if `s` is a dimension selector in this experiment.
     for(const dim of this.dimensions) if(dim.indexOf(s) >= 0) return true;
@@ -11939,6 +11950,15 @@ class Experiment {
     return false;
   }
   
+  get allDimensionSelectors() {
+    // Return list of all dimension selectors in this experiment.
+    const
+        dict = MODEL.dictOfAllSelectors,
+        dims = [];
+    for(let s in dict) if(this.isDimensionSelector(s)) dims.push(s);
+    return dims;
+  }
+
   get asXML() {
     let d = '';
     for(const dim of this.dimensions) {
@@ -12163,12 +12183,6 @@ class Experiment {
     }
   }
   
-  get allDimensionSelectors() {
-    const sl = Object.keys(MODEL.listOfAllSelectors);
-    // Add selectors of actor, iterator and settings dimensions.
-    return sl;
-  }
-
   orthogonalSelectors(c) {
     // Return TRUE iff the selectors in set `c` all are elements of
     // different experiment dimensions.

@@ -2918,8 +2918,8 @@ td.dataset-selector {
 }
 
 td.equation-selector {
-  min-width: 120px;
-  max-width: 240px;
+  padding-right: 6px;
+  max-width: 200px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2964,11 +2964,12 @@ td.equation-expression {
 }
 
 td.equation-expression {
-  min-width: 60%;
+  width: 85%;
 }
 
 td.equation-expression-multi {
   border-left: solid 1px Silver;
+  width: 85%;
   white-space: normal;
   overflow-x: hidden;
   overflow-y: auto;
@@ -3428,6 +3429,9 @@ td.vbl-desc-lead::after {
   color: #b00080;
 }
 
+td.vbl-abs {
+  color: #0050d0 !important;
+}
 
 #chart-variables {
   position: absolute;
@@ -3604,8 +3608,8 @@ img.v-disab {
 }
 
 #variable-dlg {
-  width: 215px;
-  height: 148px;
+  width: 245px;
+  height: 170px;
 }
 
 #variable-dlg-name {

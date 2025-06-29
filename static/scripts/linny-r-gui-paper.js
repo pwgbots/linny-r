@@ -395,6 +395,9 @@ class Paper {
     id = 'i_n_a_c_t_i_v_e__t_r_i_a_n_g_l_e__t_i_p__ID';
     this.inactive_triangle = `url(#${id})`;
     this.addMarker(defs, id, tri, 8, 'silver');
+    id = 'i_g_n_o_r_e__t_r_i_a_n_g_l_e__t_i_p__ID';
+    this.ignore_triangle = `url(#${id})`;
+    this.addMarker(defs, id, tri, 8, this.palette.ignore);
     id = 'o_p_e_n__t_r_i_a_n_g_l_e__t_i_p__ID*';
     this.open_triangle = `url(#${id})`;
     this.addMarker(defs, id, tri, 7.5, 'white');
@@ -1034,9 +1037,9 @@ class Paper {
     
     // Arrows having both "from" and "to" are displayed as "real" arrows
     // The hidden nodes list must contain the nodes that have no position
-    // in the cluster being drawn
-    // NOTE: products are "hidden" typically when this arrow represents multiple
-    // links, but also if it is a single link from a cluster to a process
+    // in the cluster being drawn.
+    // NOTE: Products are "hidden" typically when this arrow represents multiple
+    // links, but also if it is a single link from a cluster to a process.
     const
         from_c = from_nb instanceof Cluster,
         to_c = to_nb instanceof Cluster,
@@ -1049,12 +1052,12 @@ class Paper {
             fn = lnk.from_node,
             tn = lnk.to_node;
         if(fn instanceof Product && fn != from_nb && fn != to_nb) {
-          // Add node only if they not already shown at EITHER end of the arrow
+          // Add node only if they not already shown at EITHER end of the arrow.
           addDistinct(fn, arrw.hidden_nodes);
-          // Count number of data flows represented by arrow
+          // Count number of data flows represented by arrow.
           if(tn.is_data) data_flows++;
         }
-        // NOTE: no ELSE IF, because BOTH link nodes can be products
+        // NOTE: No ELSE IF, because BOTH link nodes can be products.
         if(tn instanceof Product && tn != from_nb && tn != to_nb)  {
           addDistinct(tn, arrw.hidden_nodes);
           // Count number of data flows represented by arrow
@@ -1063,7 +1066,7 @@ class Paper {
       }
     }
 
-    // NEXT: some more local variables
+    // NEXT: Some more local variables.
     fnx = from_nb.x + dx;
     fny = from_nb.y + dy;
     fnw = from_nb.width;
@@ -1088,19 +1091,19 @@ class Paper {
       tnh = 24;
     }
     
-    // Do not draw arrow if so short that it is hidden by its FROM and TO nodes
+    // Do not draw arrow if so short that it is hidden by its FROM and TO nodes.
     if((Math.abs(fnx - tnx) < (fnw + tnw)/2) &&
        (Math.abs(fny - tny) <= (fnh + tnh)/2)) {
       return false;
     }
     
-    // Adjust node heights if nodes are thick-rimmed
+    // Adjust node heights if nodes are thick-rimmed.
     if((from_nb instanceof Product) && from_nb.is_buffer) fnh += 2;
     if((to_nb instanceof Product) && to_nb.is_buffer) tnh += 2;
-    // Get horizontal distance dx and vertical distance dy of the node centers
+    // Get horizontal distance dx and vertical distance dy of the node centers.
     dx = tnx - fnx;
     dy = tny - fny;
-    // If dx is less than half a pixel, draw a vertical line
+    // If dx is less than half a pixel, draw a vertical line.
     if(Math.abs(dx) < 0.5) {
       arrw.from_x = fnx;
       arrw.to_x = fnx;
@@ -1112,11 +1115,11 @@ class Paper {
         arrw.to_y = tny + tnh/2;
       }
     } else {
-      // Now dx > 0, so no division by zero can occur when calculating dy/dx
-      // First compute X and Y of tail (FROM node)
+      // Now dx > 0, so no division by zero can occur when calculating dy/dx.
+      // First compute X and Y of tail (FROM node).
       w = (from_nb instanceof Product ? from_nb.frame_width : fnw);
       if(Math.abs(dy / dx) >= Math.abs(fnh / w)) {
-        // Arrow connects to horizontal edge
+        // Arrow connects to horizontal edge.
         arrw.from_y = (dy > 0 ? fny + fnh/2 : fny - fnh/2);
         arrw.from_x = fnx + fnh/2 * dx / Math.abs(dy);
       } else if(from_nb instanceof Product) {
@@ -1127,7 +1130,7 @@ class Paper {
         dd = fnw/2;
         nn = (-dd - Math.sqrt(rr - aa * dd * dd + aa * rr)) / (1 + aa);
         if(dx > 0) {
-          // link points towards the right
+          // link points towards the right.
           arrw.from_x = fnx - nn;
           arrw.from_y = fny - nn * dy / dx;
         } else {
@@ -1135,28 +1138,28 @@ class Paper {
           arrw.from_y = fny + nn * dy / dx;
         }
       } else {
-        // Rectangular box
+        // Rectangular box.
         arrw.from_x = (dx > 0 ? fnx + w/2 : fnx - w/2);
         arrw.from_y = fny + w/2 * dy / Math.abs(dx);
       }
-      // Then compute X and Y of head (TO node)
+      // Then compute X and Y of head (TO node).
       w = (to_nb instanceof Product ? to_nb.frame_width : tnw);
       dx = arrw.from_x - tnx;
       dy = arrw.from_y - tny;
       if(Math.abs(dx) > 0) {
         if(Math.abs(dy / dx) >= Math.abs(tnh / w)) {
-          // Connects to horizontal edge
+          // Connects to horizontal edge.
           arrw.to_y = (dy > 0 ? tny + tnh/2 : tny - tnh/2);
           arrw.to_x = tnx + tnh/2 * dx / Math.abs(dy);
         } else if(to_nb instanceof Product) {
-          // Node with semicircular sides}
+          // Node with semicircular sides.
           tnw = to_nb.frame_width;
           rr = (tnh/2) * (tnh/2);  // R square
           aa = (dy / dx) * (dy / dx);  // A square
           dd = tnw/2;
           nn = (-dd - Math.sqrt(rr - aa*(dd*dd - rr))) / (1 + aa);
           if(dx > 0) {
-            // Link points towards the right
+            // Link points towards the right.
             arrw.to_x = tnx - nn;
             arrw.to_y = tny - nn * dy / dx;
           } else {
@@ -1164,30 +1167,30 @@ class Paper {
             arrw.to_y = tny + nn * dy / dx;
           }
         } else {
-          // Rectangular node
+          // Rectangular node.
           arrw.to_x = (dx > 0 ? tnx + w/2 : tnx - w/2);
           arrw.to_y = tny + w/2 * dy / Math.abs(dx);
         }
       }
     }
 
-    // Assume default arrow properties
+    // Assume default arrow properties.
     sda = 'none';
     stroke_color = (ignored ? this.palette.ignore : this.palette.node_rim);
     stroke_width = 1.5;
     arrow_start = 'none';
-    arrow_end = this.triangle;
-    // Default multi-flow values are: NO multiflow, NOT congested or reversed
+    arrow_end = (ignored ? this.ignore_triangle : this.triangle);
+    // Default multi-flow values are: NO multiflow, NOT congested or reversed.
     let mf = [0, 0, 0, false, false],
         reversed = false;
     // These may need to be modified due to actual flow, etc.
     if(arrw.links.length === 1) {
-      // Display link properties of a specific link if arrow is plain
+      // Display link properties of a specific link if arrow is plain.
       luc = arrw.links[0];
-      ignored = MODEL.ignored_entities[luc.identifier];
+      ignored = ignored || MODEL.ignored_entities[luc.identifier];
       if(MODEL.solved && !ignored) {
         // Draw arrow in dark blue if a flow occurs, or in a lighter gray
-        // if NO flow occurs
+        // if NO flow occurs.
         af = luc.actualFlow(MODEL.t);
         if(Math.abs(af) > VM.SIG_DIF_FROM_ZERO) {
           // NOTE: negative flow should affect arrow heads only when link has
@@ -1203,12 +1206,13 @@ class Paper {
             arrow_end = this.active_triangle;
           }
         } else {
-          stroke_color = (MODEL.ignored_entities[luc.identifier] ?
-              this.palette.ignore : 'silver');
+          stroke_color = 'silver';
           arrow_end = this.inactive_triangle;
         }
-      } else {
+      } else if(ignored) {
         af = VM.UNDEFINED;
+        stroke_color = this.palette.ignore;
+        arrow_end = this.ignore_triangle;
       }
       if(luc.from_node instanceof Process) {
         proc = luc.from_node;
@@ -1225,12 +1229,12 @@ class Paper {
           arrow_end = this.feedback_triangle;
         }
       }
-      // Data link => dotted line
+      // Data link => dotted line.
       if(luc.dataOnly) {
         sda = UI.sda.dot;
       }
       if(luc.selected) {
-        // Draw arrow line thick and in red
+        // Draw arrow line thick and in red.
         stroke_color = this.palette.select;
         stroke_width = 2;
         if(arrow_end == this.open_wedge) {
@@ -1239,7 +1243,6 @@ class Paper {
           arrow_end = this.selected_triangle;
         }
       }
-      if(ignored) stroke_color = this.palette.ignore;
     } else {
       // A composite arrow is visualized differently, depending on the number
       // of related products and the direction of the underlying links:
@@ -1264,23 +1267,23 @@ class Paper {
       if(arrw.bidirectional) arrow_start = arrow_end;
     }
     // Correct the start and end points of the shaft for the stroke width
-    // and size and number of the arrow heads
-    // NOTE: re-use of dx and dy for different purpose!
+    // and size and number of the arrow heads.
+    // NOTE: Re-use of dx and dy for different purpose!
     dx = arrw.to_x - arrw.from_x;
     dy = arrw.to_y - arrw.from_y;
     l = Math.sqrt(dx * dx + dy * dy);
     let cdx = 0, cdy = 0;
     if(l > 0) {
-      // Amount to shorten the line to accommodate arrow head
-      // NOTE: for thicker arrows, subtract a bit more
+      // Amount to shorten the line to accommodate arrow head.
+      // NOTE: For thicker arrows, subtract a bit more.
       cdx = (4 + 1.7 * (stroke_width - 1.5)) * dx / l;
       cdy = (4 + 1.7 * (stroke_width - 1.5)) * dy / l;
     }
     if(reversed) {
-      // Adjust end points by 1/2 px for rounded stroke end
+      // Adjust end points by 1/2 px for rounded stroke end.
       bpx = arrw.to_x - 0.5*dx / l;
       bpy = arrw.to_y - 0.5*dy / l;
-      // Adjust start points for arrow head(s)
+      // Adjust start points for arrow head(s).
       epx = arrw.from_x + cdx;
       epy = arrw.from_y + cdy;
       if(arrw.bidirectional) {
@@ -1288,10 +1291,10 @@ class Paper {
         bpy -= cdy;
       }
     } else {
-      // Adjust start points by 1/2 px for rounded stroke end
+      // Adjust start points by 1/2 px for rounded stroke end.
       bpx = arrw.from_x + 0.5*dx / l;
       bpy = arrw.from_y + 0.5*dy / l;
-      // Adjust end points for arrow head(s)
+      // Adjust end points for arrow head(s).
       epx = arrw.to_x - cdx;
       epy = arrw.to_y - cdy;
       if(arrw.bidirectional) {
@@ -1299,8 +1302,8 @@ class Paper {
         bpy += cdy;
       }
     }
-    // Calculate actual (multi)flow, as this co-determines the color of the arrow
-    if(MODEL.solved) {
+    // Calculate actual (multi)flow, as this co-determines the color of the arrow.
+    if(MODEL.solved && !ignored) {
       if(!luc) {
         mf = arrw.multiFlows;
         af = mf[1] + mf[2];
@@ -1315,22 +1318,20 @@ class Paper {
         } else {
           arrow_end = this.active_triangle;
         }
-        if(arrw.bidirectional) {
-          arrow_start = arrow_end;
-        }          
       } else {
         if(stroke_color != this.palette.select) stroke_color = 'silver';
         if(arrow_end === this.double_triangle) {
           arrow_end = this.inactive_double_triangle;
-          if(arrw.bidirectional) {
-            arrow_start = this.inactive_double_triangle;
-          }
         }
       }
     } else {
       af = VM.UNDEFINED;
+      if(ignored && stroke_color != this.palette.select) {
+        stroke_color = this.palette.ignore;
+        arrow_end = this.ignore_triangle;
+      }
     }
-
+    if(arrw.bidirectional) arrow_start = arrow_end;         
     // Draw arrow shaft
     if(stroke_width === 3 && data_flows) {
       // Hollow shaft arrow: dotted when *all* represented links are
@@ -1509,7 +1510,7 @@ class Paper {
     
     // Draw the actual flow
     const absf = Math.abs(af);
-    if(l > 0 && af < VM.UNDEFINED && absf > VM.SIG_DIF_FROM_ZERO) {
+    if(!ignored && l > 0 && af < VM.UNDEFINED && absf > VM.SIG_DIF_FROM_ZERO) {
       const ffill = {fill:'white', opacity:0.8};
       if(luc || mf[0] == 1) {
         // Draw flow data halfway the arrow only if calculated and non-zero.
