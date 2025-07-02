@@ -3391,13 +3391,19 @@ class VirtualMachine {
     // Infer cycle basis for combined power grids for which Kirchhoff's
     // voltage law must be enforced.
     if(MODEL.with_power_flow) {
-      MONITOR.logMessage(1, 'POWER FLOW: ' +
+      this.logMessage(1, 'POWER FLOW: ' +
           pluralS(Object.keys(MODEL.power_grids).length, 'grid'));
+      if(MODEL.ignore_grid_capacity) this.logMessage(1,
+          'NOTE: Assuming infinite grid line cacity');
+      if(MODEL.ignore_KVL) this.logMessage(1,
+          'NOTE: Disregarding Kirchhoff\'s Voltage Law');
+      if(MODEL.ignore_power_losses) this.logMessage(1,
+          'NOTE: Disregarding transmission losses');
       POWER_GRID_MANAGER.inferCycleBasis();
       if(POWER_GRID_MANAGER.messages.length > 1) {
         UI.warn('Check monitor for power grid warnings');
       }
-      MONITOR.logMessage(1, POWER_GRID_MANAGER.messages.join('\n'));
+      this.logMessage(1, POWER_GRID_MANAGER.messages.join('\n'));
       if(POWER_GRID_MANAGER.cycle_basis.length) this.logMessage(1,
           'Enforcing Kirchhoff\'s voltage law for ' +
           POWER_GRID_MANAGER.cycleBasisAsString);
@@ -6204,7 +6210,7 @@ Solver status = ${json.status}`);
     } catch(err) {
       const msg = `ERROR while processing solver data for block ${bnr}: ${err}`;
       console.log(msg);      
-      MONITOR.logMessage(bnr, msg);
+      this.logMessage(bnr, msg);
       UI.alert(msg);
       this.stopSolving();
       this.halted = true;
@@ -7340,7 +7346,10 @@ function VMI_push_run_result(x, args) {
     }
   }
   // Truncate near-zero values.
-  if(Math.abs(v) < VM.SIG_DIF_FROM_ZERO) v = 0;
+  if(v && Math.abs(v) < VM.SIG_DIF_FROM_ZERO) {
+    console.log('NOTE: Truncated experiment run result', v, 'to zero');
+    v = 0;
+  }
   x.push(v);
 }
 
@@ -8432,6 +8441,8 @@ function VMI_set_bounds(args) {
     // Check the difference, as this may be negligible.
     if(u - l < VM.SIG_DIF_FROM_ZERO) {
       u = Math.round(u * 1e5) / 1e5;
+      // NOTE: This may result in -0 (minus zero) => then set to 0.
+      if(u < 0 && u > -VM.NEAR_ZERO) u = 0;
     } else {
       // If substantial, warn that "impossible" bounds would have been set.
       const vk = vbl.displayName;

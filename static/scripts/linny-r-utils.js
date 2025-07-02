@@ -973,18 +973,20 @@ function nameToLines(name, actor_name = '') {
   // the node box.
   let m = actor_name.length;
   const
-      d = Math.floor(Math.sqrt(0.3 * name.length)),
+      d = Math.floor(Math.sqrt(0.25 * name.length)),
       // Do not wrap strings shorter than 13 characters (about 50 pixels).
       limit = Math.max(Math.ceil(name.length / d), m, 13),
-      a = name.split(' ');
-  // Split words at '-' when wider than limit
+      // NOTE: Do not split on spaces followed by a number or a single
+      // capital letter.
+      a = name.split(/\s(?!\d+:|\d+$|[A-Z]\W)/);
+  // Split words at '-' when wider than limit.
   for(let j = 0; j < a.length; j++) {
     if(a[j].length > limit) {
       const sw = a[j].split('-');
       if(sw.length > 1) {
-        // Replace j-th word by last fragment of split string
+        // Replace j-th word by last fragment of split string.
         a[j] = sw.pop();
-        // Insert remaining fragments before
+        // Insert remaining fragments before.
         while(sw.length > 0) a.splice(j, 0, sw.pop() + '-');
       }
     }

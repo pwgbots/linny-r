@@ -641,7 +641,8 @@ class GUIChartManager extends ChartManager {
     for(const cv of c.variables) {
       const nv = new ChartVariable(nc);
       nv.setProperties(cv.object, cv.attribute, cv.stacked,
-          cv.color, cv.scale_factor, cv.absolute, cv.line_width, cv.sorted);
+          cv.color, cv.scale_factor, cv.absolute, cv.line_width,
+          cv.visible, cv.sorted);
       nc.variables.push(nv);
     }
     this.chart_index = MODEL.indexOfChart(nc.title);

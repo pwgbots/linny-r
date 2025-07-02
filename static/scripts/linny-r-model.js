@@ -542,7 +542,7 @@ class LinnyRModel {
         e = this.objectByName(en);
     if(!e) return `Unknown model entity "${en}"`;
     const
-        ao = ea[1].split('@'),
+        ao = (ea.length > 1 ? ea[1].split('@') : ['']),
         a = ao[0].trim();
     // Valid if no attribute, as all entity types have a default attribute. 
     if(!a) return true;
@@ -1636,8 +1636,7 @@ class LinnyRModel {
     const ci = this.indexOfChart(title);
     if(ci >= 0) return this.charts[ci];
     // Otherwise, add it. NOTE: Unlike datasets, charts are not "entities".
-    let c = new Chart();
-    c.title = title;
+    let c = new Chart(title);
     if(node) c.initFromXML(node);
     this.charts.push(c);
     // Sort the chart titles alphabetically...
@@ -3323,7 +3322,7 @@ class LinnyRModel {
     vbls.sort((a, b) => UI.compareFullNames(a.displayName, b.displayName));
     // Create a new chart as dummy, so without adding it to this model.
     const
-        c = new Chart(),
+        c = new Chart('__d_u_m_m_y__c_h_a_r_t__'),
         wcdm = [];
     for(const v of vbls) {
       // NOTE: Prevent adding wildcard dataset modifiers more than once.
@@ -6242,19 +6241,19 @@ class Cluster extends NodeBox {
   }
   
   get nestingLevel() {
-    // Return the "depth" of this cluster in the cluster hierarchy
+    // Return the "depth" of this cluster in the cluster hierarchy.
     if(this.cluster) return this.cluster.nestingLevel + 1; // recursion!
     return 0;
   }
   
   get toBeIgnored() {
-    // Return TRUE if this cluster or some parent cluster is set to be ignored
+    // Return TRUE if this cluster or some parent cluster is set to be ignored.
     return this.ignore || MODEL.ignoreClusterInThisRun(this) ||
         (this.cluster && this.cluster.toBeIgnored); // recursion!
   }
   
   get blackBoxed() {
-    // Return TRUE if this cluster or some parent cluster is marked as black box
+    // Return TRUE if this cluster or some parent cluster is marked as black box.
     return this.black_box ||
         (this.cluster && this.cluster.blackBoxed); // recursion!
   }
@@ -9981,8 +9980,8 @@ class ChartVariable {
       }
       // Scale the value unless run result (these are already scaled!).
       if(!rr) {
-        v *= this.scale_factor;
         if(this.absolute) v = Math.abs(v);
+        v *= this.scale_factor;
       }
       this.vector.push(v);
       // Do not include values for t = 0 in statistics.

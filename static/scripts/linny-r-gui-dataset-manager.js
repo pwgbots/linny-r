@@ -288,7 +288,7 @@ class GUIDatasetManager extends DatasetManager {
     for(const r of this.dataset_table.rows) if(r.dataset.prefix === lcp) return r;
     return null;
   }
-  
+
   selectPrefixRow(e) {
     // Select expand/collapse prefix row.
     this.focal_table = this.dataset_table;
@@ -579,6 +579,13 @@ class GUIDatasetManager extends DatasetManager {
     // NOTE: Updating entire dialog may be very time-consuming
     // when model contains numerous prefixed datasets.
     this.updatePanes();
+    // NOTE: The selected row now has to be highlighted, as the table
+    // HTML is not changed.
+    let r = event.target;
+    while(r && r.tagName !== 'TR') r = r.parentNode;
+    const sel = this.dataset_table.getElementsByClassName('sel-set');
+    if(sel.length > 0) sel[0].classList.remove('sel-set');
+    r.classList.add('sel-set');
   }
   
   selectModifier(event, id, x=true) {

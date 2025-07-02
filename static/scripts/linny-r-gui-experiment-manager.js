@@ -761,16 +761,16 @@ class GUIExperimentManager extends ExperimentManager {
   
   toggleChartCombi(n, shift, alt) {
     // Set `n` to be the chart combination, or toggle if Shift-key is pressed,
-    // or execute single run if Alt-key is pressed
+    // or execute single run if Alt-key is pressed.
     const x = this.selected_experiment;
     if(x && alt && n >= 0) {
       this.startExperiment(n);
       return;
     }
     if(x && n < x.combinations.length) {
-      // Clear current selection unless Shift-key is pressed 
+      // Clear current selection unless Shift-key is pressed.
       if(!shift) x.chart_combinations.length = 0;
-      // Toggle => add if not in selection, otherwise remove
+      // Toggle => add if not in selection, otherwise remove.
       const ci = x.chart_combinations.indexOf(n);
       if(ci < 0) {
         x.chart_combinations.push(n);

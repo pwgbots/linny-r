@@ -173,6 +173,12 @@ class PowerGridManager {
     MODEL.ignore_KVL = UI.boxChecked('power-grids-KVL');
     MODEL.ignore_power_losses = UI.boxChecked('power-grids-losses');
     this.dialog.hide();
+    const pg_btn = document.getElementById('settings-power-btn');
+    if(MODEL.ignore_grid_capacity || MODEL.ignore_KVL || MODEL.ignore_power_losses) {
+      pg_btn.classList.add('ignore');
+    } else {
+      pg_btn.classList.remove('ignore');
+    }
   }
 
   selectPowerGrid(event, id, focus) {

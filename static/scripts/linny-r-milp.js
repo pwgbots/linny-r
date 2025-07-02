@@ -581,7 +581,13 @@ module.exports = class MILPSolver {
               col++;
             }
             // Return near-zero values as 0.
-            x_values.push(Math.abs(x_dict[v]) < this.near_zero ? 0 : x_dict[v]);
+            let xv = x_dict[v];
+            const xfv = parseFloat(xv);
+            if(xfv && Math.abs(xfv) < this.near_zero) {
+              console.log('NOTE: Truncated ', xfv, ' to zero for variable', v);
+              xv = '0';
+            }
+            x_values.push(xv);
             col++;
           }
           // Add zeros to vector for remaining columns.

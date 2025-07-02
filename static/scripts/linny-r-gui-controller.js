@@ -3096,39 +3096,39 @@ class GUIController extends Controller {
   //
   
   copyStringToClipboard(string) {
-    // Copies string to clipboard and notifies user of #lines copied
-    let msg = pluralS(string.split('\n').length, 'line') +
-            ' copied to clipboard',
-        type = 'notification';
+    // Copy string to clipboard and notifies user of #lines copied.
     if(navigator.clipboard) {
-      navigator.clipboard.writeText(string).catch(
-          () => UI.setMessage('Failed to copy to clipboard', 'warning'));
+      const msg = pluralS(string.split('\n').length, 'line') +
+          ' copied to clipboard';
+      navigator.clipboard.writeText(string)
+          .then(() => UI.setMessage(msg, 'notification'))
+          .catch(() => UI.setMessage('Failed to copy to clipboard', 'warning'));
     } else {
-      // Workaround using deprecated execCommand
-      const ta = document.createElement('textarea');
-      document.body.appendChild(ta);
-      ta.value = string;
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
+      UI.setMessage('Your browser does not support copying to clipboard',
+          'warning');
     }
-    UI.setMessage(msg, type);
   }
   
-  copyHtmlToClipboard(html) {
-    // Copy HTML to clipboard
-    function listener(event) {
-      event.clipboardData.setData('text/html', html);
-      event.preventDefault();
+  copyHtmlToClipboard(html, plain=false) {
+    // Copy HTML (as such or as plain text) to clipboard and notify user.
+    if(navigator.clipboard) {
+      const
+          item = (plain ? {'text/plain': html} : {'text/html': html}),
+          data = [new ClipboardItem(item)],
+          msg = 'HTML copied to clipboard' + (plain ? ' as plain text' : '');
+      navigator.clipboard.write(data)
+          .then(() => UI.setMessage(msg, 'notification'))
+          .catch((error) => UI.setMessage('Failed to copy HTML to clipboard',
+              'warning', error));
+    } else {
+      UI.setMessage('Your browser does not support copying HTML to clipboard',
+          'warning');
     }
-    document.addEventListener('copy', listener);
-    document.execCommand('copy');
-    document.removeEventListener('copy', listener);
   }
   
   logHeapSize(msg='') {
-    // Logs MB's of used heap memory to console (to detect memory leaks)
-    // NOTE: this feature is supported only by Chrome
+    // Log MB's of used heap memory to console (to detect memory leaks).
+    // NOTE: This feature is supported only by Chrome.
     if(msg) msg += ' -- ';
     if(performance.memory !== undefined) {
       console.log(msg + 'Allocated memory: ' + Math.round(
@@ -4035,11 +4035,16 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     this.setBox('settings-encrypt', model.encrypt);
     const pg_btn = md.element('power-btn');
     pg_btn.style.display = (model.with_power_flow ? 'inline-block' : 'none');
+    if(model.ignore_grid_capacity || model.ignore_KVL || model.ignore_power_losses) {
+      pg_btn.classList.add('ignore');
+    } else {
+      pg_btn.classList.remove('ignore');
+    }
     md.show('name');
   }
   
   updateSettings(model) {
-    // Valdidate inputs
+    // Valdidate inputs.
     const px = this.validNumericInput('settings-grid-pixels', 'grid resolution');
     if(px === false) return false;
     const ts = this.validNumericInput('settings-time-scale', 'time step');
