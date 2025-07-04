@@ -3178,6 +3178,12 @@ where X can be one or several of these letters: ABCDELPQ">
       <img id="finder-chart-btn" class="btn enab"
            src="images/chart.png"
            title="Add attribute to chart">
+      <img id="finder-experiment-btn" class="btn enab"
+           src="images/experiment.png"
+           title="Only consider experiment outcomes">
+      <img id="finder-table-btn" class="btn enab"
+           src="images/table.png"
+           title="View entity attribute values">
       <img id="finder-copy-btn" class="btn enab"
            src="images/table-to-clpbrd.png"
            title="Copy entity attributes to clipboard">
@@ -3193,6 +3199,14 @@ where X can be one or several of these letters: ABCDELPQ">
       <table id="finder-expression-table">
       </table>
     </div>
+    <div id="finder-data-pane">
+      <table id="finder-data-header">
+      </table>
+      <div id="finder-data-scroll-area">
+        <table id="finder-data-table">
+        </table>
+      </div>
+    </div>
     <div id="finder-resize" class="resizer"></div>
   </div>
 
@@ -3206,8 +3220,10 @@ where X can be one or several of these letters: ABCDELPQ">
         <img class="ok-btn" src="images/ok.png">
       </div>
       <div style="margin: 2px; padding-right: 2px; white-space: nowrap">
-        <select id="confirm-add-chart-variables-attribute"></select>
-        of <span id="confirm-add-chart-variables-count"></span>
+        <div id="confirm-add-chart-variables-attr-of">
+          <select id="confirm-add-chart-variables-attribute"></select> of
+        </div>
+        <span id="confirm-add-chart-variables-count"></span>
       </div>
       <div>
         <div id="confirm-add-chart-variables-absolute" class="box clear"></div>

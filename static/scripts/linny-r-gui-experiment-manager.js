@@ -343,6 +343,8 @@ class GUIExperimentManager extends ExperimentManager {
     // NOTE: When UpdateDialog is called after an entity has been renamed,
     // its variable list should be updated.
     this.updateViewerVariable();
+    // NOTE: Finder may need updating as well.
+    if(FINDER.experiment_view) FINDER.updateDialog();
   }
 
   updateParameters() {
@@ -727,6 +729,11 @@ class GUIExperimentManager extends ExperimentManager {
     // Toggle `n` consecutive rows, starting at row `r` (0 = top), to be
     // (no longer) part of the chart combination set.
     // @@TO DO: shift-key indicates "add row(s) to selection"
+    if(MODEL.running_experiment) {
+      // NOTE: do NOT change run selection while VM is solving!
+      UI.notify('Run selection cannot be changed when an experiment is running');
+      return;
+    }
     const
         x = this.selected_experiment,
         // Let `first` be the number of the first run on row `r`.
@@ -751,7 +758,10 @@ class GUIExperimentManager extends ExperimentManager {
         }
       }
       this.updateData();
+      CHART_MANAGER.resetChartVectors();
       CHART_MANAGER.updateDialog();
+      // NOTE: Finder may need updating as well.
+      if(FINDER.experiment_view) FINDER.updateDialog();
     }
   }
 
@@ -762,33 +772,35 @@ class GUIExperimentManager extends ExperimentManager {
   toggleChartCombi(n, shift, alt) {
     // Set `n` to be the chart combination, or toggle if Shift-key is pressed,
     // or execute single run if Alt-key is pressed.
+    if(MODEL.running_experiment) {
+      // NOTE: do NOT do this while VM is solving, as this would interfere!
+      UI.notify('Run selection cannot be changed when an experiment is running');
+      return;
+    }
     const x = this.selected_experiment;
     if(x && alt && n >= 0) {
       this.startExperiment(n);
       return;
     }
     if(x && n < x.combinations.length) {
-      // Clear current selection unless Shift-key is pressed.
-      if(!shift) x.chart_combinations.length = 0;
       // Toggle => add if not in selection, otherwise remove.
       const ci = x.chart_combinations.indexOf(n);
       if(ci < 0) {
+        // Clear current selection unless Shift-key is pressed.
+        if(!shift) x.chart_combinations.length = 0;
         x.chart_combinations.push(n);
       } else {
         x.chart_combinations.splice(ci, 1);
       }
     }
     this.updateData();
-    if(MODEL.running_experiment) {
-      // NOTE: do NOT do this while VM is solving, as this would interfer!
-      UI.notify('Selected run cannot be viewed while running an experiment');
-    } else {
-      // Show the messages for this run in the monitor
-      VM.setRunMessages(n);
-      // Update the chart
-      CHART_MANAGER.resetChartVectors();
-      CHART_MANAGER.updateDialog();
-    }
+    // Show the messages for this run in the monitor.
+    VM.setRunMessages(n);
+    // Update the chart.
+    CHART_MANAGER.resetChartVectors();
+    CHART_MANAGER.updateDialog();
+    // NOTE: Finder may need updating as well.
+    if(FINDER.experiment_view) FINDER.updateDialog();
   }
   
   runInfo(n) {
@@ -839,7 +851,7 @@ class GUIExperimentManager extends ExperimentManager {
       info.html = html.join('');
       return info;
     }
-    // Fall-through (should not occur)
+    // Fall-through (should not occur).
     return null;
   }
   
@@ -848,7 +860,7 @@ class GUIExperimentManager extends ExperimentManager {
     // NOTE: Skip when viewer is showing!
     if(!UI.hidden('experiment-viewer')) return;
     if(n < MODEL.experiments.length) {
-      // NOTE: mouse move over title in viewer passes n = -1 
+      // NOTE: Mouse move over title in viewer passes n = -1.
       const x = (n < 0 ? this.selected_experiment : MODEL.experiments[n]);
       DOCUMENTATION_MANAGER.update(x, shift);
     }

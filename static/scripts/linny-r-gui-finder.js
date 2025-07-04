@@ -50,12 +50,27 @@ class Finder {
     this.chart_btn = document.getElementById('finder-chart-btn');
     this.chart_btn.addEventListener(
         'click', () => FINDER.confirmAddChartVariables());
+    this.table_btn = document.getElementById('finder-table-btn');
+    this.table_btn.addEventListener(
+        'click', () => FINDER.toggleViewAttributes());
+    this.experiment_btn = document.getElementById('finder-experiment-btn');
+    this.experiment_btn.addEventListener(
+        'click', () => FINDER.toggleViewExperiment());
     this.copy_btn = document.getElementById('finder-copy-btn');
     this.copy_btn.addEventListener(
         'click', (event) => FINDER.copyAttributesToClipboard(event.shiftKey));
+    this.entity_scroll_area = document.getElementById('finder-scroll-area');
+    this.entity_scroll_area.addEventListener(
+        'scroll', () => FINDER.scrollEntityArea());
     this.entity_table = document.getElementById('finder-table');
     this.item_table = document.getElementById('finder-item-table');
     this.expression_table = document.getElementById('finder-expression-table');
+    this.data_pane = document.getElementById('finder-data-pane');
+    this.data_header = document.getElementById('finder-data-header');
+    this.data_scroll_area = document.getElementById('finder-data-scroll-area');
+    this.data_scroll_area.addEventListener(
+        'scroll', () => FINDER.scrollDataArea());
+    this.data_table = document.getElementById('finder-data-table');
         
     // The Confirm add chart variables modal.
     this.add_chart_variables_modal = new ModalDialog('confirm-add-chart-variables');
@@ -97,6 +112,8 @@ class Finder {
     // Product cluster index "remembers" for which cluster a product was
     // last revealed, so it can reveal the next cluster when clicked again.
     this.product_cluster_index = 0;
+    this.tabular_view = false;
+    this.experiment_view = false;
   }
   
   doubleClicked(obj) {
@@ -150,8 +167,23 @@ class Finder {
     let imgs = '';
     this.entities.length = 0;
     this.filtered_types.length = 0;
-    // No list unless a pattern OR a specified SUB-set of entity types.
-    if(fp || et && et !== VM.entity_letters) {
+    if(this.experiment_view) {
+      // List outcome variables of selected experiment.
+      const x = EXPERIMENT_MANAGER.selected_experiment;
+      if(x) {
+        x.inferVariables();
+        for(const v of x.variables) {
+          const obj = v.object;
+          if(et !== VM.entity_letters && et.indexOf(obj.typeLetter) >= 0) {
+            if(!fp || patternMatch(obj.displayName, this.filter_pattern)) {
+              this.entities.push(v);
+              enl.push(v.displayName);
+            }
+          }
+        }
+      }
+    } else if(fp || et && et !== VM.entity_letters) {
+      // No list unless a pattern OR a specified SUB-set of entity types.
       if(et.indexOf('A') >= 0) {
         imgs += '<img src="images/actor.png">';
         for(let k in MODEL.actors) if(MODEL.actors.hasOwnProperty(k)) {
@@ -315,32 +347,44 @@ class Finder {
           }
         }
       }
+      // NOTE: Pass TRUE to indicate "comparison of identifiers".
       enl.sort((a, b) => UI.compareFullNames(a, b, true));
     }
     document.getElementById('finder-entity-imgs').innerHTML = imgs;
-    let seid = 'etr';
-    for(let i = 0; i < enl.length; i++) {
-      const e = MODEL.objectByID(enl[i]);
-      if(e === se) seid += i;
-      el.push(['<tr id="etr', i, '" class="dataset',
-          (e === se ? ' sel-set' : ''), '" onclick="FINDER.selectEntity(\'',
-          enl[i], '\', event.altKey);" onmouseover="FINDER.showInfo(\'', enl[i],
-          '\', event.shiftKey);"><td draggable="true" ',
-          'ondragstart="FINDER.drag(event);"><img class="finder" src="images/',
-          e.type.toLowerCase(), '.png">', e.displayName,
-          '</td></tr>'].join(''));
+    let n = enl.length,
+        seid = 'etr';
+    for(let i = 0; i < n; i++) {
+      if(this.experiment_view) {
+        el.push(['<tr id="etr', i, '" class="dataset"><td>',
+            '<div class="series">', enl[i], '</div></td></tr>'].join(''));
+      } else {
+        const e = MODEL.objectByID(enl[i]);
+        if(e === se) seid += i;
+        el.push(['<tr id="etr', i, '" class="dataset',
+            (e === se ? ' sel-set' : ''), '" onclick="FINDER.selectEntity(\'',
+            enl[i], '\', event.altKey);" onmouseover="FINDER.showInfo(\'', enl[i],
+            '\', event.shiftKey);"><td draggable="true" ',
+            'ondragstart="FINDER.drag(event);"><img class="finder" src="images/',
+            e.type.toLowerCase(), '.png">', e.displayName,
+            '</td></tr>'].join(''));
+      }
     }
     // NOTE: Reset `selected_entity` if not in the new list.
     if(seid === 'etr') this.selected_entity = null;
     this.entity_table.innerHTML = el.join('');
     UI.scrollIntoView(document.getElementById(seid));
-    document.getElementById('finder-count').innerHTML = pluralS(
-        el.length, 'entity', 'entities');
-    // Only show the edit button if all filtered entities are of the
-    // same type.
-    let n = el.length;
+    document.getElementById('finder-count').innerHTML = pluralS(n,
+        'entity', 'entities');
     this.edit_btn.style.display = 'none';
+    this.chart_btn.style.display = 'none';
+    this.table_btn.style.display = 'none';
     this.copy_btn.style.display = 'none';
+/*
+    // Show the experiment button only when at least 1 experiment exists.
+    this.experiment_btn.style.display = (MODEL.experiments.length ?
+        'inline-block' : 'none');
+*/
+    // Only show other buttons if the set of filtered entities is not empty.
     if(n > 0) {
       this.copy_btn.style.display = 'inline-block';
       if(CHART_MANAGER.visible && CHART_MANAGER.chart_index >= 0) {
@@ -351,12 +395,26 @@ class Finder {
           this.chart_btn.style.display = 'inline-block';
         }
       }
+      // NOTE: Enable editing and tabular view only when filter results
+      // in a single entity type.
       n = this.entityGroup.length;
       if(n > 0) {
         this.edit_btn.title = 'Edit attributes of ' +
             pluralS(n, this.entities[0].type.toLowerCase());
         this.edit_btn.style.display = 'inline-block';
+        this.table_btn.style.display = 'inline-block';
       }
+    }
+    // Show toggle button status.
+    if(this.tabular_view) {
+      this.table_btn.classList.add('stay-activ');
+    } else {
+      this.table_btn.classList.remove('stay-activ');
+    }
+    if(this.experiment_view) {
+      this.experiment_btn.classList.add('stay-activ');
+    } else {
+      this.experiment_btn.classList.remove('stay-activ');
     }
     this.updateRightPane();
   }
@@ -379,10 +437,10 @@ class Finder {
     if(this.filtered_types.length === 1 && ft !== 'E') {
       for(const e of this.entities) {
         // Exclude "no actor" and top cluster.
-        if(e.name && e.name !== '(no_actor)' && e.name !== '(top_cluster)' &&
+        if(!e.name || (e.name !== '(no_actor)' && e.name !== '(top_cluster)' &&
             // Also exclude actor cash flow data products because
             // many of their properties should not be changed.
-            !e.name.startsWith('$')) {
+            !e.name.startsWith('$'))) {
           eg.push(e);
         }
       }
@@ -406,7 +464,13 @@ class Finder {
     for(const a of ca) {
       html += `<option value="${a}">${VM.attribute_names[a]}</option>`;
     }
-    md.element('attribute').innerHTML = html;
+    if(html) {
+      md.element('attr-of').style.display = 'inline-block';
+      md.element('attribute').innerHTML = html;
+    } else {
+      md.element('attr-of').style.display = 'none';
+      md.element('attribute').innerHTML = '';
+    }
     md.element('count').innerText = et;
     md.show();
   }
@@ -440,7 +504,33 @@ class Finder {
     md.hide();
   }
   
+  scrollEntityArea() {
+    // When in tabular view, the data table must scroll along with the
+    // entity table.
+    if(this.tabular_view) {
+      this.data_scroll_area.scrollTop = this.entity_scroll_area.scrollTop;
+    }
+  }
+  
+  scrollDataArea() {
+    // When in tabular view, the entity table must scroll along with the
+    // data table.
+    if(this.tabular_view) {
+      this.entity_scroll_area.scrollTop = this.data_scroll_area.scrollTop;
+    }
+  }
+  
   updateRightPane() {
+    // Right pane can display attribute data...
+    if(this.tabular_view) {
+      this.data_pane.style.display = 'block';
+      this.updateTabularView();
+      return;
+    }
+    // ... or no data...
+    this.data_pane.style.display = 'none';
+    this.data_table.innerHTML = '';
+    // ... but information on the occurence of the selected entity.
     const
         se = this.selected_entity,
         occ = [], // list with occurrences (clusters, processes or charts)
@@ -621,6 +711,152 @@ class Finder {
     this.expression_table.innerHTML = el.join('');
     document.getElementById('finder-expression-hdr').innerHTML =
         pluralS(el.length, 'expression');
+  }
+
+  toggleViewAttributes() {
+    // Show/hide tabular display of entity attributes.
+    this.tabular_view = !this.tabular_view;
+    this.updateRightPane();
+    if(this.tabular_view) {
+      this.table_btn.classList.add('stay-activ');
+    } else {
+      this.table_btn.classList.remove('stay-activ');
+    }
+  }
+  
+  toggleViewExperiment() {
+    // Switch between model entities and experiment outcomes.
+    this.experiment_view = !this.experiment_view;
+    if(this.experiment_view) this.tabular_view = true;
+    this.updateDialog();
+  }
+  
+  updateTabularView() {
+    // Display data values when tabular view is active.
+    if(!this.entities.length ||
+        (this.filtered_types.length !== 1 && !this.experiment_view)) {
+      this.data_table.innerHTML = '';
+      return;
+    }
+    const
+        special = ['\u221E', '-\u221E', '\u2047', '\u00A2'],
+        rows = [],
+        etl = this.entities[0].typeLetter,
+        data_list = [],
+        data = {};
+    // Collect data and sort list by name, so it coresponds with the
+    // entities listed in the left pane.
+    if(this.experiment_view) {
+      // Get selected runs.
+      const
+          x = EXPERIMENT_MANAGER.selected_experiment,
+          runs = (x ? x.chart_combinations : []);
+      if(!runs.length) {
+        UI.notify('');
+        this.data_table.innerHTML = '';
+        return;
+      }
+      // Add aray for each run.
+      data[0] = [];
+      for(const e of this.entities) {
+        const run_data = {name: e.object.displayName};
+        // Add value for each run.
+        data_list.push(run_data);
+      }
+      data_list.sort((a, b) => UI.compareFullNames(a.name, b.name));
+    } else {
+      for(const e of this.entities) data_list.push(e.attributes);
+      data_list.sort((a, b) => UI.compareFullNames(a.name, b.name));
+      // The data "matrix" then holds values as an array per attribute code.
+      // NOTE: Datasets are special in that their data is a multi-line
+      // string of tab-separated key-value pairs where the first pair has no
+      // key (dataset default value) and the other pairs have a dataset
+      // modifier selector as key.
+      if(etl === 'D') {
+        // First compile the list of unique selectors.
+        const sel = [];
+        for(const ed of data_list) {
+          // NOTE: Dataset modifier lines start with a tab.
+          const lines = ed.D.split('\n\t');
+          // Store default value in entity data object for second iteration.
+          ed.dv = VM.sig4Dig(safeStrToFloat(lines[0].trim(), 0));
+          for(let i = 1; i < lines.length; i++) {
+            const pair = lines[i].split('\t');
+            if(pair[0]) {
+              addDistinct(pair[0], sel);
+              // Store pair value in entity data object for second iteration.
+              ed[pair[0]] = (pair.length > 1 ? pair[1] : '');
+            }
+          }
+        }
+        sel.sort(compareSelectors);
+        // Initialize arrays for default values and for selectors.
+        // NOTE: The parentheses of '(default)'ensure that there is no doubling
+        // with a selector defined by the modeler.
+        data['(default)'] = [];
+        for(const s of sel) data[s] = [];
+        // Perform second iteration.
+        for(const ed of data_list) {
+          data['(default)'].push(ed.dv);
+          for(const s of sel) {
+            if(ed[s]) {
+              const f = parseFloat(ed[s]);
+              data[s].push(isNaN(f) ? ed[s] : VM.sig4Dig(f));
+            } else {
+              // Empty string to denote "no modifier => not calculated". 
+              data[s].push('\u2047');
+            }
+          }
+        }
+      } else {
+        // Initialize array per selector.
+        let atcodes = VM.attribute_codes[etl];
+        if(!MODEL.solved) atcodes = complement(atcodes, VM.level_based_attr);
+        if(!MODEL.infer_cost_prices) atcodes = complement(atcodes, ['CP', 'HCP', 'SOC']);
+        for(const ac of atcodes) data[ac] = [];
+        for(const ed of data_list) {
+          for(const ac of atcodes) {
+            let v = ed[ac];
+            if(v === '') {
+              // Empty strings denote "undefined". 
+              v = '\u2047';
+            // Keep special values such as infinity and exception codes.
+            } else if(special.indexOf(v) < 0) {
+              // When model is not solved, expression values will be the
+              // expression string, and this is likely to be not parsable. 
+              const f = parseFloat(v);
+              if(isNaN(f)) {
+                v = '\u2297'; // Circled X to denote "not computed".
+              } else {
+                v = VM.sig4Dig(parseFloat(f.toPrecision(4)));
+              }
+            }
+            data[ac].push(v);
+          }
+        }
+      }
+    }
+    // Create header.
+    const
+        keys = Object.keys(data),
+        row = [],
+        perc = (97 / keys.length).toPrecision(3),
+        style = `min-width: ${perc}%; max-width: ${perc}%`;
+    for(const k of keys) {
+      row.push(`<td style="${style}">${k}</td>`);
+    }
+    this.data_header.innerHTML = '<tr>' + row.join('') + '</tr>';
+    // Format each array with uniform decimals.
+    for(const k of keys) uniformDecimals(data[k]);
+    const n = data_list.length;
+    for(let index = 0; index < n; index++) {
+      const row = [];
+      for(const k of keys) {
+        row.push(`<td style="${style}">${data[k][index]}</td>`);
+      }
+      rows.push('<tr>' + row.join('') + '</tr>');
+    }
+    this.data_table.innerHTML = rows.join('');
   }
   
   drag(ev) {
@@ -977,9 +1213,11 @@ class Finder {
     // Also update the draggable dialogs that may be affected.
     UI.updateControllerDialogs('CDEFIJX');
   }
-
+  
   copyAttributesToClipboard(shift) {
     // Copy relevant entity attributes as tab-separated text to clipboard.
+    // When copy button is Shift-clicked, only data for the selected entity
+    // is copied.
     // NOTE: All entity types have "get" method `attributes` that returns an
     // object that for each defined attribute (and if model has been
     // solved also each inferred attribute) has a property with its value.

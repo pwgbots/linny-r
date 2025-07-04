@@ -189,11 +189,16 @@ function uniformDecimals(data) {
     }
     maxi = Math.max(maxi, ss[0].length);
   }
-  // STEP 2: Convert the data to a uniform format
+  // STEP 2: Convert the data to a uniform format.
+  const special = ['\u221E', '-\u221E', '\u2047', '\u00A2'];
   for(let i = 0; i < data.length; i++) {
-    const f = parseFloat(data[i]);
+    const
+        v = data[i],
+        f = parseFloat(v);
     if(isNaN(f)) {
-      data[i] = '\u26A0'; // Unicode warning sign
+      // Keep special values such as infinity, and replace error values
+      // by Unicode warning sign.
+      if(special.indexOf(v) < 0) data[i] = '\u26A0'; 
     } else if(maxe > 0) {
     // Convert ALL numbers to exponential notation with two decimals (1.23e+7)
       const v = f.toExponential(2);
@@ -405,51 +410,59 @@ function patternList(str) {
 
 function patternMatch(str, patterns) {
   // Returns TRUE when `str` matches the &|^-pattern.
-  // NOTE: If a pattern starts with equals sign = then `str` must
-  // equal the rest of the pattern to match; if it starts with a tilde
-  // ~ then `str` must start with the rest of the pattern to match.
+  // NOTE: If a pattern starts with an opening bracket [ then `str` must
+  // start with the rest of the pattern to match. If it ends with a closing
+  // bracket ] then `str` must end with the first part of the pattern.
+  // In this way, [pattern] denotes that `str` should exactly match
   for(let i = 0; i < patterns.length; i++) {
     const p = patterns[i];
     // NOTE: `p` is an OR sub-pattern that tests for a set of "plus"
     // sub-sub-patterns (all of which should match) and a set of "min"
     // sub-sub-patters (all should NOT match)
     let pm,
+        swob,
+        ewcb,
         re,
         match = true;
     for(let j = 0; match && j < p.plus.length; j++) {
       pm = p.plus[j];
-      if(pm.startsWith('=')) {
-        match = (str === pm.substring(1));
-      } else if(pm.startsWith('~')) {
+      swob = pm.startsWith('[');
+      ewcb = pm.endsWith(']');
+      if(swob && ewcb) {
+        match = (str === pm.slice(1, -1));
+      } else if(swob) {
         match = str.startsWith(pm.substring(1));
+      } else if(ewcb) {
+        match = str.endsWith(pm.slice(0, -1));
       } else {
         match = (str.indexOf(pm) >= 0);
       }
-      // If no match, check whether pattern contains wildcards 
+      // If no match, check whether pattern contains wildcards.
       if(!match && pm.indexOf('#') >= 0) {
         // If so, rematch using regular expression that tests for a
-        // number or a ?? wildcard
+        // number or a ?? wildcard.
         let res = pm.split('#');
         for(let i = 0; i < res.length; i++) {
           res[i] = escapeRegex(res[i]);
         }
         res = res.join('(\\d+|\\?\\?)');
-        if(pm.startsWith('=')) {
-          res = '^' + res + '$';
-        } else if(pm.startsWith('~')) {
-          res = '^' + res;
-        }
+        if(swob) res = '^' + res;
+        if(ewcb) res += '$';
         re = new RegExp(res, 'g');
         match = re.test(str);
       }
     }
-    // Any "min" match indicates NO match for this sub-pattern,
+    // Any "min" match indicates NO match for this sub-pattern.
     for(let j = 0; match && j < p.min.length; j++) {
       pm = p.min[j];
-      if(pm.startsWith('=')) {
-        match = (str !== pm.substring(1));
-      } else if(pm.startsWith('~')) {
+      swob = pm.startsWith('[');
+      ewcb = pm.endsWith(']');
+      if(swob && ewcb) {
+        match = (str !== pm.slice(1, -1));
+      } else if(swob) {
         match = !str.startsWith(pm.substring(1));
+      } else if(ewcb) {
+        match = !str.endsWith(pm.slice(0, -1));
       } else {
         match = (str.indexOf(pm) < 0);
       }
@@ -461,11 +474,8 @@ function patternMatch(str, patterns) {
           res[i] = escapeRegex(res[i]);
         }
         res = res.join('(\\d+|\\?\\?)');
-        if(pm.startsWith('=')) {
-          res = '^' + res + '$';
-        } else if(pm.startsWith('~')) {
-          res = '^' + res;
-        }
+        if(swob) res = '^' + res;
+        if(ewcb) res += '$';
         re = new RegExp(res, 'g');
         match = !re.test(str);
       }

@@ -3078,6 +3078,7 @@ class GUIController extends Controller {
       MODEL.t = Math.max(1, MODEL.t - dt);
       UI.updateTimeStep();
       UI.drawDiagram(MODEL);
+      if(FINDER.visible && FINDER.tabular_view) FINDER.updateTabularView();
     }
   }
   
@@ -3088,6 +3089,7 @@ class GUIController extends Controller {
       MODEL.t = Math.min(MODEL.end_period - MODEL.start_period + 1, MODEL.t + dt);
       UI.updateTimeStep();
       UI.drawDiagram(MODEL);
+      if(FINDER.visible && FINDER.tabular_view) FINDER.updateTabularView();
     }
   }
   

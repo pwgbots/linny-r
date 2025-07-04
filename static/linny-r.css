@@ -1167,6 +1167,10 @@ table.power-flow th:not(:first-child) {
   filter: brightness(160%);
 }
 
+#settings-power-btn.ignore {
+  filter: hue-rotate(230deg);
+}
+
 #password-dlg {
   width: min-content;
   height: min-content;
@@ -2660,6 +2664,7 @@ div.io-box {
 #finder-table,
 #finder-item-table,
 #finder-expression-table,
+#finder-data-table,
 #boundline-data-series-table,
 #boundline-data-sel-table,
 #restore-table {
@@ -5160,6 +5165,8 @@ img.finder {
 
 #finder-edit-btn,
 #finder-chart-btn,
+#finder-experiment-btn,
+#finder-table-btn,
 #finder-copy-btn {
   height: 15px;
   width: 15px;
@@ -5211,9 +5218,46 @@ img.finder {
   border-top: 1px solid Silver;
 }
 
+#finder-data-pane {
+  position: absolute;
+  background-color: inherit;
+  top: 23px;
+  left: calc(50% + 4px);
+  width: calc(50% - 4px);
+  height: calc(100% - 30px);
+}
+
+#finder-data-header {
+  height: 20px;
+  font-weight: bold;
+  text-align: right;
+  width: 100%
+}
+
+#finder-data-scroll-area {
+  width: calc(100% - 2px);
+  height: calc(100% - 32px);
+  overflow-y: auto;
+  border-top: 1px solid Silver;
+}
+
+#finder-data-table {
+  text-align: right;
+}
+
+#finder-data-header > tbody > tr > td:last-child,
+#finder-data-table > tbody > tr > td:last-child {
+  padding-right: 3%;
+}
+
 #confirm-add-chart-variables-dlg {
   width: min-content;
   height: min-content;
+  min-width: 135px;
+}
+
+#confirm-add-chart-variables-attr-of {
+  display: inline-block;
 }
 
 #confirm-add-chart-variables-attribute {

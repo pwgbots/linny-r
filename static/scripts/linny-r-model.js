@@ -7929,6 +7929,7 @@ class Process extends Node {
     const a = {name: this.displayName};
     a.LB = this.lower_bound.asAttribute;
     a.UB = (this.equal_bounds ? a.LB : this.upper_bound.asAttribute);
+    if(this.grid) a.LB = -a.UB;
     a.IL = this.initial_level.asAttribute;
     a.LCF = this.pace_expression.asAttribute;
     if(MODEL.solved) {
@@ -8862,13 +8863,13 @@ class Link {
   }
 
   get identifier() {
-    // NOTE: link IDs are based on the node codes rather than IDs, as this
-    // prevents problems when nodes are renamed
+    // NOTE: Link IDs are based on the node codes rather than IDs, as this
+    // prevents problems when nodes are renamed.
     return this.from_node.code + '___' + this.to_node.code;
   }
 
   get attributes() {
-    // NOTE: link is named by its tab-separated node names
+    // NOTE: Link is named by its tab-separated node names.
     const a = {name: this.from_node.displayName + '\t' + this.to_node.displayName};
     a.R = this.relative_rate.asAttribute;
     if(MODEL.infer_cost_prices) a.SOC = this.share_of_cost;
@@ -9221,7 +9222,7 @@ class Dataset {
   }
   
   get attributes() {
-    // NOTE: modifiers are appended as additional lines of text
+    // NOTE: Modifiers are appended as additional lines of text.
     const a = {name: this.displayName};
     a.D = '\t' + (this.vector ? this.vector[MODEL.t] : this.default_value);
     for(let k in this.modifiers) if(this.modifiers.hasOwnProperty(k)) {
@@ -13050,7 +13051,7 @@ class Constraint {
   }
 
   get typeLetter() {
-    return 'C';
+    return 'B';
   }
 
   get identifier() {

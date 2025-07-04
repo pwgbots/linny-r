@@ -1364,7 +1364,10 @@ class ExpressionParser {
       const
           parts = name.split(UI.PREFIXER),
           tail = parts.pop();
-      if(parts.length > 0) {
+      if(!tail && parts.length) {
+        // Prefix without its trailing colon+space could identify an entity.
+        obj = MODEL.objectByID(UI.nameToID(parts.join(UI.PREFIXER)));
+      } else if(parts.length > 0) {
         // Name contains at least one prefix => last part *could* be a
         // method name, so look it up after adding a leading colon.
         const method = MODEL.equationByID(UI.nameToID(':' + tail));

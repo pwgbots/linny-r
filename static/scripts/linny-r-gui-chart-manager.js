@@ -209,7 +209,7 @@ class GUIChartManager extends ChartManager {
     this.variable_index = -1;
     this.stretch_factor = 1;
     this.drawing_graph = false;
-    // Clear the model-related DOM elements
+    // Clear the model-related DOM elements.
     this.chart_selector.innerHTML = '';
     this.variables_table.innerHTML = '';
     this.options_shown = true;
