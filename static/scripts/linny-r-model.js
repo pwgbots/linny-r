@@ -9355,22 +9355,9 @@ class Dataset {
   }
   
   get dataString() {
-    // Data is stored simply as semicolon-separated floating point numbers,
-    // with N-digit precision to keep model files compact (default: N = 8).
-    let d = [];
-    // NOTE: Guard against empty strings and other invalid data.
-    for(const v of this.data) if(v) {
-      try {
-        // Convert number to string with the desired precision.
-        const f = v.toPrecision(CONFIGURATION.dataset_precision);
-        // Then parse it again, so that the number will be represented
-        // (by JavaScript) in the most compact representation.
-        d.push(parseFloat(f));
-      } catch(err) {
-        console.log('-- Notice: dataset', this.displayName, 'has invalid data', v);
-      }
-    }
-    return d.join(';');
+    // NOTE: As of version 2.1.7, data is stored as semicolon-separated
+    // B62-encoded numbers.
+    return packVector(this.data);
   }
   
   get propertiesString() {
@@ -9389,10 +9376,17 @@ class Dataset {
     return '&nbsp;(' + time_prop + (this.periodic ? '&nbsp;\u21BB' : '') + ')'; 
   }
   
-  unpackDataString(str) {
+  unpackDataString(str, b62=true) {
     // Convert semicolon-separated data to a numeric array.
+    // NOTE: When b62 is FALSE, data is not B62-encoded.
     this.data.length = 0;
-    if(str) for(const n of str.split(';')) this.data.push(parseFloat(n));
+    if(str) {
+      if(b62) {
+        this.data = unpackVector(str);
+      } else {
+        for(const n of str.split(';')) this.data.push(parseFloat(n));
+      }
+    }
     this.computeVector();
     this.computeStatistics();
   }
@@ -9611,24 +9605,31 @@ class Dataset {
       n = MODEL.black_box_entities[id];
       cmnts = '';
     }
-    const xml = ['<dataset', p, '><name>', xmlEncoded(n),
-        '</name><notes>', cmnts,
-        '</notes><default>', this.default_value,
-        '</default><unit>', xmlEncoded(this.scale_unit),
-        '</unit><time-scale>', this.time_scale,
-        '</time-scale><time-unit>', this.time_unit,
-        '</time-unit><method>', this.method,
-        '</method><url>', xmlEncoded(this.url),
-        '</url><data>', xmlEncoded(this.dataString),
-        '</data><modifiers>', ml.join(''),
-        '</modifiers><default-selector>', xmlEncoded(this.default_selector),
-        '</default-selector></dataset>'].join('');
-    return xml;
+    const
+        data = xmlEncoded(this.dataString),
+        xml = ['<dataset', p, '>',
+            '<name>', xmlEncoded(n),
+            '</name><unit>', xmlEncoded(this.scale_unit),
+            '</unit><time-scale>', this.time_scale,
+            '</time-scale><time-unit>', this.time_unit,
+            '</time-unit><method>', this.method,
+            '</method>'];
+    // NOTE: Omit empty fields to reduce model file size.
+    if(cmnts) xml.push('<notes>', cmnts, '</notes>');
+    if(this.default_value) xml.push('<default>',
+        this.default_value, '</default>');
+    if(this.url) xml.push('<url>', xmlEncoded(this.url), '</url>');
+    if(data) xml.push('<data b62="1">', data, '</data>');
+    if(ml.length) xml.push('<modifiers>', ml.join(''), '</modifiers>');
+    if(this.default_selector) xml.push('<default-selector>',
+        xmlEncoded(this.default_selector), '</default-selector>');
+    xml.push('</dataset>');
+    return xml.join('');
   }
 
   initFromXML(node) {
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
-    this.default_value = safeStrToFloat(nodeContentByTag(node, 'default'));
+    this.default_value = safeStrToFloat(nodeContentByTag(node, 'default'), 0);
     this.scale_unit = xmlDecoded(nodeContentByTag(node, 'unit')) || '1';
     this.time_scale = safeStrToFloat(nodeContentByTag(node, 'time-scale'), 1);
     this.time_unit = nodeContentByTag(node, 'time-unit') ||
@@ -9643,7 +9644,14 @@ class Dataset {
     if(this.url) {
       FILE_MANAGER.getRemoteData(this, this.url);
     } else {
-      this.unpackDataString(xmlDecoded(nodeContentByTag(node, 'data')));
+      let data = '',
+          b62 = false;
+      const cn = childNodeByTag(node, 'data');
+      if(cn) {
+        data = nodeContent(cn);
+        b62 = (nodeParameterValue(cn, 'b62') === '1');
+      }
+      this.unpackDataString(xmlDecoded(data), b62);
     }
     const n = childNodeByTag(node, 'modifiers');
     if(n) {
@@ -11372,83 +11380,30 @@ class ExperimentRunResult {
     return (this.attribute ? dn + '|' + this.attribute : dn);
   }
 
-  get vectorString() {
-    // Vector is coded as semicolon-separated floating point numbers
-    // reduced to N-digit precision to keep model files more compact.
-    // By default, N = 6; this can be altered in linny-r-config.js.
-    // To represent "sparse" vectors more compactly, sequences of
-    // identical values are encoded as NxF where N is the length of
-    // the sequence and F the numerical value, e.g., "17x0.4;0.2;7x0"
-    if(this.was_ignored) return '';
-    let prev = '',
-        cnt = 1;
-    const vl = [];
-    for(const v of this.vector) {
-      // Format number with desired precision.
-      const f = v.toPrecision(CONFIGURATION.results_precision);
-      // While value is same as previous, do not store, but count.
-      if(f === prev) {
-        cnt++;
-      } else {
-        if(cnt > 1) {
-          // More than one => "compress".
-          // NOTE: Parse so JavaScript will represent it most compactly.
-          vl.push(cnt + 'x' + parseFloat(prev));
-          cnt = 1;
-        } else if(prev) {
-          vl.push(parseFloat(prev));
-        }
-        prev = f;
-      }
-    }
-    // Add the last "batch" of numbers.
-    if(cnt > 1) {
-      // More than one => "compress".
-      // NOTE: Parse so JavaScript will represent it most compactly.
-      vl.push(cnt + 'x' + parseFloat(prev));
-      cnt = 1;
-    } else if(prev) {
-      vl.push(parseFloat(prev));
-    }
-    return vl.join(';');
-  }
-  
-  unpackVectorString(str) {
-    // Convert semicolon-separated data to a numeric array.
-    this.vector = [];
-    if(str && !this.was_ignored) {
-      for(const parts of str.split(';')) {
-        const tuple = parts.split('x');
-        if(tuple.length === 2) {
-          const
-              n = parseInt(tuple[0]),
-              f = parseFloat(tuple[1]);
-          for(let i = 0; i < n; i++) {
-            this.vector.push(f);
-          }
-        } else {
-          this.vector.push(parseFloat(tuple[0]));
-        }
-      }
-    }
-  }
-
   get asXML() {
-    return ['<run-result', (this.x_variable ? ' x-variable="1"' : ''),
-      (this.was_ignored ? ' ignored="1"' : ''),
-      '><object-id>', xmlEncoded(this.object_id),
-      '</object-id><attribute>', xmlEncoded(this.attribute),
-      '</attribute><count>', this.N,
-      '</count><sum>', this.sum,
-      '</sum><mean>', this.mean,
-      '</mean><variance>', this.variance,
-      '</variance><minimum>', this.minimum,
-      '</minimum><maximum>', this.maximum,
-      '</maximum><non-zero-tally>', this.non_zero_tally,
-      '</non-zero-tally><last>', this.last,
-      '</last><exceptions>', this.exceptions,
-      '</exceptions><vector>', this.vectorString,
-      '</vector></run-result>'].join('');
+    const
+        data = (this.was_ignored ? '' : packVector(this.vector)),
+        xml = ['<run-result',
+            (this.x_variable ? ' x-variable="1"' : ''),
+            (this.was_ignored ? ' ignored="1"' : ''),
+            '><object-id>', xmlEncoded(this.object_id),
+            '</object-id><attribute>', xmlEncoded(this.attribute),
+            '</attribute>'];
+    // NOTE: Reduce model size by saving only non-zero statistics.
+    if(this.N) xml.push('<count>', this.N, '</count>');
+    if(this.sum) xml.push('<sum>', this.sum, '</sum>');
+    if(this.mean) xml.push('<mean>', this.mean, '</mean>');
+    if(this.variance) xml.push('<variance>', this.variance, '</variance>');
+    if(this.minimum) xml.push('<minimum>', this.minimum, '</minimum>');
+    if(this.maximum) xml.push('<maximum>', this.maximum, '</maximum>');
+    if(this.non_zero_tally) xml.push('<non-zero-tally>',
+        this.non_zero_tally, '</non-zero-tally>');
+    if(this.last) xml.push('<last>', this.last, '</last>');
+    if(this.exceptions) xml.push('<exceptions>',
+        this.exceptions, '</exceptions>');
+    if(data) xml.push('<vector b62="1">', data, '</vector>');
+    xml.push('</run-result>');
+    return xml.join('');
   }
 
   initFromXML(node) {
@@ -11461,16 +11416,22 @@ class ExperimentRunResult {
     if(this.object_id === UI.EQUATIONS_DATASET_ID &&
         !earlierVersion(MODEL.version, '1.3.0')) attr = xmlDecoded(attr);
     this.attribute = attr;
-    this.N = safeStrToInt(nodeContentByTag(node, 'count'));
-    this.sum = safeStrToFloat(nodeContentByTag(node, 'sum'));
-    this.mean = safeStrToFloat(nodeContentByTag(node, 'mean'));
-    this.variance = safeStrToFloat(nodeContentByTag(node, 'variance'));
-    this.minimum = safeStrToFloat(nodeContentByTag(node, 'minimum'));
-    this.maximum = safeStrToFloat(nodeContentByTag(node, 'maximum'));
-    this.non_zero_tally = safeStrToInt(nodeContentByTag(node, 'non-zero-tally'));
-    this.last = safeStrToInt(nodeContentByTag(node, 'last'));
-    this.exceptions = safeStrToInt(nodeContentByTag(node, 'exceptions'));
-    this.unpackVectorString(nodeContentByTag(node, 'vector'));
+    this.N = safeStrToInt(nodeContentByTag(node, 'count'), 0);
+    this.sum = safeStrToFloat(nodeContentByTag(node, 'sum'), 0);
+    this.mean = safeStrToFloat(nodeContentByTag(node, 'mean'), 0);
+    this.variance = safeStrToFloat(nodeContentByTag(node, 'variance'), 0);
+    this.minimum = safeStrToFloat(nodeContentByTag(node, 'minimum'), 0);
+    this.maximum = safeStrToFloat(nodeContentByTag(node, 'maximum'), 0);
+    this.non_zero_tally = safeStrToInt(nodeContentByTag(node, 'non-zero-tally'), 0);
+    this.last = safeStrToFloat(nodeContentByTag(node, 'last'), 0);
+    this.exceptions = safeStrToInt(nodeContentByTag(node, 'exceptions'), 0);
+    const cn = childNodeByTag(node, 'vector');
+    if(cn && !this.was_ignored) {
+      const b62 = nodeParameterValue(cn, 'b62') === '1';
+      this.vector = unpackVector(nodeContent(cn), b62);
+    } else {
+      this.vector = [];
+    }
   }
   
   valueAtModelTime(t, mtsd, method, periodic) {
@@ -11597,7 +11558,7 @@ class ExperimentRun {
       UI.warn(`Run title "${t}" does not match experiment title "` +
           this.experiment.title + '"');
     }
-    this.combi = nodeContentByTag(node, 'x-combi').split(' ');
+    this.combination = nodeContentByTag(node, 'x-combi').split(' ');
     this.time_steps = safeStrToInt(nodeContentByTag(node, 'time-steps'));
     this.time_step_duration = safeStrToFloat(nodeContentByTag(node, 'delta-t'));
     let n = childNodeByTag(node, 'results');

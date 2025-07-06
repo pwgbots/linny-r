@@ -53,6 +53,172 @@ function postData(obj) {
 // Functions that convert numbers to strings, or strings to numbers
 //
 
+const b62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+function posIntToB62(n) {
+  // Return the radix-62 encoding of positive integer value `n`.
+  let s = '';
+  while(n > 0) {
+    s = b62.charAt(n % 62) + s;
+    n = Math.floor(n / 62);
+  }
+  return s;
+}
+
+function B62ToInt(s) {
+  // Return the value of a B62-encoded integer, or -1 if `s` contains an
+  // invalid character.
+  const digits = s.split('');
+  let n = 0;
+  for(const d of digits) {
+    const index = b62.indexOf(d);
+    if(index < 0) return -1;
+    n = n * 62 + index;
+  }
+  return n;
+}
+
+function packFloat(f) {
+  // Return floating point number `f` in a compact string notation.
+  // The first character encodes whether `f` is an integer (then no exponent),
+  // whether the sign of `f` is + or -, and whether the sign of the exponent
+  // (if any) is + or - in the following manner:
+  //      (no leading special character) => positive integer (no exponent)
+  //   -  negative integer (no exponent)
+  //   ^  positive number, positive exponent
+  //   _  negative number, positive exponent
+  //   ~  positive number, negative exponent
+  //   =  negative number, negative exponent
+const oldf = f;
+  if(!f) return '0';
+  let sign = '',
+      mant = '',
+      exp = 0;
+  if(f < 0.0) {
+    sign = '-';
+    f = -f;
+  }
+  const rf = Math.round(f);
+  // When number is integer, it has no exponent part.
+  if(rf === f) return sign + posIntToB62(rf);
+  const me = f.toExponential().split('e');
+  // Remove the decimal period from the mantissa.
+  mant = posIntToB62(parseInt(me[0].replace('.', '')));
+  // Determine the exponent part and its sign.
+  exp = parseInt(me[1]);
+  if(exp < 0) {
+    exp = -exp;
+    sign = (sign ? '=' : '~');
+  } else {
+    sign = (sign ? '_' : '^');
+  }
+  // NOTE: Exponent is always codes as a single character. This limits
+  // its value to 61, which for Linny-R suffices to code even its error
+  // values (highest error code exponent is +50).
+  return sign + mant + (exp ? posIntToB62(Math.min(exp, 61)) : '0');
+}
+
+function unpackFloat(s) {
+  // Return the number X that was encoded using packFloat(X).
+  // NOTE: When decoding fails, -1e+48 is returned to signal #INVALID.
+  if(s === '0') return 0;
+  const
+      INVALID = -1e+48,
+      ss = s.split('');
+  const index = '-^_~='.indexOf(ss[0]);
+  if(index < 1) {
+    // No exponent => get the absolute integer value.
+    const n = B62ToInt(s.substring(index + 1));
+    if(n < 0) return INVALID;
+    // Return the signed integer value.
+    return (index ? n : -n);
+  }
+  // Now the last character codes the exponent.
+  const
+      // Odd index (1 and 3) indicates positive number.
+      sign = (index % 2 ? '' : '-'),
+      // Low index (1 and 2) indicates positive exponent.
+      esign = (index < 3 ? 'e+' : 'e-');
+  // Remove the sign character.
+  ss.shift();
+  // Get and remove the exponent character, and decode it.
+  let exp = B62ToInt(ss.pop());
+  if(exp < 0) return INVALID; 
+  exp = esign + exp.toString();
+  let mant = B62ToInt(ss.join(''));
+  if(mant < 0) return INVALID;
+  mant = mant.toString();
+  // NOTE: No decimal point if mantissa is a single decimal digit.
+  if(mant.length > 1) mant = mant.slice(0, 1) + '.' + mant.slice(1);
+  return parseFloat(sign + mant + exp);
+}
+
+function packVector(vector) {
+  // Vector is coded as semicolon-separated B62-encoded floating
+  // point numbers (no precision loss).
+  // To represent "sparse" vectors more compactly, sequences of
+  // identical values are encoded as N*F where N is the length of
+  // the sequence and F the B62-encoded numerical value.
+  let prev = false,
+      cnt = 1;
+  const vl = [];
+  for(const v of vector) {
+    // While value is same as previous, do not store, but count.
+    if(v === prev) {
+      cnt++;
+    } else {
+      const b62 = packFloat(v);
+      if(cnt > 1) {
+        // More than one => "compress".
+        vl.push(cnt + '*' + b62);
+        cnt = 1;
+      } else if(prev !== false) {
+        vl.push(b62);
+      }
+      prev = v;
+    }
+  }
+  if(prev !== false) {
+    const b62 = packFloat(prev);
+    // Add the last "batch" of numbers.
+    if(cnt > 1) {
+      // More than one => "compress".
+      vl.push(cnt + '*' + b62);
+    } else {
+      vl.push(b62);
+    }
+  }
+  return vl.join(';');
+}
+ 
+function unpackVector(str, b62=true) {
+  // Convert semicolon-separated data to a numeric array.
+  // NOTE: Until version 2.1.7, numbers were represented in standard
+  // decimal notation with limited precision. From v2.1.7 onwards, numbers
+  // are B62-encoded. When `b62` is FALSE, the legacy decoding is used.
+  vector = [];
+  if(str) {
+    const
+        ss = str.split(';'),
+        multi = (b62 ? '*' : 'x'),
+        parse = (b62 ? unpackFloat : parseFloat);
+    for(const parts of ss) {
+      const tuple = parts.split(multi);
+      if(tuple.length === 2) {
+        const f = parse(tuple[1]);
+        let n = parseInt(tuple[0]);
+        while(n > 0) {
+          vector.push(f);
+          n--;
+        }
+      } else {
+        vector.push(parse(tuple[0]));
+      }
+    }
+  }
+  return vector;
+}
+
 function pluralS(n, s, special='') {
   // Returns string with noun `s` in singular only if `n` = 1
   // NOTE: third parameter can be used for nouns with irregular plural form

@@ -7249,14 +7249,14 @@ function VMI_push_run_result(x, args) {
       if(Array.isArray(rn)) {
         // Let the running experiment infer run number from selector list `rn`
         // and its own "active combination" of selectors.
-        rn = xp.matchingCombinationIndex(rn); 
+        rn = xp.matchingCombinationIndex(rn);
       } else if(rn < 0) {
         // Relative run number: use current run # + r (first run has number 0).
         if(xp === MODEL.running_experiment) {
           rn += xp.active_combination_index;
         } else if(xp.chart_combinations.length) {
           // Modeler has selected one or more runs in the viewer table.
-          // FInd the highest number of a selected run that has been performed.
+          // Find the highest number of a selected run that has been performed.
           let last = -1;
           for(const ccn of xp.chart_combinations) {
             if(ccn > last && ccn < xp.runs.length) last = ccn;

@@ -90,7 +90,8 @@ class GUIFileManager {
               if(!UI.hidden('series-modal')) {
                 DATASET_MANAGER.series_data.value = data.split(';').join('\n');
               } else {
-                dataset.unpackDataString(data);
+                // NOTE: FALSE indicates that data is *not* B62-encoded.
+                dataset.unpackDataString(data, false);
               }
             }
             // NOTE: remove dataset from the "loading" list

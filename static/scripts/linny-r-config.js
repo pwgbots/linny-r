@@ -11,7 +11,7 @@ warning or information messages are displayed.
 */
 
 /*
-Copyright (c) 2017-2024 Delft University of Technology
+Copyright (c) 2017-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -41,7 +41,7 @@ const CONFIGURATION = {
     // To keep model files compact, floating point values in datasets and run
     // results are stored with a limited number of significant digits
     dataset_precision: 8,
-    results_precision: 6,
+    results_precision: 8,
     // Default properties for new models
     default_currency_unit: 'EUR',
     default_time_unit: 'hour',
