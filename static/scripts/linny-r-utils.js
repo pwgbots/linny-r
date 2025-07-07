@@ -160,25 +160,27 @@ function packVector(vector) {
   // identical values are encoded as N*F where N is the length of
   // the sequence and F the B62-encoded numerical value.
   let prev = false,
-      cnt = 1;
+      cnt = 0;
   const vl = [];
   for(const v of vector) {
     // While value is same as previous, do not store, but count.
-    if(v === prev) {
+    // NOTE: JavaScript precision is about 15 decimals, so test for
+    // equality with this precision.
+    if(prev === false || Math.abs(v - prev) < 0.5e-14) {
       cnt++;
     } else {
-      const b62 = packFloat(v);
+      const b62 = packFloat(prev);
       if(cnt > 1) {
         // More than one => "compress".
         vl.push(cnt + '*' + b62);
         cnt = 1;
-      } else if(prev !== false) {
+      } else {
         vl.push(b62);
       }
-      prev = v;
     }
+    prev = v;
   }
-  if(prev !== false) {
+  if(cnt) {
     const b62 = packFloat(prev);
     // Add the last "batch" of numbers.
     if(cnt > 1) {
