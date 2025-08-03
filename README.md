@@ -1,5 +1,4 @@
-<img src="https://sysmod.tbm.tudelft.nl/linny-r/images/logo.png"
-     height="55px" alt="Linny-R">
+<img src="static/images/logo.png" height="55px" alt="Linny-R">
 
 Linny-R is an executable graphical specification language for mixed integer 
 <a href="https://en.wikipedia.org/wiki/Linear_programming"
@@ -319,7 +318,8 @@ You can then test the GUI by creating a simple model.
 Make one that has at least one process that outputs a product, 
 and this product must have a price or a set lower bound, otherwise the
 model will have no objective function.
-Then click on the _Solve_ button at the bottom of the left-hand tool bar.
+Then click on the _Solve_ button  <img src="static/images/solve.png" height="15px">
+at the bottom of the left-hand tool bar.
 The Linny-R icon in the upper left corner should start rotating, while the
 status bar at the bottom should display:
 
@@ -336,10 +336,11 @@ Solve block 1 a with SCIP
 </pre>
 
 To end a modeling session, you can shut down the server by clicking on the
-local host icon in the upper right corner of the Linny-R GUI in your browser,
+local host icon <img src="static/images/host-logo.png" height="15px">
+in the upper right corner of the Linny-R GUI in your browser,
 confirming that you want to leave, and then closing your browser (tab).
 If you do not shut down the server from the browser, you can also stop the
-server by repeatedly pressing ``Ctrl+C`` in the CLI.
+server by repeatedly pressing `Ctrl+C` in the CLI.
 
 ## Click-start for Linny-R
 
@@ -400,8 +401,11 @@ The sub-directories of this directory `user` are used by Linny-R to store files.
 * `channel` and `callback` will be used to interact with Linny-R via its _Receiver_ 
 * `data` will be used by the _Dataset Manager_ to locate datasets for which
   a path has been specified
-* `models` will contain models that you saved by Shift-clicking on the
-  _Save_ button, or using the keyboard shortcut Ctrl-Shift-S
+* `images` will contain images that you saved to your workspace by clicking on the
+  _Save-and-view diagram_ button or on the _Save-and-view chart_ button of the
+  _Chart manager_, or using the keyboard shortcut `Ctrl+G`.
+* `models` will contain models that you saved by `Shift`-clicking on the
+  _Save_ button, or using the keyboard shortcut `Ctrl+Shift+S`
 * `modules` will contain models stored in the `local host` _repository_
 * `reports` will contain text files with time series data and statistics in
   tab-separated format that can be imported or copy/pasted into Excel
