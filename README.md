@@ -318,7 +318,8 @@ You can then test the GUI by creating a simple model.
 Make one that has at least one process that outputs a product, 
 and this product must have a price or a set lower bound, otherwise the
 model will have no objective function.
-Then click on the _Solve_ button  <img src="static/images/solve.png" height="15px">
+Then click on the _Solve_ button
+<img src="static/images/solve.png" style="margin-bottom: -3px">
 at the bottom of the left-hand tool bar.
 The Linny-R icon in the upper left corner should start rotating, while the
 status bar at the bottom should display:
@@ -336,7 +337,7 @@ Solve block 1 a with SCIP
 </pre>
 
 To end a modeling session, you can shut down the server by clicking on the
-local host icon <img src="static/images/host-logo.png" height="15px">
+local host icon <img src="static/images/host-logo.png" style="margin-bottom: -3px">
 in the upper right corner of the Linny-R GUI in your browser,
 confirming that you want to leave, and then closing your browser (tab).
 If you do not shut down the server from the browser, you can also stop the
