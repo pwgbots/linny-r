@@ -751,7 +751,7 @@ class ExpressionParser {
     // For debugging, TRACE can be used to log to the console for
     // specific expressions and/or variables, for example:
     // this.TRACE = name.endsWith('losses') || this.ownerName.endsWith('losses');
-
+    
     if(this.TRACE) console.log(
         `TRACE: Parsing variable "${name}" in expression for`,
         this.ownerName, ' -->  ', this.expr);
@@ -1076,8 +1076,8 @@ class ExpressionParser {
         // but use the data".
         use_data = true;
       } else if(attr.startsWith('=')) {
-        // Attribute starting with = indicates cluster balance
-        // NOTE: empty string is considered as "any unit".
+        // Attribute starting with = indicates cluster balance.
+        // NOTE: Empty string is considered as "any unit".
         cluster_balance_unit = attr.substring(1).trim();
       } else if(attr.indexOf('?') >= 0 || attr.indexOf('#') >= 0) {
         // Wildcard selectors of dataset modifiers cannot be used.
@@ -1129,7 +1129,7 @@ class ExpressionParser {
       if(/^[ABCDELPQ]+\?/i.test(pat)) {
         pat = pat.split('?');
         et = pat[0].toUpperCase();
-        pat = pat.slice(1).join('=');
+        pat = pat.slice(1).join('?');
       }
       // Get the name pattern.
       pat = patternList(pat);
@@ -1148,12 +1148,15 @@ class ExpressionParser {
       for(const e of ewa) {
         if(patternMatch(e.displayName, pat)) {
           const mnr = matchingWildcardNumber(e.displayName, pat);
+          // NOTE: For datasets, pass TRUE to get the modifier expression
+          // if `attr` specifies a selector.
+          obj = e.attributeValue(attr, true);
           // NOTE: Attribute may be a single value, a vector, or an expression.
-          obj = e.attributeValue(attr);
           // If neither a single value nor a vector, it must be an expression.
           if(obj === null) obj = e.attributeExpression(attr);
           // Double-check: only add it if it is not NULL.
-          if(obj) {
+          // NOTE: It may be zero, so test for NULL!
+          if(obj !== null) {
             list.push(obj);
             if(mnr) {
               if(!wdict[mnr]) wdict[mnr] = [];
@@ -1662,7 +1665,7 @@ class ExpressionParser {
         this.is_static = false;
         this.log('dynamic because level-based attribute');
       } else if(new Set(arg0).size > 1) {
-        // Not all values qre equal => dynamic.
+        // Not all values are equal => dynamic.
         this.is_static = false;
         this.log('Dynamic because array contains different values'); 
         // console.log('ANOMALY: array for', obj.type, obj.displayName, obj, attr, arg0);
@@ -1691,9 +1694,11 @@ class ExpressionParser {
     } else {
       if(arg0 instanceof Expression) {
         this.is_static = this.is_static && arg0.isStatic;
+        if(this.TRACE) console.log('TRACE: arg[0] is the expression for',
+            arg0.variableName, '\nTRACE: Expression:', arg0.text);
+      } else {
+        if(this.TRACE) console.log('TRACE: arg[0] not an expression, but', arg0);
       }
-      if(this.TRACE) console.log('TRACE: arg[0] is the expression for',
-          arg0.variableName, '\nTRACE: Expression:', arg0.text);
       args = [arg0, anchor1, offset1, anchor2, offset2];
     }
     if(msg) {
@@ -2402,7 +2407,7 @@ class VirtualMachine {
       A: this.actor_attr,
       B: this.constraint_attr,
       C: this.cluster_attr,
-      D: ['DSM'], // ("dataset modifier" -- placeholder value, not used)
+      D: ['V'], // ("value" -- placeholder value, not used)
       E: ['X'],   // ("expression" -- placeholder value, not used)
       L: this.link_attr,
       P: this.process_attr,
@@ -6437,14 +6442,16 @@ Solver status = ${json.status}`);
     if(this.diagnose) {
       this.PLUS_INFINITY = this.DIAGNOSIS_UPPER_BOUND;
       this.MINUS_INFINITY = -this.DIAGNOSIS_UPPER_BOUND;
+      this.NEAR_PLUS_INFINITY = this.DIAGNOSIS_UPPER_BOUND / 10;
+      this.NEAR_MINUS_INFINITY = -this.DIAGNOSIS_UPPER_BOUND / 10;
       console.log('DIAGNOSIS ON');
     } else {
       this.PLUS_INFINITY = this.SOLVER_PLUS_INFINITY;
       this.MINUS_INFINITY = this.SOLVER_MINUS_INFINITY;
+      this.NEAR_PLUS_INFINITY = this.SOLVER_PLUS_INFINITY / 200;
+      this.NEAR_MINUS_INFINITY = this.SOLVER_MINUS_INFINITY / 200;
       console.log('DIAGNOSIS OFF');
     }
-    this.NEAR_PLUS_INFINITY = this.PLUS_INFINITY / 200;
-    this.NEAR_MINUS_INFINITY = this.MINUS_INFINITY / 200;
     // The "propt to diagnose" flag is set when some block posed an
     // infeasible or unbounded problem.
     this.prompt_to_diagnose = false;
@@ -7383,12 +7390,12 @@ function VMI_push_statistic(x, args) {
   if(wdict && x.wildcard_vector_index !== false) {
     list = wdict[x.wildcard_vector_index] || [];
   }
-  // If no list specified, the result is undefined
+  // If no list specified, the result is undefined.
   if(!Array.isArray(list) || list.length === 0) {
     x.push(VM.UNDEFINED);
     return;          
   }
-  // Get the "local" time step range for expression x
+  // Get the "local" time step range for expression `x`.
   let t = x.step[x.step.length - 1],
       t1 = relativeTimeStep(t, anchor1, offset1, 1, x),
       t2 = t1,
@@ -7407,7 +7414,7 @@ function VMI_push_statistic(x, args) {
     }
   }
   // Negative time step is evaluated as t = 0 (initial value) t beyond
-  // optimization period is evaluated as its last time step
+  // optimization period is evaluated as its last time step.
   const tmax = VM.nr_of_time_steps;
   t1 = Math.max(0, Math.min(tmax, t1));
   t2 = Math.max(0, Math.min(tmax, t2));
@@ -7417,26 +7424,25 @@ function VMI_push_statistic(x, args) {
         ao1, ao2, ' (t = ', t1, '-', t2, ')'];
     console.log(trc.join(''));
   }
-  // Establish whether statistic pertains to non-zero values only
+  // Establish whether statistic pertains to non-zero values only.
   const nz = stat.endsWith('NZ');
-  // If so, trim the 'NZ'
+  // If so, trim the 'NZ'.
   if(nz) stat = stat.slice(0, -2);
-  // Now t1 ... t2 is the range of time steps to iterate over for each variable
+  // Now t1 ... t2 is the range of time steps to iterate over for each variable.
   const vlist = [];
   for(let t = t1; t <= t2; t++) {
     // Get the list of values.
     // NOTE: Variables may be vectors or expressions.
     for(const obj of list) {
+      v = VM.UNDEFINED;
       if(Array.isArray(obj)) {
         // Object is a vector.
-        if(t < obj.length) {
-          v = obj[t];
-        } else {
-          v = VM.UNDEFINED;
-        }
-      } else {
+        if(t < obj.length) v = obj[t];
+      } else if(obj instanceof Expression) {
         // Object is an expression.
         v = obj.result(t);
+      } else if(!isNaN(obj)) {
+        v = obj;
       }
       // Push value unless it is zero and NZ is TRUE, or if it is undefined
       // (this will occur when a variable has been deleted).

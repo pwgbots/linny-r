@@ -11,7 +11,7 @@ for the Linny-R Experiment Manager dialog.
 */
 
 /*
-Copyright (c) 2017-2024 Delft University of Technology
+Copyright (c) 2017-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -267,6 +267,7 @@ class GUIExperimentManager extends ExperimentManager {
     this.edited_dimension_index = -1;
     this.edited_combi_selector_index = -1;
     this.color_scale = new ColorScale('no');
+    this.clearColorScales();
     this.focal_table = null;
     this.designMode();
   }
@@ -376,8 +377,10 @@ class GUIExperimentManager extends ExperimentManager {
     if(x.combinations.length === 0) canview = false;
     header.innerHTML = x.title;
     this.params_div.style.display = 'block';
-    const tr = [];
-    for(let i = 0; i < x.dimensions.length; i++) {
+    const
+        tr = [],
+        dsl = setStringList(x.dimensions);
+    for(let i = 0; i < dsl.length; i++) {
       const pi = 'd' + i;
       tr.push(['<tr class="dataset',
           // Highlight selected dimension with background color.
@@ -386,8 +389,7 @@ class GUIExperimentManager extends ExperimentManager {
           (x.plot_dimensions.indexOf(i) >= 0 ? ' def-sel' : ''),
           '" onclick="EXPERIMENT_MANAGER.selectParameter(\'', pi,
           // Click selects, shift-click will also toggle plot/no plot.
-          '\', event.shiftKey);"><td>', setString(x.dimensions[i]),
-          '</td></tr>'].join(''));
+          '\', event.shiftKey);"><td>', dsl[i], '</td></tr>'].join(''));
     }
     this.dimension_table.innerHTML = tr.join('');
     // Add button must be enabled only if there still are unused dimensions
@@ -1095,15 +1097,20 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     }
   }
   
+  clearColorScales() {
+    // Remove black rim from all color scale icons.
+    const csl = this.viewer.getElementsByClassName('color-scale');
+    for(const cs of csl) cs.classList.remove('sel-cs');
+  }
+  
   setColorScale(cs) {
     // Update view for selected color scale (values: rb, br, rg, gr or no)
     const x = this.selected_experiment;
     if(x) {
       if(cs) {
+        this.clearColorScales();
         x.selected_color_scale = cs;
         this.color_scale.set(cs);
-        const csl = this.viewer.getElementsByClassName('color-scale');
-        for(const cs of csl) cs.classList.remove('sel-cs');
         document.getElementById(`xv-${cs}-scale`).classList.add('sel-cs');
       }
       this.updateData();
@@ -1234,9 +1241,19 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
           return;
         }
       }
-      // Input validated, so modify the iterator dimensions.
-      x.iterator_ranges = ir;
-      this.updateDialog();
+      // Input validated, so modify the iterator dimensions (if altered).
+      let altered = false;
+      for(let r = 0; r < 3; r++) {
+        const
+            or = x.iterator_ranges[r],
+            nr= ir[r];
+        altered = or[0] !== nr[0] || or[1] !== nr[1]; 
+      }
+      if(altered) {
+        x.iterator_ranges = ir;
+        x.updateIteratorDimensions();
+        this.updateParameters();
+      }
     }
     md.hide();
   }
@@ -1903,6 +1920,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
   
   readyButtons() {
     // Set experiment run control buttons in "ready" state.
+    this.pause_btn.classList.remove('blink');
     this.pause_btn.classList.add('off');
     this.stop_btn.classList.add('off');
     this.start_btn.classList.remove('off', 'blink');
@@ -1943,6 +1961,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     UI.notify('Experiment has been stopped');
     this.viewer_progress.innerHTML = '';
     this.readyButtons();
+    this.must_pause = false;
   }
   
   showProgress(ci, p, n) {

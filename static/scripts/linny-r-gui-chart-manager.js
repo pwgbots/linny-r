@@ -11,7 +11,7 @@ for the Linny-R Chart Manager dialog.
 */
 
 /*
-Copyright (c) 2017-2024 Delft University of Technology
+Copyright (c) 2017-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -390,7 +390,7 @@ class GUIChartManager extends ChartManager {
           '<td class="v-box"><div id="v-box-', i, '" class="vbox',
           (cv.visible ? ' checked' : ' clear'),
           '" onclick="CHART_MANAGER.toggleVariable(', i,
-          ');"></div></td><td class="v-name vbl-', cv.sorted,
+          ', event);"></div></td><td class="v-name vbl-', cv.sorted,
           (cv.absolute ? ' vbl-abs' : ''), '">', cv.displayName,
           '</td></tr>'].join(''));
       }
@@ -889,14 +889,36 @@ class GUIChartManager extends ChartManager {
     }
   }
   
-  toggleVariable(vi) {
+  toggleVariable(vi, event) {
     window.event.stopPropagation();
     if(vi >= 0 && this.chart_index >= 0) {
-      const cv = MODEL.charts[this.chart_index].variables[vi];
-      // toggle visibility of the selected variable
-      cv.visible = !cv.visible;
-      // update the check box
-      UI.setBox('v-box-' + vi, cv.visible);
+      if(event.altKey) {
+        // Special option: deselect all variables that have NO non-zero values.
+        const v_list = MODEL.charts[this.chart_index].variables;
+        for(vi = 0; vi < v_list.length; vi++) {
+          if(v_list[vi].non_zero_tally === 0) {
+            v_list[vi].visible = false;
+            UI.setBox('v-box-' + vi, false);
+          }
+        }
+      } else {
+        let from = vi,
+            to = vi;
+        if(event.shiftKey && this.variable_index !== vi) {
+          if(vi > this.variable_index) {
+            from = this.variable_index;
+          } else {
+            to = this.variable_index;
+          }
+        }
+        for(vi = from; vi <= to; vi++) {
+          const cv = MODEL.charts[this.chart_index].variables[vi];
+          // Toggle visibility of the selected variable.
+          cv.visible = !cv.visible;
+          // Update the check box.
+          UI.setBox('v-box-' + vi, cv.visible);
+        }
+      }
       // redraw chart and table (with one variable more or less)
       this.drawChart();
       // Also update the experiment viewer (charts define the output variables)
@@ -1080,16 +1102,17 @@ class GUIChartManager extends ChartManager {
     const
         nbtn = document.getElementById('chart-narrow-btn'),
         wbtn = document.getElementById('chart-widen-btn');
-    if(this.stretch_factor === 1) {
+    if(this.stretch_factor < 2) {
       nbtn.classList.remove('enab');
       nbtn.classList.add('disab');
-    } else if(this.stretch_factor === 2) {
+    } else {
       nbtn.classList.remove('disab');
       nbtn.classList.add('enab');
-    } else if(this.stretch_factor === 9) {
+    }
+    if(this.stretch_factor < 10) {
       wbtn.classList.remove('disab');
       wbtn.classList.add('enab');
-    } else if(this.stretch_factor === 10) {
+    } else {
       wbtn.classList.remove('enab');
       wbtn.classList.add('disab');
     }

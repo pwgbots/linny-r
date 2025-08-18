@@ -2314,8 +2314,12 @@ class GUIController extends Controller {
       return;
     } // END IF Ctrl
   
-    // Clear selection unless SHIFT pressed or double-clicking.
-    if(!(this.doubleClicked('down') || e.shiftKey)) {
+    // Clear selection unless SHIFT pressed or double-clicking, or clicking
+    // on a selected entity.
+    const clicked_object = this.on_node || this.on_note || this.on_cluster ||
+        this.on_link || this.on_constraint;
+    if(!(this.doubleClicked('down') || e.shiftKey ||
+        MODEL.selection.indexOf(clicked_object) >= 0)) {
       MODEL.clearSelection();
       UI.drawDiagram(MODEL);
     }
@@ -2416,7 +2420,7 @@ class GUIController extends Controller {
         // NOTE: Keep track of relative movement of the dragged node.
         this.move_dx = this.mouse_x - this.on_node.x;
         this.move_dy = this.mouse_y - this.on_node.y;
-        if(MODEL.selection.indexOf(this.on_node) < 0) MODEL.select(this.on_node);
+        MODEL.select(this.on_node);
         // Pass dragged node for UNDO.
         UNDO_STACK.push('move', this.dragged_node, true);
       }
@@ -2444,6 +2448,10 @@ class GUIController extends Controller {
     this.net_move_y += cp[1] - this.mouse_y;
     this.mouse_up_x = cp[0];
     this.mouse_up_y = cp[1];
+    let double_clicked = null;
+    if(this.doubleClicked('up')) {
+      double_clicked = this.dragged_node || this.on_link || this.on_constraint;
+    }
     // First check whether user is selecting a rectangle.
     if(this.start_sel_x >= 0 && this.start_sel_y >= 0) {
       // Clear previous selection unless user is adding to it (by still
@@ -2492,7 +2500,6 @@ class GUIController extends Controller {
       this.start_sel_x = -1;
       this.start_sel_y = -1;
       this.paper.hideDragRect();
-  
     // Then check whether user is drawing a flow link (by dragging its
     // endpoint).
     } else if(this.linking_node) {
@@ -2534,7 +2541,7 @@ class GUIController extends Controller {
           absdx = Math.abs(this.net_move_x),
           absdy = Math.abs(this.net_move_y),
           sigmv = (MODEL.align_to_grid ? MODEL.grid_pixels / 4 : 2.5);
-      if(this.doubleClicked('up')) {
+      if(double_clicked) {
         // Ignore insignificant move.
         if(absdx < sigmv && absdy < sigmv) {
           // Undo the move and remove the action from the UNDO-stack.
@@ -2595,20 +2602,26 @@ class GUIController extends Controller {
       }
       this.dragged_node = null;
   
-    // Then check whether the user is clicking on a link.
-    } else if(this.on_link) {
-      if(this.doubleClicked('up')) {
-        this.showLinkPropertiesDialog(this.on_link);
-      }
-    } else if(this.on_constraint) {
-      if(this.doubleClicked('up')) {
-        this.showConstraintPropertiesDialog(this.on_constraint);
-      }
+    // Finally, check whether the user is clicking on a link.
+    } else if(this.on_link && double_clicked) {
+      this.showLinkPropertiesDialog(this.on_link);
+    } else if(this.on_constraint && double_clicked) {
+      this.showConstraintPropertiesDialog(this.on_constraint);
     }
-    // Finally, reset "selecting with rectangle" (just to be sure), and
-    // update the UI button states.
+    
+    // In all cases, perform some clean-up actions:
+    // (1) After a double-click, the selection may still contain multiple
+    //     entities. If so, clear it, select only the double-clicked entity
+    //     and redraw the diagram.
+    if(double_clicked && MODEL.selection.length > 1) {
+      MODEL.clearSelection();
+      MODEL.select(double_clicked);
+      UI.drawDiagram(MODEL);
+    }
+    // (2) Reset "selecting with rectangle" (just to be sure).
     this.start_sel_x = -1;
     this.start_sel_y = -1;
+    // (3) Update the UI button states.
     this.updateButtons();
   }
   
@@ -4448,23 +4461,29 @@ console.log('HERE name conflicts', name_conflicts, mapping);
   }
 
   toggleProductStock() {
-    // Enables/disables initial level input in the Product modal, depending on
-    // the Stock check box status
+    // Enable/disable initial level input in the Product modal, depending on
+    // the Stock check box status.
     const
         lb = document.getElementById('product-LB'),
+        ub = document.getElementById('product-UB'),
         il = document.getElementById('product-IL'),
         lbl = document.getElementById('product-IL-lbl'),
         edx = document.getElementById('product-IL-x');
     if(this.boxChecked('product-stock')) {
-      // Set lower bound to 0 unless already specified
-      if(lb.value.trim().length === 0) lb.value = 0;
+      // Set lower bound to 0 unless already specified.
+      if(!lb.value.trim()) lb.value = 0;
+      if(!il.value.trim()) il.value = 0;
       il.disabled = false;
       lbl.style.color = 'black';
       lbl.style.textShadow = 'none';
       edx.classList.remove('disab');
       edx.classList.add('enab');
     } else {
-      il.value = 0;
+      // NOTE: To restore normal product default, clear LB if it is zero
+      // *and* no UB is specified.
+      if(lb.value === '0' && !ub.value.trim() ) lb.value = '';
+      // NOTE: Always clear initial level, as this applies only to stocks.
+      il.value = '';
       il.disabled = true;
       lbl.style.color = 'gray';
       lbl.style.textShadow = '1px 1px white';
@@ -4474,7 +4493,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
   }
   
   updateProductProperties() {
-    // Validates product properties, and updates only if all input is OK
+    // Validate product properties, and update only if all input is OK.
     const
         md = this.modals.product,
         p = this.edited_object;
@@ -4490,10 +4509,9 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     // NOTE: For stocks, set lower bound to zero if undefined.
     const
         stock = this.boxChecked('product-stock'),
-        l = md.element('LB');
-    if(stock && l.value.trim().length === 0) {
-      l.value = '0';
-    }
+        lb = md.element('LB'),
+        il = md.element('IL');
+    if(stock && lb.value.trim().length === 0) lb.value = '0';
     if(!this.updateExpressionInput('product-LB', 'lower bound',
         p.lower_bound)) return false;
     if(!this.updateExpressionInput('product-UB', 'upper bound',
@@ -4502,7 +4520,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
       // NOTE: For actor cash flow data products, price and initial
       // level must remain blank...
       md.element('P').value = '';
-      md.element('IL').value = '';
+      il.value = '';
       // ... and the unit must be the model's currency unit.
       md.element('unit').value = MODEL.currency_unit;
     }
@@ -4522,14 +4540,14 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     // At this point, all input has been validated, so entity properties
     // can be modified.
     p.changeScaleUnit(md.element('unit').value);
+    // NOTE: For actor cash flow data products, more properties must not
+    // be modified.
     if(!p.name.startsWith('$')) {
-      // NOTE: For actor cash flow data products, these properties must
-      // also retain their initial value.
       p.is_source = this.boxChecked('product-source');
       p.is_sink = this.boxChecked('product-sink');
       // NOTE: Do not unset `is_data` if product has ingoing data arrows.
       p.is_data = p.hasDataInputs || this.boxChecked('product-data');
-      p.is_buffer = this.boxChecked('product-stock');
+      p.is_buffer = stock;
       // NOTE: Integer constraint will typically not work because cash
       // flows are scaled when setting up the Simplex tableau, and hence
       // the values of their decision variable will differ from their

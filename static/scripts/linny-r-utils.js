@@ -35,8 +35,8 @@ SOFTWARE.
 //
 
 function postData(obj) {
-  // Converts a JavaScript object to an object that can be passed to a server
-  // in a POST request
+  // Convert a JavaScript object to an object that can be passed to a server
+  // in a POST request.
   const fields = [];
   for(let k in obj) if(obj.hasOwnProperty(k)) {
     fields.push(encodeURIComponent(k) + "=" + encodeURIComponent(obj[k]));
@@ -89,7 +89,6 @@ function packFloat(f) {
   //   _  negative number, positive exponent
   //   ~  positive number, negative exponent
   //   =  negative number, negative exponent
-const oldf = f;
   if(!f) return '0';
   let sign = '',
       mant = '',
@@ -222,19 +221,19 @@ function unpackVector(str, b62=true) {
 }
 
 function pluralS(n, s, special='') {
-  // Returns string with noun `s` in singular only if `n` = 1
-  // NOTE: third parameter can be used for nouns with irregular plural form
+  // Return string with noun `s` in singular only if `n` = 1.
+  // NOTE: Third parameter can be used for nouns with irregular plural form.
   return (n === 0 ? 'No ' : n + ' ') +
-      // NOTE: to accomodate for plural form of ex-ante unknown entity types,
-      // nouns ending on "s" (specifically "process") form a special case 
+      // NOTE: To accomodate for plural form of ex-ante unknown entity types,
+      // nouns ending on "s" (specifically "process") form a special case.
       (n === 1 ? s : (special ? special : s + (s.endsWith('s') ? 'es' : 's')));
 }
 
 function safeStrToFloat(str, val=0) {
-  // Returns numeric value of floating point string, interpreting both
-  // dot and comma as decimal point
-  // NOTE: returns default value `val` if `str` is empty, null or undefined,
-  // or contains a character that is invalid in a number 
+  // Return numeric value of floating point string, interpreting both period
+  // and comma as decimal point.
+  // NOTE: Return default value `val` if `str` is empty, null or undefined,
+  // or contains a character that is invalid in a number.
   if(!str || str.match(/[^0-9eE\.\,\+\-]/)) return val;
   str = str.replace(',', '.');
   const f = (str ? parseFloat(str) : val);
@@ -250,15 +249,15 @@ function safeStrToInt(str, val=0) {
 }
 
 function rangeToList(str, max=0) {
-  // Parse ranges "n-m/i" into a list of integers
-  // Return FALSE if range is not valid according to the convention below
+  // Parse ranges "n-m/i" into a list of integers.
+  // Return FALSE if range is not valid according to the convention below:
   // The part "/i" is optional and denotes the increment; by default, i = 1.
   // The returned list will contain all integers starting at n and up to
-  // at most (!) m, with increments of i, so [n, n+i, n+2i, ...]
+  // at most (!) m, with increments of i, so [n, n+i, n+2i, ...].
   // If `str` contains only the "/i" part, the range is assumed to start at 0
   // and end at `max`; if only one number precedes the "/i", this denotes the
   // first number in the range, while `max` again defines the highest number
-  // that can be included
+  // that can be included.
   const
       list = [],
       ssep = str.split('/');
@@ -275,7 +274,7 @@ function rangeToList(str, max=0) {
     if(range.length === 2) last = parseInt(range[1]);
     if(isNaN(first) || isNaN(last)) return false;
   }
-  // Create the range number list
+  // Create the range number list.
   for(let i = first; i <= last; i += incr) list.push(i);
   return list;
 }
@@ -308,30 +307,30 @@ function listToRange(list) {
 }
 
 function dateToString(d) {
-  // Returns date-time `d` in UTC format, accounting for time zone
+  // Return date-time `d` in UTC format, accounting for time zone.
   const offset = d.getTimezoneOffset();
   d = new Date(d.getTime() - offset * 60000);
   return d.toISOString().split('T')[0];
 }
 
 function msecToTime(msec) {
-  // Returns milliseconds as "minimal" string hh:mm:ss.msec
+  // Return milliseconds as "minimal" string hh:mm:ss.msec.
   const ts = new Date(msec).toISOString().slice(11, -1).split('.');
   let hms = ts[0], ms = ts[1];
-  // Trim zero hours and minutes
+  // Trim zero hours and minutes.
   while(hms.startsWith('00:')) hms = hms.substring(3);
-  // Trim leading zero on first number
+  // Trim leading zero on first number.
   if(hms.startsWith('00')) hms = hms.substring(1);
-  // Trim msec when minutes > 0
+  // Trim msec when minutes > 0.
   if(hms.indexOf(':') > 0) return hms;
-  // If < 1 second, return as milliseconds
+  // If < 1 second, return as milliseconds.
   if(parseInt(hms) === 0) return parseInt(ms) + ' msec';
-  // Otherwise, return seconds with one decimal
+  // Otherwise, return seconds with one decimal.
   return hms + '.' + ms.slice(0, 1) + ' sec';
 }
 
 function compactClockTime() {
-  // Returns current time (no date) in 6 digits hhmmss. 
+  // Return current time (no date) in 6 digits hhmmss. 
   const d = new Date();
   return d.getHours().toString().padStart(2, '0') +
       d.getMinutes().toString().padStart(2, '0') +
@@ -339,11 +338,11 @@ function compactClockTime() {
 }
 
 function uniformDecimals(data) {
-  // Formats the numbers in the array `data` so that they have uniform decimals
-  // NOTE: (1) this routine assumes that all number strings have sig4Dig format;
-  //       (2) it changes the values of the `data` array elements to strings
+  // Format the numbers in the array `data` so that they have uniform decimals.
+  // NOTE: (1) This routine assumes that all number strings have sig4Dig format.
+  //       (2) It changes the values of the `data` array elements to strings.
   // STEP 1: Scan the data array to get the longest integer part, the shortest
-  // fraction part, and longest exponent part
+  // fraction part, and longest exponent part.
   let ss, x, maxi = 0, maxf = 0, maxe = 0;
   for(let i = 0; i < data.length; i++) {
     const v = data[i].toString();
@@ -368,7 +367,7 @@ function uniformDecimals(data) {
       // by Unicode warning sign.
       if(special.indexOf(v) < 0) data[i] = '\u26A0'; 
     } else if(maxe > 0) {
-    // Convert ALL numbers to exponential notation with two decimals (1.23e+7)
+      // Convert ALL numbers to exponential notation with two decimals (1.23e+7)
       const v = f.toExponential(2);
       ss = v.split('e');
       x = ss[1];
@@ -377,29 +376,29 @@ function uniformDecimals(data) {
       }
       data[i] = ss[0] + 'e' + x;
     } else if(maxi > 3) {
-      // Round to integer if longest integer part has 4 or more digits
+      // Round to integer if longest integer part has 4 or more digits.
       data[i] = Math.round(f).toString();
     } else {
-      // Round fractions to `maxf` digits (but at most 4)
+      // Round fractions to `maxf` digits (but at most 4).
       data[i] = f.toFixed(Math.min(4 - maxi, maxf));
     }
   }
 }
 
 function capitalized(s) {
-  // Returns string `s` with its first letter capitalized.
+  // Return string `s` with its first letter capitalized.
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function ellipsedText(text, n=50, m=10) {
-  // Returns `text` with ellipsis " ... " between its first `n` and
+  // Return `text` with ellipsis " ... " between its first `n` and
   // last `m` characters. 
   if(text.length <= n + m + 3) return text;
   return text.slice(0, n) + ' \u2026 ' + text.slice(text.length - m);
 }
 
 function unquoteCSV(s) {
-  // Returns a double-quoted string `s` without its quotes, and with
+  // Return a double-quoted string `s` without its quotes, and with
   // quote pairs "" replaced by single " quotes.
   if(!s.startsWith('"') || !s.endsWith('"')) return s;
   return s.slice(1, -1).replaceAll('""', '"');
@@ -410,28 +409,28 @@ function unquoteCSV(s) {
 //
 
 function earlierVersion(v1, v2) {
-  // Compares two version numbers and returns TRUE iff `v1` is earlier
-  // than `v2`
+  // Compare two version numbers and return TRUE iff `v1` is earlier
+  // than `v2`.
   v1 = v1.split('.');
   v2 = v2.split('.');
   for(let i = 0; i < Math.min(v1.length, v2.length); i++) {
-    // NOTE: for legacy JS models, the major version number evaluates as 0
+    // NOTE: For legacy JS models, the major version number evaluates as 0.
     if(safeStrToInt(v1[i]) < safeStrToInt(v2[i])) return true;
     if(safeStrToInt(v1[i]) > safeStrToInt(v2[i])) return false;
   }
-  // Fall-through: same version numbers => NOT earlier
+  // Fall-through: same version numbers => NOT earlier.
   return false;
 }
 
 function differences(a, b, props) {
-  // Compares values of properties (in list `props`) of entities `a` and `b`,
-  // and returns a "dictionary" object with differences
+  // Compare values of properties (in list `props`) of entities `a` and `b`,
+  // and return a "dictionary" object with differences.
   const d = {};
-  // Only compare entities of the same type
+  // Only compare entities of the same type.
   if(a.type === b.type) {
     for(let i = 0; i < props.length; i++) {
       const p = props[i];
-      // NOTE: model entity properties can be expressions => compare their text 
+      // NOTE: Model entity properties can be expressions => compare their text.
       if(a[p] instanceof Expression) {
         if(a[p].text !== b[p].text) d[p] = {A: a[p].text, B: b[p].text};
       } else if(a[p] instanceof Date) {
@@ -448,16 +447,16 @@ function differences(a, b, props) {
 }
 
 function markFirstDifference(s1, s2) {
-  // Returns `s1` with bold-faced from point of first difference with `s2`
-  // up to position where `s1` and `s2` have the same tail
-  // NOTE: ensure that both parameters are strings
+  // Return `s1` with bold-faced from point of first difference with `s2`
+  // up to position where `s1` and `s2` have the same tail.
+  // NOTE: Ensure that both parameters are strings.
   s1 = '' + s1;
   s2 = '' + s2;
   const l = Math.min(s1.length, s2.length);
   let i = 0;
   while(i < l && s1.charAt(i) === s2.charAt(i)) i++;
   if(i >= s1.length) {
-    // No differences, but tail may have been cut
+    // No differences, but tail may have been cut.
     if(i < s2.length) s1 += '<span class="mc-hilite">&hellip;</span>';
     return s1;
   }
@@ -476,8 +475,8 @@ function markFirstDifference(s1, s2) {
 //
 
 function ciCompare(a, b) {
-  // Perform case-insensitive comparison that does differentiate
-  // between accented characters (as this differentiates between identifiers).
+  // Perform case-insensitive comparison that does differentiate between
+  // accented characters (as this differentiates between identifiers).
   return a.localeCompare(b, undefined, {sensitivity: 'accent'});
 }
 
@@ -545,9 +544,9 @@ function monoSpacedVariables(xt) {
 }
 
 function patternList(str) {
-  // Returns the &|^-pattern defined by `str`
-  // Pattern operators: & (and), ^ (not) and | (or) in sequence, e.g.,
-  // this&that^not this|just this|^just not that
+  // Return the &|^-pattern defined by `str`
+  // Pattern operators: & (and), ^ (not) and | (or) in sequence.
+  // Example: this&that^not this|just this|^just not that
   const
       pat = str.split('|'),
       or_list = [];
@@ -560,7 +559,7 @@ function patternList(str) {
       for(let k = 0; k < subterm.length; k++) {
         const s = subterm[k];
         if(s) {
-          // NOTE: first subterm is a MUST!
+          // NOTE: First subterm is a MUST!
           if(k == 0) {
             pm.plus.push(s);
           } else {
@@ -577,7 +576,7 @@ function patternList(str) {
 }
 
 function patternMatch(str, patterns) {
-  // Returns TRUE when `str` matches the &|^-pattern.
+  // Return TRUE when `str` matches the &|^-pattern.
   // NOTE: If a pattern starts with a tilde ~ then `str` must start with
   // the rest of the pattern to match. If it ends with a tilde, then `str`
   // must end with the first part of the pattern.
@@ -634,9 +633,9 @@ function patternMatch(str, patterns) {
       } else {
         match = (str.indexOf(pm) < 0);
       }
-      // If still matching, check whether pattern contains wildcards 
+      // If still matching, check whether pattern contains wildcards.
       if(match && pm.indexOf('#') >= 0) {
-        // If so, now "negatively" rematch using regular expressions
+        // If so, now "negatively" rematch using regular expressions.
         let res = pm.split('#');
         for(let i = 0; i < res.length; i++) {
           res[i] = escapeRegex(res[i]);
@@ -648,14 +647,14 @@ function patternMatch(str, patterns) {
         match = !re.test(str);
       }
     }
-    // Iterating through OR list, so any match indicates TRUE
+    // Iterating through OR list, so any match indicates TRUE.
     if(match) return true;
   }
   return false;
 }
 
 function matchingWildcardNumber(str, patterns) {
-  // Returns the number that, when substituted for #, caused `str` to
+  // Return the number that, when substituted for #, caused `str` to
   // match with the pattern list `patterns`, or FALSE if no such number
   // exists.
   // First get the list of all groups of consecutive digits in `str`.
@@ -681,36 +680,37 @@ function matchingWildcardNumber(str, patterns) {
 }
 
 function escapeRegex(str) {
-  // Returns `str` with its RegEx special characters escaped
+  // Return `str` with its RegEx special characters escaped.
   return str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
 }
 
 function wildcardMatchRegex(name, equation=false) {
-  // Returns a RegEx object that will match wildcards in an entity name
+  // Return a RegEx object that will match wildcards in an entity name
   // with an integer number (\d+), or NULL if `name` does not contain
-  // wildcards
+  // wildcards.
   // By default, # denotes a wildcard, but this may be changed to ??
-  // when an equation name is parsed
+  // when an equation name is parsed.
   const sl = name.split(equation ? '??' : '#');
   if(sl.length < 2) return null;
   for(let i = 0; i < sl.length; i++) {
     sl[i] = escapeRegex(sl[i]);
   }
-  // NOTE: match against integer numbers, but also match for ?? because
+  // NOTE: Match against integer numbers, but also match for ?? because
   // wildcard equation entities also match!
   return new RegExp(`^${sl.join('(\\d+|\\?\\?)')}$`, 'gi');
 }
 
 function wildcardFormat(name, modifier=false) {
-  // Returns string with CSS classes if it contains wildcards
-  // NOTE: modifiers can contain * and single ? as wildcards;
-  // equation names can contain at most one ?? as wildcard
+  // Return string with CSS classes if it contains wildcards.
+  // NOTES:
+  // (1) Modifiers can contain * and single ? as wildcards.
+  // (2) Equation names can contain at most one ?? as wildcard.
   const re = (modifier ? /(\?+|\*)/ : /(\?\?)/g);
   return name.replace(re, '<span class="wildcard">$1</span>');
 }
 
 function matchingNumber(m, s) {
-  // Returns an integer value if string `m` matches selector pattern `s`
+  // Return an integer value if string `m` matches selector pattern `s`
   // (where asterisks match 0 or more characters, and question marks 1
   // character) and the matching parts jointly denote an integer.
   // NOTE: A "+" must be escaped, "*" and "?" must become groups.
@@ -719,16 +719,16 @@ function matchingNumber(m, s) {
       match = m.match(new RegExp(`^${raw}$`)),
       n = '';
   if(match) {
-    // Concatenate all matching characters (need not be digits)
+    // Concatenate all matching characters (need not be digits).
     m = match.slice(1).join('');
     n = parseInt(m);
   }
-  // Return number only if when match is parsed as integer
+  // Return number only if when match is parsed as integer.
   return (n == m ? n : false);
 }
 
 function matchingNumberInList(ml, s) {
-  // Traverses list `ml` and returns the first matching number, or FALSE
+  // Traverse list `ml` and return the first matching number, or FALSE
   // if no match is found.
   for(const m of ml) {
     const n = matchingNumber(m, s);
@@ -738,7 +738,7 @@ function matchingNumberInList(ml, s) {
 }
 
 function compareWithTailNumbers(s1, s2) {
-  // Returns 0 on equal, an integer < 0 if `s1` comes before `s2`, and
+  // Return 0 on equal, an integer < 0 if `s1` comes before `s2`, and
   // an integer > 0 if `s2` comes before `s1`.
   if(s1 === s2) return 0;
   let tn1 = endsWithDigits(s1),
@@ -906,14 +906,14 @@ function iteratorSet(list) {
 }
 
 function integerSet(list) {
-  // Returns TRUE iff all elements in list evaluate as integer numbers.
+  // Return TRUE iff all elements in list evaluate as integer numbers.
   if(list.length === 0) return false;
   for(const n of list) if(n - 0 != n) return false;
   return true;
 }
 
 function setString(sl) {
-  // Returns elements of stringlist `sl` in set notation
+  // Return elements of stringlist `sl` in set notation.
   if(integerSet(sl)) {
     // If all set elements are integers, return a range shorthand.
     const sorted = sl.slice().sort();
@@ -935,8 +935,15 @@ function setString(sl) {
   return iteratorSet(sl) || '{' + sl.join(', ') + '}';
 }
 
+function setStringList(lsl) {
+  // Return list of selector lists as array of set strings.
+  const ssl = [];
+  for(const sl of lsl) ssl.push(setString(sl));
+  return ssl;
+}
+  
 function tupelString(sl) {
-  // Returns elements of stringlist `sl` in tupel notation
+  // Return elements of stringlist `sl` in tupel notation.
   return '(' + sl.join(', ') + ')';
 }
 
@@ -968,7 +975,7 @@ function intersection(sl1, sl2) {
 }
   
 function complement(sl1, sl2) {
-  // Returns the list of elements of stringlist `l1` that are NOT in `l2`
+  // Return the list of elements of stringlist `l1` that are NOT in `l2`.
   const cmplmnt = [];
   for(const s of sl1) if(sl2.indexOf(s) < 0) cmplmnt.push(s);
   return cmplmnt;
@@ -1044,7 +1051,7 @@ function cleanXML(node) {
 }
 
 function parseXML(xml) {
-  // Parse string `xml` into an XML document, and returns its root node
+  // Parse string `xml` into an XML document, and return its root node
   // (or null if errors).
   xml = XML_PARSER.parseFromString(customizeXML(xml), 'application/xml');
   const
@@ -1352,6 +1359,7 @@ if(NODE) module.exports = {
   iteratorSet: iteratorSet,
   integerSet: integerSet,
   setString: setString,
+  setStringList: setStringList,
   tupelString: tupelString,
   tupelSetString: tupelSetString,
   tupelIndex: tupelIndex,

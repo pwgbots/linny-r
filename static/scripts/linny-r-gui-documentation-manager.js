@@ -12,7 +12,7 @@ viewing and editing documentation text for model entities.
 */
 
 /*
-Copyright (c) 2017-2024 Delft University of Technology
+Copyright (c) 2017-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -60,7 +60,7 @@ class DocumentationManager {
     this.model_info_btn.addEventListener('click',
         () => DOCUMENTATION_MANAGER.showAllDocumentation());
     this.copy_btn.addEventListener('click',
-        () => DOCUMENTATION_MANAGER.copyDocToClipboard());
+        (event) => DOCUMENTATION_MANAGER.copyDocToClipboard(event.shiftKey));
     this.save_btn.addEventListener('click',
         () => DOCUMENTATION_MANAGER.saveMarkup());
     this.cancel_btn.addEventListener('click',
@@ -616,12 +616,19 @@ class DocumentationManager {
         // 5-underscore leader indicates: start of new category.
         html.push('<h2>', sl[i].substring(5), '</h2>');
       } else {
-        // Expect model element name...
-        html.push('<p><tt>', sl[i], '</tt><br><small>');
-        // ... immediately followed by its associated marked-up comments.
-        i++;
-        this.markup = sl[i];
-        html.push(this.markdown, '</small></p>');
+        // Expect model element name.
+        // NOTE: A trailing arrow indicates: element is a dataset modifier.
+        if(sl[i].endsWith('&rarr;')) {
+          html.push('<p><tt>&nbsp;&nbsp;', sl[i], '&nbsp;<small>');
+          i++;
+          html.push(sl[i], '</small></tt></p>');
+        } else {
+          html.push('<p><tt>', sl[i], '</tt><br><small>');
+          // ... immediately followed by its associated marked-up comments.
+          i++;
+          this.markup = sl[i];
+          html.push(this.markdown, '</small></p>');
+        }
       }
     }
     this.title.innerHTML = 'Complete model documentation';
@@ -632,35 +639,34 @@ class DocumentationManager {
     this.edit_btn.classList.add('disab');
   }
     
-  copyDocToClipboard() {
-    UI.copyHtmlToClipboard(this.viewer.innerHTML);
-    UI.notify('Documentation copied to clipboard (as HTML)');
+  copyDocToClipboard(plain) {
+    UI.copyHtmlToClipboard(this.viewer.innerHTML, plain);
   }
 
   compareModels(data) {
     this.comparison_modal.hide();
     this.model = new LinnyRModel('', '');
-    // NOTE: while loading, make the second model "main" so it will initialize
+    // NOTE: While loading, make the second model "main" so it will initialize.
     const loaded = MODEL;
     MODEL = this.model;
     try {
-      // NOTE: Convert %23 back to # (escaped by function saveModel)
+      // NOTE: Convert %23 back to # (escaped by function saveModel).
       const xml = parseXML(data.replace(/%23/g, '#'));
-      // NOTE: loading, not including => make sure that IO context is NULL
+      // NOTE: Loading, not including => make sure that IO context is NULL.
       IO_CONTEXT = null;
       this.model.initFromXML(xml);
     } catch(err) {
       UI.normalCursor();
       UI.alert('Error while parsing model: ' + err);
-      // Restore original "main" model
+      // Restore original "main" model.
       MODEL = loaded;
       this.model = null;
       return false;
     }
-    // Restore original "main" model
+    // Restore original "main" model.
     MODEL = loaded;
     try {
-      // Store differences as HTML in local storage
+      // Store differences as HTML in local storage.
       console.log('Storing differences between model A (' + MODEL.displayName +
           ') and model B (' + this.model.displayName + ') as HTML');
       const html = this.differencesAsHTML(MODEL.differences(this.model));
@@ -670,9 +676,9 @@ class DocumentationManager {
     } catch(err) {
       UI.alert(`Failed to store model differences: ${err}`);
     }
-    // Dispose the model-for-comparison
+    // Dispose the model-for-comparison.
     this.model = null;
-    // Cursor is set to WAITING when loading starts
+    // Cursor is set to WAITING when loading starts.
     UI.normalCursor();
   }
   

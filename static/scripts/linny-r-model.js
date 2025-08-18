@@ -629,13 +629,15 @@ class LinnyRModel {
   entitiesWithAttribute(attr, et='ABCDLPQ') {
     // Return a list of entities (of any type) having the specified attribute.
     const list = [];
-    if(attr === '' && et.indexOf('D') >= 0) {
-      // Only datasets can have a value for "no attribute".
+    if(et.indexOf('D') >= 0) {
+      const lca = attr.toLowerCase();
       for(let k in this.datasets) if(this.datasets.hasOwnProperty(k)) {
+        const ds = this.datasets[k];
         // NOTE: Ignore the equations dataset.
-        if(this.datasets[k] !== this.equations_dataset) {
-          list.push(this.datasets[k]);
-        }
+        if(ds !== this.equations_dataset && 
+          // Datasets match when no attribute is specified, or when
+          // attribute is a modifier selector for this dataset.
+            (attr === '' || ds.modifiers.hasOwnProperty(lca))) list.push(ds);
       }
       // No other types of entity, so return this list.
       return list;
@@ -9224,10 +9226,10 @@ class Dataset {
   get attributes() {
     // NOTE: Modifiers are appended as additional lines of text.
     const a = {name: this.displayName};
-    a.D = '\t' + (this.vector ? this.vector[MODEL.t] : this.default_value);
+    a.V = '\t' + (this.vector ? this.vector[MODEL.t] : this.default_value);
     for(let k in this.modifiers) if(this.modifiers.hasOwnProperty(k)) {
       const dm = this.modifiers[k];
-      a.D += '\n\t' + dm.selector + '\t' + dm.expression.asAttribute;
+      a.V += '\n\t' + dm.selector + '\t' + dm.expression.asAttribute;
     }
     return a;
   }
@@ -9456,7 +9458,7 @@ class Dataset {
     return s;
   }
   
-  attributeValue(a) {
+  attributeValue(a, as_x=false) {
     // Return the computed result for attribute `a`.
     // NOTE: Datasets have ONE attribute (their vector) denoted by the
     // dot ".". All other "attributes" should be modifier selectors,
@@ -9464,28 +9466,30 @@ class Dataset {
     // The empty string denotes "use default", which may have been set
     // by the modeler, or may follow from the active combination of a
     // running experiment.
-    if(a === '') {
-      const x = this.activeModifierExpression;
-      if(x instanceof Expression) {
-        x.compute(0);
-        // Ensure that for dynamic modifier expressions the vector is
-        // fully computed.
-        if(!x.isStatic) {
-          const nt = MODEL.end_period - MODEL.start_period + 1;
-          for(let t = 1; t <= nt; t++) x.result(t);
-        }
-        return x.vector;
-      }
-      // No modifier expression? Then return the dataset vector.
-      return this.vector;
-    }
+    if(a === 'DSM') return this.default_value;
     if(a === '.') return this.vector;
-    // Still permit legacy use of [dataset|attr] as a way to "call" a
-    // dataset modifier expression explicitly.
-    if(a) {
-      const x = this.attributeExpression(a);
-      if(x) return x.result(MODEL.t);
+    let x = null;
+    if(a === '') {
+      x = this.activeModifierExpression;
+    } else {
+      // Still permit legacy use of [dataset|attr] as a way to "call" a
+      // dataset modifier expression explicitly.
+      x = this.attributeExpression(a);
+      // Return NULL if `a` is specified and not a modifier selector.
+      if(!x) return null;
     }
+    if(x instanceof Expression) {
+      if(as_x) return x;
+      x.compute(0);
+      // Ensure that for dynamic modifier expressions the vector is
+      // fully computed.
+      if(!x.isStatic) {
+        const nt = MODEL.end_period - MODEL.start_period + 1;
+        for(let t = 1; t <= nt; t++) x.result(t);
+      }
+      return x.vector;
+    }
+    if(this.data.length) return this.vector;
     // Fall-through: return the default value of this dataset.
     return this.defaultValue;
   }
@@ -11810,6 +11814,17 @@ class Experiment {
     }
   }
   
+  iteratorDimensionIndex(iterator) {
+    // Returns index of iterator dimension in this experiment's dimension list.
+    for(let index = 0; index < this.dimensions.length; index++) {
+      for(const sel of this.dimensions[index]) {
+        if(sel.startsWith(iterator)) return index;
+      }
+    }
+    // By convention, index = -1 indicates "not found".
+    return -1;
+  }
+
   updateIteratorDimensions() {
     // Create iterator selectors for each index variable having a relevant range.
     this.iterator_dimensions = [];
@@ -11819,7 +11834,8 @@ class Experiment {
       if(r[0] || r[1]) {
         const
             sel = [],
-            k = il[i] + '=';
+            k = il[i] + '=',
+            idi = this.iteratorDimensionIndex(k);
         // NOTE: Iterate from FROM to TO limit also when FROM > TO.
         if(r[0] <= r[1]) {
           for(let j = r[0]; j <= r[1]; j++) {
@@ -11831,6 +11847,8 @@ class Experiment {
           }          
         }
         this.iterator_dimensions.push(sel);
+        // If experiment dimension list contains this iterator, update it as well.
+        if(idi >= 0) this.dimensions[idi] = sel.slice();
       }
     }
   }
@@ -12362,7 +12380,11 @@ class Experiment {
     // display name `dn` (or -1 if not found).
     if(this.variables.length === 0) this.inferVariables();
     for(let index = 0; index < this.variables.length; index++) {
-      if(this.variables[index].displayName === dn) {
+      const
+          v = this.variables[index],
+          n = v.displayName;
+      // NOTE: "absolute" variables are enclosed by special vertical bars.
+      if(n === dn || (v.absolute && n === `\u2503${dn}\u2503`)) {
         return index;
       }
     }

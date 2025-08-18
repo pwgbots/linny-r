@@ -12,7 +12,7 @@ GUIRepositoryBrowser).
 */
 
 /*
-Copyright (c) 2017-2024 Delft University of Technology
+Copyright (c) 2017-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -815,6 +815,7 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
         iml = this.included_modules[mkey],
         mcnt = `(${pluralS(iml.length, 'cluster')})`,
         missing_params = {},
+        resolved = {},
         cnlist = [];
     for(const im of iml) cnlist.push(safeDoubleQuotes(im.displayName));
     md.element('count').innerText = mcnt;
@@ -830,30 +831,40 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
           missing = complement(ck, bk);
       if(missing.length) {
         // Try to match name in module with existing prefixed entity in model.
-        for(let mi = missing.length - 1; mi >= 0; mi++) {
-          const mb = IO_CONTEXT.bindings[missing[mi]];
+        for(let mi = missing.length - 1; mi >= 0; mi--) {
+          const
+              mk = missing[mi],
+              mb = IO_CONTEXT.bindings[mk];
           if(mb.io_type === 2) {
             // Actual name = formal name, so known.
             missing.splice(mi, 1);
           } else {
-            const
-                pent = cn + UI.PREFIXER + mb.name_in_module,
+            // First guess is that binding should be Cluster: Name.
+            let pent = cn + UI.PREFIXER + mb.name_in_module,
                 obj = MODEL.objectByName(pent);
+            if(!obj || obj.type !== mb.entity_type) {
+              // Second guess is that binding should be Name: Cluster.
+              pent = mb.name_in_module + UI.PREFIXER + cn;
+              obj = MODEL.objectByName(pent);
+            }
             if(obj && obj.type === mb.entity_type) {
-              mb.actual_name = pent;
-              console.log('HERE -- completed original bindings', mb);
-            } else {
-              console.log('HERE -- incomplete original bindings', obj, mb);
+              iob[mk] = new IOBinding(mb.io_type, mb.entity_type,
+                  mb.is_data, mb.name_in_module);
+              iob[mk].actual_name = pent;
+              if(resolved.hasOwnProperty(mk)) {
+                resolved[mk].push(cn);
+              } else {
+                resolved[mk] = [cn];
+              }
             }
           }
         }
       }
-      // If not resolved, add module to the missing record.
       for(const m of missing) {
         if(missing_params.hasOwnProperty(m)) {
-          missing_params[m].push(im);
+          missing_params[m].push(cn);
         } else {
-          missing_params[m] = [im];
+          missing_params[m] = [cn];
         }
       }
       for(const k of MODEL.datasetKeysByPrefix(cn)) {
@@ -861,6 +872,13 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
       }
       for(const e of MODEL.equationsByPrefix(cn)) this.obsolete_items.push(e);
       for(const c of MODEL.chartsByPrefix(cn)) this.obsolete_items.push(c);
+    }
+    for(const k of Object.keys(resolved)) {
+      if(resolved[k].length >= missing_params[k].length) {
+        delete missing_params[k];
+      } else {
+        missing_params[k] = complement(missing_params[k], resolved[k]);
+      }
     }
     const
         remove_div = md.element('remove'),
@@ -901,12 +919,12 @@ class GUIRepositoryBrowser extends RepositoryBrowser {
       for(const k of mpkeys) {
         const mb = IO_CONTEXT.bindings[k];
         cnlist.length = 0;
-        for(const im of missing_params[k]) {
-          cnlist.push(safeDoubleQuotes(im.displayName));
+        for(const cn of missing_params[k]) {
+          cnlist.push(safeDoubleQuotes(cn));
         }
         html.push('<div>', mb.name_in_module,
-            '<span class="update-cc" title="', cnlist.sort().join('\n'),
-            '">(in ', pluralS(cnlist.length, 'cluster'), ')</span></div>');
+            '<div class="update-cc" title="', cnlist.sort().join('\n'),
+            '"> (in ', pluralS(cnlist.length, 'cluster'), ')</div></div>');
       }
       issues_list.innerHTML = html.join('');
       issues_div.style.display = 'block';
