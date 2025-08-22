@@ -22,8 +22,8 @@ These <a href="https://sysmod.tbm.tudelft.nl/linny-r/docs/?68"
          target="_blank">instruction videos</a> published on YouTube give
 an idea of what Linny-R can do.
 
-User documentation for Linny-R is still scant. A book "Modeling and
-simulation with Linny-R" will be published by TU Delft OPEN in 2024.
+User documentation for Linny-R is still scant. A book "Modelling and
+simulation with Linny-R" will be published by TU Delft OPEN by the end of 2025.
 Meanwhile, you can consult the official user documentation site
 <a href="https://linny-r.info" target="_blank">https://linny-r.info</a>.
 Technical documentation will be developed in due time on GitHub:
@@ -35,8 +35,8 @@ Linny-R is developed as a JavaScript package, and requires that **Node.js**
 is installed on your computer. This software can be downloaded from
 <a href="https://nodejs.org" target="_blank">https://nodejs.org</a>. 
 Make sure that you choose the correct installer for your computer.
-Linny-R is developed using the _current_ release. Presently (May 2025)
-this is 24.1.0. 
+Linny-R is developed using the _current_ release. Presently (August 2025)
+this is 24.6.0. 
 
 Run the installer and accept the default settings.
 There is <u>**no**</u> need to install the optional _Tools for Native Modules_.
@@ -47,7 +47,7 @@ Verify the installation by typing:
 
 ``node --version``
 
-The response should be the version number of Node.js, for example: v24.1.0.
+The response should be the version number of Node.js, for example: v24.6.0.
 
 ## Installing Linny-R
 It is advisable to install Linny-R in a directory on your computer, **not**
@@ -112,7 +112,7 @@ two Node.js packages: `@xlmdom` and `linny-r`.
 
 The `linny-r` package directory should contain this file `README.md`, the files
 `server.js` and `console.js` that will be run by Node.js, and the sub-directory
-`static`. This `static` directory should contain three HTML files: 
+`static`. This `static` directory should contain two HTML files: 
 
 * `index.html` (the browser-based GUI) 
 * `show-diff.html` (to display differences between two Linny-R models)
@@ -130,7 +130,7 @@ by the script `server.js` when it is running in Node.js.
 
 #### Updating to the latest version of Linny-R
 
-When a newer version has beeh released, Linny-R will prompt you to update
+When a newer version has been released, Linny-R will prompt you to update
 automatically. Click on the link in this prompt to see the release notes
 on GitHub and find out about new features and bug fixes. When you click on
 the _OK_ button, Linny-R will shut down its local server script, and then
@@ -163,11 +163,11 @@ an earlier release, for example version 1.9.3, open the CLI, change to your
 > This will overwrite the contents of the `node_modules` directory, but
 > it will not affect the files in your user space.
 
-If you prefer to have different versions of Linny-R on your computer, you
+If you prefer to have multiple versions of Linny-R on your computer, you
 can create a separate directory for a specific version, then change to this
 directory and type:
 
-``npm install --prefix . linny-r@1.9.3``
+``npm install --prefix . linny-r@1.9.3``  &larr; <small>replace `1.9.3` by the version of your choice</small>
 
 > [!NOTE]
 > To run a specific version in your browser, you must start the server from
@@ -196,6 +196,7 @@ More information on how to obtain a license, and instructions for installing
 Gurobi on your computer can be obtained via this URL:
 <a href="https://www.gurobi.com/academia/academic-program-and-licenses/"
    target="_blank">https://www.gurobi.com/academia/academic-program-and-licenses/</a>
+The recommended license type is the **Academic Named-User License**.
 
 When running a model, Linny-R will try to execute the command line application
 `gurobi_cl`. It will look for this application in the directory specified in
@@ -402,9 +403,6 @@ The sub-directories of this directory `user` are used by Linny-R to store files.
 * `channel` and `callback` will be used to interact with Linny-R via its _Receiver_ 
 * `data` will be used by the _Dataset Manager_ to locate datasets for which
   a path has been specified
-* `images` will contain images that you saved to your workspace by clicking on the
-  _Save-and-view diagram_ button or on the _Save-and-view chart_ button of the
-  _Chart manager_, or using the keyboard shortcut `Ctrl+G`.
 * `models` will contain models that you saved by `Shift`-clicking on the
   _Save_ button, or using the keyboard shortcut `Ctrl+Shift+S`
 * `modules` will contain models stored in the `local host` _repository_
