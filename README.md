@@ -167,7 +167,7 @@ If you prefer to have multiple versions of Linny-R on your computer, you
 can create a separate directory for a specific version, then change to this
 directory and type:
 
-``npm install --prefix . linny-r@1.9.3``  &larr; <small>replace `1.9.3` by the version of your choice</small>
+``npm install --prefix . linny-r@1.9.3``  &larr; _replace_ `1.9.3` _by the version of your choice_
 
 > [!NOTE]
 > To run a specific version in your browser, you must start the server from
