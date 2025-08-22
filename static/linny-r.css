@@ -4248,18 +4248,17 @@ td.sa-not-run {
   margin-left: 2px;
   font-weight: 600;
   font-style: italic;
-  width: calc(100% - 120px);
+  max-width: calc(100% - 120px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-#sensitivity-progress,
 #viewer-progress {
   display: inline-block;
   vertical-align: middle;
   margin-left: 10px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 span.x-checked {

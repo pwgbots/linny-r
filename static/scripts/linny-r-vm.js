@@ -2407,8 +2407,8 @@ class VirtualMachine {
       A: this.actor_attr,
       B: this.constraint_attr,
       C: this.cluster_attr,
-      D: ['V'], // ("value" -- placeholder value, not used)
-      E: ['X'],   // ("expression" -- placeholder value, not used)
+      D: ['V'],  // ("value" -- placeholder, used only by Finder)
+      E: ['V'],  // ("value" -- placeholder, used only by Finder)
       L: this.link_attr,
       P: this.process_attr,
       Q: this.product_attr
@@ -2707,7 +2707,7 @@ class VirtualMachine {
     // time step duration `vdt` with length `vl`, assuming that data[0]
     // corresponds to vector[start] using the specified method, and filling out
     // with `fill` unless `periodic` is TRUE.
-    // NOTE: do nothing if vector or data are not arrays.
+    // NOTE: Do nothing if vector or data are not arrays.
     if(!(Array.isArray(vector) && Array.isArray(data))) return;
     // Initialize the vector.
     vector.length = vl + 1;

@@ -39,6 +39,7 @@ class Finder {
   constructor() {
     this.dialog = UI.draggableDialog('finder');
     UI.resizableDialog('finder', 'FINDER');
+    this.title = document.getElementById('finder-title');
     this.close_btn = document.getElementById('finder-close-btn');
     // Make toolbar buttons responsive.
     this.close_btn.addEventListener('click', (e) => UI.toggleDialog(e));
@@ -102,6 +103,7 @@ class Finder {
     this.entities.length = 0;
     this.filtered_types.length = 0;
     this.selected_entity = null;
+    this.selected_variable_name = '';
     this.filter_input.value = '';
     this.filter_string = '';
     this.filter_pattern = null;
@@ -114,6 +116,8 @@ class Finder {
     this.product_cluster_index = 0;
     this.tabular_view = false;
     this.experiment_view = false;
+    // Dialog title depends on view mode, so update it.
+    this.updateTitle();
   }
   
   doubleClicked(obj) {
@@ -161,7 +165,6 @@ class Finder {
     const
         el = [],
         enl = [],
-        se = this.selected_entity,
         et = this.entity_types,
         fp = this.filter_pattern && this.filter_pattern.length > 0;
     let imgs = '';
@@ -173,14 +176,25 @@ class Finder {
       if(x) {
         x.inferVariables();
         for(const v of x.variables) {
+          let match = false;
           const obj = v.object;
-          if(et !== VM.entity_letters && et.indexOf(obj.typeLetter) >= 0) {
-            if(!fp || patternMatch(obj.displayName, this.filter_pattern)) {
-              this.entities.push(v);
-              enl.push(v.displayName);
+          if(fp) { 
+            // Select variable if its name matches the pattern...
+            match = patternMatch(v.displayName, this.filter_pattern);
+            // ... but deselect if its entity is of the wrong type.
+            if(et !== VM.entity_letters && et.indexOf(obj.typeLetter) < 0) {
+              match = false;
             }
+          } else {
+            // No pattern, then select if entity type matches.
+            match = (et !== VM.entity_letters && et.indexOf(obj.typeLetter) >= 0);
           }
+          if(match) this.entities.push(v);
         }
+        // Sort the entity list (that now contains chart variables).
+        this.entities.sort((a, b) => UI.compareFullNames(a.displayName, b.displayName));
+        // Only then make the name list, so their indices will concur.
+        for(const v of this.entities) enl.push(v.displayName);
       }
     } else if(fp || et && et !== VM.entity_letters) {
       // No list unless a pattern OR a specified SUB-set of entity types.
@@ -355,14 +369,19 @@ class Finder {
         seid = 'etr';
     for(let i = 0; i < n; i++) {
       if(this.experiment_view) {
-        el.push(['<tr id="etr', i, '" class="dataset"><td>',
+        // List all variable names and permit selection of one specific variable.
+        const sel = (enl[i] === this.selected_variable_name);
+        if(sel) seid += i;
+        el.push(['<tr id="etr', i, '" class="dataset', (sel  ? ' sel-set' : ''),
+            '" onclick="FINDER.selectVariable(', i, ');""><td>',
             '<div class="series">', enl[i], '</div></td></tr>'].join(''));
       } else {
         const e = MODEL.objectByID(enl[i]);
-        if(e === se) seid += i;
+        if(e === this.selected_entity) seid += i;
         el.push(['<tr id="etr', i, '" class="dataset',
-            (e === se ? ' sel-set' : ''), '" onclick="FINDER.selectEntity(\'',
-            enl[i], '\', event.altKey);" onmouseover="FINDER.showInfo(\'', enl[i],
+            (e === this.selected_entity ? ' sel-set' : ''),
+            '" onclick="FINDER.selectEntity(\'', enl[i],
+            '\', event.altKey);" onmouseover="FINDER.showInfo(\'', enl[i],
             '\', event.shiftKey);"><td draggable="true" ',
             'ondragstart="FINDER.drag(event);"><img class="finder" src="images/',
             e.type.toLowerCase(), '.png">', e.displayName,
@@ -370,39 +389,57 @@ class Finder {
       }
     }
     // NOTE: Reset `selected_entity` if not in the new list.
-    if(seid === 'etr') this.selected_entity = null;
+    if(seid === 'etr') {
+      this.selected_entity = null;
+      this.selected_variable_name = '';
+    }
     this.entity_table.innerHTML = el.join('');
     UI.scrollIntoView(document.getElementById(seid));
-    document.getElementById('finder-count').innerHTML = pluralS(n,
-        'entity', 'entities');
+    document.getElementById('finder-count').innerHTML = (this.experiment_view ?
+        pluralS(n, 'variable') : pluralS(n, 'entity', 'entities'));
     this.edit_btn.style.display = 'none';
     this.chart_btn.style.display = 'none';
-    this.table_btn.style.display = 'none';
     this.copy_btn.style.display = 'none';
-/*
+    
+    // Keep showing table view button when it is active, even if entity list is empty.
+    this.table_btn.style.display = (this.tabular_view ? 'inline-block' : 'none');
+
     // Show the experiment button only when at least 1 experiment exists.
-    this.experiment_btn.style.display = (MODEL.experiments.length ?
-        'inline-block' : 'none');
-*/
+    if(EXPERIMENT_MANAGER.selected_experiment) {
+      this.experiment_btn.title = 'Only consider results of experiment "' +
+          EXPERIMENT_MANAGER.selected_experiment.title + '"';
+      this.experiment_btn.style.display = 'inline-block';
+    } else {
+      this.experiment_btn.style.display = 'none';
+    }
+
     // Only show other buttons if the set of filtered entities is not empty.
     if(n > 0) {
-      this.copy_btn.style.display = 'inline-block';
-      if(CHART_MANAGER.visible && CHART_MANAGER.chart_index >= 0) {
-        const ca = this.commonAttributes;
-        if(ca.length) {
-          this.chart_btn.title = 'Add ' + pluralS(n, 'variable') +
-              ' to selected chart';
-          this.chart_btn.style.display = 'inline-block';
+      // Values can be viewed for entities as well as experiment results.
+      this.table_btn.style.display = 'inline-block';
+      // NOTE: Experiment results cannot be copied from Finder, nor added
+      // as variables to a chart.
+      if(!this.experiment_view) {
+        this.copy_btn.style.display = 'inline-block';
+        if(CHART_MANAGER.visible && CHART_MANAGER.chart_index >= 0) {
+          const ca = this.commonAttributes;
+          if(ca.length) {
+            this.chart_btn.title = 'Add ' + pluralS(n, 'variable') +
+                ' to selected chart';
+            this.chart_btn.style.display = 'inline-block';
+          }
         }
       }
-      // NOTE: Enable editing and tabular view only when filter results
-      // in a single entity type.
+      // NOTE: Enable editing only when filter results in a single entity type.
       n = this.entityGroup.length;
       if(n > 0) {
-        this.edit_btn.title = 'Edit attributes of ' +
-            pluralS(n, this.entities[0].type.toLowerCase());
-        this.edit_btn.style.display = 'inline-block';
-        this.table_btn.style.display = 'inline-block';
+        const et = this.entities[0].type;
+        // NOTE: Equations cannot be edited.
+        if(et !== 'Equation') {
+          this.edit_btn.title = 'Edit attributes of ' +
+              pluralS(n, et.toLowerCase());
+          this.edit_btn.style.display = 'inline-block';
+        }
       }
     }
     // Show toggle button status.
@@ -430,11 +467,9 @@ class Finder {
   
   get entityGroup() {
     // Returns the list of filtered entities if all are of the same type,
-    // while excluding (no actor), (top cluster), and equations.
-    const
-        eg = [],
-        ft = this.filtered_types[0];
-    if(this.filtered_types.length === 1 && ft !== 'E') {
+    // while excluding (no actor) and (top cluster).
+    const eg = [];
+    if(this.filtered_types.length === 1) {
       for(const e of this.entities) {
         // Exclude "no actor" and top cluster.
         if(!e.name || (e.name !== '(no_actor)' && e.name !== '(top_cluster)' &&
@@ -532,13 +567,32 @@ class Finder {
     this.data_table.innerHTML = '';
     // ... but information on the occurence of the selected entity.
     const
-        se = this.selected_entity,
         occ = [], // list with occurrences (clusters, processes or charts)
         xol = [], // list with identifier of "expression owning" entities
         xal = [], // list with attributes having matching expressions
         el = []; // list of HTML elements (table rows) to be added
     let hdr = '(no entity selected)';
+    if(this.experiment_view) {
+      this.selected_entity = null;
+      if(this.selected_variable_name) {
+        // Variables should occur in one or more charts.
+        for(let ci = 0; ci < MODEL.charts.length; ci++) {
+          const c = MODEL.charts[ci];
+          for(const v of c.variables) {
+            if(v.displayName === this.selected_variable_name) {
+              occ.push(MODEL.chart_id_prefix + ci);
+              break;
+            }
+          }
+        }
+        hdr = pluralS(occ.length, 'chart');
+      } else {
+        hdr = '(no variable selected)';
+      }
+    }
+    const se = this.selected_entity;
     if(se) {
+      this.selected_variable_name = '';
       hdr = `<em>${se.type}:</em> <strong>${se.displayName}</strong>`;
       // Make occurrence list.
       if(se instanceof Process || se instanceof Cluster) {
@@ -575,11 +629,19 @@ class Finder {
           }
         }
       }
-      // Now also look for occurrences of entity references in expressions.
-      const
-          raw = escapeRegex(se.displayName),
-          re = new RegExp(
-              '\\[\\s*!?' + raw.replace(/\s+/g, '\\s+') + '\\s*[\\|\\@\\]]');
+    }
+    // Now also look for occurrences of entity references in expressions.
+    let re = null;
+    if(se) {
+      const raw = escapeRegex(se.displayName);
+      re = new RegExp(
+          '\\[\\s*!?' + raw.replace(/\s+/g, '\\s+') + '\\s*[\\|\\@\\]]');
+    } else if(this.selected_variable_name) {
+      const raw = escapeRegex(this.selected_variable_name);
+      re = new RegExp(
+          '\\}\\s*!?' + raw.replace(/\s+/g, '\\s+') + '\\s*[\\|\\@\\]]');
+    }
+    if(re) {
       // Check actor weight expressions.
       for(let k in MODEL.actors) if(MODEL.actors.hasOwnProperty(k)) {
         const a = MODEL.actors[k];
@@ -716,25 +778,41 @@ class Finder {
   toggleViewAttributes() {
     // Show/hide tabular display of entity attributes.
     this.tabular_view = !this.tabular_view;
+    this.updateTitle();
     this.updateRightPane();
-    if(this.tabular_view) {
-      this.table_btn.classList.add('stay-activ');
-    } else {
-      this.table_btn.classList.remove('stay-activ');
-    }
   }
   
   toggleViewExperiment() {
     // Switch between model entities and experiment outcomes.
     this.experiment_view = !this.experiment_view;
-    if(this.experiment_view) this.tabular_view = true;
+    this.updateTitle();
     this.updateDialog();
+  }
+  
+  updateTitle() {
+    if(this.tabular_view) {
+      if(this.experiment_view) {
+        this.title.innerText = 'View experiment results for t=' + MODEL.t;
+      } else {
+        this.title.innerText = 'View attribute values for t=' + MODEL.t; 
+      }
+      this.table_btn.classList.add('stay-activ');
+    } else {
+      if(this.experiment_view) {
+        this.title.innerText = 'Find occurrences of experiment results';
+      } else {
+        this.title.innerText = 'Find occurrences of entities';
+      }
+      this.table_btn.classList.remove('stay-activ');
+    }    
   }
   
   updateTabularView() {
     // Display data values when tabular view is active.
     if(!this.entities.length ||
         (this.filtered_types.length !== 1 && !this.experiment_view)) {
+      this.data_header.innerHTML =
+          '<tr><td style="text-align: center; font-style: italic">(no data)</td></tr>';
       this.data_table.innerHTML = '';
       return;
     }
@@ -750,20 +828,41 @@ class Finder {
       // Get selected runs.
       const
           x = EXPERIMENT_MANAGER.selected_experiment,
-          runs = (x ? x.chart_combinations : []);
+          runs = (x ? x.chart_combinations.slice().sort() : []);
       if(!runs.length) {
-        UI.notify('');
+        const msg = (x ? 'No runs selected<br>in outcome table' :
+           'No experiment selected<br>in Experiment manager');
+        this.data_header.innerHTML =
+            `<tr><td style="text-align: center; font-style: italic">${msg}</td></tr>`;
         this.data_table.innerHTML = '';
         return;
       }
-      // Add aray for each run.
-      data[0] = [];
+      // NOTE: Experiment time scale may differ from model time scale.
+      // The value to be displayed must be based on the model time scale.
+      const
+          mt = MODEL.t,
+          mtsd = MODEL.timeStepDuration;
+      // Entities now are chart variables.
       for(const e of this.entities) {
-        const run_data = {name: e.object.displayName};
-        // Add value for each run.
+        const
+            dn = e.displayName,
+            run_data = {name: dn},
+            rri = x.resultIndex(dn);
+        // Add value for each run, or limit set to those selected in
+        // the Experiment manager.
+        for(const r of runs) {
+          const rr = x.runs[r].results[rri];
+          run_data[r] = (rr ?
+              rr.valueAtModelTime(mt, mtsd, 'NEAREST', false) : VM.UNDEFINED);
+        }
         data_list.push(run_data);
       }
       data_list.sort((a, b) => UI.compareFullNames(a.name, b.name));
+      // Convert outcomes-per-variable to outcomes-per-run
+      for(const r of runs) data[r] = [];
+      for(const d of data_list) {
+        for(const r of runs) data[r].push(d[r]);
+      }
     } else {
       for(const e of this.entities) data_list.push(e.attributes);
       data_list.sort((a, b) => UI.compareFullNames(a.name, b.name));
@@ -842,7 +941,12 @@ class Finder {
         row = [],
         perc = (97 / keys.length).toPrecision(3),
         style = `min-width: ${perc}%; max-width: ${perc}%`;
-    for(const k of keys) {
+    for(let k of keys) {
+      if(k === 'V') {
+        k = '(value)';
+      } else if(/\d+/.test(k)) {
+        k = '#' + k;
+      }
       row.push(`<td style="${style}">${k}</td>`);
     }
     this.data_header.innerHTML = '<tr>' + row.join('') + '</tr>';
@@ -881,6 +985,7 @@ class Finder {
     this.filter_string = ft;
     this.filter_pattern = patternList(ft);
     this.entity_types = et;
+    this.selected_variable_name = '';
     this.updateDialog();
   }
   
@@ -928,11 +1033,20 @@ class Finder {
     }
   }
   
+  selectVariable(index) {
+    if(this.entities[index]) {
+      this.selected_variable_name = this.entities[index].displayName;
+    } else {
+      this.selected_variable_name = '';
+    }
+    this.updateDialog();
+  }
+  
   reveal(id) {
     // Show selected occurrence.
     const
         se = this.selected_entity,
-        obj = (se ? MODEL.objectByID(id) : null);
+        obj = MODEL.objectByID(id);
     if(!obj) console.log('Cannot reveal ID', id);
     // If cluster, make it focal...
     if(obj instanceof Cluster) {
@@ -954,7 +1068,9 @@ class Finder {
       MODEL.select(obj);
       UI.scrollIntoView(obj.shape.element.childNodes[0]);
     } else if(obj instanceof Product) {
-      // @@TO DO: iterate through list of clusters containing this product
+      // Product placeholder in clicked cluster containing this product
+      // is selected, so no further action is needed.
+      console.log('Product is revealed by clicking cluster in occurrence list');
     } else if(obj instanceof Link || obj instanceof Constraint) {
       const c = MODEL.inferParentCluster(obj);
       if(c) {
@@ -1027,13 +1143,14 @@ class Finder {
   
   editAttributes() {
     // Show the Edit properties dialog for the filtered-out entities.
-    // These must all be of the same type, or the edit button will not
-    // show. Just in case, check anyway.
+    // These must all be of the same type (and nor Equation) or the
+    // edit button will not show. Just in case, check anyway.
     const
         group = this.entityGroup,
         n = group.length;
     if(n === 0) return;
     let e = group[0];
+    if(e.type === 'Equation') return;
     if(n === 1) {
       // Single entity, then edit its properties as usual.
       this.selectEntity(e.identifier, true);

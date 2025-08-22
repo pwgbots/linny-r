@@ -469,6 +469,12 @@ class GUIExperimentManager extends ExperimentManager {
     }
   }
   
+  selectExperiment(title) {
+    super.selectExperiment(title);
+    // When experiment is selected, Finder permits viewing results.
+    FINDER.updateDialog();
+  }
+  
   renameExperiment() {
     if(this.selected_experiment) {
       const

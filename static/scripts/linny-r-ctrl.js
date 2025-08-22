@@ -1194,7 +1194,7 @@ class SensitivityAnalysis {
 } // END of class SensitivityAnalysis
 
 
-// Class ExperimentManager controls the collection of experiments of the model
+// Class ExperimentManager controls the collection of experiments of the model.
 class ExperimentManager {
   constructor() {
     // NOTE: The properties below are relevant only for the GUI.
@@ -1212,7 +1212,7 @@ class ExperimentManager {
   
   updateChartList() {
     // Select charts having 1 or more variables, as only these are meaningful
-    // as the dependent variables of an experiment
+    // as the dependent variables of an experiment.
     this.suitable_charts.length = 0;
     for(const c of MODEL.charts) {
       if(c.variables.length > 0) this.suitable_charts.push(c);
@@ -1256,7 +1256,7 @@ class ExperimentManager {
   }
 
   updateDialog() {
-    // NOTE: no GUI elements to update, but experiment parameters must be set
+    // NOTE: No GUI elements to update, but experiment parameters must be set.
     MODEL.inferDimensions();
     const x = this.selected_experiment;
     if(!x) return;
@@ -1266,7 +1266,7 @@ class ExperimentManager {
   }
 
   clearRunResults() {
-    // Clears all run results
+    // Clear all run results.
     const x = this.selected_experiment;
     if(x) {
       x.clearRuns();
@@ -1359,7 +1359,7 @@ class ExperimentManager {
     if(!x) return;
     const aci = x.active_combination_index;
     if(MODEL.solved) {
-      // NOTE: addresults will call processRestOfRun when completed.
+      // NOTE: addResults will call processRestOfRun when completed.
       x.runs[aci].addResults();
     } else {
       // Do not add results...

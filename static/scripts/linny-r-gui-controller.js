@@ -1288,9 +1288,10 @@ class GUIController extends Controller {
     UNDO_STACK.clear();
     // Autosaving should start anew.
     AUTO_SAVE.setAutoSaveInterval();
-    // Finder dialog is closed, but  may still display results for
-    // previous model.
+    // Finder and Experiment manager dialogs are closed, but  may still
+    // display results for previous model.
     FINDER.updateDialog();
+    EXPERIMENT_MANAGER.updateDialog();
     // Signal success or failure.
     return loaded;
   }
@@ -1597,6 +1598,8 @@ class GUIController extends Controller {
   readyToReset() {
     // Show the Reset button.
     UI.buttons.reset.classList.remove('off');
+    // When Finder is showing entity properties, add the solution-dependent ones.
+    if(FINDER.tabular_view) FINDER.updateTabularView();
   }
 
   reset() {
@@ -1614,6 +1617,13 @@ class GUIController extends Controller {
     this.constraining_node = null;
     this.start_sel_x = -1;
     this.start_sel_y = -1;
+  }
+  
+  resetModel() {
+    // Model reset clears results, so then the Finder should display
+    // only those entity properties that are model input parameters.
+    super.resetModel();
+    if(FINDER.tabular_view) FINDER.updateTabularView();
   }
 
   updateIssuePanel(change=0) {
@@ -1764,10 +1774,10 @@ class GUIController extends Controller {
       const
           dx = cx - e.clientX,
           dy = cy - e.clientY;
-      // ... and record the new mouse cursor position
+      // ... and record the new mouse cursor position.
       cx = e.clientX;
       cy = e.clientY;
-      // Move the entire dialog, but prevent it from being moved outside the window
+      // Move the entire dialog, but prevent it from being moved outside the window.
       UI.dr_dialog.style.top = Math.min(
           window.innerHeight - 40, Math.max(0, UI.dr_dialog.offsetTop - dy)) + 'px';
       UI.dr_dialog.style.left = Math.min(
@@ -1776,17 +1786,17 @@ class GUIController extends Controller {
     }
   
     function stopDragDialog() {
-      // Stop moving when mouse button is released
+      // Stop moving when mouse button is released.
       document.onmouseup = null;
       document.onmousemove = null;
-      // Preserve position as data attributes
+      // Preserve position as data attributes.
       UI.dr_dialog.setAttribute('data-top', UI.dr_dialog.style.top);
       UI.dr_dialog.setAttribute('data-left', UI.dr_dialog.style.left);
     }
   }
   
   resizableDialog(d, mgr=null) {
-    // Make dialog resizable (similar to dragElement above)
+    // Make dialog resizable (similar to dragElement above).
     const
         dlg = document.getElementById(d + '-dlg'),
         rsz = document.getElementById(d + '-resize');
@@ -1807,11 +1817,11 @@ class GUIController extends Controller {
     function resizeMouseDown(e) {
       e = e || window.event;
       e.preventDefault();
-      // Find the dialog element
+      // Find the dialog element.
       let de = e.target;
       while(de && !de.id.endsWith('-dlg')) { de = de.parentElement; }
       UI.dr_dialog = de;
-      // Get the (min.) weight, (min.) height and mouse cursor position at startup
+      // Get the (min.) weight, (min.) height and mouse cursor position at startup.
       const cs = window.getComputedStyle(UI.dr_dialog);
       w = parseFloat(cs.width);
       h = parseFloat(cs.height);
@@ -1826,20 +1836,20 @@ class GUIController extends Controller {
     function dialogResize(e) {
       e = e || window.event;
       e.preventDefault();
-      // Calculate the relative mouse cursor movement
+      // Calculate the relative mouse cursor movement.
       const
           dw = e.clientX - cx,
           dh = e.clientY - cy;
       // Set the dialog's new size
       UI.dr_dialog.style.width = Math.max(minw, w + dw) + 'px';
       UI.dr_dialog.style.height = Math.max(minh, h + dh) + 'px';
-      // Update the dialog if its manager has been specified
+      // Update the dialog if its manager has been specified.
       const mgr = UI.dr_dialog.dataset.manager;
       if(mgr) window[mgr].updateDialog();
     }
   
     function stopResizeDialog() {
-      // Stop moving when mouse button is released
+      // Stop moving when mouse button is released.
       document.onmouseup = null;
       document.onmousemove = null;
     }
@@ -1847,41 +1857,41 @@ class GUIController extends Controller {
   
   toggleDialog(e) {
     // Hide dialog if visible, or show it if not, and update the
-    // order of appearance so that this dialog appears on top
+    // order of appearance so that this dialog appears on top.
     e = e || window.event;
     e.preventDefault();
     e.stopImmediatePropagation();
-    // Infer dialog identifier from target element
+    // Infer dialog identifier from target element.
     const
         dlg = e.target.id.split('-')[0],
         tde = document.getElementById(dlg + '-dlg');
-    // NOTE: manager attribute is a string, e.g. 'MONITOR' or 'CHART_MANAGER'
+    // NOTE: `manager` attribute is a string, e.g. 'MONITOR' or 'CHART_MANAGER'.
     let mgr = tde.dataset.manager,
         was_hidden = this.hidden(tde.id);
     if(mgr) {
-      // Dialog has a manager object => let `mgr` point to it
+      // Dialog has a manager object => let `mgr` point to it.
       mgr = window[mgr];
       // Manager object attributes are more reliable than DOM element
-      // style attributes, so update the visibility status
+      // style attributes, so update the visibility status.
       was_hidden = !mgr.visible;
     }
-    // NOTE: modeler should not view charts while an experiment is
-    // running, so do NOT toggle when the Chart Manager is NOT visible 
+    // NOTE: Modeler should not view charts while an experiment is
+    // running, so do NOT toggle when the Chart Manager is NOT visible. 
     if(dlg === 'chart' && was_hidden && MODEL.running_experiment) {
       UI.notify(UI.NOTICE.NO_CHARTS);
       return;
     }
-    // Otherwise, toggle the dialog visibility
+    // Otherwise, toggle the dialog visibility.
     this.toggle(tde.id);
     UI.buttons[dlg].classList.toggle('stay-activ');
     if(mgr) mgr.visible = was_hidden;
     let t, l;
     if(top in tde.dataset && left in tde.dataset) {
-      // Open at position after last drag (recorded in DOM data attributes)
+      // Open at position after last drag (recorded in DOM data attributes).
       t = tde.dataset.top;
       l = tde.dataset.left;
     } else {
-      // Make dialog appear in screen center the first time it is shown
+      // Make dialog appear in screen center the first time it is shown.
       const cs = window.getComputedStyle(tde);
       t = ((window.innerHeight - parseFloat(cs.height)) / 2) + 'px';
       l = ((window.innerWidth - parseFloat(cs.width)) / 2) + 'px';
@@ -1889,10 +1899,10 @@ class GUIController extends Controller {
       tde.style.left = l;
     }
     if(was_hidden) {
-      // Add activated dialog to "showing" list, and adjust z-indices
+      // Add activated dialog to "showing" list, and adjust z-indices.
       this.dr_dialog_order.push(tde);
       this.reorderDialogs();
-      // Update the diagram if its manager has been specified
+      // Update the diagram if its manager has been specified.
       if(mgr) {
         mgr.updateDialog();
         if(mgr === DOCUMENTATION_MANAGER) {
@@ -1907,7 +1917,7 @@ class GUIController extends Controller {
       }
     } else {
       const doi = this.dr_dialog_order.indexOf(tde);
-      // NOTE: doi should ALWAYS be >= 0 because dialog WAS showing
+      // NOTE: `doi` should ALWAYS be >= 0 because dialog WAS showing.
       if(doi >= 0) {
         this.dr_dialog_order.splice(doi, 1);
         this.reorderDialogs();
@@ -3091,7 +3101,10 @@ class GUIController extends Controller {
       MODEL.t = Math.max(1, MODEL.t - dt);
       UI.updateTimeStep();
       UI.drawDiagram(MODEL);
-      if(FINDER.visible && FINDER.tabular_view) FINDER.updateTabularView();
+      if(FINDER.visible && FINDER.tabular_view) {
+        FINDER.updateTitle();
+        FINDER.updateTabularView();
+      }
     }
   }
   
@@ -3102,7 +3115,10 @@ class GUIController extends Controller {
       MODEL.t = Math.min(MODEL.end_period - MODEL.start_period + 1, MODEL.t + dt);
       UI.updateTimeStep();
       UI.drawDiagram(MODEL);
-      if(FINDER.visible && FINDER.tabular_view) FINDER.updateTabularView();
+      if(FINDER.visible && FINDER.tabular_view) {
+        FINDER.updateTitle();
+        FINDER.updateTabularView();
+      }
     }
   }
   
@@ -4114,6 +4130,10 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     if(model.always_diagnose) {
       UI.notify('To diagnose unbounded problems, values beyond 1e+10 ' +
           'are considered as infinite (\u221E)');
+      this.buttons.solve.title = 'Run simulation (Ctrl-R)';
+    } else {
+      this.buttons.solve.title = 'Run simulation (Ctrl-R) &ndash; ' +
+          'Alt-click to diagnose infeasible/unbounded problem (Alt-R)';
     }
     // Some changes may necessitate redrawing the diagram.
     let cb = UI.boxChecked('settings-align-to-grid'),

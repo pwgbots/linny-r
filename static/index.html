@@ -28,7 +28,7 @@ implementation is made available via the Linny-R web site.
 -->
 
 <!--
-Copyright (c) 2017-2024 Delft University of Technology
+Copyright (c) 2017-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -262,7 +262,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       <img id="settings-btn" class="btn enab" src="images/settings.png"
            title="Change model settings (Alt-M)">
       <img id="save-btn" class="btn enab" src="images/save.png"
-           title="Save model (Ctrl-S) &ndash; Shift-click to save to user workspace (Ctrl-Shift-S)">
+           title="Save model (Ctrl-S)
+&#x1F5C1; Shift-click to save to user workspace (Ctrl-Shift-S)">
       <img id="repository-btn" class="btn enab" src="images/repository.png"
            title="Browse repositories (Ctrl-B)">
       <img id="actors-btn" class="btn enab" src="images/actors.png"
@@ -387,7 +388,7 @@ and move the cursor over the status bar">
     <img id="redo-btn" class="btn disab" src="images/redo.png"
          title="Redo (Ctrl-Y)">
     <img id="solve-btn" class="btn enab" src="images/solve.png"
-         title="Run simulation (Ctrl-R) &ndash; Alt-click to diagnose infeasible/unbounded problem (Alt-R)">
+         title="Run simulation (Ctrl-R)">
     <img id="stop-btn" class="btn enab off" src="images/stop.png"
          title="Stop solving (Ctrl-Q)">
     <img id="reset-btn" class="btn enab off" src="images/reset.png"
@@ -3154,7 +3155,8 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
   <!-- the FINDER dialog allows searching for occurrence of entities -->
   <div id="finder-dlg" class="inp-dlg">
     <div id="finder-hdr" class="dragger dlg-title">
-      Find occurrences of entities <div id="finder-entity-imgs"></div>
+      <span id="finder-title">Find occurrences of entities</span>
+      <div id="finder-entity-imgs"></div>
       <img id="finder-close-btn" class="close-btn" src="images/close.png">
     </div>
     <div id="finder-filter-bar">

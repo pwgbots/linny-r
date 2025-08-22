@@ -476,6 +476,8 @@ class LinnyRModel {
   }
 
   chartByID(id) {
+    // Charts have as identifier the prefix '__CHART__' plus their index
+    // in the `charts` array.
     if(!id.startsWith(this.chart_id_prefix)) return null;
     const n = parseInt(endsWithDigits(id));
     if(isNaN(n) || n >= this.charts.length) return null;
@@ -8814,7 +8816,7 @@ class Link {
     this.comments = '';
     this.from_node = from;
     this.to_node = to;
-    // links to "information products" can be defined to calculate the actual flow
+    // Links to "information products" can be defined to calculate the actual flow
     // by multiplying the rate with different variables:
     //   level:      X[t] (DEFAULT, no symbol)
     //   throughput: the sum of inflows if X is a product  (double right arrow)
@@ -8831,17 +8833,17 @@ class Link {
     //   first-comm: 1 if X[t] > 0 AND X[i] = 0 for all i < t (asterisk)
     this.multiplier = VM.LM_LEVEL; 
     // Links have 3 input attributes: rate vector R, and single values D (delay)
-    // and SOC (share of cost)
-    // NOTE: relative rate can be negative only if TO node is information
+    // and SOC (share of cost).
+    // NOTE: Relative rate can be negative only if TO node is information.
     this.relative_rate = new Expression(this, 'R', '1');
     this.flow_delay = new Expression(this, 'D', '0');
     // NOTE: by default, no share of cost
     this.share_of_cost = 0;
-    // Links have 1 result attribute: F (computed as relative rate * multiplier)
+    // Links have 1 result attribute: F (computed as relative rate * multiplier).
     this.actual_flow = [];
-    // NOTE: unit cost price is used only temporarily during cost price calculation
+    // NOTE: Unit cost price is used only temporarily during cost price calculation.
     this.unit_cost_price = 0;
-    // other properties are used for drawing, editing, etc.
+    // Other properties are used for drawing, editing, etc.
     this.from_x = 0;
     this.from_y = 0;
     this.to_x = 0;
@@ -8849,7 +8851,7 @@ class Link {
     this.is_feedback = false;
     this.visited = false;
     this.selected = false;
-    // NOTE: links do not have their own shape, as they are represented by arrows
+    // NOTE: Links do not have their own shape, as they are represented by arrows.
   }
 
   get type() {
@@ -8881,27 +8883,27 @@ class Link {
   }
   
   get dataOnly() {
-    // A link is data-only if multiplier is "special", or TO node is data
+    // A link is data-only if multiplier is "special", or TO node is data.
     return (this.multiplier != VM.LM_LEVEL || this.to_node.is_data);
   }
   
   get numberContext() {
-    // Returns the string to be used to evaluate # (empty string if undefined)
+    // Return the string to be used to evaluate # (empty string if undefined).
     let fn = this.from_node,
         tn = this.to_node;
-    // For links, the process node is checked first, then the product node
+    // For links, the process node is checked first, then the product node.
     if(this.to_node instanceof Process) {
       fn = this.to_node;
       tn = this.from_node;
     }
-    // Otherwise, the FROM node is checked first
+    // Otherwise, the FROM node is checked first.
     let nc = fn.numberContext;
     if(!nc) nc = tn.numberContext;
     return nc;
   }
     
   get asXML() {
-    // NOTE: sanitize! somehow links of type X -> X appear
+    // NOTE: Sanitize! Somehow links of type X -> X appear.
     if(this.from_node === this.to_node) return '';
     let fn = this.from_node.name,
         tn = this.to_node.name,
@@ -8911,7 +8913,7 @@ class Link {
             (this.from_node.hasActor ? ` (${this.from_node.actor.name})` : '')),
         tid = UI.nameToID(tn +
             (this.to_node.hasActor ? ` (${this.to_node.actor.name})` : ''));
-    // NOTE: "black-boxed" links are saved anonymously without comments
+    // NOTE: "black-boxed" links are saved anonymously without comments.
     if(MODEL.black_box_entities.hasOwnProperty(fid)) {
       fn = MODEL.black_box_entities[fid];
       cmnts = '';
@@ -8938,40 +8940,40 @@ class Link {
     this.is_feedback = nodeParameterValue(node, 'is-feedback') === '1';
     this.relative_rate.text = xmlDecoded(
         nodeContentByTag(node, 'relative-rate'));
-    // NOTE: legacy models have no flow delay field => default to 0
+    // NOTE: Legacy models have no flow delay field => default to 0.
     const fd_text = xmlDecoded(nodeContentByTag(node, 'delay'));
     this.flow_delay.text = fd_text || '0';
     this.share_of_cost = safeStrToFloat(
         nodeContentByTag(node, 'share-of-cost'), 0);
     if(!fd_text) {
-    // NOTE: default share-of-cost for links in legacy Linny-R was 100%;
-    //       this is dysfunctional in JS Linny-R => set to 0 if equal to 1
+    // NOTE: Default share-of-cost for links in legacy Linny-R was 100%.
+    // This is dysfunctional in JS Linny-R, hence set to 0 if equal to 1.
       if(this.share_of_cost == 1) this.share_of_cost = 0;
     }
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     if(IO_CONTEXT) {
-      // Record that this link was included
+      // Record that this link was included.
       IO_CONTEXT.addedLink(this);
-      // Contextualize the rate and delay expressions
+      // Contextualize the rate and delay expressions.
       IO_CONTEXT.rewrite(this.relative_rate);
       IO_CONTEXT.rewrite(this.flow_delay);
     }
   }
 
   get defaultAttribute() {
-    // For links, the default attribute is their actual flow
+    // For links, the default attribute is their actual flow.
     return 'F';
   }
 
   attributeValue(a) {
-    // Returns the computed result for attribute a (for links, only F is a vector)
+    // Return the computed result for attribute a (for links, only F is a vector).
     if(a === 'F') return this.actual_flow; // vector
     if(a === 'SOC') return this.share_of_cost; // number
     return null;
   }
 
   attributeExpression(a) {
-    // Links have two expression attributes
+    // Links have two expression attributes.
     if(a === 'R') return this.relative_rate;
     if(a === 'D') return this.flow_delay;
     return null;
@@ -8994,7 +8996,7 @@ class Link {
   }
 
   copyPropertiesFrom(l) {
-    // Set properties to be identical to those of link `l`
+    // Set properties to be identical to those of link `l`.
     this.comments = l.comments;
     this.multiplier = l.multiplier;
     this.relative_rate.text = l.relative_rate.text;
@@ -9003,14 +9005,14 @@ class Link {
   }
   
   differences(l) {
-    // Return "dictionary" of differences, or NULL if none
+    // Return "dictionary" of differences, or NULL if none.
     const d = differences(this, l, UI.MC.LINK_PROPS);
     if(Object.keys(d).length > 0) return d;
     return null;
   }
 
   get hasArrow() {
-    // Returns TRUE iff both nodes are visible in the focal cluster
+    // Return TRUE iff both nodes are visible in the focal cluster.
     const fc = MODEL.focal_cluster;
     if((this.from_node instanceof Process ? fc.containsProcess(this.from_node) :
             fc.containsProduct(this.from_node)) &&
@@ -9089,7 +9091,7 @@ class DatasetModifier {
   }
   
   get type() {
-    // NOTE: when "found" by Finder, dataset modifiers will always be equations 
+    // NOTE: When "found" by Finder, dataset modifiers will always be equations.
     return 'Equation';
   }
   
@@ -9098,8 +9100,8 @@ class DatasetModifier {
   }
   
   get attributes() {
-    // NOTE: property letter is X (exceptional case)
-    return {name: this.displayName, X: this.expression.asAttribute};
+    // NOTE: Property letter is V for "value" (same as for datasets).
+    return {name: this.displayName, V: this.expression.asAttribute};
   }
   
   get identifier() {
