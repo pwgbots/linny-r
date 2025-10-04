@@ -35,8 +35,8 @@ Linny-R is developed as a JavaScript package, and requires that **Node.js**
 is installed on your computer. This software can be downloaded from
 <a href="https://nodejs.org" target="_blank">https://nodejs.org</a>. 
 Make sure that you choose the correct installer for your computer.
-Linny-R is developed using the _current_ release. Presently (August 2025)
-this is 24.6.0. 
+Linny-R is developed using the _current_ release. Presently (October 2025)
+this is 24.9.0. 
 
 Run the installer and accept the default settings.
 There is <u>**no**</u> need to install the optional _Tools for Native Modules_.
@@ -47,7 +47,7 @@ Verify the installation by typing:
 
 ``node --version``
 
-The response should be the version number of Node.js, for example: v24.6.0.
+The response should be the version number of Node.js, for example: v24.9.0.
 
 ## Installing Linny-R
 It is advisable to install Linny-R in a directory on your computer, **not**
@@ -140,10 +140,10 @@ and then Linny-R should reappear in a new browser tab or window.
 
 > [!NOTE]
 > The built-in updating function of Linny-R will _**not**_ automatically
-> upgrade to a new _major_ version. To update from a version like 1.9.x to
-> a version like 2.0.x, you have to open a command line interface
+> upgrade to a new _major_ version. To update from a version like 2.1.x to
+> a version like 3.0.x, you have to open a command line interface
 > (`Command Prompt` or `Terminal`), change to your Linny-R directory, and
-> then type `npm install linny-r@2`. This should perform the upgrade.
+> then type `npm install linny-r@3`. This should perform the upgrade.
 > You can then launch Linny-R as usual by typing `linny-r` (Windows) or
 > `./linny-r.command` (macOS).
 
@@ -154,10 +154,10 @@ As this software is developed as part of academic research, new features
 are added without rigorous testing. Although much effort is dedicated to
 maintaining upward and downward compatibility, you may find that the latest
 version does not work as well for you as some earlier version. To re-install
-an earlier release, for example version 1.9.3, open the CLI, change to your
+an earlier release, for example version 2.1.9, open the CLI, change to your
 `Linny-R` directory, and then type:
 
-``npm install linny-r@1.9.3``
+``npm install linny-r@2.1.9``
 
 > [!NOTE]
 > This will overwrite the contents of the `node_modules` directory, but
@@ -167,7 +167,7 @@ If you prefer to have multiple versions of Linny-R on your computer, you
 can create a separate directory for a specific version, then change to this
 directory and type:
 
-``npm install --prefix . linny-r@1.9.3``  &larr; _replace_ `1.9.3` _by the version of your choice_
+``npm install --prefix . linny-r@2.1.9``  &larr; _replace_ `2.1.9` _by the version of your choice_
 
 > [!NOTE]
 > To run a specific version in your browser, you must start the server from
@@ -299,9 +299,9 @@ The Linny-R GUI should show in your browser window, while in the CLI you
 should see a long series of server log messages like:
 
 <pre>
-[2024-12-01 22:55:17] Static file: /index.html
-[2024-12-01 22:55:17] Static file: /scripts/iro.min.js
-[2024-12-01 22:55:17] Static file: /images/open.png
+[2025-10-01 22:55:17] Static file: /index.html
+[2025-10-01 22:55:17] Static file: /scripts/iro.min.js
+[2025-10-01 22:55:17] Static file: /images/open.png
 ... etc.
 </pre>
 
@@ -443,7 +443,9 @@ information on the Linny-R user documentation website:
 
 > [!IMPORTANT]
 > To diagnose a problem, always look in the CLI box where Node.js is running, 
-> as informative server-side error messages will appear there.
+> as informative server-side error messages will appear there. Scroll up to
+> the line where you typed the launch command to check for warnings and
+> messages relating to the solver.
 
 Then also look at the console window of your browser. 
 Most browsers offer a _Web Developer Tools_ option via their application menu.

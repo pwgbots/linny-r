@@ -285,6 +285,7 @@ img.off {
 }
 
 div.blink,
+span.blink,
 img.blink {
   animation: blink 1s step-start 0s infinite;
 }
@@ -5908,12 +5909,27 @@ div.call-stack-expr {
   height: min-content;
 }
 
+#check-update-manual {
+  margin-left: 40px;
+  color: white;
+  font-weight: normal;
+  font-style: italic;
+  text-shadow: black 1px -1px;
+}
+
 #confirm-load-from-repo-msg,
 #confirm-delete-from-repo-msg,
 #check-update-msg {
   width: calc(100% - 8px);
   margin: 3px;
   overflow: auto;
+}
+
+#check-update-msg {
+  width: calc(100% - 10px);
+  margin: 5px;
+  overflow: auto;
+  line-height: 18px;
 }
 
 #move-buttons,

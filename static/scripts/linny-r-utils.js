@@ -408,6 +408,13 @@ function unquoteCSV(s) {
 // Functions used when comparing two Linny-R models
 //
 
+function majorNewVersion(v1, v2) {
+  // Return TRUE iff version `v2` has a higher major number. 
+  v1 = v1.split('.').shift();
+  v2 = v2.split('.').shift();
+  return(safeStrToInt(v2, 0) > safeStrToInt(v1, 0));
+}
+
 function earlierVersion(v1, v2) {
   // Compare two version numbers and return TRUE iff `v1` is earlier
   // than `v2`.
@@ -1334,6 +1341,7 @@ if(NODE) module.exports = {
   capitalized: capitalized,
   ellipsedText: ellipsedText,
   unquoteCSV: unquoteCSV,
+  majorNewVersion: majorNewVersion,
   earlierVersion: earlierVersion,
   differences: differences,
   markFirstDifference: markFirstDifference,

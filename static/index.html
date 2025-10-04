@@ -183,14 +183,31 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
               if(info[1] !== 'up-to-date' && info[1] !== '0') {
                 // Inform user that newer version exists.
                 UI.newer_version = info[1];
-                UI.check_update_modal.element('msg').innerHTML = [
-                    '<a href="', GITHUB_REPOSITORY,
-                    '/releases/tag/v', info[1], '" ',
-                    'title="Click to view version release notes" ',
+                let msg = ['<a href="', GITHUB_REPOSITORY,
+                    '/releases/tag/v', info[1],
+                    '" title="Click to view version release notes" ',
                     'target="_blank">Version <strong>',
                     info[1], '</strong></a> released on ',
-                    info[2].substring(0, 21),
-                    ' can be installed.'].join('');
+                    info[2].substring(0, 21),' can be installed.'].join('');
+                const blinker = UI.check_update_modal.element('manual');
+                if(majorNewVersion(LINNY_R_VERSION, info[1])) {
+                  // Major version requires manual install...
+                  msg += ['<br><strong>NOTE:</strong> ',
+                      'This is a <em>major</em> version change, so automatic ',
+                      'updating is <strong>not</strong> possible.<br>',
+                      'Please read <a href="', GITHUB_REPOSITORY,
+                      '/linny-r#updating-to-the-latest-version-of-linny-r" ',
+                      'target="_blank"> this information on GitHub</a> ',
+                      ' on how to manually upgrade Linny-R.'].join('');
+                  // ... so shutdown instead of update...
+                  UI.removeListeners(UI.check_update_modal.ok)
+                      .addEventListener('click', () => UI.shutDownServer());
+                  // ... and show blinking notification in dialog header.
+                  blinker.style.display = 'inline-block';
+                } else{
+                  blinker.style.display = 'none';
+                }
+                UI.check_update_modal.element('msg').innerHTML = msg;
                 UI.check_update_modal.show();
                 UI.check_update_modal.element('buttons').style.display = 'block';
               }
@@ -3408,6 +3425,9 @@ where X can be one or several of these letters: ABCDELPQ">
     <div id="check-update-dlg" class="inp-dlg">
       <div class="dlg-title" style="background-color: #cc88b0">
         Linny-R software update
+        <span id="check-update-manual" class="blink" hidden>
+          Requires manual istallation
+        </span>
       </div>
       <div id="check-update-msg"></div>
       <div id="check-update-buttons">

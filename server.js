@@ -12,7 +12,7 @@ that pass the MILP equation model to the solver, and then return the solution
 to the Linny-R "virtual machine" that is running in the browser.
 */
 /*
-Copyright (c) 2020-2024 Delft University of Technology
+Copyright (c) 2020-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -39,27 +39,25 @@ SOFTWARE.
 
 const
     // The current working directory (from where Node.js was started) is
-    // assumed to be the main directory
+    // assumed to be the main directory.
     path = require('path'),
     WORKING_DIRECTORY = process.cwd(),
     MODULE_DIRECTORY = path.join(WORKING_DIRECTORY, 'node_modules', 'linny-r'),
     
-    // Get the required built-in Node.js modules
+    // Get the required built-in Node.js modules.
     child_process = require('child_process'),
-    crypto = require('crypto'),
     fs = require('fs'),
     http = require('http'),
-    https = require('https'),
     os = require('os'),
 
-    // Get the platform name (win32, macOS, linux) of the user's computer
+    // Get the platform name (win32, macOS, linux) of the user's computer.
     PLATFORM = os.platform(),    
 
-    // Get version of the installed Linny-R package 
+    // Get version of the installed Linny-R package.
     VERSION_INFO = getVersionInfo();
     
 function getVersionInfo() {
-  // Reads version info from `package.json`
+  // Read version info from `package.json`.
   const info = {
       current: 0,
       current_time: 0,
@@ -86,16 +84,21 @@ function getVersionInfo() {
     info.latest_time = new Date(Date.parse(obj.time[info.latest]));
     info.current_time = new Date(Date.parse(obj.time[info.current]));
     info.up_to_date = info.current === info.latest;
+    info.major = info.latest.split('.').shift();
+    info.upgrade = !info.current.startsWith(info.major + '.');
   } catch(err) {
     // `latest` = 0 indicates that version check failed.
     info.latest = 0;
   }
   clearNewerVersion();
   if(!info.latest) {
-    console.log(connectionErrorText('Could not connect to https://registry.npmjs.org/'));
+    console.log('WARNING: Could not connect to https://registry.npmjs.org/');
   } else if(!info.up_to_date) {
     console.log('UPDATE: Version ' + info.latest + ' was released on ' +
         info.latest_time.toString());
+    if(info.upgrade) {
+      console.log('NOTE: Major version change requires manual installation');
+    }
   } else {
     console.log('Linny-R software is up-to-date');
   }
@@ -264,7 +267,7 @@ const
         `<p>The <em>Command Prompt</em> window where the server was
          running will be closed automatically.</p>`),
     cli = (macOS ? 'Terminal' : 'Command Prompt'),
-    ext = (macOS ? '.command' : ''),
+    launch = (macOS ? './linny-r.command' : 'linny-r'),
     chmod = (!macOS ? '' : `
 <p>If launch fails, you may still need to make the script executable.</p>
 <p>
@@ -272,12 +275,22 @@ const
   at the command prompt.
 </p>
 <p>Then retype <code>linny-r.command</code> to launch Linny-R.</p>`),
+    upgrade = (!VERSION_INFO.upgrade ? '<p>and then type:</p>' : `
+<p>
+  <strong>NOTE:</strong> This is a <em>major</em> version change.
+  To upgrade to version <strong>${VERSION_INFO.latest}</strong>, type:
+</p>
+<p><code>npm install linny-r@${VERSION_INFO.latest.split('.').shift()}</code></p>
+<p>
+  This should perform the upgrade. If successful, you can then launch Linny-R
+  as usual by typing:
+</p>`),
     SHUTDOWN_MESSAGE = `<!DOCTYPE html>
 <html lang="en-US">
 <head>
   <meta http-equiv="content-type" content="text/html; charset=UTF-8">
   <title>Linny-R server shutdown</title>
-  <link rel="shortcut icon" type="image/png" href="../images/icon.png">
+  <link rel="shortcut icon" type="image/png" href="../images/icon-gray.png">
   <style>
     body {
       font-family: sans-serif;
@@ -294,12 +307,11 @@ const
 <body>
   <h3>Linny-R server (127.0.0.1) is shutting down</h3>${close}
   <p>
-    To restart Linny-R, open <em>${cli}</em> again, change to
-    your Linny-R directory by typing:
+    To restart Linny-R, you may need to open <em>${cli}</em> again,
+    and then change to your Linny-R directory by typing:
   </p>
-  <p><code>cd ${WORKING_DIRECTORY}</code></p>
-  <p>and then type:</p>
-  <p><code>linny-r${ext}</code></p>
+  <p><code>cd ${WORKING_DIRECTORY}</code></p>${upgrade}
+  <p><code>${launch}</code></p>
   <p>
     This should launch Linny-R in a new browser window or tab, so you
     can close this one.
