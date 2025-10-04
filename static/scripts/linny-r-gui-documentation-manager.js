@@ -45,7 +45,6 @@ class DocumentationManager {
     this.edit_btn = document.getElementById('docu-edit-btn');
     this.copy_btn = document.getElementById('docu-copy-btn');
     this.model_info_btn = document.getElementById('docu-model-info-btn');
-    this.compare_btn = document.getElementById('compare-btn');
     this.save_btn = document.getElementById('docu-save-btn');
     this.cancel_btn = document.getElementById('docu-cancel-btn');
     this.info_btn = document.getElementById('docu-info-btn');
@@ -76,15 +75,6 @@ class DocumentationManager {
     for(let i = 0; i < sym_btns.length; i++) {
       sym_btns[i].addEventListener('click', insert_sym);
     }
-    // NOTE: Compare button opens a modal dialog to prompt for file
-    this.compare_btn.addEventListener('click',
-        () => DOCUMENTATION_MANAGER.comparison_modal.show());
-    this.comparison_modal = new ModalDialog('comparison');
-    this.comparison_modal.ok.addEventListener('click',
-        () => FILE_MANAGER.loadModelToCompare());
-    this.comparison_modal.ok.addEventListener('click',
-        () => DOCUMENTATION_MANAGER.comparison_modal.hide());
-
     // Intitialize markup rewriting rules
     this.rules = [
       { // No HTML entities
@@ -170,14 +160,13 @@ class DocumentationManager {
   <p>The primary function of this dialog is to allow you to document a model.
     As you <em><strong>hold down the</em><span style="font: 11px sans-serif">
     Shift</span><em> key</strong></em>, and then move the cursor over a model
-    entity (nodes or links in the diagram, but also actors, datasets, charts,
-    experiments or modules listed in a dialog), annotations (if any) will
-    appear here.
+    entity (nodes or links in the diagram, but also actors, datasets, charts
+    or experiments listed in a dialog), annotations (if any) will appear here.
   </p>
   <p>To add or edit an annotation, release the
-    <span style="font: 11px sans-serif">Shift</span> key, and then
-    click on the <span style="font: 11px sans-serif">Edit</span> button in the
-    left corner below.
+    <span style="font: 11px sans-serif">Shift</span> key, and then click on the
+    <span style="font: 11px sans-serif">Edit</span> button in the left corner
+    below.
   </p>
 </div>`;
 
@@ -360,8 +349,6 @@ class DocumentationManager {
         }
       }
     }
-    // When TEX renderer is visible, also update it.
-    if(TEX_MANAGER.visible) TEX_MANAGER.update(e, shift);
   }
   
   rewrite(str) {
@@ -429,7 +416,6 @@ class DocumentationManager {
     this.edit_btn.style.display = 'none';
     this.model_info_btn.style.display = 'none';
     this.copy_btn.style.display = 'none';
-    this.compare_btn.style.display = 'none';
     this.message_hint.style.display = 'none';
     this.save_btn.style.display = 'block';
     this.cancel_btn.style.display = 'block';
@@ -481,7 +467,6 @@ class DocumentationManager {
     this.edit_btn.style.display = 'block';
     this.model_info_btn.style.display = 'block';
     this.copy_btn.style.display = 'block';
-    this.compare_btn.style.display = 'block';
     this.message_hint.style.display = 'block';
     this.dialog.style.opacity = 0.85;
   }
@@ -641,131 +626,6 @@ class DocumentationManager {
     
   copyDocToClipboard(plain) {
     UI.copyHtmlToClipboard(this.viewer.innerHTML, plain);
-  }
-
-  compareModels(data) {
-    this.comparison_modal.hide();
-    this.model = new LinnyRModel('', '');
-    // NOTE: While loading, make the second model "main" so it will initialize.
-    const loaded = MODEL;
-    MODEL = this.model;
-    try {
-      // NOTE: Convert %23 back to # (escaped by function saveModel).
-      const xml = parseXML(data.replace(/%23/g, '#'));
-      // NOTE: Loading, not including => make sure that IO context is NULL.
-      IO_CONTEXT = null;
-      this.model.initFromXML(xml);
-    } catch(err) {
-      UI.normalCursor();
-      UI.alert('Error while parsing model: ' + err);
-      // Restore original "main" model.
-      MODEL = loaded;
-      this.model = null;
-      return false;
-    }
-    // Restore original "main" model.
-    MODEL = loaded;
-    try {
-      // Store differences as HTML in local storage.
-      console.log('Storing differences between model A (' + MODEL.displayName +
-          ') and model B (' + this.model.displayName + ') as HTML');
-      const html = this.differencesAsHTML(MODEL.differences(this.model));
-      window.localStorage.setItem('linny-r-differences-A-B', html);
-      UI.notify('Comparison report can be viewed ' +
-        '<a href="./show-diff.html" target="_blank"><strong>here</strong></a>');
-    } catch(err) {
-      UI.alert(`Failed to store model differences: ${err}`);
-    }
-    // Dispose the model-for-comparison.
-    this.model = null;
-    // Cursor is set to WAITING when loading starts.
-    UI.normalCursor();
-  }
-  
-  propertyName(p) {
-    // Returns the name of a Linny-R entity property as HTML-italicized string
-    // if `p` is recognized as such, or otherwise `p` itself
-    if(p in UI.MC.SETTINGS_PROPS) return `<em>${UI.MC.SETTINGS_PROPS[p]}:</em>`;
-    if(UI.MC.ALL_PROPS.indexOf(p) >= 0) return '<em>' + p.charAt(0).toUpperCase() +
-        p.slice(1).replace('_', '&nbsp;') + ':</em>';
-    return p;
-  }
-
-  propertyAsString(p) {
-    // Returns the value of `p` as an HTML string for Model Comparison report 
-    if(p === true) return '<code>true</code>';
-    if(p === false) return '<code>false</code>';
-    const top = typeof p;
-    if(top === 'number') return VM.sig4Dig(p);
-    if(top === 'string') return (p.length === 0 ? '<em>(empty)</em>' : p);
-    return p.toString();
-  }
-  
-  differencesAsHTML(d) {
-    const html = [];
-    let n = (Object.keys(d).length > 0 ? 'D' : 'No d');
-    html.push('<h1>' + n + 'ifferences between model A and model B</h1>');
-    html.push('<p><em>Model</em> <strong>A</strong> <em>is <u>current</u>, ',
-        'model</em> <strong>B</strong> <em>was loaded for comparison only.</em>');
-    html.push('<table><tr><th>Model</th><th>Name</th><th>Author</th></tr>');
-    html.push('<tr><td>A</td><td>' + this.propertyAsString(MODEL.name) +
-        '</td><td>'+ this.propertyAsString(MODEL.author) + '</td></tr>');
-    html.push('<tr><td>B</td><td>' + this.propertyAsString(this.model.name) +
-        '</td><td>' + this.propertyAsString(this.model.author) +
-        '</td></tr></table>');
-    if('settings' in d) html.push('<h2>Model settings</h2>',
-        this.differenceAsTable(d.settings));
-    if('units' in d) html.push('<h2>Units</h2>',
-        this.differenceAsTable(d.units));
-    for(const e of UI.MC.ENTITY_PROPS) if(e in d) {
-      html.push('<h2>' + this.propertyName(e) + '</h2>',
-          this.differenceAsTable(d[e]));
-    }
-    if('charts' in d) html.push('<h2><em>Charts</em></h2>',
-        this.differenceAsTable(d.charts));
-    return html.join('\n');
-  }
-
-  differenceAsTableRow(dd, k) {
-    const d = dd[k];
-    // NOTE: recursive method, as cells can contain tables
-    let tr = '';
-    if(Array.isArray(d) && d.length >= 2) {
-      tr = '<tr><td class="mc-name">' + this.propertyName(d[1]) + '</td>';
-      if(d[0] === UI.MC.MODIFIED) {
-        if(d[2].hasOwnProperty('A') && d[2].hasOwnProperty('B')) {
-          // Leaf node showing the differring property values in A and B
-          const mfd = markFirstDifference(d[2].A, d[2].B);
-          tr += `<td class="mc-modified">${mfd}</td><td>${d[2].B}</td>`;
-        } else {
-          // Compound "dictionary" of differences
-          tr += '<td colspan="2">' + this.differenceAsTable(d[2]) + '</td>';
-        }
-      } else {
-        // Addition and deletions are shown for model A 
-        tr += `<td class="mc-${UI.MC.STATE[d[0]]}">${UI.MC.STATE[d[0]]}</td><td></td>`;
-      }
-      tr += '</tr>';
-    } else if(d.hasOwnProperty('A') && d.hasOwnProperty('B')) {
-      tr = '<tr><td>' + this.propertyName(k) + '</td><td class="mc-modified">'+
-          markFirstDifference(d.A, d.B) + '</td><td class="mc-former">' +
-          d.B + '</td></tr>';
-    } else {
-      tr = '<tr><td>' + this.differenceAsTable(d) + '</td></tr>';
-    }
-    return tr;
-  }
-
-  differenceAsTable(d) {
-    if(typeof d === 'object') {
-      const
-          html = ['<table>'],
-          keys = Object.keys(d).sort();
-      for(const k of keys) html.push(this.differenceAsTableRow(d, k));
-      html.push('</table>');
-      return html.join('\n');
-    }
-    return '';
   }
 
 } // END of class DocumentationManager 

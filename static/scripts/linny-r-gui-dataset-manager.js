@@ -905,7 +905,7 @@ class GUIDatasetManager extends DatasetManager {
       this.edited_expression = m.expression;
       const md = UI.modals.expression;
       md.element('property').innerHTML = this.selected_dataset.displayName +
-          UI.OA_SEPARATOR + m.selector;
+          '|' + m.selector;
       md.element('text').value = m.expression.text;
       document.getElementById('variable-obj').value = 0;
       X_EDIT.updateVariableBar();
@@ -988,7 +988,7 @@ class GUIDatasetManager extends DatasetManager {
         if(sel === ds.default_selector) ds.default_selector = '';
         // Rename variable in charts
         const
-            from = dsn + UI.OA_SEPARATOR + sel,
+            from = dsn + '|' + sel,
             to = newds.displayName;
         for(const v of MODEL.datasetVariables) {
           // NOTE: variable should match original dataset + selector.

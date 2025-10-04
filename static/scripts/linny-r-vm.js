@@ -133,7 +133,7 @@ class Expression {
   get variableName() {
     // Return the name of the variable computed by this expression.
     if(this.object === MODEL.equations_dataset) return 'equation ' + this.attribute;
-    if(this.object) return this.object.displayName + UI.OA_SEPARATOR + this.attribute;
+    if(this.object) return this.object.displayName + '|' + this.attribute;
     return 'Unknown variable (no object)';
   }
 
@@ -241,10 +241,10 @@ class Expression {
       if(vl) for(const v of vl) {
         // Trim enclosing brackets and remove the "tail" (attribute or offset).
         let tail = '',
-            e = v.substring(1, v.length - 1).split(UI.OA_SEPARATOR);
+            e = v.substring(1, v.length - 1).split('|');
         if(e.length > 1) {
-          tail = UI.OA_SEPARATOR + e.pop();
-          e = e.join(UI.OA_SEPARATOR);
+          tail = '|' + e.pop();
+          e = e.join('|');
         } else {
           e = e[0].split('@');
           if(e.length > 1) {
@@ -462,6 +462,8 @@ class Expression {
       v[t] = VM.NOT_COMPUTED;
       this.compute(t, number);
     }
+    // Apply the near-zero threshold.
+    if(Math.abs(v[t]) < VM.NEAR_ZERO) v[t] = 0;
     // NOTE: When this expression is the "active" parameter for sensitivity
     // analysis, the result is multiplied by 1 + delta %.
     if(sap) {
@@ -1063,12 +1065,12 @@ class ExpressionParser {
     // If reached this stage, variable must be like this:
     // [(statistic$)entity name pattern(|attribute)]
     // Attribute name (optional) follows the object-attribute separator |
-    s = name.split(UI.OA_SEPARATOR);
+    s = name.split('|');
     if(s.length > 1) {
       // Attribute is string after the LAST separator...
       attr = s.pop().trim();
       // ... so restore `name` in case itself contains other separators.
-      name = s.join(UI.OA_SEPARATOR).trim();
+      name = s.join('|').trim();
       if(!attr) {
         // Explicit *empty* attribute, e.g., [name|]
         // NOTE: This matters for datasets having specifiers: the vertical
@@ -2107,12 +2109,17 @@ class ExpressionParser {
 // CLASS VirtualMachine
 class VirtualMachine {
   constructor() {
-    // Set user name to default as configured in file `linny-r-config.js`.
+    // User name on local machine will be obtained at logon, and will
+    // be used as default author name. 
+    this.user_name = '';
+    // Set user ID to default as configured in file `linny-r-config.js`.
     // This will be an empty string for local host servers.
     this.solver_user = SOLVER.user_id;
     // NOTE: If not empty, then authentication is needed.
     if(this.solver_user) {
-      // If URL contains ?u=, set user name to the passed parameter.
+      // When Linny-R is hosted on a production server, the user name
+      // may be passed as parameter in the URL, so if URL contains ?u=,
+      // set user name to the passed parameter.
       let url = decodeURI(window.location.href);
       // NOTE: Trim cache buster suffix that may have been added.
       if(url.indexOf('?x=') > 0) url = url.split('?x=')[0].trim();
@@ -2216,7 +2223,7 @@ class VirtualMachine {
     // (this is to timely detect division-by-zero errors).
     this.NEAR_ZERO = 1e-10;
     // Use a specific constant smaller than near-zero to denote "no cost"
-    // to differentiate "no cost" form cost prices that really are 0.
+    // to differentiate "no cost" from cost prices that really are 0.
     this.NO_COST = 0.987654321e-10;
 
     // NOTE: Allow for an accuracy margin: stocks may differ 0.1%  from
@@ -2696,7 +2703,11 @@ class VirtualMachine {
   
   keepException(test, result) {
     // Return result only when test is *not* an exceptional value.
-    if(test >= VM.MINUS_INFINITY && test <= VM.PLUS_INFINITY) return result;
+    if(test >= VM.MINUS_INFINITY && test <= VM.PLUS_INFINITY) {
+      // Apply the NON_ZERO threshold.
+      if(Math.abs(result) < VM.NEAR_ZERO) return 0;
+      return result;
+    }
     // Otherwise, return the exceptional value.
     return test;
   }
@@ -2799,14 +2810,14 @@ class VirtualMachine {
         maxv = data[dts];
         // Inner loop: add data time steps till they fill a vector time step
         while(vtf < 1 && n_dts <= max_dts) {
-          // NOTE: remaining part (1 - vtf) may be shorter than 1 dts
+          // NOTE: Remaining part (1 - vtf) may be shorter than 1 dts.
           v = this.keepException(data[dts], v + data[dts] * Math.min(dtf, 1 - vtf));
           vtf += dtf;
-          // Store the last data step as "previous step" for later use
+          // Store the last data step as "previous step" for later use.
           ps = dts;
           dts = (dts + 1) % dl;
           n_dts++;
-          // NOW take the maximum, as new dts still pertains to this vts
+          // NOW take the maximum, as new dts still pertains to this vts.
           maxv = this.keepException(data[dts], Math.max(maxv, data[dts]));
         }
         if(method === 'max') {

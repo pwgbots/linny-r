@@ -51,11 +51,11 @@ const
     os = require('os'),
 
     // Get the platform name (win32, macOS, linux) of the user's computer.
-    PLATFORM = os.platform(),    
+    PLATFORM = os.platform(),
 
     // Get version of the installed Linny-R package.
     VERSION_INFO = getVersionInfo();
-    
+
 function getVersionInfo() {
   // Read version info from `package.json`.
   const info = {
@@ -105,11 +105,23 @@ function getVersionInfo() {
   return info;
 }
 
-// Output some configuration information to the console
+// Locate the Downloads directory (appears to be standard across platforms).
+const DOWNLOADS_DIRECTORY = path.join(os.homedir(), 'Downloads');
+
+// Output some configuration information to the console.
 console.log('Node.js version:', process.version);
 console.log('Platform:', PLATFORM, '(' + os.type() + ')');
 console.log('Module directory:', MODULE_DIRECTORY);
 console.log('Working directory:', WORKING_DIRECTORY);
+console.log('Downloads directory:', DOWNLOADS_DIRECTORY);
+
+let USER_NAME = '';    
+try {
+  USER_NAME = os.userInfo().username;  
+  console.log('User name:', USER_NAME);
+} catch(err) {
+  console.log('WARNING: Failed to get user name');
+}
 
 // Only now require the Node.js modules that are not "built-in"
 
@@ -182,7 +194,7 @@ const options = {
 SERVER.listen(options, launchGUI);
 
 
-function launchGUI(err) {
+function launchGUI() {
   if(SERVER.listening) {
     console.log('Listening at: http://127.0.0.1:' + SETTINGS.port);
   }
@@ -274,7 +286,7 @@ const
   You can do this by typing <code>chmod +x linny-r.command</code>
   at the command prompt.
 </p>
-<p>Then retype <code>linny-r.command</code> to launch Linny-R.</p>`),
+<p>Then retype <code>./linny-r.command</code> to launch Linny-R.</p>`),
     upgrade = (!VERSION_INFO.upgrade ? '<p>and then type:</p>' : `
 <p>
   <strong>NOTE:</strong> This is a <em>major</em> version change.
@@ -319,637 +331,470 @@ const
 </body>
 </html>`;
 
-// Auto-save & restore model functionality
-// =======================================
-// For auto-save services, the Linny-R JavaScript application communicates with
-// the server via calls to the server like fetch('autosave/', x) where x is a JSON
-// object with at least the entry `action`, which can be one of the following:
-//  purge  remove all model files older than the set auto-save period
-//  store  write the property x.xml to the file with name x.name
-//  load   return the XML contents of the specified model file
-// Each action returns a JSON string that represents the actualized auto-save
-// settings (interval and perdiod) and list of auto-saved model data objects.
-// For each model: {name, file_name, size, time_saved}
+// Auxiliary function used by several routines below.
+
+function validModelXML(mxml) {
+  // Check whether string passed is valid XML and most likely to be
+  // a Linny-R model.
+  try {
+    const
+        parser = new DOMParser(),
+        doc = parser.parseFromString(mxml, 'text/xml');
+        root = doc.documentElement;
+    // Linny-R models have a model element as root.
+    if(root.nodeName !== 'model') throw 'XML document has no model element';
+    // No error? Then the XML passed the test.
+    return true;
+  } catch(err) {
+    // Otherwise, log the error on the console.
+    console.log(err);
+  }
+  // Fall-through: the XML failed the test.
+  return false;
+}
 
 function asFileName(s) {
-  // Returns string `s` in lower case with whitespace converted to a single
+  // Return string `s` in lower case with whitespace converted to a single
   // dash, special characters converted to underscores, and leading and
-  // trailing dashes and underscores removed
+  // trailing dashes and underscores removed.
   return s.normalize('NFKD').trim()
       .replace(/[\s\-]+/g, '-')
       .replace(/[^A-Za-z0-9_\-]/g, '_')
       .replace(/^[\-\_]+|[\-\_]+$/g, '');
 }
 
-function autoSave(res, sp) {
-  // Process all auto-save & restore commands.
-  // NOTE: To prevent duplicate code, this routine is also called when
-  // the modeler SHIFT-clicks on the "Save model" button. This option
-  // has been added to permit saving files larger than the 25 MB that
-  // some browsers impose as limit for saving a string to disk.
-  const
-      action = sp.get('action').trim(),
-      saving = (sp.get('wsd') === 'true' ? 'Save' : 'Auto-save');
-    logAction(saving + ' action: ' + action);
-  if(['purge', 'load', 'store'].indexOf(action) < 0) {
-    // Invalid action => report error.
-    return servePlainText(res, `ERROR: Invalid auto-save action: "${action}"`);
-  }
-  // Always purge the auto-save files before further action; this returns
-  // the list with model data objects.
-  const data = autoSavePurge(res, sp);
-  // NOTE: If string instead of array, this string is an error message.
-  if(typeof data === 'string') return servePlainText(res, data);
-  // Perform load or store actions if requested.
-  if(action === 'load') return autoSaveLoad(res, sp);
-  if(action === 'store') return autoSaveStore(res, sp);
-  // Otherwise, action was 'purge' => return the auto-saved model list.
-  serveJSON(res, data);
+function pluralS(n, s) {
+  // Return string with noun `s` in singular only if `n` = 1.
+  return (n === 0 ? 'No ' : n + ' ') + s + (n === 1 ? '' : 's');
 }
 
-function autoSavePurge(res, sp) {
-  // Delete specified file(s) (if any) as well as all expired files,
-  // and return list with data on remaining files as JSON string.
-  const
-      now = new Date(),
-      p = sp.get('period'),
-      period = (p ? parseInt(p) : 24) * 3600000,
-      df = sp.get('to_delete'),
-      all = df === '/*ALL*/';
-  
-  // Get list of data on Linny-R models in `autosave` directory.
-  data = [];
+// File browser functionality
+// ==========================
+// For loading and saving models via the File browser, Linny-R communicates
+// with the server via function calls like fetch('browse/', x) where x is a
+// JSON object with at least the key `action`, which can have one of the
+// following values:
+//  roots   Return dir info for each of the four root locations.
+//  dir     Return list with objects that specify the name of directories
+//          and Linny-R model files in the specified location, plus additional
+//          information, such as size and time last modified.
+//  load    Return the content of the specified file.
+//  delete  Delete the specified file from the specified location.
+//  store   Write XML content to the specified file in the specified location.
+//  purge   Delete all expired autosaved model files.
+
+// Linny-R has a models repository on GitHub:
+const
+    GITHUB_REPO = 'pwgbots/linny-r-models',
+    GITHUB_ROOT_URL = `https://api.github.com/repos/${GITHUB_REPO}/contents`,
+    GITHUB_LOAD_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/master/`;
+
+// Only three root directories are accepted:
+const
+    ROOT_DIRS = {
+      home: WORKSPACE.models,
+      download: DOWNLOADS_DIRECTORY,
+      autosave: WORKSPACE.autosave
+    },
+    // NOTE: GitHUb root directory is added only when found, and then
+    // it will have its full name.
+    ROOT_NAMES = {
+        home: 'Models in your workspace',
+        download: 'Downloaded models',
+        autosave: 'Autosaved models' 
+      };
+
+//
+// Auxiliary functions for browsing the local file system.
+//
+
+function countModels(dir) {
+  // Traverse tree of directory content objects to compute for each the
+  // *total* number of models it contains (including its sub-directories).
+  dir.sdcount = dir.subdirs.length;
+  dir.mcount = dir.models.length;
+  for(const sd of dir.subdirs) {
+    countModels(sd);
+    dir.mcount += sd.mcount;
+    dir.sdcount += sd.sdcount;
+  }
+  return dir.mcount;
+}
+
+function getDirectoryContents(root, rel_path='') {
+  // Return sub-directories and model files in as "content object".
+  const lookup = {'':
+      {
+        root: root,
+        path: '',
+        name: ROOT_NAMES[root],
+        subdirs: [],
+        models: [],
+      }
+    };
   try {
-    const flist = fs.readdirSync(WORKSPACE.autosave);
-    for(let i = 0; i < flist.length; i++) {
-      const
-          pp = path.parse(flist[i]),
-          md = {name: pp.name},
-          fp = path.join(WORKSPACE.autosave, flist[i]);
-      // NOTE: Only consider Linny-R model files (extension .lnr).
-      if(pp.ext === '.lnr') {
-        let dodel = all || pp.name === df;
-        if(!dodel) {
-          // Get file properties
-          const fstat = fs.statSync(fp);
-          md.size = fstat.size;
-          md.date = fstat.mtime;
-          // Also delete if file has expired.
-          dodel = now - fstat.mtimeMs > period;
+    const
+        dpl = ROOT_DIRS[root].length + 1,
+        entries = fs.readdirSync(ROOT_DIRS[root],
+            {withFileTypes: true, recursive: true});
+    for(const e of entries) {
+      // Get parent path of entry relative to `rel_path`.
+      const rpp = e.parentPath.slice(dpl);
+      if(e.isFile() && e.name.endsWith('.lnr')) {
+        let c = lookup[rpp];
+        if(!c) {
+          // Find the immediate parent content object.
+          const parts = rpp.split(path.sep);
+          let pp = '';
+          while(lookup[path.join(pp, parts[0])]) {
+            pp = path.join(pp, parts.shift());
+          }
+          c = lookup[pp];
+          // Create sub-directory content objects for the remaining parts. 
+          for(const p of parts) {
+            pp = path.join(pp, p);
+            lookup[pp] = {root: root, path: pp, name: p, subdirs: [], models: []};
+            c.subdirs.push(lookup[pp]);
+            c = lookup[pp];
+          }
+          // Now `c` should be the "container" for the model file.
         }
-        if(dodel) {
-          // Delete model file.
+        // Get model file size and time last modified.
+        const
+            stat = fs.statSync(path.join(ROOT_DIRS[root], c.path, e.name)),
+            data = {
+                name: e.name.slice(0, -4),
+                size: stat.size,
+                time: stat.mtime
+              };
+        // Add model file descriptor to the model list.
+        c.models.push(data);
+      }
+    }
+  } catch(err) {
+    console.log('ERROR: Failed to get root directory contents', err);
+  }
+  // NOTE: After deleting a model from the directory specified by `rel_path`,
+  // there may be no more models left => lookup will be undefined.
+  if(lookup[rel_path]) {
+    // Set the `mcount` property of all content objects.
+    const mc = pluralS(countModels(lookup[rel_path]), 'model');
+    console.log(`${mc} in ${ROOT_DIRS[root]}${path.sep}${rel_path}`);
+    // Trim leading separators from relative path.
+    // while(rel_path.startsWith(path.sep)) rel_path = rel_path.substring(1);
+    return lookup[rel_path];
+  }
+  console.log(`WARNING: Directory ${rel_path} contains no models`);
+  return {
+      root: root,
+      path: rel_path,
+      name: rel_path.split(path.sep).pop(),
+      subdirs: [],
+      models: [],
+    };
+}
+
+function purgeAutoSaveDir(res, period) {
+  // Delete all expired Linny-R model files from the autosave directory.
+  const now = new Date();
+  period = (period ? parseInt(period) : 24) * 3600000;
+  let msg = '';
+  try {
+    let fail_count = 0;
+    const flist = fs.readdirSync(WORKSPACE.autosave);
+    for(const fn of flist) {
+      // NOTE: Only consider Linny-R model files (extension .lnr).
+      if(fn.endsWith('.lnr')) {
+        const
+            fp = path.join(WORKSPACE.autosave, fn),
+            fstat = fs.statSync(fp);
+        // Delete if file has expired.
+        if(now - fstat.mtimeMs > period) {
           try {
             fs.unlinkSync(fp);
           } catch(err) {
             console.log('WARNING: Failed to delete', fp);
             console.log(err);
+            fail_count++;
           }
-        } else {
-          // Add model data to the list.
-          data.push(md);
         }
+      }
+    }
+    if(fail_count) {
+      msg = 'WARNING: Failed to delete ' +
+          pluralS(fail_count, 'auto-saved model');
+    }
+  } catch(err) {
+    msg = 'WARNING: Failed to purge auto-saved models';
+    console.log(msg);
+    console.log(err);
+  }
+  // Empty message indicates success.
+  servePlainText(res, msg);
+}
+
+//
+// Auxiliary functions for browsing GitHub.
+//
+
+function fetchGitHubText(response) {
+  // Standard first THEN function for FETCH calls.
+  if(response.ok) return response.text();
+  console.log(`ERROR ${response.status}: ${response.statusText}`);
+  return '';
+}
+  
+function parseGitHubDirContents(json) {
+  // Parse JSON string and extract names of sub-directories and models.
+  const dc = {subdirs: [], models: []};
+  try {
+    json = JSON.parse(json);
+    for(const entry of json) {
+      if(entry.type === 'dir') {
+        dc.subdirs.push(entry.name);
+      } else if(entry.type === 'file' && entry.name.endsWith('.lnr')) {
+        // NOTE: GitHub does not pass "time last modified".
+        dc.models.push({
+            name: entry.name.slice(0, -4),
+            size: entry.size,
+            time: ''
+          });
       }
     }
   } catch(err) {
-    console.log(err);
-    return 'ERROR: Auto-save failed -- ' + err.message;
+    console.log('ERROR: Failed to parse GitHub repository contents', err);
   }
-  return data;
+  return dc;
 }
 
-function autoSaveLoad(res, sp) {
-  // Return XML content of specified file".
-  const fn = sp.get('file');
-  if(fn) {
-    const fp = path.join(WORKSPACE.autosave, fn + '.lnr');
-    try {
-      data = fs.readFileSync(fp, 'utf8');
-    } catch(err) {
-      console.log(err);
-      data = 'WARNING: Failed to load auto-saved file: ' + err.message;
-    }
-  } else {
-    data = 'ERROR: No auto-saved file name';
-  }
-  servePlainText(res, data);
-}
-
-function autoSaveStore(res, sp) {
-  // Store XML data under specified file name in the auto-save directory,
-  // or in the models directory if the "Save model button was SHIFT-clicked.
-  let data = 'OK';
-  const
-      fn = sp.get('file'),
-      // NOTE: Booleans are passed as strings.
-      wsd = sp.get('wsd') === 'true',
-      ws = (wsd ? WORKSPACE.models : WORKSPACE.autosave),
-      msg = (wsd ? 'save to user workspace' : 'auto-save'),
-      exists = (path) => {
-          try {
-            fs.accessSync(path);
-            return true;
-          } catch(err) {
-            return false;
-          }
-        };
-  if(!fn) {
-    data = 'WARNING: No name for file to ' + msg;
-  } else {
-    const xml = sp.get('xml');
-    // Validate XML as a Linny-R model
-    try {
-      const
-          parser = new DOMParser(),
-          doc = parser.parseFromString(xml, 'text/xml');
-          root = doc.documentElement;
-      // Linny-R models have a model element as root
-      if(root.nodeName !== 'model') throw 'XML document has no model element';
-      let fp = path.join(ws, fn + '.lnr');
-      if(wsd) {
-        // Append a version number to the file name if named file exists.
-        const re = /\(\d+\).lnr$/;
-        if(exists(fp)) {
-          const m = fp.match(re);
-          let n = 1;
-          if(m) {
-            // Replace version number (n) by (n+1).
-            n = parseInt(m[0].substring(1, m[0].length - 1)) + 1;
-            fp = fp.replace(re, `(${n}).lnr`);
+function fetchGitHubRoot(res) {
+  // Get only the top-level directory of the Linny-R models on GitHub.
+  fetch(GITHUB_ROOT_URL)
+    .then(fetchGitHubText)
+    .then((json) => {
+        // NOTE: Do not parse empty string; just ignore it.
+        if(json) {
+          // Parsing will set `subdirs` (as name list) and `models`.
+          const dir = parseGitHubDirContents(json);
+          // Add the other properties.
+          dir.root = 'github';
+          dir.path = '';
+          dir.name = 'Models on GitHub';
+          if(dir.subdirs.length) {
+            // Set the parent and get the sub-dirs.
+            dir.parent = null;
+            fetchGitHubDirs(res, dir);
           } else {
-            // Add (1) as version number.
-            fp = fp.substring(0, fp.length - 4) + ' (1).lnr';
-          }
-          while(exists(fp)) {
-            // Iterate to find the first available version number.
-            n++;
-            fp = fp.replace(re, `(${n}).lnr`);
+            // Serve the root dir "as is".
+            serveJSON(res, dir);
           }
         }
-      }
-      try {
-        fs.writeFileSync(fp, xml);
-        const d = `Model ${ws ? '' : 'auto-'}saved as ${fp}`;
-        console.log(d);
-        // No message (other than OK) when auto-saving.
-        if(ws) data = d;
-      } catch(err) {
-        console.log(err);
-        data = `ERROR: Failed to ${msg} to ${fp}`;
-      }
-    } catch(err) {
-      console.log(err);
-      data = 'ERROR: Not a Linny-R model to ' + msg;
-    }
-  }
-  servePlainText(res, data);
+      })
+    .catch((err) => {
+        console.log('NOTE: No connection with GitHub', err);
+      });
 }
 
-// Repository functionality
-// ========================
-// For repository services, the Linny-R JavaScript application communicates with
-// the server via calls to the server like fetch('repo/', x) where x is a JSON
-// object with at least the entry `action`, which can be one of the following:
-//  id      return the repository URL (for this script: 'local host')
-//  list    return list with names of repositories available on the server
-//  add     add repository (name + url) to the repository list (if allowed)
-//  remove  remove repository (by name) from the repository list (if allowed)
-//  dir     return list with names of modules in the named repository
-//  load    return the specified file content from the named repository
-//  access  obtain write access for the named repository (requires valid token)
-//  store   write XML content to the specified file in the named repository
-//  delete  delete the specified module file from the named repository
+function stripParents(dir) {
+  // Traverse tree of directory content objects to delete the parent pointers.
+  for(const sd of dir.subdirs) stripParents(sd);
+  delete dir.parent;
+}
 
-function repo(res, sp) {
-  // Processes all repository commands
+function fetchGitHubDirs(res, dir) {
+  // For each sub-directory specified by `dir` that has not yet been read,
+  // fetch its contents as a directory content object.
+  let sub_name = '';
+  // See if any sub-directory still needs fetching.
+  dir_path = dir.path;
+  for(const sd of dir.subdirs) {
+    if(typeof sd === 'string') {
+      sub_name = sd;
+      break;
+    }
+  }
+  if(!sub_name) {
+    // All sub-directories have been fetched.
+    if(!dir.parent) {
+      // Serve the complete directory tree.
+      stripParents(dir);
+      serveJSON(res, dir);
+    } else {
+      // Continue with the parent directory.
+      fetchGitHubDirs(res, dir.parent);
+    }
+    return;
+  }
+  // Sub-directory with name `sub_name` needs fetching.
+  const sub_path = dir.path + '/' + sub_name;
+  fetch(GITHUB_ROOT_URL + sub_path)
+    .then(fetchGitHubText)
+    .then((json) => {
+        // NOTE: Do not parse empty string; just ignore it.
+        if(json) {
+          // Parsing will set subdirs (as name list) and models.
+          const sub_dir = parseGitHubDirContents(json);
+          // Add the other properties.
+          sub_dir.root = 'github';
+          sub_dir.path = sub_path;
+          sub_dir.name = sub_name;
+          sub_dir.parent = dir;
+          // Replace sub-directory name by its directory contents object.
+          const sdi = dir.subdirs.indexOf(sub_name);
+          if(sdi >= 0) dir.subdirs[sdi] = sub_dir;
+          if(sub_dir.subdirs.length) {
+            // Depth-first tree traversal: get the sub-dirs of the sub-dir.
+            fetchGitHubDirs(res, sub_dir);
+          } else {
+            // Continue with this directory.
+            fetchGitHubDirs(res, dir);
+          }
+        }
+      })
+    .catch((err) => {
+        console.log('NOTE: No connection with GitHub', err);
+      });
+}
+
+//
+// Main function that carries out File browser actions.
+//
+
+function browse(res, sp) {
+  // Process any one of the file browser commands.
   const action = sp.get('action').trim();
-  logAction('Repository action: ' + action);
-  if(action === 'id') return repoID(res);
-  if(action === 'list') return repoList(res);
-  if(action === 'add') return repoAdd(res, sp);
-  const repo = sp.get('repo').trim();
-  if(action === 'remove') return repoRemove(res, repo);
-  if(action === 'dir') return repoDir(res, repo);
-  if(action === 'access') return repoAccess(res, repo, sp.get('token'));
-  const file = sp.get('file').trim();
-  if(action === 'info') return repoInfo(res, repo, file);
-  if(action === 'load') return repoLoad(res, repo, file);
-  if(action === 'store') return repoStore(res, repo, file, sp.get('xml'));
-  if(action === 'delete') return repoDelete(res, repo, file);
-  // Fall-through: report error
-  servePlainText(res, `ERROR: Invalid repository action: "${action}"`);
-}
-
-function repositoryByName(name) {
-  // Returns array [name, url, token] if `name` found in file `repository.cfg`
-  repo_list = fs.readFileSync(WORKSPACE.repositories, 'utf8').split('\n');
-  for(let i = 0; i < repo_list.length; i++) {
-    rbn = repo_list[i].trim().split('|');
-    while(rbn.length < 2) rbn.push('');
-    if(rbn[0] === name) return rbn;
-  }
-  console.log(`ERROR: Repository "${name}" not registered on this computer`);
-  return false;
-}
-
-function repoId(res) {
-  // Returns the URL of this repository server
-  // NOTE: this local WSGI server should return 'local host'
-  servePlainText(res, 'local host');
-}
-
-function repoList(res) {
-  // Returns name list of registered repositories
-  // NOTE: on a local Linny-R server, the first name is always 'local host'
-  let repo_list = 'local host';
-  try {
-    if(!fs.existsSync(WORKSPACE.repositories)) {
-      fs.writeFileSync(WORKSPACE.repositories, repo_list);
+  if(action === 'roots') {
+    logAction('Get file browser root directories');
+    // Return object with dir info for all four root locations. 
+    const roots = {};
+    for(const key of ['home', 'download', 'autosave']) {
+      roots[key] = getDirectoryContents(key);
     }
-    repo_list = fs.readFileSync(WORKSPACE.repositories, 'utf8').split('\n');
-    // Return only the names!
-    for(let i = 0; i < repo_list.length; i++) {
-      const r = repo_list[i].trim().split('|');
-      repo_list[i] = r[0];
-      // Add a + to indicate that storing is permitted
-      if(r[0] === 'local host' || (r.length > 2 && r[2])) repo_list[i] += '+';
-    }
-    repo_list = repo_list.join('\n');
-  } catch(err) {
-    console.log('ERROR: Failed to access repository -- ' + err.message);
-  }
-  servePlainText(res, repo_list);
-}
-
-function repoAdd(res, sp) {
-  // Registers a remote repository on this local Linny-R server
-  let rname = sp.get('repo');
-  if(rname) rname = rname.trim();
-  if(!rname) return servePlainText(res, 'WARNING: Invalid name');
-  // Get URL without trailing slashes 
-  let url = sp.get('url');
-  url = 'https://' + (url ? url.trim() : '');
-  let i = url.length - 1;
-  while(url[i] === '/') i--;
-  url = url.substring(0, i+1);
-  try {
-    test = new URL(url);
-  } catch(err) {
-    return servePlainText(res, 'WARNING: Invalid URL');
-  }
-  // Error callback function is used twice, so define it here
-  const noConnection = (error, res) => {
-        console.log(error);
-        servePlainText(res, connectionErrorText('Failed to connect to ' + url));
-      };
-  // Verify that the URL points to a Linny-R repository
-  postRequest(url, {action: 'id'},
-      // The `on_ok` function
-      (data, res) => {
-          data = data.toString();
-          // Response should be the URL of the repository
-          if(data !== url) {
-            servePlainText(res, 'WARNING: Not a Linny-R repository');
-            return;
-          }
-          // If so, append name|url|token to the configuration file
-          // NOTE: token is optional
-          let token = sp.get('token');
-          if(token) token = token.trim();
-          if(token) {
-            postRequest(url, {action: 'access', repo: rname, token: token},
-                // The `on_ok` function
-                (data, res) => {
-                    data = data.toString();
-                    if(data !== 'Authenticated') {
-                      servePlainText(res, data);
-                      return;
-                    }
-                    list = fs.readFileSync(
-                        WORKSPACE.repositories, 'utf8').split('\n');
-                    for(let i = 0; i < list.length; i++) {
-                      const nu = list[i].trim().split('|');
-                      if(nu[0] !== 'local host') {
-                        if(nu[0] == rname) {
-                          servePlainText(res,
-                              `WARNING: Repository name "${rname}" already in use`);
-                          return;
-                        }
-                        if(nu[1] === url) {
-                          servePlainText(res,
-                              `WARNING: Repository already registered as "${nu[0]}"`);
-                          return;
-                        }
-                      }
-                    }
-                    list.push([rname, url, token].join('|'));
-                    fs.writeFileSync(WORKSPACE.repositories, list.join('\n'));
-                    servePlainText(res, rname);
-                  },
-                // The `on_error` function and the response object
-                noConnection, res);
-          }
-        },
-      // The `on_error` function and the response object
-      noConnection, res);
-}
-        
-function repoRemove(res, rname) {
-  // Removes a registered repository from the repository configuration file
-  if(rname === 'local host') {
-    servePlainText(res, 'ERROR: Cannot remove local host');
+    serveJSON(res, roots);
     return;
   }
-  try {
-    // Read list of repositories registered on this local host server
-    list = fs.readFileSync(WORKSPACE.repositories, 'utf8').split('\n');
-    // Look for a repository called `rname`
-    let index = -1;
-    for(let i = 0; i < list.length; i++) {
-      const nu = list[i].trim().split('|');
-      if(nu[0] === rname) {
-        index = i;
-        break;
-      }
-    }
-    if(index < 0) {
-      // Not found => cannot remove
-      servePlainText(res, `ERROR: Repository "${rname}" not found`);
-    } else {
-      // Remove from list and save it to file `repository.cfg`
-      list.splice(index, 1);
-      fs.writeFileSync(WORKSPACE.repositories, list.join('\n'));
-      // Return the name to indicate "successfully removed"
-      servePlainText(res, rname);
-    }
-  } catch(err) {
-    console.log(err);
-    servePlainText(res, `ERROR: Failed to remove "${rname}"`);
-  }
-}
-        
-function repoDir(res, rname) {
-  // Returns a newline-separated list of names of the modules stored in the
-  // specified repository
-  const mlist = [];
-  if(rname === 'local host') {
-    // Return list of base filenames of Linny-R models in `modules` directory
-    const flist = fs.readdirSync(WORKSPACE.modules);
-    for(let i = 0; i < flist.length; i++) {
-      const pp = path.parse(flist[i]);
-      // Only add Linny-R model files (.lnr) without this extension
-      if(pp.ext === '.lnr') mlist.push(pp.name);
-    }
-    servePlainText(res, mlist.join('\n'));
-  } else {
-    // Get list from remote server
-    const r = repositoryByName(rname);
-    if(r) {
-      postRequest(r[1], {action: 'dir', repo: r[0]},
-          // The `on_ok` function
-          (data, res) => servePlainText(res, data),
-          // The `on_error` function
-          (error, res) => {
-              console.log(error);
-              servePlainText(res, connectionErrorText(
-                  `Failed to access remote repository "${rname}"`));
-          },
-          res);
-    } else {
-      servePlainText(res, `ERROR: Repository "${rname}" not registered`);
-    }
-  }
-}
-
-function repoInfo(res, rname, mname) {
-  // Returns the documentation (<notes> in XML) of the requested model file
-  // if found in the specified repository
-  // NOTE: the function `serveNotes` is called when the XML text has been
-  // retrieved either from a local file or from a remote repository URL
-  const serveNotes = (res, xml) => {
-        // Parse XML string
-        try {
-          const parser = new DOMParser();
-          xml = parser.parseFromString(xml, 'text/xml');
-          const de = xml.documentElement;
-          // Linny-R model must contain a model node
-          if(de.nodeName !== 'model') throw 'XML document has no model element';
-          let notes = '';
-          // The XML will contain many "notes" elements; only consider child
-          // nodes of the "model" element
-          for(let i = 0; i < de.childNodes.length; i++) {
-            const ce = de.childNodes[i];
-            // NOTE: node text content is stored as a child node
-            if(ce.nodeName === 'notes' && ce.childNodes.length > 0) {
-              notes = ce.childNodes[0].nodeValue;
-              break;
-            }
-          }
-          servePlainText(res, notes);
-        } catch(err) {
-          console.log(err);
-          console.log('XML', xml);
-          servePlainText(res, 'ERROR: Failed to parse XML of Linny-R model');
-        }
-      };
-  // See where to obtain the XML
-  if(rname === 'local host') {
-    // NOTE: file name includes version number but not the extension
-    fs.readFile(path.join(WORKSPACE.modules, mname + '.lnr'), 'utf8',
-        (err, data) => {
-          if(err) {
-              console.log(err);
-              servePlainText(res, 'ERROR: Failed to read model file');
-          } else {
-            serveNotes(res, data);
-          }
-        });
-  } else {
-    // Get file from remote server
-    r = repositoryByName(rname);
-    if(r) {
-      postRequest(r[1], {action: 'load', repo: r[0], file: mname},
-          // The `on_ok` function
-          (data, res) => serveNotes(res, data.toString()),
-          // The `on_error` function
-          (error, res) => {
-              console.log(error);
-              servePlainText(res, 'ERROR: Failed to download model file');
-            },
-          res);
-    } else {
-      servePlainText(res, `ERROR: Repository "${rname}" not registered`);
-    }
-  }
-}
-
-function repoLoad(res, rname, mname, pipe=null) {
-  // Returns the requested model file if found in the specified repository
-  // The optional function pipe(res, xml) allows pass ingon the loaded XML
-  if(rname === 'local host') {
-    // NOTE: file name includes version number but not the extension
-    fs.readFile(path.join(WORKSPACE.modules, mname + '.lnr'), 'utf8',
-        (err, data) => {
-            if(err) {
-              console.log(err);
-              servePlainText(res, 'ERROR: Failed to read model file');
-            } else if(pipe) {
-              pipe(res, data);
-            } else {
-              servePlainText(res, data);
-            }
-        });
-  } else {
-    // Get file from remote server
-    r = repositoryByName(rname);
-    if(r) {
-      postRequest(r[1], {action: 'load', repo: r[0], file: mname},
-          // The `on_ok` function
-          (data, res) => {
-              if(pipe) {
-                pipe(res, data.toString());
-              } else {
-                servePlainText(res, data.toString());
-              }
-            },
-          // The `on_error` function
-          (error, res) => {
-              console.log(error);
-              servePlainText(res, 'ERROR: Failed to download model file');
-            },
-          res);
-    } else {
-      servePlainText(res, `ERROR: Repository "${rname}" not registered`);
-    }
-  }
-}
-
-function repoAccess(res, rname, rtoken) {
-  // Requests write access for a remote repository
-  r = repositoryByName(rname);
-  if(!r) {
-    servePlainText(`ERROR: Repository "${rname}" not registered`);
+  if(action === 'purge') {
+    // Delete all expired files from auto-save directory.
+    logAction('Purge auto-saved files');
+    purgeAutoSaveDir(res, sp.get('period'));
     return;
   }
-  postRequest(r[1], {action: 'access', repo: r[0], token: rtoken},
-      // The `on_ok` function
-      (data, res) => {
-          if(data !== 'Authenticated') {
-            servePlainText(res, data);
-          } else {
-            try {
-              // Read the list of repositories from the repository config file
-              const
-                  list = fs.readFileSync(
-                      WORKSPACE.repositories, 'utf8').split('\n'),
-                  new_list = [];
-              for(let i = 0; i < list.length; i++) {
-                const nu = list[i].trim().split('|');
-                if(nu[0] === rname) {
-                  // Add or replace the token
-                  if(nu.length === 2) {
-                    nu.push(rtoken);
-                  } else if(nu.length === 3) {
-                    nu[2] = rtoken;
-                  }
-                }
-                new_list.push(nu.join('|'));
-              }
-              fs.writeFileSync(new_list.join('\n'));
-              servePlainText(res, `Authenticated for <b>${rname}</b>`);
-            } catch(err) {
-              console.log(err);
-              servePlainText(res, `ERROR: Failed to set token for "${rname}"`);
-            }
-          }
-        },
-      // The `on_error` function
-      (error, res) => {
-          console.log(error);
-          servePlainText(res, connectionErrorText('Failed to connect to' + r[1]));
-        },
-      res);
-}
-
-function repoStore(res, rname, mname, mxml) {
-  // Stores the posted model in the specified repository
-  // NOTE: file name must not contain spaces or special characters
-  mname = asFileName(mname);
-  // Validate XML as a Linny-R model
-  let valid = false;
-  try {
-    const
-        parser = new DOMParser(),
-        doc = parser.parseFromString(mxml, 'text/xml');
-        root = doc.documentElement;
-    // Linny-R models have a model element as root
-    if(root.nodeName !== 'model') throw 'XML document has no model element';
-    valid = true;
-  } catch(err) {
-    console.log(err);
-    servePlainText(res, 'ERROR: Not a Linny-R model');
+  if(action === 'github') {
+    // Serve the GitHub directory tree as JSON.
+    logAction('Get directory tree from GitHub');
+    fetchGitHubRoot(res);
     return;
   }
-  if(rname === 'local host') {
-    // Always allow storing on local host
-    try {
-      // NOTE: first find latest version (if any)
-      const re = new RegExp('^' + mname + '-(\\d+).lnr');
-      // NOTE: Version numbers start at 1
-      let version = 0;
-      const list = fs.readdirSync(WORKSPACE.modules);
-      for(let i = 0; i < list.length; i++) {
-        const match = list[i].match(re);
-        if(match && match.length > 1) {
-          // File name equal to model name plus version number => get the number
-          version = Math.max(version, parseInt(match[1]));
-        }
-      }
-      mname += `-${version + 1}.lnr`;
-      fs.writeFileSync(path.join(WORKSPACE.modules, mname), mxml);
-      servePlainText(res, `Model stored as <tt>${mname}</tt>`);
-    } catch(err) {
-      console.log(err);
-      servePlainText(res, 'ERROR: Failed to write file');
+  // All other actions require root and path.
+  const
+      root = sp.get('root'),
+      rel_path = sp.get('path');
+  let file_name = sp.get('model') || '';
+  if(file_name && !file_name.endsWith('.lnr')) file_name += '.lnr';
+  logAction(`File browser: ${action}  ${root}  ${rel_path}  ${file_name}`);
+  let msg = '',
+      full_path = '';
+  if(root === 'github') {
+    if(action === 'load') {
+      // Serve the GitHub file contents as plain text.
+      fetch(GITHUB_LOAD_URL + rel_path + '/' + file_name)
+        .then(fetchGitHubText)
+        .then((data) => servePlainText(res, data))
+        .catch(() => {
+            console.log('NOTE: No connection with GitHub');
+            // Serve "empty text" if no connection.
+            servePlainText(res, '');
+          });
+      return;
+    } else {
+      msg = 'ERROR: Linny-R repository on GitHub is read-only';
     }
-  } else {
-      // Otherwise, post file with token
-      r = repositoryByName(rname);
-      if(r) {
-        postRequest(r[1],
-            {action: 'store', repo: rname, file: mname, xml: mxml, token: r[2]},
-            // The `on_ok` function: serve the data sent by the remote server
-            (data, res) => servePlainText(res, data),
-            // The `on_error` function
-            (error, res) => {
-                console.log(error);
-                servePlainText(res, connectionErrorText('Failed to connect to' + r[1]));
-              },
-            res);
+  } else if(!ROOT_DIRS.hasOwnProperty(root)) {
+    msg = `ERROR: Invalid root: "${root}"`;
+  }
+  if(!msg) {
+    // Action on local host.
+    let dir_path = path.join(ROOT_DIRS[root], rel_path);
+    full_path = path.join(dir_path, file_name);
+    // NOTE: When storing, the file name may be a path. In that case,
+    // sub-directories may need to be created.
+    if(action === 'store') {
+      // When storing, the relative path must exist...
+      if(!fs.existsSync(dir_path)) {
+        msg = `ERROR: Path "${dir_path}" not found`;
       } else {
-        servePlainText(res, `ERROR: Repository "${rname}" not registered`);
+        // ... and the file name may specify sub-directories.
+        const parts = file_name.split(path.sep);
+        while(parts.length > 1) {
+          try{
+            dir_path = path.join(dir_path, parts.shift());
+            if(!fs.existsSync(dir_path)) fs.mkdirSync(dir_path);
+          } catch(err) {
+            msg = `ERROR: Failed to create sub-directory "${dir_path}"`;
+            console.log(err);
+            break;
+          }
+        }
       }
+    } else if(!fs.existsSync(full_path)) {
+      // For other actions, full path must be an existing file or directory.
+      msg = `ERROR: Path "${full_path}" not found`;
+    }
   }
-}
-
-function repoDelete(res, name, file) {
-  // Deletes the specified module from the specified repository
-  // NOTE: this works only on the "local host" repository on this server
-  if(name === 'local host') {
-    // Delete specified model file
-    // NOTE: file name includes version number but not the extension
+  if(msg) {
+    // Report error and exit.
+    console.log(msg);
+    servePlainText(res, msg);
+    return;
+  }
+  // Action and path have been validated => proceed.
+  if(action === 'dir') {
+    const rdc = getDirectoryContents(root, rel_path);
+    serveJSON(res, rdc);
+    return;
+  }
+  let error = null;
+  if(action === 'load') {
     try {
-      fs.unlinkSync(path.join(WORKSPACE.modules, file + '.lnr'));
-      servePlainText(res,
-          `Module <tt>${file}</tt> removed from <strong>${name}</strong>`);
+      let data = fs.readFileSync(full_path, 'utf8');
+      // Serve file contents and exit.
+      servePlainText(res, data);
+      return;
     } catch(err) {
-      console.log(err);
-      servePlainText(resp, 'ERROR: Failed to delete file');
+      msg = `ERROR: Failed to read file "${full_path}"`;
+      error = err;
+    }
+  } else if(action === 'delete') {
+    try {
+      fs.unlinkSync(full_path);
+      servePlainText(res, `Deleted file <tt>${full_path}</tt>`);
+      return;
+    } catch(err) {
+      msg = `WARNING: Failed to delete "${full_path}"`;
+      error = err;          
+    }
+  } else if(action === 'store') {
+    try {
+      const in_over = (fs.existsSync(full_path) ? 'by overwriting' : 'in');
+      fs.writeFileSync(full_path, sp.get('xml'));
+      servePlainText(res, `Model saved ${in_over} <tt>${full_path}</tt>`);
+      return;
+    } catch(err) {
+      msg = `WARNING: Failed to write to file "${full_path}"`;
+      error = err;          
     }
   } else {
-    servePlainText(res, 'Cannot delete modules from a remote repository');
+    msg = `ERROR: Invalid file browser action: "${action}"`;
   }
+  // Report error (if any).
+  if(msg) {
+    console.log(msg);
+    if(error) console.log(error);
+  }
+  // Empty message indicates success.
+  servePlainText(res, msg);
 }
+
 
 // Remote dataset functionality
 // ============================
@@ -974,17 +819,17 @@ function anyOSpath(p) {
 }
 
 function loadData(res, url) {
-  // Passed parameter is the URL or full path
+  // Passed parameter is the URL or full path.
   logAction('Load data from ' + url);
   if(!url) servePlainText(res, 'ERROR: No URL or path');
   if(url.toLowerCase().startsWith('http')) {
-    // URL => validate it, and then try to download its content as text
+    // URL => validate it, and then try to download its content as text.
     try {
-      new URL(url); // Will throw an error if URL is not valid
+      new URL(url); // Will throw an error if URL is not valid.
       getTextFromURL(url,
           (data, res) => servePlainText(res, data),
           (error, res) => servePlainText(res,
-              connectionErrorText(`Failed to get data from <tt>${url}</tt>`)),
+              `WARNING: Failed to get data from <tt>${url}</tt>`),
           res);
     } catch(err) {
       console.log(err);
@@ -993,7 +838,7 @@ function loadData(res, url) {
   } else {
     let fp = anyOSpath(url);
     if(!(fp.startsWith('/') || fp.startsWith('\\') || fp.indexOf(':\\') > 0)) {
-      // Relative path => add path to user/data directory
+      // Relative path => add path to user/data directory.
       fp = path.join(WORKSPACE.data, fp);
     }
     fs.readFile(fp, 'utf8', (err, data) => {
@@ -1010,131 +855,204 @@ function loadData(res, url) {
 // Receiver functionality
 // ======================
 // Respond to Linny-R receiver actions:
-//  listen    - look for a Linny-r model file in the channel directory, and run it
-//  abort     - write message to file <original model file name>-abort.txt
-//  report    - write data and statistics on all chart variables as two text files
-//              having names <original model file name>-data.txt and -stats.txt,
-//              respectively
-//  call-back - delete model file (to prevent running it again), and then execute
-//              the call-back Python script specified for the channel
+//  listen    - Look for file "command.json" in the channel directory, read it,
+//              delete it (to prevent executing it again), and execute it.
+//  abort     - Write message to file "abort.txt" in the channel directory.
+//  report    - Write data and statistics on all chart variables as two text
+//              files: "data.txt" and "stats.txt".
+//  call-back - Read an OS command line from file "call-back.txt" in the channel
+//              directory, and execute it.
 
 function receiver(res, sp) {
   // This function processes all receiver actions.
-  let
-      rpath = anyOSpath(sp.get('path') || ''),
-      rfile = anyOSpath(sp.get('file') || '');
-  // Assume that path is relative to working directory unless it starts
-  // with a (back)slash or specifies drive or volume.
-  if(!(rpath.startsWith(path.sep) || rpath.indexOf(':') >= 0 ||
-      rpath.startsWith(WORKING_DIRECTORY))) {
-    rpath = path.join(WORKING_DIRECTORY, rpath);
-  }
-  // Verify that the channel path exists
-  try {
-    fs.opendirSync(rpath);
-  } catch(err) {
-    console.log(err);
-    servePlainText(res, `ERROR: No channel path (${rpath})`);
+  // NOTE: If no channel name, the Receiver is not listening, but used by the
+  // Virtual Machine and the Experiment manager to report outcomes.
+  let rpath = '';
+  const
+      channel_name = asFileName(sp.get('channel') || ''),
+      action = sp.get('action');
+  if(action === 'channel-list') {
+    // Serve a list of Linny-R model files in the models directory
+    // of the user workspace.
+    rcvrChannelList(res);
+    return;
+  } else if(channel_name) {
+    // Path relative to the channel directory of the user workspace.
+    rpath = path.join(WORKSPACE.channel, channel_name);
+  } else if(action === 'report') {
+    // Path is the reports directory of the user workspace.
+    rpath = WORKSPACE.reports;
+  } else {
+    servePlainText(res, `ERROR: No channel name`);
     return;
   }
-  // Get the action from the search parameters
-  const action = sp.get('action');
-  logAction(`Receiver action:  ${action} ${rpath} ${rfile}`);
+  // Verify that the receiver path exists.
+  try {
+    const dir = fs.opendirSync(rpath);
+    dir.close();
+  } catch(err) {
+    console.log(err);
+    servePlainText(res, `ERROR: Receiver cannot find path "${rpath}"`);
+    return;
+  }
+  logAction(`Receiver action: ${action} ${rpath}`);
   if(action === 'listen') {
     rcvrListen(res, rpath);
   } else if(action === 'abort') {
-    rcvrAbort(res, rpath, rfile, sp.get('log') || 'NO EVENT LOG');
+    rcvrAbort(res, rpath, sp.get('log') || 'NO EVENT LOG');
   } else if(action === 'report') {
     let run = sp.get('run');
     // Zero-pad run number to permit sorting run report file names in sequence.
     run = (run ? '-' + run.padStart(3, '0') : '');
-    let data = sp.get('data') || '',
+    const
+        file = sp.get('file') || '',
+        data = sp.get('data') || '',
         stats = sp.get('stats') || '',
         log = sp.get('log') || 'NO EVENT LOG';
-    rcvrReport(res, rpath, rfile, run, data, stats, log);
+    rcvrReport(res, rpath, file, run, data, stats, log);
   } else if(action === 'call-back') {  
-    rcvrCallBack(res, rpath, rfile, sp.get('script') || '');
+    rcvrCallBack(res, rpath);
   } else {
-    servePlainText(res, `ERROR: Invalid action: "${action}"`);
+    servePlainText(res, `ERROR: Invalid action "${action}"`);
   }
 }
 
-function rcvrListen(res, rpath) {
-  // "Listens" at the channel, i.e., looks for work to do
-  let mdl = '',
-      cmd = '';
+function rcvrChannelList(res) {
+  // Serve a JSON list of channel objects {name: string, callback: Boolean}
+  // where callback is TRUE only if the channel directory contains a file
+  // "call-back.py". 
   try {
-    // Look for a model file and/or a command file in the channel directory
-    const flist = fs.readdirSync(rpath);
-    // NOTE: `flist` contains file names relative to `rpath`
-    for(let i = 0; i < flist.length; i++) {
-      const f = path.parse(flist[i]);
-      if(f.ext === '.lnr' && !mdl) mdl = flist[i];
-      if(f.ext === '.lnrc' && !cmd) cmd = flist[i];
+    const
+        channels = [],
+        clist = fs.readdirSync(WORKSPACE.channel, {withFileTypes: true})
+            .filter(de => de.isDirectory())
+            .map(de => de.name);
+    for(const cn of clist) {
+      const cb = fs.existsSync(path.join(WORKSPACE.channel, cn, 'call-back.py'));
+      channels.push({name: cn, callback: cb});
     }
+    serveJSON(res, channels);
   } catch(err) {
     console.log(err);
-    servePlainText(res, `ERROR: Failed to get file list from <tt>${rpath}</tt>`);
-    return;
-  }
-  // Model files take precedence over command files
-  if(mdl) {
-    fs.readFile(path.join(rpath, mdl), 'utf8', (err, data) => {
-        if(err) {
-          console.log(err);
-          servePlainText(res, `ERROR: Failed to read model <tt>${mdl}</tt>`);
-        } else {
-          serveJSON(res, {file: path.parse(mdl).name, model: data});
-        }
-      });
-    return;
-  }
-  if(cmd) {
-    try {
-      cmd = fs.readFileSync(path.join(rpath, cmd), 'utf8').trim();
-    } catch(err) {
-      console.log(err);
-      servePlainText(res, `ERROR: Failed to read command file <tt>${cmd}</tt>`);
-    }
-    // Special command to deactivate the receiver
-    if(cmd === 'STOP LISTENING') {
-      serveJSON(res, {stop: 1});
-    } else {
-      // For now, command can only be
-      // "[experiment name|]module name[@repository name]"
-      let m = '',
-          r = '',
-          x = '';
-      const m_r = cmd.split('@');
-      // Repository `r` is local host unless specified
-      if(m_r.length === 2) {
-        r = m_r[1];
-      } else if(m_r.length === 1) {
-        r = 'local host';
-      } else {
-        // Multiple occurrences of @
-        servePlainText(res, `ERROR: Invalid command <tt>${cmd}</tt>`);
-        return;
-      }
-      m = m_r[0];
-      // Module `m` can be prefixed by an experiment title
-      const x_m = m.split('|');
-      if(x_m.length === 2) {
-        x = x_m[0];
-        m = x_m[1];
-      }
-      // Call repoLoad with its callback function to get the model XML
-      repoLoad(res, r.trim(), m.trim(), (res, xml) => serveJSON(res,
-          {file: path.parse(cmd).name, model: xml, experiment: x.trim()}));
-    }
-  } else {
-    // Empty fields will be interpreted as "nothing to do"
-    serveJSON(res, {file: '', model: '', experiment: ''});
+    servePlainText(res, `ERROR: Failed to get channel list`);
   }
 }
 
-function rcvrAbort(res, rpath, rfile, log) {
-  const log_path = path.join(rpath, rfile + '-log.txt');
+
+function rcvrListen(res, rpath) {
+  // "Listen" at the channel means: look in the channel directory for a Linny-R
+  // command file. This file is typically placed there by a (Python) script.
+  const cpath = path.join(rpath, 'command.json');
+  if(!fs.existsSync(cpath)) {
+    // If no command file is found, return a "don't stop listening" command.
+    serveJSON(res, {stop: false});
+    return;
+  }
+  // Read the command file.
+  try {
+    json = fs.readFileSync(cpath, 'utf8').trim();
+  } catch(err) {
+    console.log(err);
+    servePlainText(res, `ERROR: Failed to read <tt>${cpath}</tt>`);
+    return;
+  }
+  // Check that it contains a valid JSON string.
+  try {
+    json = JSON.parse(json);
+  } catch(err) {
+    console.log(err);
+    servePlainText(res, `WARNING: JSON syntax error in <tt>${cpath}</tt>`);
+    return;
+  }
+  // Delete the JSON command file (to prevent that it is executed twice).
+  logAction(`Deleting file: ${cpath}`);
+  try {
+    fs.unlinkSync(cpath);
+  } catch(err) {
+    console.log(err);
+    servePlainText(res, `ERROR: Failed to delete <tt>${cpath}</tt>`);
+    return;
+  }
+  // Check that the channel name specified by the JSON command file corresponds
+  // with the channel that is listened to.
+  if(!(json.channel && rpath.endsWith(path.sep + json.channel))) {
+    servePlainText(res, `ERROR: Command channel mismatch (${json.channel})`);
+    return;    
+  }
+  
+  // The object obtained by parsing the JSON string can have these properties:
+  // - model:      Name of a .lnr file to be found in either the channel directory
+  //               or in user/models/.
+  // - csv:        Name of a CSV file with dataset data to be found either in the
+  //               channel directory or in user/data/.
+  // - run:        Boolean indicating whether the current model should be run.
+  // - stop:       Boolean indicating whether to stop listening (i.e., deactivate
+  //               the Receiver)
+  
+  // NOTE: When `stop` property is set, ignore all other properties.
+  if(json.stop) {
+    serveJSON(res, {stop: true});
+  } else {
+    // The server only checks whether the files exist, and then passes on their
+    // contents to the receiver as additional properties of the `json` object.
+    if(json.csv) {
+      try {
+        // JSON may specify the name of a CSV file with dataset data.
+        try {
+          // This file must exist either in the channel directory...
+          json.datasets = fs.readFileSync(path.join(cpath, json.csv),
+              'utf8').trim();
+        } catch(err) {
+          // ... or in the data directory in the user workspace.
+          json.datasets = fs.readFileSync(path.join(WORKSPACE.data, json.csv),
+              'utf8').trim();
+        }
+      } catch(err) {
+        // Report error if CSV file not found in either location.
+        console.log(err);
+        servePlainText(res, `ERROR: Failed to read data file <tt>${json.csv}</tt>`);
+        return;
+      }
+    }
+    if(json.model) {
+      // If JSON has property `model`, this should be the name of a .lnr file.
+      const fp = path.parse(json.model);
+      // Add the default Linny-R extension if no extension specified.
+      if(!fp.ext) json.model += '.lnr';
+      let model_xml = '';
+      try {
+        try {
+          // This .lnr file must exist either in the channel directory...
+          model_xml = fs.readFileSync(path.join(cpath, json.model),
+              'utf8').trim();
+        } catch(err) {
+          // ... or in the models directory in the user workspace...
+          model_xml = fs.readFileSync(path.join(WORKSPACE.models, json.model),
+              'utf8').trim();
+        }
+      } catch(err) {
+        // Report error if .lnr file not found in either location.
+        console.log(err);
+        servePlainText(res, `ERROR: Failed to read model file <tt>${json.model}</tt>`);
+        return;
+      }
+      // Validate model XML.
+      if(validModelXML(model_xml)) {
+        json.xml = model_xml;
+        serveJSON(res, json);
+      } else {
+        servePlainText(res,
+            `ERROR: File <tt>${json.model}</tt> is not a Linny-R model`);
+      }
+      return;
+    }
+  }
+}
+
+function rcvrAbort(res, rpath, log) {
+  // Write log to text file in channel and respond with notification.
+console.log('HERE abort: path run', rpath, run);
+  const log_path = path.join(rpath, 'log.txt');
   fs.writeFile(log_path, log, (err) => {
       if(err) {
         console.log(err);
@@ -1147,7 +1065,8 @@ function rcvrAbort(res, rpath, rfile, log) {
 }
 
 function rcvrReport(res, rpath, rfile, run, data, stats, log) {
-  // Purge reports older than 24 hours.
+  console.log('HERE report: path file run', rpath, rfile, run);
+  // Always purge reports older than 24 hours from the user workspace.
   try {
     const
       now = new Date(),
@@ -1162,7 +1081,7 @@ function rcvrReport(res, rpath, rfile, run, data, stats, log) {
         // Delete only if file is older than 24 hours.
         const fstat = fs.statSync(fp);
         if(now - fstat.mtimeMs > 24 * 3600000) {
-          // Delete text file
+          // Delete text file.
           try {
             fs.unlinkSync(fp);
             n++;
@@ -1179,17 +1098,17 @@ function rcvrReport(res, rpath, rfile, run, data, stats, log) {
     console.log(err);
   }
   // Now save the reports.
-  // NOTE: The optional @ indicates where the run number must be inserted.
-  // If not specified, append run number to the base report file name.
   if(rfile.indexOf('@') < 0) {
     rfile += run;
   } else {
     rfile = rfile.replace('@', run);  
   }
-  const base = path.join(rpath, rfile);
-  let fp;
+  let fp,
+      base = path.join(rpath, rfile);
+  // NOTE: Join with empty string does not add a directory separator.
+  if(base === rfile) base += path.sep;
   try {
-    fp = path.join(base + '-data.txt');
+    fp = path.join(base + 'data.txt');
     fs.writeFileSync(fp, data);
   } catch(err) {
     console.log(err);
@@ -1198,7 +1117,7 @@ function rcvrReport(res, rpath, rfile, run, data, stats, log) {
     return;
   }
   try {
-    fp = path.join(base + '-stats.txt');
+    fp = path.join(base + 'stats.txt');
     fs.writeFileSync(fp, stats);
   } catch(err) {
     console.log(err);
@@ -1207,65 +1126,149 @@ function rcvrReport(res, rpath, rfile, run, data, stats, log) {
     return;
   }
   try {
-    fp = path.join(base + '-log.txt');
+    fp = path.join(base + 'log.txt');
     fs.writeFileSync(fp, log);
   } catch(err) {
     console.log(err);
     servePlainText(res,
         `ERROR: Failed to write event log to file <tt>${fp}</tt>`);
   }
-  servePlainText(res, `Data and statistics reported for <tt>${rfile}</tt>`);
+  servePlainText(res, 'Data and statistics reported' +
+      (rfile ? ` for <tt>${rfile}</tt>` : ''));
 }
 
-function rcvrCallBack(res, rpath, rfile, script) {
-  let file_type = '',
-      cpath = path.join(rpath, rfile + '.lnr');
+function rcvrCallBack(res, rpath) {
+  // NOTE: For now, the only permitted call-back application is a Python
+  // script "call-back.py". This may be expanded to permit other executable
+  // applications to perform the call-back function.
   try {
-    fs.accessSync(cpath);
-    file_type = 'model';
-  } catch(err) {
-    cpath = path.join(rpath, rfile + '.lnrc');
-    try {
-      fs.accessSync(cpath);
-      file_type = 'command';
-    } catch(err) {
-      cpath = '';
-    }
-  }
-  if(cpath) {
-    logAction(`Deleting ${file_type} file: ${cpath}`);
-    try {
-      fs.unlinkSync(cpath);
-    } catch(err) {
-      console.log(err);
-      servePlainText(res,
-          `ERROR: Failed to delete ${file_type} file <tt>${rfile}</tt>`);
-      return;
-    }
-  }
-  if(!script) {
-    servePlainText(res, 'No call-back script to execute');
-    return;
-  }
-  try {
-    cmd = fs.readFileSync(path.join(WORKSPACE.callback, script), 'utf8');
-    logAction(`Executing callback command "${cmd}"`);
+    cmd = 'python ' + path.join(rpath, 'call-back.py');
+    logAction(`Executing call-back script: ${cmd}`);
     child_process.exec(cmd, (error, stdout, stderr) => {
         console.log(stdout);
         if(error) {
           console.log(error);
           console.log(stderr);
           servePlainText(res,
-              `ERROR: Failed to execute script <tt>${script}</tt>`);
+              `ERROR: Failed to execute script <tt>${cmd}</tt>`);
         } else {
-          servePlainText(res, `Call-back script <tt>${script}</tt> executed`);
+          servePlainText(res, `Call-back script executed`);
         }
       });
   } catch(err) {
     console.log(err);
-    servePlainText(res,
-        `WARNING: Call-back script <tt>${script}</tt> not found`);
+    servePlainText(res, 'ERROR: Receiver call-back failed');
   }
+}
+
+// Default model properties functionality
+// ======================================
+// The default model properties are specified in file "linny-r-config.js".
+// To permit the modeler to customize these values without having to change
+// JavaScript files, a subset of model properties can be stored as a JSON file
+// "defaults.json" in the user workspace.
+
+function readDefaultsFile() {
+  // Return object parsed from JSON string in defaults file if it exists,
+  // or error message string when exception occurs.
+  const dpath = path.join(SETTINGS.user_dir, 'defaults.json');
+  if(fs.existsSync(dpath)) {
+    try {
+      json = fs.readFileSync(dpath);
+      try {
+        return JSON.parse(json);
+      } catch(err) {
+        console.log(err);
+        return 'ERROR: Invalid contents of defaults file';
+      }
+    } catch(err) {
+      console.log(err);
+      return 'ERROR: Failed to read from defaults file';
+    }
+  }
+  // Empty string denotes: no JSON, no exception.
+  return '';
+}
+
+function defaults(res, sp) {
+  // Handle the defaults request. When the 'change' parameter is set, then
+  // this should be the JSON string to be writen to the defaults file.
+  // If not set, then the JSON string is read from the file (if any).
+  const
+      dpath = path.join(SETTINGS.user_dir, 'defaults.json'),
+      change = sp.get('change');
+  let msg = '';
+  if(change) {
+    logAction('Change default model properties');
+    // NOTE: No validation of properties; any JSON string is accepted.
+    let json = '';
+    try {
+      json = JSON.parse(change);
+      try {
+        fs.writeFileSync(dpath, change);
+        serveJSON(res, json);
+        // Exit if successful.
+        return;
+      } catch(err) {
+        console.log(err);
+        msg = 'ERROR: Failed to write to defaults file';
+      }
+    } catch(err) {
+      console.log(err);
+      msg = 'ERROR: Invalid default values';
+    }
+    if(msg) {
+      console.log(msg);
+      servePlainText(res, msg);
+    }
+  } else {
+    logAction('Read default model properties');
+    // NOTE: Reader will return parsed JSON as object, or error message
+    // as string.
+    json = readDefaultsFile();
+    if(typeof json === 'object') {
+      serveJSON(res, json);
+      return;
+    }
+    msg = json;
+  }
+  // Fall-through: `msg` will be ignored when empty.
+  servePlainText(res, msg);
+}
+
+// Auto-save settings
+// ==================
+// NOTE: Auto-save settings are read when Linny-R is started in a browser,
+// in response to the logon request. They can be updated via the 'autosave'
+// request. The function below processes this request.
+
+function storeAutoSaveSettings(res, sp) {
+  logAction('Store auto-save settings');
+  const
+      aspath = path.join(SETTINGS.user_dir, 'auto-save.json'),
+      m = sp.get('minutes'),
+      h = sp.get('hours');
+  let msg = '';
+  if(!m || !h) {
+    msg = 'Invalid auto-save settings';
+  } else {
+    const ass = {minutes: parseInt(m), hours: parseInt(h)};
+    if(isNaN(ass.minutes) || isNaN(ass.hours)) {
+      msg = 'Invalid auto-save settings';
+    } else {
+      try {
+        fs.writeFileSync(aspath, JSON.stringify(ass));
+        // Exit on success.
+        servePlainText(res, 'Auto-save settings have been changed');
+        return;
+      } catch(err) {
+        console.log(err);
+        msg = 'Failed to write to auto-save settings file';
+      }
+    }
+  }
+  // Fall-through indicates error.
+  servePlainText(res, 'ERROR: ' + msg);
 }
 
 // Basic server functionality
@@ -1310,9 +1313,9 @@ const STATIC_FILES = {
   };
 
 function processRequest(req, res, cmd, data) {
-  // Make correct response to request
+  // Make correct response to request.
   // NOTE: `data` is a string of form field1=value1&field2=value2& ... etc.
-  // regardless of the request method (GET or POST)
+  // regardless of the request method (GET or POST).
   if(permittedFile(cmd)) {
     // Path contains valid MIME file type extension => serve if allowed.
     serveStaticFile(res, cmd);
@@ -1328,16 +1331,46 @@ function processRequest(req, res, cmd, data) {
     if(action === 'logon') {
       // No authentication -- simply return the passed token, "local host"
       // as server name, the name of the solver, the list of installed
-      // solvers, and the Linny-R directory.
-      serveJSON(res, {
+      // solvers, and some more server-dependent properties.
+      const json = {
           token: 'local host',
           server: 'local host',
           solver: SOLVER.id,
           solver_list: Object.keys(SOLVER.solver_list),
-          path: WORKING_DIRECTORY
-        });
-    } else if(action === 'png') {
-      convertSVGtoPNG(req, res, sp);
+          // The Linny-R directory.
+          path: WORKING_DIRECTORY,
+          // The directory separator (backslash for Windows, otherwise slash).
+          separator: path.sep,
+          // The user name on this machine.
+          user_name: USER_NAME,
+          // Default auto-save settings.
+          // NOTE: Servers that do not support auto-saving should not set
+          // this property, or set it to NULL.
+          autosave: {minutes: 10, hours: 24}
+        };
+      // Get default model properties from JSON file in user directory
+      // (if it exists).
+      const defaults = readDefaultsFile();
+      if(typeof defaults === 'object') {
+        json.defaults = defaults;
+      }
+      // Get custom auto-save settings from JSON file in user directory
+      // (if it exists).
+      const as_path = path.join(SETTINGS.user_dir, 'auto-save.json');
+      if(fs.existsSync(as_path)) {
+        try {
+          let as = fs.readFileSync(as_path);
+          try {
+            as = JSON.parse(as);
+            json.autosave = as;
+          } catch(err) {
+            console.log('WARNING: Invalid auto-save settings', err);
+          }
+        } catch(err) {
+          console.log('WARNING: Failed to read auto-save settings', err);
+        }
+      }
+      serveJSON(res, json);
     } else if(action === 'change') {
       const sid = sp.get('solver');
       if(SOLVER.changeDefault(sid)) {
@@ -1379,14 +1412,16 @@ function processRequest(req, res, cmd, data) {
     servePlainText(res, 'No update to version ' + VERSION_INFO.latest);
   } else if(cmd === 'auto-check') {
     autoCheck(res);
-  } else if(cmd === 'autosave') {
-    autoSave(res, new URLSearchParams(data));
-  } else if(cmd === 'repo') {
-    repo(res, new URLSearchParams(data));
+  } else if(cmd === 'browse') {
+    browse(res, new URLSearchParams(data));
   } else if(cmd === 'load-data') {
     loadData(res, (new URLSearchParams(data)).get('url'));
   } else if(cmd === 'receiver') {
     receiver(res, new URLSearchParams(data));
+  } else if(cmd === 'defaults') {
+    defaults(res, new URLSearchParams(data));
+  } else if(cmd === 'autosave') {
+    storeAutoSaveSettings(res, new URLSearchParams(data));
   } else {
     serveJSON(res, {error: `Unknown Linny-R request: "${cmd}"`});
   }
@@ -1444,78 +1479,6 @@ function serveStaticFile(res, path) {
       res.writeHead(200);
       res.end(data);
     });
-}
-
-// Convenience functions to fetch data from external URL
-// NOTE: the parameters `on_ok` and `on_error` must be functions with two
-// parameters:
-//  - `result`: either a string with the text obtained from the URL, or an error
-//  - `response`: a response object (if any) passed by the function that is
-//    calling `getTextFromURL` so that it may be completed and then passed
-//    to the browser by the `on_ok` or `on_error` functions
-
-function getTextFromURL(url, on_ok, on_error, response=null) {
-  // Gets a text string (plain, HTML, or other) from the specified URL,
-  // and then calls `on_ok`, or `on_error` if the request failed
-  https.get(url, (res) => {
-    // Any 2xx status code signals a successful response, but be strict
-    if (res.statusCode !== 200) {
-      // Consume response data to free up memory
-      res.resume();
-      return on_error(new Error('Get text request failed -- Status code: ' +
-          res.statusCode), response);
-    }
-    // Fetch the complete data string
-    res.setEncoding('utf8');
-    let data = '';
-    res.on('data', (chunk) => { data += chunk; });
-    res.on('end', () => on_ok(data, response));
-  }).on('error', (e) => on_error(e, response));
-}
-
-function postRequest(url, obj, on_ok, on_error, response=null) {
-  // Submits `obj` as "POST form" to the remote server specified by `url`
-  // NOTE: A trailing slash is crucial here, as otherwise the server will
-  // redirect it as a GET !!!
-  if(!url.endsWith('/')) url += '/';
-  const
-      post_data = formData(obj),
-      options = {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Content-Length': Buffer.byteLength(post_data)
-            }
-        },
-      req = https.request(url, options, (res) => {
-          if (res.statusCode !== 200) {
-            // Consume response data to free up memory
-            res.resume();
-            return on_error(new Error(`POST request (${url}) failed -- ` +
-                `Status code: ${res.statusCode}`), response);
-          }
-          // Fetch the complete data buffer
-          const chunks = [];
-          res.on('data', (chunk) => chunks.push(chunk));
-          res.on('end', () => on_ok(Buffer.concat(chunks), response));
-        });
-  req.on('error', (e) => on_error(e, response));
-  // Add the object as form data to the request body
-  req.write(post_data);
-  req.end();
-}
-
-function formData(obj) {
-  // Encodes `obj` as a form that can be POSTed
-  const fields = [];
-  for(let k in obj) if(obj.hasOwnProperty(k)) {
-    fields.push(encodeURIComponent(k) + "=" + encodeURIComponent(obj[k]));
-  }
-  return fields.join('&');
-}
-
-function connectionErrorText(msg) {
-  return 'WARNING: ' + msg + ' - Please check your internet connection';
 }
 
 //
@@ -1614,10 +1577,8 @@ function createWorkspace() {
   const ws = {
       autosave: path.join(SETTINGS.user_dir, 'autosave'),
       channel: path.join(SETTINGS.user_dir, 'channel'),
-      callback: path.join(SETTINGS.user_dir, 'callback'),
       data: path.join(SETTINGS.user_dir, 'data'),
       models: path.join(SETTINGS.user_dir, 'models'),
-      modules: path.join(SETTINGS.user_dir, 'modules'),
       reports: path.join(SETTINGS.user_dir, 'reports'),
       solver_output: path.join(SETTINGS.user_dir, 'solver')
     };
@@ -1635,8 +1596,6 @@ function createWorkspace() {
     console.log(err.message);
     console.log('WARNING: No access to workspace directory');
   }
-  // The file containing name, URL and access token for remote repositories.
-  ws.repositories = path.join(SETTINGS.user_dir, 'repositories.cfg');
   // For completeness, add path to Linny-R directory.
   ws.working_directory = WORKING_DIRECTORY;
   // Return the updated workspace object.

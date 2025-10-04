@@ -300,12 +300,7 @@ class GUIMonitor {
   logOnToServer(usr, pwd) {
     VM.solver_user = usr;
     fetch('solver/', postData({action: 'logon', user: usr, password: pwd}))
-      .then((response) => {
-          if(!response.ok) {
-            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
-          }
-          return response.text();
-        })
+      .then(UI.fetchText)
       .then((data) => {
           let jsr;
           try {
@@ -338,7 +333,7 @@ class GUIMonitor {
                 '<strong>here</strong></a> to change password');
           }
         })
-      .catch((err) => UI.warn(UI.WARNING.NO_CONNECTION, err));
+      .catch(UI.fetchCatch);
   }
 
   connectToServer() {
@@ -351,12 +346,7 @@ class GUIMonitor {
       fetch('solver/', postData({
             action: 'logon',
             solver: MODEL.preferred_solver || VM.solver_id}))
-        .then((response) => {
-            if(!response.ok) {
-              UI.alert(`ERROR ${response.status}: ${response.statusText}`);
-            }
-            return response.text();
-          })
+        .then(UI.fetchText)
         .then((data) => {
             try {
               const
@@ -366,10 +356,33 @@ class GUIMonitor {
               if(jsr.solver !== VM.solver_id) UI.notify(svr);
               VM.server = jsr.server;
               VM.working_directory = jsr.path;
+              VM.user_name = jsr.user_name;
               VM.selectSolver(jsr.solver);
               VM.solver_list = jsr.solver_list;
               document.getElementById('host-logo').title  = svr;
               VM.connected = true;
+              // NOTE: The server also passes properties for the File manager.
+              FILE_MANAGER.separator = jsr.separator;
+              FILE_MANAGER.setAutoSaveSettings(jsr.autosave);
+              // When user has saved custom default settings, these will be
+              // passed by the server as well.
+              if(jsr.defaults) {
+                for(const k of Object.keys(jsr.defaults)) {
+                  CONFIGURATION[k] = jsr.defaults[k];
+                }
+                // NOTES:
+                // (1) The blank model that is created when Linny-R is started
+                //     in a browser will not have these custom defaults, hence
+                //     this "overwrite".
+                // (2) Author names should not contain potential path delimiters.
+                MODEL.author = (CONFIGURATION.user_name || VM.user_name)
+                    .replaceAll(/\\|\//g, '');
+                MODEL.time_scale = CONFIGURATION.default_time_scale;
+                MODEL.time_unit = CONFIGURATION.default_time_unit;
+                MODEL.currency_unit = CONFIGURATION.default_currency_unit;
+                MODEL.default_unit = CONFIGURATION.default_scale_unit;
+                MODEL.decimal_comma = CONFIGURATION.decimal_comma;
+             }
             } catch(err) {
               console.log(err, data);
               UI.alert('ERROR: Unexpected data from server: ' +
@@ -377,7 +390,7 @@ class GUIMonitor {
               return;
             }
           })
-        .catch((err) => UI.warn(UI.WARNING.NO_CONNECTION, err));
+        .catch(UI.fetchCatch);
     }
     if(VM.solver_token) return true;
     UI.loginPrompt();

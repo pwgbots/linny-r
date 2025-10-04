@@ -247,7 +247,7 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
       const
           n = this.name.options[this.name.selectedIndex].innerHTML,
           a = this.attr.options[this.attr.selectedIndex].innerHTML;
-      if(n && a) xt = `[${n}${UI.OA_SEPARATOR}${a}]`;
+      if(n && a) xt = `[${n}|${a}]`;
     }
     // Remove all non-functional whitespace from variable references. 
     xt = monoSpacedVariables(xt);
@@ -448,7 +448,7 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
     }
     if(n) {
       if(n === this.dataset_dot_option) n = '.';
-      if(a) n += UI.OA_SEPARATOR + a;
+      if(a) n += '|' + a;
       let p = this.text.selectionStart;
       const
           v = this.text.value,

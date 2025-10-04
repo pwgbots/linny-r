@@ -2028,8 +2028,7 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
           solver: md.element('solver').checked,
           separator: md.element('separator').value,
           quotes: md.element('quotes').value,
-          precision: safeStrToInt(md.element('precision').value,
-              CONFIGURATION.results_precision),
+          precision: safeStrToInt(md.element('precision').value, 8)
       };
       md.hide();
       const data = this.selected_experiment.resultsAsCSV;

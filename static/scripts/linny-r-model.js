@@ -33,9 +33,11 @@ SOFTWARE.
 
 // CLASS LinnyRModel
 class LinnyRModel {
-  constructor(name, author) {
+  constructor(name='', author='') {
     this.name = name;
-    this.author = author;
+    // NOTE: Author names should not contain potential path delimiters.
+    this.author = (author || CONFIGURATION.user_name || VM.user_name)
+        .replaceAll(/\\|\//g, '');
     this.comments = '';
     this.reset();
     this.xml_header = '<?xml version="1.0" encoding="ISO-8859-1"?>';
@@ -43,18 +45,18 @@ class LinnyRModel {
   }
 
   reset() {
-    // Resets model properties to their default values
+    // Reset model properties to their default values.
     const d = new Date();
     this.time_created = d;
     this.last_modified = d;
     this.version = LINNY_R_VERSION;
     this.encrypt = false;
-    this.time_scale = 1;
+    this.time_scale = CONFIGURATION.default_time_scale;
     this.time_unit = CONFIGURATION.default_time_unit;
     this.currency_unit = CONFIGURATION.default_currency_unit;
     this.default_unit = CONFIGURATION.default_scale_unit;
     this.decimal_comma = CONFIGURATION.decimal_comma;
-    // NOTE: Default scale unit list comprises only the primitive base unit
+    // NOTE: Default scale unit list comprises only the primitive base unit.
     this.scale_units = {'1': new ScaleUnit('1', '1', '1')};
     this.power_grids = {};
     this.actors = {};
@@ -87,7 +89,7 @@ class LinnyRModel {
     this.actor_list = [];
     this.rounds = 1;
     this.round_sequence = 'a';
-    // NOTE: selected round is used only for the actors dialog (not for runs)
+    // NOTE: Selected round is used only for the actors dialog (not for runs).
     this.selected_round = 0;
     
     // Model settings
@@ -120,7 +122,7 @@ class LinnyRModel {
     this.sensitivity_parameters = [];
     this.sensitivity_outcomes = [];
     this.active_sensitivity_parameter = null;
-    // NOTE: the "active" expression will multiply its result by 1 + delta %
+    // NOTE: The "active" expression will multiply its result by 1 + delta %.
     this.sensitivity_delta = 20;
     this.sensitivity_runs = [];
 
@@ -133,7 +135,7 @@ class LinnyRModel {
     this.t = 1; 
     this.selection = [];
     this.selection_related_arrows = [];
-    // Set the indicator that the model has not been solved yet
+    // Set the indicator that the model has not been solved yet.
     this.set_up = false;
     this.solved = false;
     // Reset counts of effects of a rename operation
@@ -144,8 +146,8 @@ class LinnyRModel {
     this.translation_time = 0;
   }
   
-  // NOTE: a model can also be the entity for the documentation manager,
-  // and hence should have the methods `type` and `displayName`
+  // NOTE: A model can also be the entity for the documentation manager,
+  // and hence should have the methods `type` and `displayName`.
   get type() {
     return 'Model';
   }
@@ -153,6 +155,12 @@ class LinnyRModel {
   get displayName() {
     return (this.name || '(no name)') +
         ' (' + (this.author || 'unknown author') + ')';
+  }
+  
+  get diagramName() {
+    // Display name for focal cluster (the visible diagram).
+    return (this.focal_cluster.parent ?
+        this.focal_cluster.displayName : this.name) || 'Linny-R-model';
   }
 
   /* METHODS THAT LOOKUP ENTITIES, OR INFER PROPERTIES */
@@ -210,13 +218,13 @@ class LinnyRModel {
     // Return the next unused process code.
     const n = this.next_process_number;
     this.next_process_number++;
-    // Process codes are decimal number STRINGS
-    // NOTE: processes are numbered zero-based, but displayed as 1, 2, etc.
+    // Process codes are decimal number STRINGS.
+    // NOTE: Processes are numbered zero-based, but displayed as 1, 2, etc.
     return '' + (n + 1);
   }
   
   get newProductCode() {
-    // Return the next unused product code
+    // Return the next unused product code.
     const n = this.next_product_number;
     this.next_product_number++;
     // Product codes have format #lll where lll is a base-26 number with
@@ -225,7 +233,7 @@ class LinnyRModel {
   }
   
   get settingsString() {
-    // Return model settings as string
+    // Return model settings as string.
     const tu = {year: 'y', week: 'w', day: 'd',
         hour: 'h', minute: 'm', second: 's'},
         ss = [
@@ -244,13 +252,13 @@ class LinnyRModel {
   }
   
   parseSettings(ss, testing=false) {
-    // Parse model settings as defined by string `ss`
+    // Parse model settings as defined by string `ss`.
     const
         sl = ss.toLowerCase().split(/\s+/g),
         tu = {y: 'year', w: 'week', d: 'day',
             h: 'hour', m: 'minute', s: 'second'};
     let ok = true,
-        // Initialize values as FALSE to "know" whether they are being set
+        // Initialize values as FALSE to "know" whether they are being set.
         sts = false,
         stu = false,
         ssp = false,
@@ -534,6 +542,73 @@ class LinnyRModel {
     }
     // No link? then standard conversion to ID
     return this.namedObjectByID(UI.nameToID(name));
+  }
+  
+  setEntityAttributeValue(e, a, v) {
+    // Set attribute `a` of entity `e` to numeric value `v`.
+    // Return TRUE if successful; otherwise an error message (string). 
+    if(VM.attribute_codes[e.typeLetter].indexOf(a) < 0) {
+      return `${e.type} "${e.displayName}" has no attribute "${a}"`;
+    }
+    const nv = (typeof v === 'number' ? v : safeStrToFloat(v, false));
+    if(nv === false) {
+      return `"${v}" is not a valid numeric value for ${e.displayName}|${a}`;
+    }
+    if(a === 'SOC') {
+      // Share of cost for links should be specified as percentage.
+      e.share_of_cost = nv / 100;
+      return true;
+    }
+    // All other attributes are expressions, so convert number to a string...
+    v = nv.toString();
+    // ... and get the correct expression object.
+    let x = null;
+    if(a === 'LB') {
+      x = e.lower_bound;
+    } else if(a === 'UB') {
+      x = e.upper_bound;
+    } else if(a === 'IL') {
+      x = e.initial_level;
+    } else if(a === 'LCF') {
+      x = e.pace_expression;
+    } else if(a === 'P') {
+      x = e.price;
+    } else if(a === 'W') {
+      x = e.weight;
+    } else if(a === 'R') {
+      x = e.relative_rate;
+    } else if(a === 'D') {
+      x = e.flow_delay;
+    }
+    if(x instanceof Expression) {
+      x.text = v;
+      x.reset();
+      return true;
+    }
+    // Fall-through (should not occur).
+    console.log('ERROR: not an expression:', x);
+    return `"${e.displayName}|${a}" is not an expression attribute`;
+  }
+  
+  setEntityAttributes(eao) {
+    // Object `eao` should only have properties that denote an entity attribute,
+    // and these properties should have (for now) a numerical value that should
+    // be assigned to the corresponding entity attribute.
+    const issues = [];
+    for(const k of Object.keys(eao)) {
+      const
+          e_a = k.split('|'),
+          e = this.objectByName(UI.cleanName(e_a[0]));
+      if(!e) {
+        issues.push(`Unknown entity "${e_a[0]}"`);
+      } else if(e_a.length < 2) {
+        issues.push(`No attribute specified for "${e_a[0]}"`);
+      } else {
+        const ok = this.setEntityAttributeValue(e, e_a[1], eao[k]);
+        if(typeof ok === 'string') issues.push(ok);
+      }
+    }
+    return issues;
   }
   
   validVariable(name) {
@@ -2782,8 +2857,7 @@ class LinnyRModel {
   parseXML(data) {
     // Parse data string into XML tree
 //    try {
-      // NOTE: Convert %23 back to # (escaped by function saveModel)
-      const xml = parseXML(data.replace(/%23/g, '#'));
+      const xml = parseXML(data);
       // NOTE: loading, not including => make sure that IO context is NULL
       IO_CONTEXT = null;
       this.initFromXML(xml);
@@ -3251,7 +3325,7 @@ class LinnyRModel {
   }
   
   get asBlackBoxXML() {
-    // Returns model as XML with abstract names for all "black-boxed" entities.
+    // Return model as XML with abstract names for all "black-boxed" entities.
     this.black_box = true;
     this.inferBlackBoxEntities();
     const xml = this.asXML;
@@ -3260,9 +3334,10 @@ class LinnyRModel {
   }
   
   asEncryptedXML(enc) {
+    // Return XML for encrypted model.
     return this.xml_header + [
         '<model latch="', enc.latch, '"><notes>',
-        xmlEncoded(this.comments.replace(/#/g, '%23')),
+        xmlEncoded(this.comments),
         '</notes><version>', xmlEncoded(LINNY_R_VERSION),
         '</version><content>', enc.encryption,
         '</content></model>'].join('');
@@ -4210,11 +4285,15 @@ class LinnyRModel {
   differences(m) {
     // Return "dictionary" with differences between this model and model `m`.
     const d = {};
-    // Start with the Linny-R model properties
+    // Start with the Linny-R model properties.
     let diff = differences(this, m, Object.keys(UI.MC.SETTINGS_PROPS));
-    if(Object.keys(diff).length > 0) d.settings = diff;
-    // NOTE: dataset differences will also detect equation differences.
-    for(const ep of UI.MC.ENTITY_PROPS) {
+    if(!isEmpty(diff)) d.settings = diff;
+    // NOTES:
+    // (1) Link and constraint IDs are based on entity codes, and these may
+    //     differ across models while their names are identical. Therefore,
+    //     these are treated separately (hence the slice(0, 7)).
+    // (2) Dataset differences will also detect equation differences.
+    for(const ep of UI.MC.ENTITY_PROPS.slice(0, 7)) {
       diff = {};
       // Check for added / modified entities in this model (relative to `m`).
       for(let k in this[ep]) if(this[ep].hasOwnProperty(k)) {
@@ -4240,35 +4319,42 @@ class LinnyRModel {
         }
       }
       // Only add differences for entity property `ep` if any were detected.
-      if(Object.keys(diff).length > 0) d[ep] = diff;
+      if(!isEmpty(diff)) d[ep] = diff;
     }
-    // Check for link and constraint differences.
-    // NOTE: Link and constraint IDs are based on entity codes, and these can
-    // be identical across models while denoting different entities, hence also
-    // check whether display names are identical -- this may list links as
-    // changed while only their nodes has been renamed.
+    // Now check for link and constraint differences.
     for(const lcp of ['links', 'constraints']) {
-      diff = {};
+      // Build two look-up tables for entity names.
+      const
+          this_lookup = {},
+          m_lookup = {};
       for(let k in this[lcp]) if(this[lcp].hasOwnProperty(k)) {
-        const
-            lc = this[lcp][k],
-            n = lc.displayName; 
-        if(k in m[lcp] && m[lcp][k].displayName === n) {
-          const edif = lc.differences(m[lcp][k]);
-          if(edif) diff[k] = [UI.MC.MODIFIED, n, edif];
-        } else {
-          diff[k] = [UI.MC.ADDED, n];
-        }
+        const lc = this[lcp][k];
+        this_lookup[lc.displayName] = {id: k, obj: lc};
       }
       for(let k in m[lcp]) if(m[lcp].hasOwnProperty(k)) {
-        const
-            lc = m[lcp][k],
-            n = lc.displayName; 
-        if(!(k in this[lcp] && this[lcp][k].displayName === n)) {
-          diff[k] = [UI.MC.DELETED, n];
+        const lc = m[lcp][k];
+        m_lookup[lc.displayName] = {id: k, obj: lc};
+      }
+      // Then iterate over look-up table for *this* model.
+      diff = {};
+      for(let dn in this_lookup) if(this_lookup.hasOwnProperty(dn)) {
+        const lu = this_lookup[dn];
+        if(dn in m_lookup) {
+          // Display name occurs in *both* models => compare.
+          const edif = lu.obj.differences(m_lookup[dn].obj);
+          if(edif) diff[lu.id] = [UI.MC.MODIFIED, dn, edif];
+        } else {
+          // Display name not in other model => record as ADDED.
+          diff[lu.id] = [UI.MC.ADDED, dn];
         }
       }
-      if(Object.keys(diff).length > 0) d[lcp] = diff;
+      // Then also iterate over look-up table of *other* model.
+      for(let dn in m_lookup) if(m_lookup.hasOwnProperty(dn)) {
+        const lu = m_lookup[dn]; 
+        // Display name not in *this* model => record as DELETED.
+        if(!(dn in this_lookup)) diff[lu.id] = [UI.MC.DELETED, dn];
+      }
+      if(!isEmpty(diff)) d[lcp] = diff;
     }
     // Check for new or modified charts.
     diff = {};
@@ -4300,7 +4386,7 @@ class LinnyRModel {
       }
       if(!c) diff[mcid] = [UI.MC.DELETED, mc.title];
     }
-    if(Object.keys(diff).length > 0) d.charts = diff;
+    if(!isEmpty(diff)) d.charts = diff;
     // Check for new or modified experiments.
     diff = {};
     for(const x of this.experiments) {
@@ -4331,7 +4417,7 @@ class LinnyRModel {
       }
       if(!x) diff[mxid] = [UI.MC.DELETED, mx.title];
     }
-    if(Object.keys(diff).length > 0) d.experiments = diff;
+    if(isEmpty(diff)) d.experiments = diff;
     // Return the now complete differences "dictionary".
     return d;
   }
@@ -4506,7 +4592,7 @@ class IOBinding {
 
 // CLASS IOContext
 class IOContext {
-  constructor(repo='', file='', node=null) {
+  constructor(fname='', node=null) {
     // Get the import/export interface of the model to be included.
     this.prefix = '';
     this.bindings = {};
@@ -4519,13 +4605,12 @@ class IOContext {
     this.replace_count = 0;
     this.expression_count = 0;
     // NOTE: IOContext can be "dummy" when used to rename expression variables.
-    if(!repo || !file || !node) return;
+    if(!fname || !node) return;
     // When updating, set `recompile` to false for all but the last include
     // so as to prevent compiler warnings due to missing datasets.
     this.recompile = true;
     this.xml = node;
-    this.repo_name = repo;
-    this.file_name = file;
+    this.file_name = fname;
     let n = childNodeByTag(node, 'imports');
     if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'import') {
@@ -4627,7 +4712,7 @@ class IOContext {
   
   get parameterTable() {
     // Return the HTML for the parameter binding table in the include dialog.
-    if(Object.keys(this.bindings).length === 0) {
+    if(isEmpty(this.bindings)) {
       return '<div style="margin-top:2px"><em>This module has no parameters.</em></div>';
     }
     const html = [];
@@ -4652,9 +4737,9 @@ class IOContext {
       const b = this.bindings[id];
       if(b.io_type === 1) {
         // Get the selector for this parameter.
-        // NOTE: IO_CONTEXT is instantiated *exclusively* by the Repository
-        // browser, so that GUI dialog will exist when IO_CONTEXT is not NULL.
-        const e = REPOSITORY_BROWSER.parameterBinding(b.id);
+        // NOTE: IO_CONTEXT is instantiated *exclusively* by the file browser,
+        // so that GUI dialog will exist when IO_CONTEXT is not NULL.
+        const e = FILE_MANAGER.parameterBinding(b.id);
         if(e && e.selectedIndex >= 0) {
           // Modeler has selected the actual parameter => set its name.
           const v = e.options[e.selectedIndex].value;
@@ -4906,8 +4991,8 @@ class ScaleUnit {
   differences(u) {
     // Return "dictionary" of differences, or NULL if none
     const d = differences(this, u, UI.MC.UNIT_PROPS);
-    if(Object.keys(d).length > 0) return d;
-    return null;
+    if(isEmpty(d)) return null;
+    return d;
   }
 }
 
@@ -5000,8 +5085,6 @@ class Actor {
   constructor(name) {
     this.name = name;
     this.comments = '';
-    // By default, actors are labeled in formulas with the letter a.
-    this.TEX_id = 'a';
     // Actors have 1 input attribute: W
     this.weight = new Expression(this, 'W', '1');
     // Actors have 3 result attributes: CF, CI and CO
@@ -5055,13 +5138,11 @@ class Actor {
     return ['<actor round-flags="', this.round_flags,
         '"><name>', xmlEncoded(this.name),
         '</name><notes>', xmlEncoded(this.comments),
-        '</notes><tex-id>', this.TEX_id,
-        '</tex-id><weight>', this.weight.asXML,
+        '</notes><weight>', this.weight.asXML,
         '</weight></actor>'].join('');
   }
   
   initFromXML(node) {
-    this.TEX_id = xmlDecoded(nodeContentByTag(node, 'tex-id') || 'a');
     this.weight.text = xmlDecoded(nodeContentByTag(node, 'weight'));
     if(IO_CONTEXT) IO_CONTEXT.rewrite(this.weight);
     this.comments = nodeContentByTag(node, 'notes');
@@ -5115,8 +5196,8 @@ class Actor {
   differences(a) {
     // Return "dictionary" of differences, or NULL if none
     const d = differences(this, a, UI.MC.ACTOR_PROPS);
-    if(Object.keys(d).length > 0) return d;
-    return null;
+    if(isEmpty(d)) return null;
+    return d;
   }
 
 } // END of class Actor
@@ -5663,8 +5744,8 @@ class Note extends ObjectWithXYWH {
   differences(n) {
     // Return "dictionary" of differences, or NULL if none.
     const d = differences(this, n, UI.MC.NOTE_PROPS);
-    if(Object.keys(d).length > 0) return d;
-    return null;
+    if(isEmpty(d)) return null;
+    return d;
   }
 
 } // END of class Note
@@ -7235,7 +7316,7 @@ class Cluster extends NodeBox {
       }
       if(!mp) diff[cpid] = [UI.MC.DELETED, cp.displayName];
     }
-    if(Object.keys(diff).length > 0) d.processes = diff;
+    if(!isEmpty(diff)) d.processes = diff;
 
     // Check for added product positions.
     diff = {};
@@ -7266,7 +7347,7 @@ class Cluster extends NodeBox {
       }
       if(!p) diff[cpid] = [UI.MC.DELETED, cp.displayName];
     }
-    if(Object.keys(diff).length > 0) d.product_positions = diff;
+    if(!isEmpty(diff)) d.product_positions = diff;
 
     // Check for added / modified sub-clusters.
     diff = {};
@@ -7298,7 +7379,7 @@ class Cluster extends NodeBox {
       }
       if(!csc) diff[ccid] = [UI.MC.DELETED, cc.displayName];
     }
-    if(Object.keys(diff).length > 0) d.sub_clusters = diff;
+    if(!isEmpty(diff)) d.sub_clusters = diff;
 
     // Check for added / modified notes
     diff = {};
@@ -7329,11 +7410,11 @@ class Cluster extends NodeBox {
       }
       if(!mn) diff[cn.timestamp] = [UI.MC.DELETED, cn.displayName];
     }
-    if(Object.keys(diff).length > 0) d.notes = diff;
+    if(isEmpty(diff)) d.notes = diff;
 
     // Only return the differences if any were detected.
-    if(Object.keys(d).length > 0) return d;
-    return null;
+    if(isEmpty(d)) return null;
+    return d;
   }
 
 }  // END of class Cluster
@@ -7760,99 +7841,6 @@ class Node extends NodeBox {
     return nn;
   }
   
-  get TEXforBinaries() {
-    // Return LaTeX code for formulas that compute binary variables.
-    // In the equations, binary variables are underlined to distinguish
-    // them from (semi-)continuous variables.
-    const
-        NL = '\\\\\n',
-        tex = [NL],
-        x = (this.level_to_zero ? '\\hat{x}' : 'x'),
-        sub = (MODEL.start_period !== MODEL.end_period ?
-            '_{' + this.code + ',t}' : '_' + this.code),
-        sub_1 = '_{' + this.code +
-            (MODEL.start_period !== MODEL.end_period ? ',t-1}' : ',0}');
-    if(this.needsOnOffData) {
-      // Equations to compute OO variable (denoted as u for "up").
-      // (a)  L[t] - LB[t]*OO[t] >= 0
-      tex.push(x + sub, '- LB' + sub, '\\mathbf{u}' + sub, '\\ge 0', NL);
-      // (b)  L[t] - UB[t]*OO[t] <= 0
-      tex.push(x + sub, '- UB' + sub, '\\mathbf{u}' + sub, '\\le 0', NL);
-    }
-    if(this.needsIsZeroData) {
-      // Equation to compute IZ variable (denoted as d for "down").
-      // (c) OO[t] + IZ[t] = 1
-      tex.push('\\mathbf{u}' + sub, '+ \\mathbf{d}' + sub, '= 0', NL);
-      // (d) L[t] + IZ[t] >= LB[t]
-      // NOTE: for semicontinuous variables, use 0 instead of LB[t]
-      tex.push(x + sub, '+ \\mathbf{d}' + sub, '\\ge',
-          (this.level_to_zero ? '0' : 'LB' + sub), NL);
-    }
-    if(this.needsStartUpData) {
-      // Equation to compute start-up variable (denoted as su).
-      // (e) OO[t-1] - OO[t] + SU[t] >= 0
-      tex.push('\\mathbf{u}' + sub_1, '- \\mathbf{u}' + sub, 
-          '+ \\mathbf{su}' + sub, '\\ge 0', NL);
-      // (f) OO[t] - SU[t] >= 0
-      tex.push('\\mathbf{u}' + sub, '- \\mathbf{su}' + sub, '\\ge 0', NL);
-      // (g) OO[t-1] + OO[t] + SU[t] <= 2
-      tex.push('\\mathbf{u}' + sub_1, '+ \\mathbf{u}' + sub,
-          '+ \\mathbf{su}' + sub, '\\le 2', NL);
-    }
-    if(this.needsShutDownData) {
-      // Equation to compute shutdown variable (denoted as sd-circumflex).
-      // (e2) OO[t] - OO[t-1] + SD[t] >= 0
-      tex.push('\\mathbf{u}' + sub, '- \\mathbf{u}' + sub_1, 
-          '+ \\mathbf{sd}' + sub, '\\ge 0', NL);
-      // (f2) OO[t] + SD[t] <= 1
-      tex.push('\\mathbf{u}' + sub, '+ \\mathbf{sd}' + sub, '\\le 1', NL);
-      // (g2) SD[t] - OO[t-1] - OO[t] <= 0
-      tex.push('\\mathbf{sd}' + sub, '- \\mathbf{u}' + sub_1,
-          '- \\mathbf{su}' + sub, '\\le 0', NL);
-    }
-    if(this.needsFirstCommitData) {
-      // Equation to compute first commit variables (denoted as fc).
-      // To detect a first commit, start-ups are counted using an extra
-      // variable SC (denoted as suc) and then similar equations are
-      // added to detect "start-up" for this counter. This means one more
-      // binary SO (denoted as suo for "start-up occurred").
-      // (h)  SC[t] - SC[t-1] - SU[t] = 0
-      tex.push('\\mathbf{suc}' + sub, '- \\mathbf{suc}' + sub_1,
-          '- \\mathbf{su}' + sub, '= 0', NL);
-      // (i)  SC[t] - SO[t] >= 0
-      tex.push('\\mathbf{suc}' + sub, '- \\mathbf{suo}' + sub, '\\ge 0', NL);
-      // (j)  SC[t] - run length * SO[t] <= 0
-      tex.push('\\mathbf{suc}' + sub, '- N\\! \\mathbf{suo}' + sub, '\\le 0', NL);
-      // (k)  SO[t-1] - SO[t] + FC[t] >= 0
-      tex.push('\\mathbf{suo}' + sub_1, '- \\mathbf{suc}' + sub,
-          '+ \\mathbf{fc}' + sub, '\\ge 0', NL);
-      // (l)  SO[t] - FC[t] >= 0
-      tex.push('\\mathbf{suo}' + sub, '- \\mathbf{fc}' + sub, '\\ge 0', NL);
-      // (m)  SO[t-1] + SO[t] + FC[t] <= 2
-      tex.push('\\mathbf{suo}' + sub_1, '+ \\mathbf{suo}' + sub,
-          '+ \\mathbf{fc}' + sub, '\\le 2', NL);      
-    }
-
-    /*
-       To calculate the peak increase values, we need two continuous
-       "chunk variables", i.e., only 1 tableau column per chunk, not 1 for
-       each time step. These variables BPI and CPI will compute the highest
-       value (for all t in the block (B) and for the chunk (C)) of the
-       difference L[t] - block peak (BP) of previous block. This requires
-       one equation for every t = 1, ..., block length:
-       (n) L[t] - BPI[b] <= BP[b-1]  (where b denotes the block number)
-       plus one equation for every t = block length + 1 to chunk length:
-       (o) L[t] - BPI[b] - CPI[b] <= BP[b-1]
-       This ensures that CPI is the *additional* increase in the look-ahead 
-       Then use BPI[b] in first time step if block, and CPI[b] at first
-       time step of the look-ahead period to compute the actual flow for
-       the "peak increase" links. For all other time steps this AF equals 0.
-
-    */
-
-    return tex.join(' ');
-  }
-
 } // END of class Node
   
 
@@ -7860,8 +7848,6 @@ class Node extends NodeBox {
 class Process extends Node {
   constructor(cluster, name, actor) {
     super(cluster, name, actor);
-    // By default, processes have the letter p, products the letter q.
-    this.TEX_id = 'p';
     // NOTE: A process can change level once in PACE steps (default 1/1).
     // This means that for a simulation perio of N time steps, this process will
     // have a vector of only N / PACE decision variables (plus associated
@@ -7986,8 +7972,7 @@ class Process extends Node {
         '</notes><upper-bound>', this.upper_bound.asXML,
         '</upper-bound><lower-bound>', this.lower_bound.asXML,
         '</lower-bound><initial-level>', this.initial_level.asXML,
-        '</initial-level><tex-id>', this.TEX_id,
-        '</tex-id><pace>', this.pace_expression.asXML,
+        '</initial-level><pace>', this.pace_expression.asXML,
         '</pace><grid-id>', (this.power_grid ? this.power_grid.id : ''),
         '</grid-id><length>', this.length_in_km,
         '</length><x-coord>', x,
@@ -8023,7 +8008,6 @@ class Process extends Node {
     this.pace_expression.text = pace_text || '1';
     // NOTE: Immediately evaluate pace expression as integer.
     this.pace = Math.max(1, Math.floor(this.pace_expression.result(1)));
-    this.TEX_id = xmlDecoded(nodeContentByTag(node, 'tex-id') || 'p');
     this.power_grid = MODEL.powerGridByID(nodeContentByTag(node, 'grid-id'));
     this.length_in_km = safeStrToFloat(nodeContentByTag(node, 'length'), 0);
     // NOTE: Reactance may be an empty string to indicate "infer from length".
@@ -8174,7 +8158,6 @@ class Process extends Node {
     this.equal_bounds = p.equal_bounds;
     this.level_to_zero = p.level_to_zero;
     this.collapsed = p.collapsed;
-    this.TEX_id = p.TEX_id;
   }
 
   differences(p) {
@@ -8184,36 +8167,10 @@ class Process extends Node {
         cn = (this.cluster ? this.cluster.displayName : ''),
         pcn = (p.cluster ? p.cluster.displayName : '');
     if(cn !== pcn) d.cluster = {A: cn, B: pcn};
-    if(Object.keys(d).length > 0) return d;
-    return null;
+    if(isEmpty(d)) return null;
+    return d;
   }
   
-  get TEXcode() {
-    // Return LaTeX code for mathematical formula of constraints defined
-    // by this process.
-    const
-        NL = '\\\\\n',
-        tex = [NL],
-        sub = (MODEL.start_period !== MODEL.end_period ?
-            '_{' + this.TEX_id + ',t}' : '_' + this.TEX_id),
-        lb = (this.lower_bound.defined ? 'LB' + sub + ' \\le' : ''),
-        ub = (this.upper_bound.defined ? '\\le UB' + sub : '');
-    // Integer constraint if applicable.
-    if(this.integer_level) tex.push('x' + sub, '\\in \\mathbb{Z}', NL);
-    // Bound constraints...
-    if(lb && this.equal_bounds) {
-      tex.push('x' + sub, '= LB' + sub);      
-    } else if(lb || ub) {
-      tex.push(lb, 'x' + sub, ub);
-    }
-    // ... with semi-continuity if applicable. 
-    if(lb && this.level_to_zero) tex.push('\\vee x' + sub, '= 0');
-    tex.push(NL);
-    // Add equations for associated binary variables.
-    tex.push(this.TEXforBinaries);
-    return tex.join(' ');
-  }
-
 } // END of class Process
 
 
@@ -8222,8 +8179,6 @@ class Product extends Node {
   constructor(cluster, name, actor) {
     super(cluster, name, actor);
     this.scale_unit = MODEL.default_unit;
-    // By default, processes have the letter p, products the letter q.
-    this.TEX_id = 'p';
     // For products, the default bounds are [0, 0], and modeler-defined bounds
     // typically are equal.
     this.equal_bounds = true;
@@ -8513,8 +8468,7 @@ class Product extends Node {
       '</lower-bound><price>', this.price.asXML,
       '</price><x-coord>', x,
       '</x-coord><y-coord>', y,
-      '</y-coord><tex-id>', this.TEX_id,
-      '</tex-id></product>'].join('');
+      '</y-coord></product>'].join('');
     return xml;
   }
 
@@ -8533,7 +8487,6 @@ class Product extends Node {
         nodeParameterValue(node, 'hidden')) === '1';
     this.scale_unit = MODEL.addScaleUnit(
         xmlDecoded(nodeContentByTag(node, 'unit')));
-    this.TEX_id = xmlDecoded(nodeContentByTag(node, 'tex-id') || 'q');
     // Legacy models have tag "profit" instead of "price".
     let pp = nodeContentByTag(node, 'price');
     if(!pp) pp = nodeContentByTag(node, 'profit');
@@ -8694,82 +8647,16 @@ class Product extends Node {
     this.no_slack = p.no_slack;
     this.initial_level.text = p.initial_level.text;
     this.integer_level = p.integer_level;
-    this.TEX_id = p.TEX_id;
     // NOTE: Do not copy the `no_links` property, nor the import/export status.
   }
 
   differences(p) {
     // Return "dictionary" of differences, or NULL if none.
     const d = differences(this, p, UI.MC.PRODUCT_PROPS);
-    if(Object.keys(d).length > 0) return d;
-    return null;
+    if(isEmpty(d)) return null;
+    return d;
   }
 
-  get TEXcode() {
-    // Return LaTeX code for mathematical formula of constraints defined
-    // by this product.
-    const
-        NL = '\\\\\n',
-        tex = [NL],
-        x = (this.level_to_zero ? '\\hat{x}' : 'x'),
-        dyn = (MODEL.start_period !== MODEL.end_period),
-        sub = (dyn ? '_{' + this.TEX_id + ',t}' : '_' + this.TEX_id),
-        param = (x, p) => {
-            if(!x.defined) return '';
-            const v = safeStrToFloat(x.text, p + sub);
-            if(typeof v === 'number') return VM.sig4Dig(v);
-            return v;
-          };
-    // Integer constraint if applicable.
-    if(this.integer_level) tex.push(x + sub, '\\in \\mathbb{Z}', NL);
-    // Bounds can be explicit...
-    let lb = param(this.lower_bound, 'LB'),
-        ub = param(this.upper_bound, 'UB');
-    if(lb && this.equal_bounds) ub = lb;
-    // ... or implicit.
-    if(!lb && !this.isSourceNode) lb = '0';
-    if(!ub && !this.isSinkNode) ub = '0';
-    // Add the bound constraints.
-    if(lb && ub) {
-      if(lb === ub) {
-        tex.push(x + sub, '=', lb, NL);
-      } else {
-        tex.push(lb, '\\le ' + x + sub, '\\le', ub, NL);
-      }
-    } else if(lb) {
-      tex.push(x + sub, '\\ge', lb, NL);
-    } else if(ub) {
-      tex.push(x + sub, '\\le', ub, NL);      
-    }
-    // Add the "balance" constraint for links.
-    tex.push(x + sub, '=');
-    if(this.is_buffer) {
-      // Insert X[t-1].
-      tex.push(x + '_{' + this.code + (dyn ? ',t-1}' : ',0}'));
-    }
-    let first = true;
-    for(const l of this.inputs) {
-      let ltex = l.TEXcode.trim();
-      if(!first && !ltex.startsWith('-')) tex.push('+');
-      tex.push(ltex);
-      first = false;
-    }
-    for(const l of this.outputs) {
-      let ltex = l.TEXcode.trim();
-      if(ltex.trim().startsWith('-')) {
-        if(!first) {
-          ltex = ltex.substring(1);
-          ltex = '- ' + ltex;
-          first = false;
-        }
-      } else {
-        ltex = '- ' + ltex;        
-      }
-      tex.push(ltex);
-    }
-    return tex.join(' ');
-  }
-  
 } // END of class Product
 
 
@@ -9007,8 +8894,8 @@ class Link {
   differences(l) {
     // Return "dictionary" of differences, or NULL if none.
     const d = differences(this, l, UI.MC.LINK_PROPS);
-    if(Object.keys(d).length > 0) return d;
-    return null;
+    if(isEmpty(d)) return null;
+    return d;
   }
 
   get hasArrow() {
@@ -9021,61 +8908,6 @@ class Link {
     return false;
   }
   
-  get TEXcode() {
-    // Return LaTeX code for the term for this link in the formula
-    // for its TO node if this is a product. The TEX routines for
-    // products will take care of the sign of this term.
-    const
-        dyn = MODEL.start_period !== MODEL.end_period,
-        n1 = (this.to_node instanceof Process ? this.to_node : this.from_node),
-        n2 = (n1 === this.to_node ? this.from_node: this.to_node),
-        x = (n1.level_to_zero ? '\\hat(x)' : 'x'),
-        fsub = (dyn ? '_{' + n1.TEX_id + ',t}' : '_' + n1.TEX_id),
-        fsub_i = fsub.replace(',t}', ',i}'),
-        rs = n1.TEX_id + ' \\rightarrow ' + n2.TEX_id,
-        rsub = (dyn ? '_{' + rs + ',t}' : '_' + rs),
-        param = (x, p, sub) => {
-            if(!x.defined) return '';
-            const v = safeStrToFloat(x.text, p + sub);
-            if(typeof v === 'number') return (v === 1 ? '' :
-                (v === -1 ? '-' : VM.sig4Dig(v)));
-            return v;
-          },
-        r = param(this.relative_rate, 'R', rsub),
-        d = param(this.flow_delay, '\\delta', rsub),
-        dn = safeStrToInt(d, '?'),
-        d_1 = (!d || typeof dn === 'number' ? dn + 1 : d + '+1');
-    if(this.multiplier === VM.LM_LEVEL) {
-      return r + ' ' + x + fsub;
-    } else if(this.multiplier === VM.LM_THROUGHPUT) {
-      return 'THR';
-    } else if(this.multiplier === VM.LM_INCREASE) {
-      return 'INC';
-    } else if(this.multiplier === VM.LM_SUM) {
-      if(d) return r + '\\sum_{i=t-' + d + '}^{t}{' + x + fsub_i + '}';
-      return x + fsub;
-    } else if(this.multiplier === VM.LM_MEAN) {
-      if(d) return r + '{1 \\over {' + d_1 + '}} \sum_{i=t-' +
-          d + '}^{t}{' + x + fsub_i + '}';
-      return x + fsub;
-    } else if(this.multiplier === VM.LM_STARTUP) {
-      return r + ' \\mathbf{su}' + fsub;
-    } else if(this.multiplier === VM.LM_POSITIVE) {
-      return r + '\\mathbf{u}' + fsub;
-    } else if(this.multiplier === VM.LM_ZERO) {
-      return r + '\\mathbf{d}' + fsub;    
-    } else if(this.multiplier === VM.LM_SPINNING_RESERVE) {
-      return 'SPIN';
-    } else if(this.multiplier === VM.LM_FIRST_COMMIT) {
-      return r + '\\mathbf{fc}' + fsub;    
-    } else if(this.multiplier === VM.LM_SHUTDOWN) {
-      return r + '\\mathbf{sd}' + fsub;    
-    } else if(this.multiplier === VM.LM_PEAK_INC) {
-      return 'PEAK';
-    }
-    return 'Unknown link multiplier: ' + this.multiplier;
-  }
-
   // NOTE: links do not draw themselves; they are visualized by Arrow objects
   
 }  // END of class Link
@@ -9452,7 +9284,7 @@ class Dataset {
   get statisticsAsString() {
     // Return descriptive statistics in human-readable form.
     let s = 'N = ' + this.data.length;
-    if(N > 0) {
+    if(this.data.length) {
       s += [', range = [', VM.sig4Dig(this.min), ', ', VM.sig4Dig(this.max),
           '], mean = ', VM.sig4Dig(this.mean), ', s.d. = ',
           VM.sig4Dig(this.standard_deviation)].join('');
@@ -9744,9 +9576,9 @@ class Dataset {
       }
     }
     // Only add modifiers property if differences were detected.
-    if(Object.keys(mdiff).length > 0) d.modifiers = mdiff; 
-    if(Object.keys(d).length > 0) return d;
-    return null;
+    if(!isEmpty(mdiff)) d.modifiers = mdiff; 
+    if(isEmpty(d)) return null;
+    return d;
   }
 
 } // END of class Dataset
@@ -9998,10 +9830,12 @@ class ChartVariable {
         if(this.absolute) v = Math.abs(v);
         v *= this.scale_factor;
       }
+      // Apply the NEAR_ZERO threshold.
+      if(Math.abs(v) < VM.NEAR_ZERO) v = 0;
       this.vector.push(v);
       // Do not include values for t = 0 in statistics.
       if(t > 0) {
-        if(Math.abs(v) > VM.NEAR_ZERO) {
+        if(v) {
           this.sum += v;
           this.non_zero_tally++;
         }
@@ -10099,8 +9933,8 @@ class ChartVariable {
   differences(c) {
     // Return "dictionary" of differences, or NULL if none
     const d = differences(this, c, UI.MC.CHART_VAR_PROPS);
-    if(Object.keys(d).length > 0) return d;
-    return null;
+    if(isEmpty(d)) return null;
+    return d;
   }
   
 } // END of class ChartVariable
@@ -10214,7 +10048,7 @@ class Chart {
   addVariable(n, a='') {
     // Add variable [entity name `n`|attribute `a`] to the chart unless
     // it is already in the variable list.
-    let dn = n + UI.OA_SEPARATOR + a;
+    let dn = n + '|' + a;
     // Adapt display name for special cases.
     if(n === UI.EQUATIONS_DATASET_NAME) {
       // For equations only the attribute (modifier selector).
@@ -11130,8 +10964,8 @@ class Chart {
       }
       if(!mv) d[cvid] = [UI.MC.DELETED, UI.htmlEquationName(cvn)];
     }
-    if(Object.keys(d).length > 0) return d;
-    return null;
+    if(isEmpty(d)) return null;
+    return d;
   }
   
 } // END of class Chart
@@ -11718,7 +11552,7 @@ class Experiment {
         solver: false,
         separator: 'semicolon',
         quotes: 'none',
-        precision: CONFIGURATION.results_precision
+        precision: 8
       };
     this.dimensions = [];
     this.charts = [];
@@ -12026,8 +11860,7 @@ class Experiment {
         solver: nodeParameterValue(node, 'solver') === '1',
         separator: nodeParameterValue(node, 'separator') || 'semicolon',
         quotes: nodeParameterValue(node, 'quotes') || 'none',
-        precision: safeStrToInt(nodeParameterValue(node, 'precision'),
-            CONFIGURATION.results_precision)
+        precision: safeStrToInt(nodeParameterValue(node, 'precision'), 8)
       };
     this.title = xmlDecoded(nodeContentByTag(node, 'title'));
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
@@ -12413,8 +12246,8 @@ class Experiment {
     this.actor_selectors = [];
     this.actor_dimensions = [];
 */
-    if(Object.keys(d).length > 0) return d;
-    return null;
+    if(isEmpty(d)) return null;
+    return d;
   }
 
   get resultsAsCSV() {
@@ -12793,14 +12626,13 @@ class BoundLine {
   
   get pointDataString() {
     // Point data is stored as separate lines of semicolon-separated
-    // floating point numbers, with N-digit precision to keep model files
-    // compact (default: N = 8)
+    // floating point numbers.
     let d = [];
     for(const opd of this.point_data) {
       const pd = [];
       for(const v of opd) {
-        // Convert number to string with the desired precision.
-        const f = v.toPrecision(CONFIGURATION.dataset_precision);
+        // Convert number to string with 12-digit precision.
+        const f = v.toPrecision(12);
         // Then parse it again, so that the number will be represented
         // (by JavaScript) in the most compact representation.
         pd.push(parseFloat(f));
@@ -13206,8 +13038,8 @@ class Constraint {
     // Return "dictionary" of differences, or NULL if none
     const d = differences(this, c, UI.MC.CONSTRAINT_PROPS);
     // @@TO DO: add bound line diffs
-    if(Object.keys(d).length > 0) return d;
-    return null;
+    if(isEmpty(d)) return null;
+    return d;
   }
 
   get visibleNodes() {

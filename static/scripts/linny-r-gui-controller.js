@@ -619,8 +619,7 @@ class GroupPropertiesDialog extends ModalDialog {
     const sel = this.selectors[this.selected_selector];
     if(sel) {
       const md = UI.modals.expression;
-      md.element('property').innerHTML = '(dataset group)' +
-          UI.OA_SEPARATOR + sel.sel;
+      md.element('property').innerHTML = '(dataset group)|' + sel.sel;
       md.element('text').value = sel.new_x || sel.expr;
       document.getElementById('variable-obj').value = 0;
       X_EDIT.updateVariableBar();
@@ -730,7 +729,7 @@ class GUIController extends Controller {
     // Keyboard shortcuts: Ctrl-x associates with menu button ID.
     this.shortcuts = {
       'A': 'actors',
-      'B': 'repository', // B for "Browse"
+      'B': 'compare', // B for "model B"
       'C': 'clone', // button and Ctrl-C now copies; Alt-C clones
       'D': 'dataset',
       'E': 'equation',
@@ -760,12 +759,13 @@ class GUIController extends Controller {
     this.node_btns = ['process', 'product', 'link', 'constraint',
         'cluster', 'module', 'note'];
     this.edit_btns = ['replace', 'clone', 'paste', 'delete', 'undo', 'redo'];
-    this.model_btns = ['settings', 'save', 'repository', 'actors',
+    this.model_btns = ['settings', 'save', 'actors',
         'dataset', 'equation', 'chart', 'sensitivity', 'experiment',
-        'savediagram', 'finder', 'monitor', 'tex', 'solve'];
+        'savediagram', 'finder', 'monitor', 'tex', 'solve',
+        'compare', 'update'];
     this.other_btns = ['new', 'load', 'receiver', 'documentation',
         'parent', 'lift', 'solve', 'stop', 'reset', 'zoomin', 'zoomout',
-        'stepback', 'stepforward', 'autosave', 'recall'];
+        'stepback', 'stepforward'];
     this.all_btns = this.node_btns.concat(
         this.edit_btns, this.model_btns, this.other_btns);
 
@@ -787,9 +787,9 @@ class GUIController extends Controller {
 
     // Initialize "main" modals, i.e., those that relate to the controller,
     // not to other dialog objects.
-    const main_modals = ['logon', 'model', 'load', 'password', 'settings',
-        'actors', 'add-process', 'add-product', 'move', 'note', 'clone', 
-        'replace', 'expression', 'server', 'solver'];
+    const main_modals = ['logon', 'model', 'browser', 'password', 'autosave',
+        'settings', 'actors', 'add-process', 'add-product', 'move', 'note',
+        'clone', 'replace', 'expression', 'server', 'solver', 'defaults', 'save'];
     for(const m of main_modals) this.modals[m] = new ModalDialog(m);
     
     // Property dialogs for entities may permit group editing.
@@ -901,20 +901,26 @@ class GUIController extends Controller {
     this.buttons['new'].addEventListener('click',
         () => UI.promptForNewModel());
     this.buttons.load.addEventListener('click',
-        () => FILE_MANAGER.promptToLoad());
+        () => FILE_MANAGER.showDialog('load'));
     this.buttons.settings.addEventListener('click',
         () => UI.showSettingsDialog(MODEL));
+    // NOTE: Save model prompts for new name when Shift-key is pressed.
     this.buttons.save.addEventListener('click',
-        () => FILE_MANAGER.saveModel(event.shiftKey));
+        () => FILE_MANAGER.saveModel(event));
     this.buttons.actors.addEventListener('click',
         () => ACTOR_MANAGER.showDialog());
+    // NOTE: Diagram is now saved as PNG *unless* Shift-key is pressed.
     this.buttons.savediagram.addEventListener('click',
         () => FILE_MANAGER.saveDiagramAsSVG(event));
     this.buttons.receiver.addEventListener('click',
         () => RECEIVER.toggle());
+    // Right-most buttons open the File manager for special actions.
+    this.buttons.compare.addEventListener('click',
+        () => FILE_MANAGER.showDialog('compare'));
+    this.buttons.update.addEventListener('click',
+        () => FILE_MANAGER.showDialog('update'));
     // NOTE: All draggable & resizable dialogs "toggle" show/hide.
     const tdf = (event) => UI.toggleDialog(event);
-    this.buttons.repository.addEventListener('click', tdf);
     this.buttons.dataset.addEventListener('click', tdf);
     this.buttons.equation.addEventListener('click', tdf);
     this.buttons.chart.addEventListener('click', tdf);
@@ -923,7 +929,6 @@ class GUIController extends Controller {
     this.buttons.finder.addEventListener('click', tdf);
     this.buttons.monitor.addEventListener('click', tdf);
     this.buttons.documentation.addEventListener('click', tdf);
-    this.buttons.tex.addEventListener('click', tdf);
     // Cluster navigation elements:
     this.focal_name.addEventListener('click',
         () => UI.showClusterPropertiesDialog(MODEL.focal_cluster));
@@ -995,14 +1000,6 @@ class GUIController extends Controller {
         () => UI.jumpToIssue());
     document.getElementById('next-issue').addEventListener('click',
         () => UI.updateIssuePanel(1));
-    this.buttons.recall.addEventListener('click',
-        // Recall button toggles the documentation dialog.
-        () => UI.buttons.documentation.dispatchEvent(new Event('click')));
-    this.buttons.autosave.addEventListener('click',
-        // NOTE: TRUE indicates "show dialog after obtaining the model list".
-        () => AUTO_SAVE.getAutoSavedModels(true));
-    this.buttons.autosave.addEventListener('mouseover',
-        () => AUTO_SAVE.getAutoSavedModels());
 
     // Make "stay active" buttons respond to Shift-click.
     const tf = (event) => UI.toggleButton(event);
@@ -1031,12 +1028,10 @@ class GUIController extends Controller {
     this.modals.model.cancel.addEventListener('click',
         () => UI.modals.model.hide());
 
-    this.modals.load.ok.addEventListener('click',
-        () => FILE_MANAGER.loadModel());
-    this.modals.load.cancel.addEventListener('click',
-        () => UI.modals.load.hide());
-    this.modals.load.element('autosaved-btn').addEventListener('click',
-        () => AUTO_SAVE.showRestoreDialog());
+    this.modals.save.ok.addEventListener('click',
+        () => FILE_MANAGER.saveAsNewModel());
+    this.modals.save.cancel.addEventListener('click',
+        () => UI.modals.save.hide());
 
     // NOTE: Encryption-related variables are stored as properties of
     // the password modal dialog.
@@ -1086,10 +1081,17 @@ class GUIController extends Controller {
         () => UI.changeSolver(UI.modals.server.element('solver').value));
     this.modals.server.cancel.addEventListener('click',
         () => UI.modals.server.hide());
+    this.modals.server.element('defaults-btn').addEventListener('click',
+        () => UI.showDefaultsDialog());
     this.modals.server.element('update').addEventListener('click',
         () => UI.shutDownToUpdate());
     this.modals.server.element('shut-down').addEventListener('click',
         () => UI.shutDownServer());
+    // Make default model properties modal elements responsive.
+    this.modals.defaults.ok.addEventListener('click',
+        () => UI.changeDefaults());
+    this.modals.defaults.cancel.addEventListener('click',
+        () => UI.modals.defaults.hide());
 
     // Modals related to vertical toolbar buttons.
     this.modals['add-process'].ok.addEventListener('click',
@@ -1104,6 +1106,11 @@ class GUIController extends Controller {
         () => UI.addNode('cluster'));
     this.modals.cluster.cancel.addEventListener('click',
         () => UI.modals.cluster.hide());
+    this.modals.cluster.element('include-btn').addEventListener('click',
+        () => {
+            UI.modals.cluster.hide();
+            FILE_MANAGER.showDialog('include');
+          });
 
     // NOTES:
     // (1) Use shared functions for process & product dialog events.
@@ -1256,7 +1263,6 @@ class GUIController extends Controller {
   }
 
   updateControllerDialogs(letters) {
-    if(letters.indexOf('B') >= 0) REPOSITORY_BROWSER.updateDialog();
     if(letters.indexOf('C') >= 0) CHART_MANAGER.updateDialog();
     if(letters.indexOf('D') >= 0) DATASET_MANAGER.updateDialog();
     if(letters.indexOf('E') >= 0) EQUATION_MANAGER.updateDialog();
@@ -1287,7 +1293,7 @@ class GUIController extends Controller {
     // Undoable operations no longer apply!
     UNDO_STACK.clear();
     // Autosaving should start anew.
-    AUTO_SAVE.setAutoSaveInterval();
+    FILE_MANAGER.setAutoSaveInterval();
     // Finder and Experiment manager dialogs are closed, but  may still
     // display results for previous model.
     FINDER.updateDialog();
@@ -1364,7 +1370,7 @@ class GUIController extends Controller {
     // Prepare and show the server modal dialog.
     const
         md = this.modals.server,
-        host = md.element('host-div'),
+        host = md.element('host'),
         sd = md.element('solver-div'),
         nsd = md.element('no-solver-div'),
         html = [];
@@ -1388,6 +1394,62 @@ class GUIController extends Controller {
     md.show();
   }
   
+  showDefaultsDialog() {
+    // Show editable default properties and permit modification.
+    const md = this.modals.defaults;
+    md.element('author').value = CONFIGURATION.user_name;
+    md.element('currency').value = CONFIGURATION.default_currency_unit;
+    md.element('time-scale').value = CONFIGURATION.default_time_scale;
+    md.element('time-unit').value = CONFIGURATION.default_time_unit;
+    md.element('scale-unit').value = CONFIGURATION.default_scale_unit;
+    this.setBox('defaults-comma', CONFIGURATION.decimal_comma);
+    md.show('author');
+  }
+  
+  changeDefaults() {
+    // Validate defaults input and request server to make changes.
+    const
+        md = UI.modals.defaults,
+        ts = this.validNumericInput('defaults-time-scale', 'time step');
+    if(ts === false) return;
+    if(ts <= 0) {
+      this.warn('Time step must be a positive number');
+      md.element('time-scale').focus();
+      return;
+    }
+    // No invalid inputs => proceed.
+    md.hide();
+    const d = {
+        user_name: md.element('author').value.trim(),
+        default_currency_unit: md.element('currency').value.trim() || 'EUR',
+        default_time_scale: ts,
+        default_time_unit: md.element('time-unit').value,
+        default_scale_unit: md.element('scale-unit').value.trim() || '1',
+        decimal_comma: this.boxChecked('defaults-comma')
+      };
+    this.updateDefaults(JSON.stringify(d));
+  }
+  
+  updateDefaults(json='') {
+    // Get default values (after updating them when JSON string is is specified).
+    fetch('defaults/', postData({change: json}))
+      .then(UI.fetchText)
+      .then((data) => {
+          // NOTE: No action needed when data is empty string.
+          if(data && UI.postResponseOK(data)) {
+            try {
+              const json = JSON.parse(data);
+              for(const k of Object.keys(json)) {
+                CONFIGURATION[k] = json[k];
+              }
+            } catch(err) {
+              UI.warn('Failed to update configuration');
+            }
+          }
+        })
+      .catch(UI.fetchCatch);
+  }
+  
   changeSolver(sid) {
     // Change preferred solver to `sid` if specified.
     if(!sid) return;
@@ -1407,21 +1469,14 @@ class GUIController extends Controller {
         token: VM.solver_token
       });
     fetch('solver/', pd)
-      .then((response) => {
-          if(!response.ok) {
-            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
-          }
-          return response.text();
-        })
+      .then(UI.fetchText)
       .then((data) => {
           if(UI.postResponseOK(data, true)) {
             VM.selectSolver(sid);
             UI.modals.server.hide();
           }
         })
-      .catch((err) => {
-          UI.warn(UI.WARNING.NO_CONNECTION, err);
-        });
+      .catch(UI.fetchCatch);
   }
 
   shutDownServer() {
@@ -1440,21 +1495,14 @@ class GUIController extends Controller {
     this.modals.server.hide();
     if(SOLVER.user_id) return;
     fetch('update/')
-      .then((response) => {
-          if(!response.ok) {
-            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
-          }
-          return response.text();
-        })
+      .then(UI.fetchText)
       .then((data) => {
           if(UI.postResponseOK(data, true)) {
             UI.check_update_modal.hide();
             if(data.startsWith('Installing')) UI.waitToRestart();
           }
         })
-      .catch((err) => {
-          UI.warn(UI.WARNING.NO_CONNECTION, err);
-        });
+      .catch(UI.fetchCatch);
   }
   
   waitToRestart() {
@@ -1475,12 +1523,7 @@ class GUIController extends Controller {
     // Default timeout on Firefox (90 seconds) and Chrome (300 seconds)
     // should amply suffice, though, hence no provision for a second attempt.
     fetch('version/')
-      .then((response) => {
-          if(!response.ok) {
-            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
-          }
-          return response.text();
-        })
+      .then(UI.fetchText)
       .then((data) => {
           if(UI.postResponseOK(data)) {
             // Change the dialog text in case the user does not confirm
@@ -1510,9 +1553,7 @@ class GUIController extends Controller {
             setTimeout(() => { window.open('./', '_self'); }, 2000);
           }
         })
-      .catch((err) => {
-          UI.warn(UI.WARNING.NO_CONNECTION, err);
-        });    
+      .catch(UI.fetchCatch);    
   }
 
   preventUpdate() {
@@ -1523,12 +1564,7 @@ class GUIController extends Controller {
     btn.innerText = 'Update Linny-R to version ' + this.newer_version;
     btn.style.display = 'block';
     fetch('no-update/')
-      .then((response) => {
-          if(!response.ok) {
-            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
-          }
-          return response.text();
-        })
+      .then(UI.fetchText)
       .then((data) => {
           if(UI.postResponseOK(data, true)) UI.check_update_modal.hide();
         })
@@ -1837,10 +1873,15 @@ class GUIController extends Controller {
       e = e || window.event;
       e.preventDefault();
       // Calculate the relative mouse cursor movement.
-      const
-          dw = e.clientX - cx,
+      let dw = e.clientX - cx,
           dh = e.clientY - cy;
-      // Set the dialog's new size
+      // NOTE: For modal dialogs, double the movement because they auto-adjust
+      // their margins to remain centered.
+      if(UI.dr_dialog.parentElement.id.endsWith('-modal')) {
+        dw *= 2;
+        dh *= 2;
+      }
+      // Set the dialog's new size.
       UI.dr_dialog.style.width = Math.max(minw, w + dw) + 'px';
       UI.dr_dialog.style.height = Math.max(minh, h + dh) + 'px';
       // Update the dialog if its manager has been specified.
@@ -1966,10 +2007,15 @@ class GUIController extends Controller {
         node_btns = 'process product link constraint cluster note ',
         edit_btns = 'replace clone paste delete undo redo ',
         model_btns = 'settings save actors dataset equation chart ' +
-            'savediagram finder monitor solve';
+            'savediagram finder monitor solve compare update';
     if(MODEL === null) {
       this.disableButtons(node_btns + edit_btns + model_btns);
       return;
+    }
+    if(isEmpty(MODEL.includedModules)) {
+      this.buttons.update.classList.add('off');
+    } else {
+      this.buttons.update.classList.remove('off');      
     }
     if(MODEL.focal_cluster === MODEL.top_cluster) {
       this.focal_cluster.style.display = 'none';
@@ -2700,6 +2746,8 @@ class GUIController extends Controller {
         while(i < inp.length && inp[i].disabled) i++;
         if(i < inp.length) {
           inp[i].focus();
+        } else if(topmod.id === 'browser-modal') {
+          FILE_MANAGER.enterKey();
         } else if(['datasetgroup-modal', 'constraint-modal', 'boundline-data-modal',
             'xp-clusters-modal'].indexOf(topmod.id) >= 0) {
           // NOTE: These modals must NOT close when Enter is pressed, but only
@@ -2741,12 +2789,20 @@ class GUIController extends Controller {
       // Lists in draggable dialogs respond to up and down arrow keys.
       if(code === 'ArrowUp' || code === 'ArrowDown') {
         e.preventDefault();
-        // Send event to the top draggable dialog.
-        const last = this.dr_dialog_order.length - 1;
-        if(last >= 0) {
-          const mgr = window[this.dr_dialog_order[last].dataset.manager];
-          // NOTE: Pass key direction as -1 for UP and +1 for DOWN.
-          if(mgr && 'upDownKey' in mgr) mgr.upDownKey(e.keyCode - 39);
+        if(topmod) {
+          if(topmod.id === 'browser-modal') {
+            FILE_MANAGER.upDownKey(e.keyCode - 39);
+          }
+          // For other modals, capture the event to prevent underlying
+          // draggable dialogs to respond.
+        } else {
+          // Send event to the top draggable dialog.
+          const last = this.dr_dialog_order.length - 1;
+          if(last >= 0) {
+            const mgr = window[this.dr_dialog_order[last].dataset.manager];
+            // NOTE: Pass key direction as -1 for UP and +1 for DOWN.
+            if(mgr && 'upDownKey' in mgr) mgr.upDownKey(e.keyCode - 39);
+          }
         }
       }
       // End, Home, and left and right arrow keys.
@@ -2768,9 +2824,9 @@ class GUIController extends Controller {
         this.stepForward(e);
       } else if(e.ctrlKey && code === 'KeyS') {
         // Ctrl-S means: save model. Treat separately because Shift-key
-        // alters the way in which the model file is saved.
+        // and Alt-key alter the way in which the model file is saved.
         e.preventDefault();
-        FILE_MANAGER.saveModel(e.shiftKey);
+        FILE_MANAGER.saveModel(e);
       } else if(alt && code === 'KeyR') {
         // Alt-R means: run to diagnose infeasible/unbounded problem.
         VM.solveModel(true);
@@ -3149,8 +3205,8 @@ class GUIController extends Controller {
           msg = 'HTML copied to clipboard' + (plain ? ' as plain text' : '');
       navigator.clipboard.write(data)
           .then(() => UI.setMessage(msg, 'notification'))
-          .catch((error) => UI.setMessage('Failed to copy HTML to clipboard',
-              'warning', error));
+          .catch((err) => UI.setMessage('Failed to copy HTML to clipboard',
+              'warning', err));
     } else {
       UI.setMessage('Your browser does not support copying HTML to clipboard',
           'warning');
@@ -3259,9 +3315,6 @@ class GUIController extends Controller {
     CHART_MANAGER.dialog.style.display = 'none';
     this.buttons.chart.classList.remove('stay-activ');
     CHART_MANAGER.reset();
-    REPOSITORY_BROWSER.dialog.style.display = 'none';
-    this.buttons.repository.classList.remove('stay-activ');
-    REPOSITORY_BROWSER.reset();
     SENSITIVITY_ANALYSIS.dialog.style.display = 'none';
     this.buttons.sensitivity.classList.remove('stay-activ');
     SENSITIVITY_ANALYSIS.reset();
@@ -3271,9 +3324,6 @@ class GUIController extends Controller {
     DOCUMENTATION_MANAGER.dialog.style.display = 'none';
     this.buttons.documentation.classList.remove('stay-activ');
     DOCUMENTATION_MANAGER.reset();
-    TEX_MANAGER.dialog.style.display = 'none';
-    this.buttons.tex.classList.remove('stay-activ');
-    TEX_MANAGER.reset();
     FINDER.dialog.style.display = 'none';
     this.buttons.finder.classList.remove('stay-activ');
     FINDER.reset();
@@ -3289,12 +3339,23 @@ class GUIController extends Controller {
   //
   
   promptForNewModel() {
-    // Prompt for model name and author name
-    // @@TO DO: warn user if unsaved changes to current model
-    this.hideStayOnTopDialogs();
-    // Clear name, but not author field, as it is likely the same modeler
-    this.modals.model.element('name').value = '';
-    this.modals.model.show('name');
+    // Prompt modeler to confirm discarding unsaved changes unless this
+    // is the follow-up call.
+    let md = FILE_MANAGER.confirm_load_modal;
+    if(!md.follow_up && !UNDO_STACK.empty) {
+      md.follow_up = () => UI.promptForNewModel();
+      md.show();
+    } else {
+      // Reset the confirmation modal (just to make sure).
+      md.follow_up = null;
+      // Prompt for model name and author name.
+      this.hideStayOnTopDialogs();
+      // Clear name, but set author field to current author.
+      md = this.modals.model;
+      md.element('name').value = '';
+      md.element('author').value = MODEL.author;
+      md.show('name');
+    }
   }
 
   createNewModel() {
@@ -3309,7 +3370,7 @@ class GUIController extends Controller {
     UNDO_STACK.clear();
     VM.reset();
     this.updateButtons();
-    AUTO_SAVE.setAutoSaveInterval();
+    FILE_MANAGER.setAutoSaveInterval();
   }
   
   addNode(type) {
@@ -3538,7 +3599,7 @@ class GUIController extends Controller {
   }
   
   promptForCloning() {
-    // Opens CLONE modal
+    // Open CLONE modal.
     const n = MODEL.selection.length;
     if(n > 0) {
       const md = UI.modals.clone;
@@ -3558,7 +3619,7 @@ class GUIController extends Controller {
           renumber = this.boxChecked('clone-renumbering'),
           actor_name = a_prompt.value.trim();
       let prefix = p_prompt.value.trim();
-      // Perform basic validation of combination prefix + actor
+      // Perform basic validation of combination prefix + actor.
       let msg = '';
       p_prompt.focus();
       if(!prefix && !actor_name && !(renumber && MODEL.canRenumberSelection)) {
@@ -3740,7 +3801,7 @@ class GUIController extends Controller {
         name_map = {},
         name_conflicts = [];
             
-    // AUXILIARY FUNCTIONS
+    // Auxiliary functions.
     
     function namedObjects() {
       // Return TRUE iff XML contains named objects.
@@ -3806,7 +3867,7 @@ class GUIController extends Controller {
     }
 
     function mappedName(n) {
-      // Returns full name `n` modified according to the mapping.
+      // Return full name `n` modified according to the mapping.
       // NOTE: Links and constraints require two mappings (recursion!).
       if(n.indexOf(UI.LINK_ARROW) > 0) {
         const ft = n.split(UI.LINK_ARROW);
@@ -3830,7 +3891,7 @@ class GUIController extends Controller {
         const ai = n.lastIndexOf(mapping.from_actor);
         if(ai > 0) return n.substring(0, ai) + mapping.to_actor;
       }
-      // NOTE: specified actor cannot override existing actor.
+      // NOTE: Specified actor cannot override existing actor.
       if(mapping.actor && !nameAndActor(n)[1]) {
         return `${n} (${mapping.actor})`;
       }
@@ -3852,7 +3913,7 @@ class GUIController extends Controller {
     }
 
     function nameConflicts(node) {
-      // Maps names of entities defined by the child nodes of `node`
+      // Map names of entities defined by the child nodes of `node`
       // while detecting name conflicts.
       for(const c of node.childNodes) {
         if(c.nodeName !== 'link' && c.nodeName !== 'constraint') {
@@ -3876,7 +3937,7 @@ class GUIController extends Controller {
     }
     
     function addEntityFromNode(node) {
-      // Adds entity to model based on XML node data and mapping.
+      // Add entity to model based on XML node data and mapping.
       // NOTE: Do not add if an entity having this type and mapped name
       // already exists; name conflicts accross entity types may occur
       // and result in error messages.
@@ -4001,7 +4062,7 @@ class GUIController extends Controller {
       }
     }
 
-    // Only check for selected entities; from-to's and extra's should be
+    // Only check for selected entities. From-to's and extra's should be
     // used if they exist, or should be created when copying to a different
     // model.
     name_map.length = 0;
@@ -4012,7 +4073,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
       return;
     }
     
-    // No conflicts => add all
+    // No conflicts => add all.
     for(const c of extras_node.childNodes) addEntityFromNode(c);
     for(const c of from_tos_node.childNodes) addEntityFromNode(c);
     for(const c of entities_node.childNodes) addEntityFromNode(c);
@@ -4080,9 +4141,14 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     if(px === false) return false;
     const ts = this.validNumericInput('settings-time-scale', 'time step');
     if(ts === false) return false;
+    const md = UI.modals.settings;
+    if(ts <= 0) {
+      this.warn('Time step must be a positive number');
+      md.element('time-scale').focus();
+      return false;
+    }
     let ps = this.validNumericInput('settings-period-start', 'first time step');
     if(ps === false) return false;
-    const md = UI.modals.settings;
     if(ps < 1) {
       this.warn('Simulation cannot start earlier than at t=1');
       md.element('period-start').focus();
@@ -4118,7 +4184,8 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     model.name = md.element('name').value.trim();
     // Display model name in browser unless blank
     document.title = model.name || 'Linny-R';
-    model.author = md.element('author').value.trim();
+    // NOTE: Author names should not contain potential path delimiters.
+    model.author = md.element('author').value.trim().replaceAll(/\\|\//g, '');
     if(!model.scale_units.hasOwnProperty(dsu)) model.addScaleUnit(dsu);
     model.default_unit = dsu;
     model.currency_unit = md.element('currency-unit').value.trim();
@@ -4289,13 +4356,6 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     md.grid_id = (p.grid ? p.grid.id : '');
     this.hideGridPlateMenu('process');
     this.updateGridFields();
-    const tex = md.element('tex-id');
-    tex.value = p.TEX_id;
-    if(TEX_MANAGER.visible) {
-      tex.style.display = 'block';
-    } else {
-      tex.style.display = 'none';
-    }
     // Focus on lower bound when showing the dialog for a group.
     if(group.length > 0) {
       attr = 'LB';
@@ -4426,8 +4486,6 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     p.collapsed = this.boxChecked('process-collapsed');
     p.power_grid = MODEL.powerGridByID(md.grid_id);
     p.length_in_km = safeStrToFloat(md.element('length').value, 0);
-    p.TEX_id = md.element('tex-id').value;
-    if(TEX_MANAGER.visible) TEX_MANAGER.update(p);
     if(md.group.length > 1) {
       // Redraw the entire diagram, as multiple processes may have changed.
       md.updateModifiedProperties(p);
@@ -4454,13 +4512,6 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     md.element('P-unit').innerHTML =
         (p.scale_unit === '1' ? '' : '/' + p.scale_unit);
     md.element('currency').innerHTML = MODEL.currency_unit;
-    const tex = md.element('tex-id');
-    tex.value = p.TEX_id;
-    if(TEX_MANAGER.visible) {
-      tex.style.display = 'block';
-    } else {
-      tex.style.display = 'none';
-    }
     // NOTE: IO parameter status is not "group-edited"!
     this.setImportExportBox('product', MODEL.ioType(p));
     // Focus on lower bound when showing the dialog for a group.
@@ -4580,8 +4631,6 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     p.no_links = this.boxChecked('product-no-links');
     let must_redraw = (pnl !== p.no_links);
     MODEL.ioUpdate(p, this.getImportExportBox('product'));
-    p.TEX_id = md.element('tex-id').value;
-    if(TEX_MANAGER.visible) TEX_MANAGER.update(p);
     // If a group was edited, update all entities in this group. 
     if(md.group.length > 0) md.updateModifiedProperties(p);
     if(must_redraw || md.group.length > 1) {

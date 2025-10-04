@@ -105,6 +105,10 @@ class UndoStack {
     this.redoables.length = 0;
   }
   
+  get empty() {
+    return this.undoables.length + this.redoables.length === 0;
+  }
+  
   get topUndo() {
     // Return the short name of the top undoable action (if any).
     const n = this.undoables.length;

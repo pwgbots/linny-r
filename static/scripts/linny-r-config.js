@@ -32,60 +32,60 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// The configuration properties may be altered according to user preferences
+// The configuration properties may be altered according to user preferences.
 const CONFIGURATION = {
+    // When specified, the user name will be used as author name of models;
+    // otherwise the user name as defined by the operating system will be used.
+    user_name: '',
     // When decimal comma = TRUE, data copied to clipboard from the chart manager
-    // will be written with decimal comma instead of decimal point
-    // NOTE: May be overruled by model settings
+    // will be written with decimal comma instead of decimal point.
+    // NOTE: May be overruled by model settings.
     decimal_comma: false,
-    // To keep model files compact, floating point values in datasets and run
-    // results are stored with a limited number of significant digits
-    dataset_precision: 8,
-    results_precision: 8,
-    // Default properties for new models
+    // Default properties for new models.
     default_currency_unit: 'EUR',
+    default_time_scale: 1,
     default_time_unit: 'hour',
-    // Standard scale units to be included in new models
+    // Standard scale units to be included in new models.
     scale_units: [
         // Units can be defined as 3-tuples [name, scalar, base unit], e.g.,
         // ['MJ', '1', '1'],
         // ['kWh', '3.6', 'MJ']
       ],
     default_scale_unit: '1',  // 1 denotes "no unit" (abstract scale)
-    // Font properties for SVG diagram
+    // Font properties for SVG diagrams.
     // NOTE: When a font name comprises multiple words, it must be enclosed
     // like so: &quot;Times New Roman&quot;
     default_font_name: 'Arial',
-    // Undo stack size limits the number of user actions that can be undone 
+    // Undo stack size limits the number of user actions that can be undone.
     undo_stack_size: 20,
     // The progress needle interval affects the update frequency of the progress
     // needle during tableau construction and while writing the model file that
     // is passed to the solver. On faster machines, the value of this constant
-    // can be increased
+    // can be increased.
     progress_needle_interval: 100,
     // By default, the monitor will notify where and when small amounts of slack
-    // (< 1e-6) are used (set to FALSE to suppress such notices)
+    // (< 1e-6) are used (set to FALSE to suppress such notices).
     slight_slack_notices: true,  
-    // Allow some control over the size of cluster nodes
+    // Allow some control over the size of cluster nodes.
     min_cluster_size: 80,
-    // To enhance security, a minimum password length is enforced
-    // NOTE: changing this value will not affect the encryption key
+    // To enhance security, a minimum password length is enforced.
+    // NOTE: Changing this value will not affect the encryption key.
     min_password_length: 6
   };
 
-// Parameters used for encryption
-// NOTE: changing these default values will make that encrypted files cannot
-// be decrypted by other Linny-R configurations
+// Parameters used for encryption.
+// NOTE: Changing these default values will make that encrypted files cannot
+// be decrypted by other Linny-R configurations.
 const ENCRYPTION = {
     salt: 'YzU0N2Z@MjYy(mV[OGRk=jNlY2#kYj+mMzFk%WV}Yj',
     iterations: 96847
   };
   
-// Solver properties should be configured only for a remote server
+// Solver properties should be configured only for a remote server.
 const SOLVER = {
-    // User identifier will typically be an e-mail address
+    // User identifier will typically be an e-mail address.
     user_id: '',
-    // For solver restrictions, zero indicates "unlimited"
+    // For solver restrictions, zero indicates "unlimited".
     max_tableau_size: 0,
     max_nr_of_blocks: 0,
     max_solver_time: 0
@@ -94,9 +94,9 @@ const SOLVER = {
 // NOTE: Debugging is defined as a global *variable* to permit setting it
 // locally to TRUE to trace only in selected parts of the code. When debugging,
 // the VM will log a trace of its execution on the browser's console.
-// NOTE: for longer runs and larger models, this will slow down the browser,
-// the text and objects shown in the browser's console will use large amounts
-// of computer memory!
+// NOTE: For longer runs and larger models, this will slow down the browser,
+// and the text and objects shown in the browser's console will use large
+// amounts of computer memory!
 let DEBUGGING = false;
 
     

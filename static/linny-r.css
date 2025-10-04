@@ -394,8 +394,12 @@ input[type="password"] {
 }
 
 input[type="text"]:disabled {
-  color: gray;
+  color: Gray;
   background-color: #f4f0f2;
+}
+
+div.lbl-disab {
+  color: Gray;
 }
 
 td.same-not-changed {
@@ -507,8 +511,7 @@ textarea {
 #zoom-sep,
 #step-sep,
 #info-line,
-#issue-panel,
-#autosave-sep {
+#issue-panel {
   border-right: 1px solid #e2d8e8;
 }
 
@@ -557,7 +560,7 @@ div.error-time {
 }
 
 div.warning-time {
-  color: orange;
+  color: Orange;
 }
 
 div.notification-time {
@@ -587,19 +590,19 @@ div.notification-msg {
 div.error-msg.first-msg {
   background: Orange;
   font-weight: bold;
-  color: black;
+  color: Black;
 }
 
 #info-line.warning,
 div.warning-msg.first-msg {
   background: Yellow;
-  color: black;
+  color: Black;
 }
 
 #info-line.notification,
 div.notification-msg.first-msg {
   background: SkyBlue;
-  color: black;
+  color: Black;
 }
 
 span.node-details {
@@ -736,7 +739,7 @@ img.ok-btn.disab {
 
 /* CHECK BOX styles
    NOTE: separate style names `abox` and `vbox` so that different events can be
-   bound dynamically to actor check boxes */
+   bound dynamically to actor and variable check boxes */
 div.box,
 div.abox,
 div.vbox {
@@ -755,14 +758,17 @@ div.vbox:hover {
   filter: brightness(105%);  
 }
 
+div.box.disab,
+div.abox.disab,
+div.vbox.disab {
+  background-size: contain;
+  background-image: url('images/check-disab.png');
+  pointer-events: none;
+}
+
 div.crossed {
   background-size: contain;
   background-image: url('images/check-x.png');
-}
-
-div.disab {
-  background-size: contain;
-  background-image: url('images/check-disab.png');
 }
 
 div.clear {
@@ -830,113 +836,37 @@ div.checked.not-same-not-changed {
 }
 
 /* LOAD modal dialog */
-#load-dlg,
-#load-csv-dlg,
-#comparison-dlg {
+#upload-dlg,
+#load-csv-dlg {
   width: 430px;
   height: min-content;
   overflow: hidden;
 }
 
-#load-xml-file,
-#load-csv-file,
-#comparison-xml-file {
+#upload-xml-file,
+#load-csv-file {
   padding: 2px;
   max-width: 375px;
   overflow: hidden;
 }
 
-#load-autosaved-btn {
-  position: absolute;
-  right: 2px;
-  top: 23px;
-  height: 20px;
-  width: 20px;
-  display: none;
+/* AUTOSAVE modal dialog */
+#autosave-dlg {
+  width: min-content;
+  height: min-content;
 }
 
-#autosave-btn {
-  height: 15px;
-  width: 15px;
+#autosave-minutes-div,
+#autosave-hours-div {
+  margin: 4px;
+  white-space: nowrap;
 }
 
-#restore-dlg {
-  width: 450px;
-  max-height: 219px;
-}
-
-#restore-scroll-area {
-  position: absolute;
-  top: 24px;
-  left: 2px;
-  width: calc(100% - 4px);
-  max-height: 190px;
-  overflow-x: clip;
-  overflow-y: auto;
-  border-top: 1px solid Silver;
-}
-
-td.restore-name {
-  color: navy;
-  padding-right: 4px;
-  max-width: 272px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-img.del-asm-btn {
-  height: 12px;
-  width: 12px;
-  border-radius: 2px;
-  margin-bottom: -2px;
-  margin-right: 1px;
-  cursor: pointer;
-}
-
-img.del-asm-btn:hover {
-  background-color: #bfc0e2;
-}
-
-#auto-save-settings {
-  position: absolute;
-  bottom: 3px;
-  left: 2px;
-  width: calc(100% - 4px);
-}
-
-#auto-save-minutes,
-#auto-save-hours {
+#autosave-minutes,
+#autosave-hours {
   width: 25px;
   text-align: center;
   max-height: 17px;
-}
-
-#auto-save-clear-btn {
-  position: absolute;
-  right: 0px;
-  bottom: -1px;
-  width: 18px;
-  height: 18px;
-}
-
-#confirm-remove-models {
-  position: absolute;
-  bottom: 2px;
-  left: 2px;
-  height: 15px;
-  width: calc(100% - 8px);
-  background-color: #cc88b0;
-  padding: 1px 2px 3px 2px;
-}
-
-img.inline-ok-btn,
-img.inline-cancel-btn {
-  width: 17px;
-  height: 17px;
-  margin-bottom: -4px;
-  margin-left: 8px;
-  margin-right: 2px;
-  cursor: pointer;
 }
 
 /* styles for the NEW SCALAR dialog */
@@ -1077,14 +1007,14 @@ div.no-grid-plate {
 div.menu-plate {
   width: calc(100% - 4px);
   margin: 1px;
-  border: 1px solid silver;
+  border: 1px solid Silver;
   padding-top: 3px;
   max-height: 14px;
 }
 
 div.menu-plate:hover {
-  border: 1px solid black;
-  box-shadow: black 0px 0px 1px 2px;
+  border: 1px solid Black;
+  box-shadow: Black 0px 0px 1px 2px;
 }
 
 div.grid-watts {
@@ -1092,7 +1022,7 @@ div.grid-watts {
   vertical-align: middle;
   height: 15px;
   min-width: 18px;
-  color: gray;
+  color: Gray;
   border: 1px solid #b8b8b8;
   background-color: #f0f0f0;
   font-size: 9px;
@@ -1114,7 +1044,7 @@ div.grid-kvl-symbol {
 
 div.grid-loss-symbol {
   background-color: #202020;
-  color: white;
+  color: White;
   display: inline-block;
   vertical-align: middle;
   font-size: 12px;
@@ -1177,7 +1107,7 @@ table.power-flow th:not(:first-child) {
   height: min-content;
 }
 
-#encryption-password {
+#password-code {
   margin: 2px;
   width: 160px;
 }
@@ -1309,7 +1239,7 @@ div.round-nr {
 }
 
 div.round-nr:hover {
-  color: white;
+  color: White;
 }
 
 div.round-nr.sel {
@@ -1353,7 +1283,7 @@ td.opt {
 #actors-table {
   width: 100%;
   border-collapse: collapse;
-  background-color: white;
+  background-color: White;
   border: 1px solid Silver;
 }
 
@@ -1425,6 +1355,11 @@ div.export {
   width: 200px;
   height: min-content;
 }
+
+#server-config-btn {
+  margin-top: -1px;
+}
+
 #server-host-div,
 #server-solver-div {
   margin: 3px;
@@ -1449,10 +1384,41 @@ div.export {
   font-size: 12px;
 }
 
-/* styles for the MODEL dialog */
+/* Styles for the DEFAULTS dialog */
+#defaults-dlg {
+  width: 250px;
+  height: min-content;
+}
+
+#defaults-comma {
+  margin: 0px;
+}
+
+#defaults-comma-lbl {
+  display: inline-block;
+  vertical-align: top;
+  padding-top: 2px;
+}
+
+/* styles for the MODEL and SAVE dialogs */
+#save-dlg,
 #model-dlg {
-  width: 270px;
-  height: 70px;
+  width: min-content;
+  height: min-content;
+}
+
+#save-name,
+#save-author,
+#model-name,
+#model-author {
+  width: 220px;
+}
+
+#save-encrypt-lbl,
+#save-black-box-lbl {
+  display: inline-block;
+  vertical-align: top;
+  padding-top: 3px;
 }
 
 /* styles for the ADD PROCESS dialog */
@@ -2320,7 +2286,7 @@ div.menu-item:hover {
   left: 4px;
   width: calc(100% - 9px);
   height: 22px;
-  border-top: 1px solid silver;
+  border-top: 1px solid Silver;
 }
 
 #constraint-no-slack-div {
@@ -2494,7 +2460,7 @@ td.bl-odnr {
 
 td.bl-od {
   width: 100%;
-  border-left: 1px solid silver;
+  border-left: 1px solid Silver;
   padding-left: 6px;
 }
 
@@ -2667,13 +2633,12 @@ div.io-box {
 #finder-expression-table,
 #finder-data-table,
 #boundline-data-series-table,
-#boundline-data-sel-table,
-#restore-table {
+#boundline-data-sel-table {
   width: 100%;
   max-width: 100%;
   border-collapse: collapse;
   line-height: 16px;
-  background-color: white;
+  background-color: White;
   border: 1px solid Silver;
   border-top: none;
 }
@@ -3286,7 +3251,7 @@ td.equation-expression-multi {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: white;
+  color: White;
   text-shadow: 0.5px 0.5px 0px gray;
 }
 
@@ -3400,7 +3365,7 @@ td.equation-expression-multi {
   width: 19px;
   display: none;
   background-color: #f4f0f2;
-  border: solid silver 1px;
+  border: solid Silver 1px;
   border-radius: 3px;
   padding: 1px;
 }
@@ -3451,7 +3416,7 @@ td.vbl-abs {
   width: 100%;
   border-collapse: collapse;
   line-height: 12px;
-  background-color: white;
+  background-color: White;
   border: 1px solid Silver;
 }
 
@@ -3509,7 +3474,7 @@ img.v-disab {
 #chart-svg {
   height: 100%;
   width: 100%;
-  background-color: white;
+  background-color: White;
 }
 
 #chart-table-panel {
@@ -3528,7 +3493,7 @@ img.v-disab {
 
 #chart-table {
   border: solid 1px Silver;
-  background-color: white;
+  background-color: White;
   border-collapse: collapse;
   margin: 2px;
   max-width: calc(100% - 2px);
@@ -3741,7 +3706,7 @@ img.v-disab {
   width: 100%;
   border-collapse: collapse;
   line-height: 16px;
-  background-color: white;
+  background-color: White;
   border: 1px solid Silver;
   border-top: none;
 }
@@ -3845,7 +3810,7 @@ td.sa-ds-sel:hover {
   width: 100%;
   border-collapse: collapse;
   line-height: 16px;
-  background-color: white;
+  background-color: White;
   border: 1px solid Silver;
   border-top: none;
 }
@@ -3870,7 +3835,7 @@ td.sa-ds-sel:hover {
   width: 100%;
   border-collapse: collapse;
   line-height: 16px;
-  background-color: white;
+  background-color: White;
   border: 1px solid Silver;
   border-top: none;
 }
@@ -3955,7 +3920,7 @@ td.sa-col-hdr {
   background-color: #ffd800;
   min-width: 40px;
   text-align: center;
-  border: 0.5px solid silver;
+  border: 0.5px solid Silver;
 }
 
 td.sa-row-hdr {
@@ -3964,27 +3929,27 @@ td.sa-row-hdr {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border: 0.5px solid silver;
+  border: 0.5px solid Silver;
   padding-right: 5px;
 }
 
 td.sa-plus {
   background-color: #8080f0 !important;
-  color: white;
-  border: 0.5px solid silver;
+  color: White;
+  border: 0.5px solid Silver;
   max-width: 50px;
 }
 
 td.sa-minus {
   background-color: #f08080 !important;
-  color: white;
-  border: 0.5px solid silver;
+  color: White;
+  border: 0.5px solid Silver;
   max-width: 50px;
 }
 
 td.sa-data {
-  border: 0.5px solid silver;
-  background-color: white;
+  border: 0.5px solid Silver;
+  background-color: White;
   text-align: right;
 }
 
@@ -4007,9 +3972,9 @@ td.sa-not-run {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border: 1.5px solid gray;
+  border: 1.5px solid Gray;
   color: #400040;
-  background-color: white;
+  background-color: White;
   font-size: 10px;
   text-align: center;
   cursor: pointer;
@@ -4354,7 +4319,7 @@ td.data-cell {
   border: 1px solid Silver;
   min-width: 40px;
   min-height: 12px;
-  background-color: white;
+  background-color: White;
   text-align: right;
 }
 
@@ -4366,7 +4331,7 @@ td.data-cell:hover {
 
 td.not-run {
   background-color: #e0e0ec;
-  color: white;
+  color: White;
   font-size: 10px;
   text-align: center;
   cursor: default;
@@ -4374,12 +4339,12 @@ td.not-run {
 }
 
 td.in-chart {
-  box-shadow: gray -0.5px -0.5px 1px 1.5px inset;
+  box-shadow: Gray -0.5px -0.5px 1px 1.5px inset;
   font-weight: bold;
 }
 
 td.warnings {
-  background-color: yellow;
+  background-color: Yellow;
   font-style: italic;
 }
 
@@ -4409,7 +4374,7 @@ div.spin-plus {
 div.spin-min:hover,
 div.spin-plus:hover {
   background-color: #808080;
-  color: white;
+  color: White;
 }
 
 div.spin-val {
@@ -4594,7 +4559,7 @@ input.range-limit {
 #xp-combination-d-table,
 #xp-settings-s-table,
 #xp-settings-d-table {
-  background-color: white;
+  background-color: White;
   border-collapse: collapse;
   border: 1px solid Silver;
   width: 100%;
@@ -4813,114 +4778,147 @@ span.sd-clear {
   width: 18px;
 }
 
-
-/* the REPOSITORY DIALOG displays the repository browser */
-#repository-dlg {
-  display: none;
-  z-index: 30;
-  margin: 0;
-  width: 300px;
+/* the BROWSER DIALOG displays the file browser */
+#browser-dlg {
+  margin: auto;
+  width: 450px;
   height: 300px;
-  min-width: 275px;
+  min-width: 350px;
   min-height: 200px;
   max-height: 99vh;
   max-width: 99vw;
 }
 
-#repository-not-implemented {
-  position: absolute;
-  top: 22px;
-  left: 2px;
-  width: calc(100% - 4px);
-  height: calc(100% - 24px);
-  text-align: center;
-  display: none;
-}
-
-#repository-pane {
+#browser-buttons {
   position: absolute;
   top: 21px;
   left: 1px;  
-  width: calc(100% - 2px);
-  height: calc(100% - 24px);
-  display: block;
 }
 
-#repository-buttons {
-  position: absolute;
-  top: 1px;
-  left: 1px;
-}
-
-#repository-buttons > img.btn {
+#browser-buttons > img.btn {
   height: 20px;
   width: 20px;
 }
 
-#repo-remove-btn.disab,
-#delete-round-btn.v-disab {
-  filter: grayscale(100%) brightness(150%) contrast(80%);
-}
-
-#repo-include-btn.disab {
-  filter: grayscale(100%) brightness(300%) contrast(80%);
-}
-
-#repository-selector {
+#browser-bb-div {
   position: absolute;
-  left: 2px;
-  top: 26px;
-  width: calc(100% - 4px);
+  right: 2px;
+  padding: 1px;
 }
 
-#modules-header {
-  position: absolute;
-  top: 48px;
-  left: 2px;
-  font-weight: 600;
-}
-
-#modules-scroll-area,
-#parameter-scroll-area {
-  position: absolute;
-  top: 64px;
-  left: 2px;
-  width: calc(100% - 4px);
-  height: calc(100% - 81px);
-  overflow-y: auto;
-  border-top: 1px solid Silver;
-}
-
-#modules-count {
-  position: absolute;
-  bottom: 0px;
-  left: 2px;
-}
-
-#add-repository-dlg {
-  width: 280px;
-  height: min-content;
-}
-
-#access-repository-dlg {
-  width: 276px;
-  height: min-content;
-}
-
-#access-repository-name {
+#browser-bb-lbl {
   display: inline-block;
-  font-style: italic;
-  max-width: 130px;
+  white-space: nowrap;
+  vertical-align: top;
+  padding-top: 4px;
+}
+
+#browser-dir-scroll-area {
+  position: absolute;
+  left: 2px;
+  top: 44px;
+  width: calc(30% + 36px);
+  height: calc(100% - 64px);
+  overflow-y: auto;
+  border: 1px solid Silver;
+  background-color: White;
+}
+
+#browser-model-scroll-area {
+  position: absolute;
+  left: calc(30% + 40px);
+  top: 44px;
+  width: calc(70% - 44px);
+  height: calc(100% - 64px);
+  overflow-y: auto;
+  border: 1px solid Silver;
+  background-color: White;
+}
+
+#browser-dir-table,
+#browser-model-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+img.dir-icon {
+  height: 15px;
+  width: 15px;
+}
+
+div.dir-btn,
+div.dir-no-btn {
+  display: inline-block;
+  color: #b0b0b0;
+  font-size: 11px;
+  width: 12px;
+  vertical-align: top;
+  padding-top: 2px;
+}
+
+div.dir-btn:hover {
+  color: #400080;
+}
+
+div.dir-no-btn {
+  opacity: 0;
+}
+
+div.dir-name,
+div.entry-name {
+  display: inline-block;
+  vertical-align: top;
+  padding-left: 3px;
+  padding-top: 1px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-bottom: -3px;
 }
 
-#store-in-repository-dlg,
-#store-bb-in-repository-dlg {
-  width: 320px;
-  height: 111px;
+td.k-bytes {
+  padding-right: 15px;
+  text-align: right;
+  width: 10%;
+  font-size: 11px;
+  color: Gray;
+}
+
+td.date-time {
+  padding-left: 10px;
+  padding-right: 10px;
+  text-align: right;
+  width: 15%;
+  font-size: 11px;
+  color: Gray;
+}
+
+#browser-root-img {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  height: 15px;
+  width: 15px;
+}
+
+#browser-path {
+  position: absolute;
+  bottom: 2px;
+  left: 22px;
+  font-family: monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  max-width: calc(100% - 40px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#autosave-modal,
+#defaults-modal,
+#include-modal,
+#update-modal,
+#confirm-load-model-modal,
+#confirm-delete-model-modal {
+  z-index: 105; /* on top of the BROWSER modal */
 }
 
 #paste-dlg,
@@ -4984,7 +4982,7 @@ div.update-cc {
 #update-remove-area,
 #update-issues-area {
   max-height: 150px !important;
-  background-color: white;
+  background-color: White;
   border: 1px solid Silver;
 }
 
@@ -5064,32 +5062,17 @@ select.i-param {
   max-width: calc(100% - 15px);
 }
 
-#confirm-load-from-repo-dlg {
-  width: 400px;
-  height: 85px;
+#confirm-load-model-dlg,
+#confirm-delete-model-dlg {
+  width: min-content;
+  height: min-content;
 }
 
-#confirm-delete-from-repo-dlg {
-  width: 270px;
-  height: 120px;
-}
-
-#confirm-delete-from-repo-name {
-  word-break: keep-all;
+#confirm-load-model-msg,
+#confirm-delete-model-msg {
+  margin: 4px;
   white-space: nowrap;
-  font-weight: bold;
-}
-
-#confirm-load-from-repo-mod-name,
-#confirm-delete-from-repo-mod-name {
-  word-break: keep-all;
-  white-space: nowrap;
-  font-family: monospace;
-}
-
-#confirm-load-from-repo-msg,
-#confirm-delete-from-repo-msg {
-  height: calc(100% - 55px);  
+  line-height: 16px;
 }
 
 
@@ -5475,7 +5458,7 @@ img.finder {
 
 #monitor-clear-btn {
   color: #603000;
-  background-color: white;
+  background-color: White;
   border: 1px solid #603000;
   box-shadow: inset #ffd0b0 0 0 8px 2px; 
 }
@@ -5572,7 +5555,7 @@ div.tabs {
 }
 
 div.tab {
-  color: gray;
+  color: Gray;
   border: 1px solid gray;
   border-radius: 4px;
   display: inline-block;
@@ -5588,7 +5571,7 @@ div.tab:hover {
 
 div.sel-tab {
   color: Black;
-  background-color: white;
+  background-color: White;
   border: 1px solid Black;
   box-shadow: inset #bfc0e2 0 0 7px 2px; 
 }
@@ -5625,8 +5608,8 @@ div.sel-tab {
   padding: 6px;
   width: calc(100% - 20px);
   height: calc(100% - 73px);
-  border: 1px solid silver;
-  background-color: white;
+  border: 1px solid Silver;
+  background-color: White;
   overflow: scroll;
 }
 
@@ -5642,16 +5625,27 @@ div.sel-tab {
 
 /* the CHANNEL DIALOG configures and activates the receiver */
 #channel-dlg {
-  width: 258px;
-  height: 102px;  
+  width: 208px;
+  height: min-content;  
 }
 
-#channel-path,
-#channel-callback {
-  width: 250px;
+#channel-name {
+  width: 150px;
   font-size: 12px;
+  height: 22px;
   margin-top: 2px;
   margin-bottom: 2px;
+}
+
+#channel-callback {
+  display: inline-block;
+  margin-left: 0px;
+}
+
+#channel-callback-lbl {
+  display: inline-block;
+  vertical-align: top;
+  padding-top: 3px;  
 }
 
 /* the DOCUMENTATION DIALOG displays comments and Linny-R reference */
@@ -5786,14 +5780,6 @@ td.markdown {
   height: 15px;
 }
 
-#compare-btn {
-  position: absolute;
-  left: 70px;
-  bottom: 1px;
-  width: 15px;
-  height: 15px;
-}
-
 #docu-save-btn {
   position: absolute;
   left: 1px;
@@ -5917,14 +5903,6 @@ div.call-stack-expr {
   text-shadow: black 1px -1px;
 }
 
-#confirm-load-from-repo-msg,
-#confirm-delete-from-repo-msg,
-#check-update-msg {
-  width: calc(100% - 8px);
-  margin: 3px;
-  overflow: auto;
-}
-
 #check-update-msg {
   width: calc(100% - 10px);
   margin: 5px;
@@ -5933,19 +5911,20 @@ div.call-stack-expr {
 }
 
 #move-buttons,
-#confirm-load-from-repo-buttons,
-#confirm-delete-from-repo-buttons,
+#confirm-load-model-buttons,
+#confirm-delete-model-buttons,
 #check-update-buttons {
   width: 100%;
   height: 23px;
   padding-top: 3px;
+  padding-bottom: 1px;
   font-size: 14px;
   white-space: nowrap;
 }
 
 #move-buttons > img,
-#confirm-load-from-repo-buttons > img,
-#confirm-delete-from-repo-buttons > img,
+#confirm-load-model-buttons > img,
+#confirm-delete-model-buttons > img,
 #check-update-buttons > img {
   float: none;
   height: 23px;

@@ -30,6 +30,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+function isEmpty(obj) {
+  // Test to check whether `obj` is like the "empty" object {}.
+  for(const prop in obj) {
+    if (Object.hasOwn(obj, prop)) return false;
+  }
+  return true;
+}
+
 //
 // Functions that facilitate HTTP requests
 //
@@ -89,7 +97,8 @@ function packFloat(f) {
   //   _  negative number, positive exponent
   //   ~  positive number, negative exponent
   //   =  negative number, negative exponent
-  if(!f) return '0';
+  // NOTE: 
+  if(Math.abs(f) < 1e-10) return '0';
   let sign = '',
       mant = '',
       exp = 0;
@@ -161,7 +170,9 @@ function packVector(vector) {
   let prev = false,
       cnt = 0;
   const vl = [];
-  for(const v of vector) {
+  for(let v of vector) {
+    // Apply the NEAR_ZERO threshold of the Virtual Machine.
+    if(Math.abs(v) < 1e-10) v = 0; 
     // While value is same as previous, do not store, but count.
     // NOTE: JavaScript precision is about 15 decimals, so test for
     // equality with this precision.
@@ -992,38 +1003,39 @@ function complement(sl1, sl2) {
 // Functions that support loading and saving data and models
 //
 
-function asFileName(s) {
-  // Return string `s` with whitespace converted to a single dash, and
-  // special characters converted to underscores.
-  return s.normalize('NFKD').trim()
-      .replace(/[\s\-]+/g, '-')
-      .replace(/[^A-Za-z0-9_\-]/g, '_')
-      .replace(/^[\-\_]+|[\-\_]+$/g, '');
-}
-
 function xmlEncoded(str) {
-  // Replaces &, <, >, ' and " by their HTML entity code
-  return str.replace(/\&/g, '&amp;').replace(/</g, '&lt;'
-    ).replace(/>/g, '&gt;').replace(/\'/g, '&apos;'
-    ).replace(/\"/g, '&quot;');
+  // Replace &, <, >, ', and " by their XML entity code.
+  return str.replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('\'', '&apos;')
+      .replaceAll('"', '&quot;')
+      // NOTE: To prevent data from breaking when saving via the browser.
+      .replaceAll('#', '%23');
 }
 
 function xmlDecoded(str) {
-  // Replaces HTML entity code for &, <, >, ' and " by the original character
-  // NOTE: also replaces Linny-R legacy newline encoding $$\n by two newline
-  // characters
-  return str.replace(/\&lt;/g, '<').replace(/\&gt;/g, '>'
-    ).replace(/\&apos;/g, '\'').replace(/\&quot;/g, '"'
-    ).replace(/\&amp;/g, '&').replace(/\$\$\\n/g, '\n\n');
+  // Replace XML entity code for &, <, >, ' and " by the original character
+  return str.replaceAll('&lt;', '<')
+      .replaceAll('&gt', '>')
+      .replaceAll('&apos;', '\'')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&amp;', '&')
+      // NOTE: The %23 encoding of # is applied in all Linny-R models since its
+      // browser-based implementation.
+      .replaceAll('%23', '#')
+      // NOTE: Also replace Linny-R *legacy* newline encoding $$\n by two
+      // newline characters.
+      .replaceAll('$$\n', '\n\n');
 }
 
 function customizeXML(str) {
-  // NOTE: This function can be customized to pre-process a model file,
+  // This function can be customized to pre-process a model file,
   // for example to rename entities in one go -- USE WITH CARE!
-  // To prevent unintended customization, check whether the model name
-  // ends with "!!CUSTOMIZE". This check ensures that the modeler must
-  // first save the model with this text as the (end of the) model name
-  // and then load it again for the customization to be performed.
+  // NOTE: To prevent unintended customization, check whether the model
+  // name ends with "!!CUSTOMIZE". This check ensures that the modeler
+  // must first save the model with this text as the (end of the) model
+  // name and then load it again for the customization to be performed.
   if(str.indexOf('!!CUSTOMIZE</name><author>') >= 0) {
     // Modify `str` -- by default, do nothing, but typical modifications
     // will replace RexEx patterns by other strings.    
@@ -1115,7 +1127,7 @@ function nodeParameterValue(node, param) {
 //
 
 function letterCode(n) {
-  // Encodes a non-negative integer as base-26 (0 = A, 25 = Z, 26 = AA, etc.)
+  // Encode a non-negative integer as base-26 (0 = A, 25 = Z, 26 = AA, etc.)
   const r = n % 26, d = (n - r) / 26, c = String.fromCharCode(65 + r);
   // NOTE: recursion!
   if(d) return letterCode(d) + c;
@@ -1123,7 +1135,7 @@ function letterCode(n) {
 }
 
 function parseLetterCode(lc) {
-  // Decodes a base-26 code into an integer. NOTE: does not check whether
+  // Decode a base-26 code into an integer. NOTE: does not check whether
   // the code is indeed base-26
   let n = 0;
   for(let i = 0; i < lc.length; i++) {
@@ -1133,7 +1145,7 @@ function parseLetterCode(lc) {
 }
 
 function randomID() {
-  // Generates a 22+ hex digit ID: timestamp plus 12 random bits as suffix
+  // Generate a 22+ hex digit ID: timestamp plus 12 random bits as suffix
   // plus 8 more random hex digits (earlier shorter version caused doubles!)
   const d = ((new Date()).getTime() + Math.random()) * 4096,
         e = Math.floor(Math.random() * 4294967296);
@@ -1328,6 +1340,7 @@ async function tryToDecrypt(msg, password, on_ok, on_error) {
 ///////////////////////////////////////////////////////////////////////
 
 if(NODE) module.exports = {
+  isEmpty: isEmpty,
   postData: postData,
   pluralS: pluralS,
   safeStrToFloat: safeStrToFloat,
@@ -1373,7 +1386,6 @@ if(NODE) module.exports = {
   tupelIndex: tupelIndex,
   intersection: intersection,
   complement: complement,
-  asFileName: asFileName,
   xmlEncoded: xmlEncoded,
   xmlDecoded: xmlDecoded,
   customizeXML: customizeXML,

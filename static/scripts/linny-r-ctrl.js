@@ -95,8 +95,6 @@ class Controller {
     // dataset, that therefore must have a system name
     this.EQUATIONS_DATASET_NAME = '___EQUATIONS___';
     this.EQUATIONS_DATASET_ID = this.EQUATIONS_DATASET_NAME.toLowerCase();
-    // Character to separate object name from attribute in variable names
-    this.OA_SEPARATOR = '|';
     // Use colon with space to separate prefixes and names of clones
     this.PREFIXER = ': ';
     // FROM->TO represented by solid right-pointing arrow with triangular head
@@ -136,14 +134,14 @@ class Controller {
       ENTITY_PROPS: ['units', 'actors', 'clusters', 'processes', 'products',
         'datasets', 'equations', 'links', 'constraints'],
       UNIT_PROPS: ['multiplier', 'base_unit'],
-      ACTOR_PROPS: ['weight', 'comments', 'TEX_id'],
+      ACTOR_PROPS: ['weight', 'comments'],
       CLUSTER_PROPS: ['comments', 'collapsed', 'ignore'],
       PROCESS_PROPS: ['comments', 'lower_bound', 'upper_bound', 'initial_level',
         'pace_expression', 'equal_bounds', 'level_to_zero', 'integer_level',
-        'collapsed', 'TEX_id'],
+        'collapsed'],
       PRODUCT_PROPS: ['comments', 'lower_bound', 'upper_bound', 'initial_level',
         'scale_unit', 'equal_bounds', 'price', 'is_source', 'is_sink', 'is_buffer',
-        'is_data', 'integer_level', 'no_slack', 'TEX_id'],
+        'is_data', 'integer_level', 'no_slack'],
       DATASET_PROPS: ['comments', 'default_value', 'scale_unit', 'time_scale',
         'time_unit', 'method', 'periodic', 'array', 'url', 'default_selector'],
       LINK_PROPS: ['comments', 'multiplier', 'relative_rate', 'share_of_cost',
@@ -248,7 +246,7 @@ class Controller {
     }
     return multi;  
   }
-  
+
   sizeInBytes(n) {
     // Returns `n` as string scaled to the most appropriate unit of bytes
     n = Math.round(n);
@@ -258,9 +256,27 @@ class Controller {
       m++;
       n /= 1024;
     }
-    return VM.sig2Dig(n) + ' ' + 'kMGTP'.charAt(m) + 'B';
+    return n.toPrecision(3) + ' ' + 'KMGTP'.charAt(m) + 'B';
   }
   
+  sizeInKBytesAsHTML(n) {
+    // Returns `n` as scaled to kilobytes, with thinspaces as thousands separator.
+    if(n < 512) return '> 1 KB';
+    const
+        digits = Math.round(n / 1024).toString().split(''),
+        parts = [];
+    let g = 0;
+    while(digits.length) {
+      parts.unshift(digits.pop());
+      g++;
+      if(g === 3) {
+        parts.unshift('&thinsp;');
+        g = 0;
+      }
+    }
+    return parts.join('') + ' KB';
+  }
+
   // Shapes are only used to draw model diagrams.
   
   createShape(mdl) {
@@ -282,9 +298,10 @@ class Controller {
     // Return `name` without the object-attribute separator |, backslashes,
     // and leading and trailing whitespace, and with all internal whitespace
     // reduced to a single space.
-    name = name.replace(this.OA_SEPARATOR, ' ')
-        .replace(/\||\\/g, ' ').trim()
-        .replace(/\s\s+/g, ' ');
+    name = name.replace(/\||\\/g, ' ').trim()
+        .replace(/\s\s+/g, ' ')
+        // NOTE: Accept ` -> ` (with spaces) as link arrow notation.
+        .replace(' -> ', this.LINK_ARROW);
     // NOTE: This may still result in a single space, which is not a name.
     if(name === ' ') return '';
     return name;
@@ -592,7 +609,7 @@ class Controller {
   errorOnPost(xhr) {
     this.alert(`Server error: ${xhr.status} ${xhr.statusText}`);
   }
-    
+  
   warningInvalidName(n) {
     this.warn(`Invalid name "${n}"`);
   }
@@ -633,6 +650,19 @@ class Controller {
     const ok = mtype === 'notification';
     if(!ok || notify) this.setMessage(text, mtype);
     return ok;
+  }
+  
+  fetchText(response) {
+    // Standard first THEN function for FETCH calls.
+    if(!response.ok) {
+      UI.alert(`ERROR ${response.status}: ${response.statusText}`);
+    }
+    return response.text();
+  }
+  
+  fetchCatch(err) {
+    // Standard final CATCH function for FETCH calls.
+    UI.warn(UI.WARNING.NO_CONNECTION, err);
   }
   
   loginPrompt() {
@@ -684,79 +714,6 @@ class Controller {
   logHeapSize() {}
   
 } // END of class Controller
-
-
-// CLASS RepositoryBrowser
-class RepositoryBrowser {
-  constructor() {
-    this.repositories = [];
-    this.repository_index = -1; 
-    this.module_index = -1;
-    // Get the repository list from the server.
-    this.getRepositories();
-    this.reset();
-  }
-  
-  reset() {
-    this.visible = false;
-    // NOTE: Do NOT reset repository list or module index, because:
-    // (1) they are properties of the local host, and hence model-independent;
-    // (2) they must be known when loading a module as model, whereas the
-    //     loadingModel method hides and resets all stay-on-top dialogs.
-  }
-
-  get isLocalHost() {
-    // Return TRUE if first repository on the list is 'local host'.
-    return this.repositories.length > 0 &&
-      this.repositories[0].name === 'local host';
-  }
-
-  getRepositories() {
-    // Get the list of repository names from the server.
-    this.repositories.length = 0;
-    fetch('repo/', postData({action: 'list'}))
-      .then((response) => {
-          if(!response.ok) {
-            UI.alert(`ERROR ${response.status}: ${response.statusText}`);
-          }
-          return response.text();
-        })
-      .then((data) => {
-          if(UI.postResponseOK(data)) {
-            // NOTE: Trim to prevent empty name strings.
-            for(const r of data.trim().split('\n')) {
-              this.addRepository(r.trim());
-            }
-          }
-          // NOTE: Set index to first repository on list (typically the
-          // local host repository) unless the list is empty.
-          this.repository_index = Math.min(0, this.repositories.length - 1);
-          this.updateDialog();
-        })
-      .catch((err) => UI.warn(UI.WARNING.NO_CONNECTION, err));
-  }
-  
-  repositoryByName(n) {
-    // Return the repository having name `n` if already known, or NULL.
-    for(const r of this.repositories) {
-      if(r.name === n) return r;
-    }
-    return null;
-  }
-  
-  loadModuleAsModel() {
-    // Load selected module as model.
-    if(this.repository_index >= 0 && this.module_index >= 0) {
-      // NOTE: When loading new model, the stay-on-top dialogs must be
-      // reset (GUI only; for console this is a "dummy" method).
-      UI.hideStayOnTopDialogs();
-      const r = this.repositories[this.repository_index];
-      // NOTE: pass FALSE to indicate "no inclusion; load XML as model".
-      r.loadModule(this.module_index, false);
-    }
-  }
-  
-}  // END of class RepositoryBrowser
 
 
 // CLASS DatasetManager controls the collection of datasets of a model
@@ -974,7 +931,7 @@ class SensitivityAnalysis {
       this.parameters = [];
       for(const p of MODEL.sensitivity_parameters) {
         const
-            vn = p.split(UI.OA_SEPARATOR),
+            vn = p.split('|'),
             obj = MODEL.objectByName(vn[0]),
             oax = (obj ? obj.attributeExpression(vn[1]) : null);
         if(oax) {
@@ -989,7 +946,7 @@ class SensitivityAnalysis {
       // Create the SA chart having a variable for each SA outcome.
       this.chart = new Chart(this.chart_title);
       for(const o of MODEL.sensitivity_outcomes) {
-        this.chart.addVariable(...o.split(UI.OA_SEPARATOR));
+        this.chart.addVariable(...o.split('|'));
       }
       // Create the SA experiment.
       this.experiment = new Experiment(this.experiment_title);

@@ -524,7 +524,7 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
       n = a;
     } else if(o && a) {
       // Most variables are defined by name + attribute ...
-      n = o + UI.OA_SEPARATOR + a;
+      n = o + '|' + a;
     } else if(e === 'Dataset' && o) {
       // ... but for datasets the selector is optional.
       n = o;

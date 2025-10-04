@@ -22,9 +22,10 @@ NOTE: The Linny-R model editor is implemented in JavaScript and will work
 "stand-alone" in modern web browsers. The model solver has been implemented as
 a server-side application, and requires a web server that will process the HTTP
 requests made by the virtual machine that translates a Linny-R model to MILP
-equations. Two such web servers have been implemented: one in PHP (for LAMPS
-production servers) and one in Python (for stand-alone computers). The Python
-implementation is made available via the Linny-R web site.
+equations. Three such web servers have been implemented: one in JavaScript
+(included in the Linny-R distribution via npm), one in Python (for stand-alone
+computers), and one in PHP (for LAMPS production servers). These implementations
+will be made available via GitHub in due time.
 -->
 
 <!--
@@ -50,14 +51,6 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 -->
   <link rel="shortcut icon" type="image/png" href="images/icon.png">
-  <link rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
-        integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV"
-        crossorigin="anonymous">
-  <!-- The loading of KaTeX is deferred to speed up page rendering -->
-  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"
-          integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8"
-          crossorigin="anonymous"></script>
   <!-- NOTE: do not display the page until after software update check -->
   <style>body { display: none; }</style>
   <script>
@@ -92,7 +85,6 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       DOCUMENTATION_MANAGER = null,
       TEX_MANAGER = null,
       RECEIVER = null,
-      REPOSITORY_BROWSER = null,
       // Stack for undo/redo operations
       UNDO_STACK = null,
       // The virtual machine
@@ -133,13 +125,11 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             '-gui-paper', '-gui-controller', '-gui-monitor',
             '-gui-file-manager', '-gui-expression-editor',
             '-gui-model-autosaver', '-gui-scale-unit-manager',
-            '-gui-power-grid-manager',
-            '-gui-actor-manager', '-gui-constraint-editor',
-            '-gui-repository-browser', '-gui-dataset-manager',
+            '-gui-power-grid-manager', '-gui-actor-manager',
+            '-gui-constraint-editor', '-gui-dataset-manager',
             '-gui-equation-manager', '-gui-chart-manager',
             '-gui-sensitivity-analysis', '-gui-experiment-manager',
-            '-gui-documentation-manager', '-gui-tex-manager',
-            '-gui-finder', '-gui-receiver',
+            '-gui-documentation-manager', '-gui-finder', '-gui-receiver',
             '-gui-undo-redo', '-vm', '-utils'], t);
       }
     }
@@ -223,9 +213,10 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     }
     
     function initializeLinnyR() {
-      // Protect user from unintentionally closing the browser
+      // Protect user from unintentionally closing the browser.
+      // NOTE: Obsolete now that browsers override with own prompt.
       window.onbeforeunload = () => { return 'Exit Linny-R?'; };
-      // NOTE: first create UI and Documentation Manager to report messages
+      // NOTE: First create UI and Documentation Manager to report messages.
       UI = new GUIController();
       UI.addListeners();
       DOCUMENTATION_MANAGER = new DocumentationManager();
@@ -242,23 +233,19 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       CONSTRAINT_EDITOR = new ConstraintEditor();  
       // NOTE: Instantiate the GUI classes, not their superclasses
       FILE_MANAGER = new GUIFileManager();
-      REPOSITORY_BROWSER = new GUIRepositoryBrowser();
       DATASET_MANAGER = new GUIDatasetManager();
       CHART_MANAGER = new GUIChartManager();
       SENSITIVITY_ANALYSIS = new GUISensitivityAnalysis();
       EXPERIMENT_MANAGER = new GUIExperimentManager();
       MONITOR = new GUIMonitor();
       RECEIVER = new GUIReceiver();
-      TEX_MANAGER = new TEXManager();
       // Check for software updates only when running on local server
       // NOTE: do this *after* GUI elements have been created, as the
       // updater uses a dialog
       if(!SOLVER.user_id) checkForUpdates();
-      // Initialize auto-saving function
-      AUTO_SAVE = new ModelAutoSaver();
-      // Create a new Linny-R model
+      // Create a new Linny-R model.
       UI.createNewModel();
-      // Connect the virtual machine (may prompt for password)
+      // Connect the virtual machine (may prompt for password).
       MONITOR.connectToServer();
     }
     
@@ -280,9 +267,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
            title="Change model settings (Alt-M)">
       <img id="save-btn" class="btn enab" src="images/save.png"
            title="Save model (Ctrl-S)
-&#x1F5C1; Shift-click to save to user workspace (Ctrl-Shift-S)">
-      <img id="repository-btn" class="btn enab" src="images/repository.png"
-           title="Browse repositories (Ctrl-B)">
+&#x270E; Shift-click to save it under a different name (Ctrl-Shift-S)
+&#x2B73; Alt-click to download it directly via the browser (Alt-S)">
       <img id="actors-btn" class="btn enab" src="images/actors.png"
            title="Manage actors (Ctrl-A)">
       <img id="dataset-btn" class="btn enab" src="images/dataset.png"
@@ -291,13 +277,13 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
            title="Manage equations (Ctrl-E)">
       <img id="chart-btn" class="btn enab" src="images/chart.png"
            title="Manage charts (Ctrl-O)">
+      <img id="savediagram-btn" class="btn enab" src="images/download-diagram.png"
+           title="Download diagram as Portable Network Graphics bitmap image (Ctrl-P)
+&#x270E; Shift-click to download as Scalable Vector Graphics (Ctrl-Shift-P)">
       <img id="sensitivity-btn" class="btn enab" src="images/sensitivity.png"
            title="Sensitivity analysis (Ctrl-J)">
       <img id="experiment-btn" class="btn enab" src="images/experiment.png"
            title="Manage experiments (Ctrl-X)">
-      <img id="savediagram-btn" class="btn enab" src="images/save-diagram.png"
-           title="Download diagram as Portable Network Graphics bitmap image (Ctrl-P)
-&#x270E; Shift-click to download as Scalable Vector Graphics (Ctrl-Shift-P)">
       <img id="finder-btn" class="btn enab" src="images/find.png"
            title="Find model elements by their name (Ctrl-F)">
       <img id="monitor-btn" class="btn enab" src="images/monitor.png"
@@ -306,8 +292,10 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
            title="Listen for commands from local host (Ctrl-H)">
       <img id="documentation-btn" class="btn enab" src="images/info.png"
            title="View information and documentation (Ctrl-I)">
-      <img id="tex-btn" class="btn enab" src="images/tex.png"
-           title="View mathematical formula for node under cursor">
+      <img id="compare-btn" class="btn enab" src="images/compare.png"
+           title="Compare current model A with some other model B (Ctrl-B)">
+      <img id="update-btn" class="btn enab off" src="images/update.png"
+           title="Update clusters that have been included in the model">
     </div>
     <!-- if diagram is not the TOP cluster, show a button to move up to the parent cluster -->
     <div id="focal-cluster">
@@ -319,8 +307,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       <img id="lift-btn" class="btn disab" src="images/lift.png"
            title="Move selection to parent cluster">
     </div>
-    <!-- solver host image -->
-    <div id="server-host" style="float: right">
+    <!-- Server host depicted in upper right corner -->
+    <div id="server-host-icon" style="float: right">
       <img id="host-logo" src="images/host-logo.png"
            title="Solver host">
     </div>
@@ -368,9 +356,6 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           <span id="next-issue">&#x25B7;</span>
         </td>
         <td id="info-line" title="Status bar"></td>
-        <td id="autosave-sep">
-          <img id="autosave-btn" class="btn enab" src="images/restore.png">
-        </td>
         <td id="recall-btn"
           title="To view previous messages, open the information dialog (Ctrl-I)
 and move the cursor over the status bar">
@@ -462,7 +447,11 @@ and move the cursor over the status bar">
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div id="server-host-div" title="Linny-R directory">Server on local host</div>
+      <div id="server-host-div">
+        <span id="server-host" title="Linny-R directory">Server on local host</span>
+        <img id="server-defaults-btn" class="sbtn enab" src="images/settings.png"
+             title="View/edit default model properties">
+      </div>
       <div id="server-no-solver-div">No solver detected</div>
       <div id="server-solver-div" hidden="hidden">
         <div id="server-sel">
@@ -473,6 +462,61 @@ and move the cursor over the status bar">
       </div>
       <button id="server-update" hidden="hidden">Update Linny-R to new version</button>
       <button id="server-shut-down">Shut down server</button>
+    </div>
+  </div>
+  
+  <!-- the DEFAULTS dialog permits modifying the Linny-R configuration file -->
+  <div id="defaults-modal" class="modal">
+    <div id="defaults-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Default properties for new models
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <table style="margin: 1px">
+        <tr>
+          <td>
+            <label>Author name:</label>
+            <input id="defaults-author" type="text" autocomplete="off">
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <label>Currency unit:</label>
+            <input id="defaults-currency" type="text"
+                   autocomplete="off" style="width: 45px">
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <label>Time step:</label>
+            <input id="defaults-time-scale" type="text"
+                   autocomplete="off" style="width: 50px">
+            <select id="defaults-time-unit">
+              <option value="year">year</option>
+              <option value="week">week</option>
+              <option value="day">day</option>
+              <option value="hour" selected="selected">hour</option>
+              <option value="minute">minute</option>
+              <option value="second">second</option>
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <label>Product unit:</label>
+            <input id="defaults-scale-unit" type="text"
+                   autocomplete="off" style="width: 50px">
+          </td>
+        </tr>
+        <tr title="When checked, data copied to clipboard from the Chart manager
+will be written with decimal comma instead of decimal point.">
+          <td>
+            <div id="defaults-comma" class="box clear"></div>
+            <div id="defaults-comma-lbl">Use decimal comma</div>
+          </td>
+        </tr>
+      </table>
     </div>
   </div>
   
@@ -488,77 +532,133 @@ and move the cursor over the status bar">
         <tr>
           <td>Name:</td>
           <td>
-            <input id="model-name" style="width: 219px"
-                   type="text" autocomplete="off">
+            <input id="model-name" type="text" autocomplete="off">
           </td>
         </tr>
         <tr>
           <td>Author:</td>
           <td>
-            <input id="model-author" style="width: 219px"
-                   type="text" autocomplete="off">
+            <input id="model-author" type="text" autocomplete="off">
           </td>
         </tr>
       </table>
     </div>
   </div>
 
-  <!-- the LOAD dialog prompts the user for a Linny-R model file on disk
-       to be loaded -->
-  <div id="load-modal" class="modal">
-    <div id="load-dlg" class="inp-dlg">
+  <!-- the SAVE dialog prompts for a new model name and more -->
+  <div id="save-modal" class="modal">
+    <div id="save-dlg" class="inp-dlg">
       <div class="dlg-title">
-        Load model
+        Save model
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <input id="load-xml-file" type="file">
-      <img id="load-autosaved-btn" class="btn enab" src="images/restore.png">
+      <table style="width: 100%">
+        <tr title="Use slash(es) to specify a subdirectory of the user workspace">
+          <td>Name:</td>
+          <td>
+            <input id="save-name" type="text" autocomplete="off">
+          </td>
+        </tr>
+        <tr>
+          <td>Author:</td>
+          <td>
+            <input id="save-author" type="text" autocomplete="off">
+          </td>
+        </tr>
+      </table>
+      <div>
+        <div id="save-encrypt" class="box clear"></div>
+        <div id="save-encrypt-lbl">
+          Encrypt
+        </div>
+        <div id="save-black-box-div">
+          <div id="save-black-box" class="box clear"></div>
+          <div id="save-black-box-lbl">
+            Black box
+          </div>
+        </div>        
+      </div>
+    </div>
+  </div>
+
+  <!-- The BROWSER modal is the main dialog for the File manager -->
+  <div id="browser-modal" class="modal">
+    <div id="browser-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="browser-action">Load</span>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div id="browser-buttons">
+        <img id="browser-system-btn" class="btn enab"
+             src="images/system.png"
+             title="Load model directly via browser">
+        <img id="browser-download-btn" class="btn enab"
+             src="images/download.png"
+             title="Download model directly via browser">
+        <img id="browser-delete-btn" class="btn enab off"
+             src="images/delete.png"
+             title="Delete selected model from folder">
+        <img id="browser-autosave-btn" class="btn enab off"
+             src="images/autosave-config.png"
+             title="View/edit auto-save settings">
+      </div>
+      <div id="browser-dir-scroll-area">
+        <table id="browser-dir-table">
+        </table>
+      </div>
+      <div id="browser-model-scroll-area">
+        <table id="browser-model-table">
+        </table>
+      </div>
+      <img id="browser-root-img" src="images/home.png" class="off">
+      <div id="browser-path"></div>
+      <div id="browser-resize" class="resizer"></div>
     </div>
   </div>
     
+  <!-- the UPLOAD dialog permits loading a model via the internet browser -->
+  <div id="upload-modal" class="modal">
+    <div id="upload-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="upload-action">Load</span> model from this computer
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="upload-xml-file" type="file">
+    </div>
+  </div>
+
   <!-- the PASSWORD dialog prompts the user for a password -->
   <div id="password-modal" class="modal">
     <div id="password-dlg" class="inp-dlg">
       <div class="dlg-title">
         <span id="password-action">Enter</span> password
         <img class="cancel-btn" src="images/cancel.png">
-        <img id="password-ok-btn" class="ok-btn" src="images/ok.png">
+        <img class="ok-btn" src="images/ok.png">
       </div>
       <input id="password-code" type="password">
-      <div id="password-strength-bar"></div>
     </div>
   </div>    
     
-  <!-- the RESTORE dialog allows the user to restore an auto-saved model -->
-  <div id="restore-modal" class="modal">
-    <div id="restore-dlg" class="inp-dlg">
+  <!-- the AUTOSAVE dialog allows the user to change auto-save settings -->
+  <div id="autosave-modal" class="modal">
+    <div id="autosave-dlg" class="inp-dlg">
       <div class="dlg-title">
-        <span id="restore-dlg-title">Restore auto-saved model</span>
-        <img id="restore-cancel" class="cancel-btn" src="images/cancel.png">
-        <img id="restore-confirm" class="ok-btn" src="images/ok.png">
+        Auto-save settings
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
       </div>
-      <div id="restore-scroll-area">
-        <table id="restore-table"></table>
-      </div>
-      <div id="auto-save-settings">
+      <div id="autosave-minutes-div">
         <label>Auto-save interval</label>
-        <input id="auto-save-minutes" type="text" autocomplete="off">
+        <input id="autosave-minutes" type="text" autocomplete="off">
         minutes <small>(0 = OFF)</small>
-        <label style="margin-left: 12px">Remove models after</label>
-        <input id="auto-save-hours" type="text" autocomplete="off">
-        hours
-        <img id="auto-save-clear-btn" class="btn enab" src="images/reset.png"
-             title="Remove all auto-saved models from user workspace">
       </div>
-      <div id="confirm-remove-models">
-        Really remove all auto-saved models from user workspace?
-        <strong>
-        <img id="autosave-do-remove" class="inline-ok-btn"
-             src="images/ok.png"> Yes
-        <img id="autosave-cancel" class="inline-cancel-btn"
-             src="images/cancel.png"> No
-        </strong>
+      <div id="autosave-hours-div"
+        <label>Remove models after</label>
+        <input id="autosave-hours" type="text" autocomplete="off">
+        hours
       </div>
     </div>
   </div>
@@ -599,7 +699,8 @@ and move the cursor over the status bar">
         </tr>
         <tr>
           <td colspan="2">Currency unit:&nbsp;
-            <input id="settings-currency-unit" type="text" style="width:45px">
+            <input id="settings-currency-unit" type="text"
+                   autocomplete="off" style="width:45px">
           </td>
         </tr>
       </table>
@@ -608,13 +709,13 @@ and move the cursor over the status bar">
           <td style="padding:0px">
             <div id="settings-block-arrows" class="box clear"></div>
           </td>
-          <td style="padding-bottom:4px">Show hidden flows as block arrows</td>
+          <td style="padding-bottom:1px">Show hidden flows as block arrows</td>
         </tr>
         <tr>
           <td style="padding:0px">
             <div id="settings-align-to-grid" class="box clear"></div>
           </td>
-          <td style="padding-bottom:4px">Snap to alignment grid with
+          <td style="padding-bottom:1px">Snap to alignment grid with
             <input id="settings-grid-pixels" type="text" autocomplete="off"
                    style="width:35px;text-align:center"> pixels resolution
           </td>
@@ -664,15 +765,15 @@ and move the cursor over the status bar">
           <td style="padding:0px">
             <div id="settings-diagnose" class="box clear"></div>
           </td>
-          <td style="padding-bottom:4px">Diagnose infeasible/unbounded problems</td>
-          </td>
+          <td style="padding-bottom:1px">Diagnose infeasible/unbounded problems</td>
+          </div>
         </tr>
         <tr>
           <td style="padding:0px">
             <div id="settings-power" class="box clear"></div>
           </td>
           <td>
-            <span style="padding-bottom:4px">Support power grid options</span>
+            <span style="padding-bottom:1px">Support power grid options</span>
             <img id="settings-power-btn" class="sbtn" src="images/power.png"
                  title="View/edit power grid settings">
           </td>
@@ -681,19 +782,19 @@ and move the cursor over the status bar">
           <td style="padding:0px">
             <div id="settings-cost-prices" class="box clear"></div>
           </td>
-          <td style="padding-bottom:4px">Infer and display cost prices</td>
+          <td style="padding-bottom:1px">Infer and display cost prices</td>
         </tr>
         <tr>
           <td style="padding:0px">
             <div id="settings-negative-flows" class="box clear"></div>
           </td>
-          <td style="padding-bottom:4px">Do not warn when process levels are < 0</td>
+          <td style="padding-bottom:1px">Do not warn when process levels are < 0</td>
         </tr>
         <tr>
           <td style="padding:0px">
             <div id="settings-decimal-comma" class="box clear"></div>
           </td>
-          <td style="padding-bottom:4px">
+          <td style="padding-bottom:1px">
             Use decimal <u>comma</u> when copying data to clipboard
           </td>
         </tr>
@@ -701,7 +802,7 @@ and move the cursor over the status bar">
           <td style="padding:0px">
             <div id="settings-report-results" class="box clear"></div>
           </td>
-          <td style="padding-bottom:4px">
+          <td style="padding-bottom:1px">
             Report results after each run
           </td>
         </tr>
@@ -709,7 +810,7 @@ and move the cursor over the status bar">
           <td style="padding:0px">
             <div id="settings-encrypt" class="box clear"></div>
           </td>
-          <td style="padding-bottom:4px">
+          <td style="padding-bottom:1px">
             Encrypt with password
           </td>
         </tr>
@@ -910,169 +1011,6 @@ NOTE: Products directly linked to such processes should have a proportional unit
     </div>
   </div>
 
-  <!-- the REPOSITORY BROWSER dialog allows interaction with repositories -->
-  <div id="repository-dlg" class="inp-dlg">
-    <div id="repository-hdr" class="dragger dlg-title">Repository browser
-      <img id="repository-close-btn" class="close-btn" src="images/close.png">
-    </div>
-    <div id="repository-not-implemented">
-      <div style="margin-top: 20px">
-        Repositories have not (yet) been implemented on this server.
-      </div>
-    </div>
-    <div id="repository-pane">
-      <div id="repository-buttons">
-        <img id="repo-add-btn" class="btn enab" src="images/add.png"
-             title="Add repository">
-        <img id="repo-remove-btn" class="btn disab" src="images/remove.png"
-             title="Remove selected repository from list">
-        <img id="repo-access-btn" class="btn disab" src="images/access.png"
-             title="Obtain write access for this repository (requires a valid token)">
-        <img id="repo-include-btn" class="btn disab" src="images/module.png"
-             title="Include module in current model">
-        <img id="repo-load-btn" class="btn disab" src="images/open.png"
-             title="Load model from repository">
-        <img id="repo-update-btn" class="btn disab" src="images/update.png"
-             title="Update clusters that have been included in the model">
-        <img id="repo-store-btn" class="btn enab" src="images/store.png"
-             title="Store model as module in repository">
-        <img id="repo-black-box-btn" class="btn enab" src="images/black-box.png"
-             title="Store model as &quot;black-box&quot; module in repository">
-        <img id="repo-delete-btn" class="btn disab" src="images/delete.png"
-             title="Delete selected module from repository">
-      </div>
-      <select id="repository-selector">
-      </select>
-      <div id="modules-header">Modules in repository</div>
-      <div id="modules-scroll-area">
-        <table id="modules-table">
-        </table>
-      </div>
-      <div id="modules-count"></div>
-    </div>
-    <div id="repository-resize" class="resizer"></div>
-  </div>
-    
-  <!-- the ADD REPOSITORY dialog prompts for a repository name, URL and token -->
-  <div id="add-repository-modal" class="modal">
-    <div id="add-repository-dlg" class="inp-dlg">
-      <div class="dlg-title">
-        Register a repository
-        <img class="cancel-btn" src="images/cancel.png">
-        <img class="ok-btn" src="images/ok.png">
-      </div>
-      <table style="width:100%">
-        <tr>
-          <td>Name:</td>
-          <td>
-            <input id="add-repository-name" type="text" autocomplete="off"
-                   style="width:230px">
-          </td>
-        </tr>
-        <tr>
-          <td>https://</td>
-          <td>
-            <input id="add-repository-url" type="text" autocomplete="off"
-                   style="width:230px; font-size:12px;">
-          </td>
-        </tr>
-        <tr>
-          <td>Token:</td>
-          <td>
-            <input id="add-repository-token" type="text" autocomplete="off"
-                   placeholder="(optional - required only for write access)"
-                   style="width:230px; font-size:12px;">
-          </td>
-        </tr>
-      </table>
-    </div>
-  </div>  
-
-  <!-- the ACCESS REPOSITORY dialog prompts for a token -->
-  <div id="access-repository-modal" class="modal">
-    <div id="access-repository-dlg" class="inp-dlg">
-      <div class="dlg-title">
-        Access repository <div id="access-repository-name"></div>
-        <img class="cancel-btn" src="images/cancel.png">
-        <img class="ok-btn" src="images/ok.png">
-      </div>
-      <table style="width:100%">
-        <tr>
-          <td>Token:</td>
-          <td>
-            <input id="access-repository-token" type="text" autocomplete="off"
-                   placeholder="(required for write access)"
-                   style="width:230px; font-size:12px;">
-          </td>
-        </tr>
-      </table>
-    </div>
-  </div>  
-
-  <!-- the STORE MODEL dialog suggests a file name and asks for OK -->
-  <div id="store-in-repository-modal" class="modal">
-    <div id="store-in-repository-dlg" class="inp-dlg">
-      <div class="dlg-title">
-        Store model in <span id="store-in-repository-name"></span>
-        <img class="cancel-btn" src="images/cancel.png">
-        <img class="ok-btn" src="images/ok.png">
-      </div>
-      <table style="width:100%">
-        <tr>
-          <td>Module:</td>
-          <td>
-            <input id="store-in-repository-model-name"
-                   type="text" autocomplete="off"
-                   style="width:266px; font-size:12px;">
-          </td>
-        </tr>
-        <tr>
-          <td colspan="2" style="font-size:10px">
-            <span style="font-size:11px; font-weight:bold">NOTE:</span>
-            By storing a model in this repository, you declare that you have
-            full copyright of this model, and that you make it available under the
-            <a href="https://creativecommons.org/licenses/by-sa/4.0"
-               target="_blank">
-            Creative Commons Attribution-ShareAlike (CC BY-SA) license</a>.
-            <img src="images/by-sa.svg" style="height:21px; margin-top:3px"> 
-          </td>
-        </tr>
-      </table>
-    </div>
-  </div>  
-
-  <!-- the STORE BLACK-BOX MODEL dialog suggests a file name and asks for OK -->
-  <div id="store-bb-in-repository-modal" class="modal">
-    <div id="store-bb-in-repository-dlg" class="inp-dlg">
-      <div class="dlg-title">
-        Store model as "black box" in
-        <span id="store-bb-in-repository-name"></span>
-        <img class="cancel-btn" src="images/cancel.png">
-        <img class="ok-btn" src="images/ok.png">
-      </div>
-      <table style="width:100%">
-        <tr>
-          <td>Module:</td>
-          <td>
-            <input id="store-bb-in-repository-model-name" type="text"
-                   autocomplete="off" style="width:266px; font-size:12px;">
-          </td>
-        </tr>
-        <tr>
-          <td colspan="2" style="font-size:10px">
-            <span style="font-size:11px; font-weight:bold">NOTE:</span>
-            By storing a model in this repository, you declare that you have
-            full copyright of this model, and that you make it available under the
-            <a href="https://creativecommons.org/licenses/by-sa/4.0"
-               target="_blank">
-            Creative Commons Attribution-ShareAlike (CC BY-SA) license</a>.
-            <img src="images/by-sa.svg" style="height:21px; margin-top:3px"> 
-          </td>
-        </tr>
-      </table>
-    </div>
-  </div>  
-
   <!-- the INCLUDE dialog prompts for a prefix and parameter bindings -->
   <div id="include-modal" class="modal">
     <div id="include-dlg" class="inp-dlg">
@@ -1101,15 +1039,15 @@ NOTE: Products directly linked to such processes should have a proportional unit
 
   <!-- the UPDATE dialog prompts for a module name -->
   <div id="update-modal" class="modal">
-    <div id="update-dlg" class="inp-dlg" style="min-width: 320px">
+    <div id="update-dlg" class="inp-dlg" style="min-width: 335px">
       <div class="dlg-title">
-        Update clusters previously included from a module
+        Update clusters previously included from a model file
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
       <div style="padding: 2px">
         <div>
-          Update using module: <span id="update-name"></span>
+          Update using model: <span id="update-name"></span>
         </div>
         <div>
           <label>Clusters based on:</label>
@@ -1131,18 +1069,17 @@ NOTE: Products directly linked to such processes should have a proportional unit
     </div>
   </div>  
 
-  <!-- the CONFIRM LOAD modal asks to confirm to load model from repository -->
-  <div id="confirm-load-from-repo-modal" class="modal">
-    <div id="confirm-load-from-repo-dlg" class="inp-dlg">
+  <!-- the CONFIRM LOAD modal asks to confirm to load model -->
+  <div id="confirm-load-model-modal" class="modal">
+    <div id="confirm-load-model-dlg" class="inp-dlg">
       <div class="dlg-title" style="background-color: #cc88b0">
         Confirm load model
       </div>
-      <div id="confirm-load-from-repo-msg">
-        Loading model
-        <span id="confirm-load-from-repo-mod-name"></span>
-        will discard changes you made to the current model. Continue?
+      <div id="confirm-load-model-msg">
+        Changes to current model will be discarded.<br>
+        Continue?
       </div>
-      <div id="confirm-load-from-repo-buttons">
+      <div id="confirm-load-model-buttons">
         <img class="ok-btn" src="images/ok.png">
         Yes
         <img class="cancel-btn" src="images/cancel.png">
@@ -1151,19 +1088,17 @@ NOTE: Products directly linked to such processes should have a proportional unit
     </div>
   </div>
 
-  <!-- the CONFIRM DELETE modal asks to confirm to delete module from repository -->
-  <div id="confirm-delete-from-repo-modal" class="modal">
-    <div id="confirm-delete-from-repo-dlg" class="inp-dlg">
+  <!-- the CONFIRM DELETE modal asks to confirm to delete file -->
+  <div id="confirm-delete-model-modal" class="modal">
+    <div id="confirm-delete-model-dlg" class="inp-dlg">
       <div class="dlg-title" style="background-color: #cc88b0">
         Confirm delete
       </div>
-      <div id="confirm-delete-from-repo-msg">
-        Really delete module
-        <span id="confirm-delete-from-repo-mod-name"></span>
-        from repository
-        <span id="confirm-delete-from-repo-name"></span>?
+      <div id="confirm-delete-model-msg">
+        This action cannot be undone.<br>
+        Continue?
       </div>
-      <div id="confirm-delete-from-repo-buttons">
+      <div id="confirm-delete-model-buttons">
         <img class="ok-btn" src="images/ok.png">
         Yes
         <img class="cancel-btn" src="images/cancel.png">
@@ -1338,28 +1273,37 @@ NOTE: Products directly linked to such processes should have a proportional unit
       <table style="width: 100%">
         <tr>
           <td>Name:</td>
-          <td><input id="cluster-name" style="width:270px"
-                     type="text" autocomplete="off"></td>
+          <td colspan="2">
+            <input id="cluster-name" style="width: 270px" type="text"
+                   autocomplete="off">
+          </td>
         </tr>
         <tr>
           <td>Actor:</td>
-          <td><input id="cluster-actor" style="width:270px"
-                     type="text" autocomplete="off"></td>
+          <td>
+            <input id="cluster-actor" style="width: 242px" type="text"
+                   autocomplete="off">
+          </td>
+          <td>
+            <img id="cluster-include-btn" class="mbtn enab" src="images/open.png"
+                 title="Include other model as cluster in current model">
+          </td>
         </tr>
       </table>
       <div id="cluster-options" hidden>
         <div id="cluster-collapsed" class="box clear"></div>
-        <div style="display:inline-block; vertical-align:top;
-                    margin-right:15px; padding-top:3px">
+        <div style="display: inline-block; vertical-align: top;
+                    margin-right: 15px; padding-top: 3px">
           Display as small square
         </div>
         <div id="cluster-ignore" class="box clear"></div>
-        <div style="display:inline-block; vertical-align:top;
-                    margin-right:15px; padding-top:3px">
+        <div style="display: inline-block; vertical-align: top;
+                    margin-right: 15px; padding-top: 3px">
           Ignore
         </div>
         <div id="cluster-black-box" class="box clear"></div>
-        <div style="display:inline-block;vertical-align:top; padding-top:3px">
+        <div style="display: inline-block; vertical-align: top;
+                    padding-top: 3px">
           Black box
         </div>
       </div>
@@ -1565,7 +1509,7 @@ NOTE: Products directly linked to such processes should have a proportional unit
       </div>
       <div id="boundline-data-remote">
         <img id="boundline-data-clip" src="images/paperclip.png">
-        <input id="boundline-data-url" type="text"
+        <input id="boundline-data-url" type="text" autocomplete="off"
                placeholder="URL or path on local host"
                title="Path can be absolute, or relative to (Linny-R)/user/data.
 Parameters %i, %j and %k will be replaced by the corresponding iterator values.">
@@ -1696,9 +1640,6 @@ Each line should represent the points of a different bound line.">
           km
         </div>
       </div>
-      <input id="process-tex-id" type="text"
-             title="TEX code to identify this process in formulas"
-             autocomplete="off" hidden="hidden">
     </div>
   </div>
 
@@ -1769,9 +1710,6 @@ Each line should represent the points of a different bound line.">
         <div id="product-no-links" class="box clear"></div>
         <div id="product-no-links-lbl">Hide related links</div>
       </div>
-      <input id="product-tex-id" type="text"
-             title="TEX code to identify this product in formulas"
-             autocomplete="off" hidden="hidden">
       <div id="product-io" title="Click to set/unset as model parameter">
         &#10063;
         <div id="product-import">&darr;</div>
@@ -2366,7 +2304,7 @@ NOTE: * and ? will be interpreted as wildcards"
                title="Copy table to clipboard (as HTML)">
         </div>
         <div id="chart-only-buttons">
-          <img id="chart-save-btn" class="btn enab" src="images/save-chart.png"
+          <img id="chart-save-btn" class="btn enab" src="images/download-chart.png"
                title="Download chart as bitmap image (PNG)
 &#x270E; Shift-click to download chart as Scalable Vector Graphics (SVG)">
           <img id="chart-widen-btn" class="btn enab" src="images/stretch.png"
@@ -2896,7 +2834,7 @@ NOTE: * and ? will be interpreted as wildcards"
             <option value="double">Double</option>
           </select>
           <label for="xp-download-precision">Precision:</label>
-          <input type="text" id="xp-download-precision"> digits
+          <input type="text" id="xp-download-precision" autocomplete="off"> digits
         </div>
       </fieldset>
     </div>
@@ -3160,7 +3098,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
         </div>
         <div id="xp-clusters-selectors-div">
           Selector(s):
-          <input id="xp-clusters-selectors" type="text">
+          <input id="xp-clusters-selectors" type="text" autocomplete="off">
           <img id="xp-clusters-delete-btn" src="images/remove.png"
                class="btn enab" title="Delete cluster from list">
         </div>
@@ -3177,7 +3115,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
       <img id="finder-close-btn" class="close-btn" src="images/close.png">
     </div>
     <div id="finder-filter-bar">
-      <input id="finder-filter-text" type="text"
+      <input id="finder-filter-text" type="text" autocomplete="off"
              placeholder="(name filtering pattern)"
              title="Pattern may contain logical & (AND), | (OR) and ^ (NOT)
 Limit search by starting with a type selector X?
@@ -3292,32 +3230,6 @@ where X can be one or several of these letters: ABCDELPQ">
     <div id="monitor-resize" class="resizer"></div>
   </div>
   
-  <!-- the TEX dialog shows mathematical equations for nodes -->
-  <div id="tex-dlg" class="inp-dlg">
-    <div id="tex-hdr" class="dragger dlg-title">Mathematical formulas
-      <img id="tex-close-btn" class="close-btn" src="images/close.png">
-    </div>
-    <div id="tex-entity"></div>
-    <div id="tex-tabs" class="tabs">
-      <div id="tex-formula-tab" class="tab sel-tab"
-           title="Mathematical formula">
-        Formula
-      </div>
-      <div id="tex-code-tab" class="tab"
-           title="Formula in TEX syntax">
-        TEX code
-      </div>
-      <span style="margin-left: 20px; font-style: italic; color: purple">
-        Work in progress!
-      </span>
-    </div>
-    <div id="tex-formula"></div>
-    <textarea id="tex-code" autocomplete="off" autocorrect="off"
-        autocapitalize="off" spellcheck="false" hidden="hidden"
-        readonly="true"></textarea>
-    <div id="tex-resize" class="resizer"></div>
-  </div>
-  
   <!-- the CHANNEL dialog prompts for two paths: channel and call-back -->
   <div id="channel-modal" class="modal">
     <div id="channel-dlg" class="inp-dlg">
@@ -3328,14 +3240,17 @@ where X can be one or several of these letters: ABCDELPQ">
       </div>
       <div style="margin:3.5px">
         <div>
-          Channel:<br>
-          <input id="channel-path" type="text" autocomplete="off"
-                 placeholder="(main)/channel">
+          Channel:
+          <select id="channel-name" type="text" autocomplete="off" disabled
+              title="To add a channel, you must create a new sub-directory of (Linny-R)/user/channel/">
+          </select>
         </div>
         <div>
-          Call-back command:<br>
-          <input id="channel-callback" type="text" placeholder="(optional)"
-                 autocomplete="off">
+          <div id="channel-callback" class="box clear disab"></div>
+          <div id="channel-callback-lbl" class="lbl-disab"
+              title="Call-back can be enabled only when channel directory contains Python file &ldquo;call-back.py&rdquo;">
+            Enable call-back
+          </div>
         </div>
       </div>
     </div>
@@ -3358,8 +3273,6 @@ where X can be one or several of these letters: ABCDELPQ">
          title="Copy documentation to clipboard">
     <img id="docu-model-info-btn" class="btn enab"  src="images/model-info.png"
          title="Show all model documentation">
-    <img id="compare-btn" class="btn enab"  src="images/compare.png"
-         title="Show differences between current model and some other model">
     <img id="docu-save-btn" class="ok-btn" src="images/ok.png"
          title="Save">
     <img id="docu-cancel-btn" class="cancel-btn" src="images/cancel.png"
@@ -3393,19 +3306,6 @@ where X can be one or several of these letters: ABCDELPQ">
       cursor over status bar 
     </div>
     <div id="documentation-resize" class="resizer"></div>
-  </div>
-  
-  <!-- the PROMPT FOR COMPARISON dialog prompts the user for a Linny-R model
-       file on disk to be compared with the current model -->
-  <div id="comparison-modal" class="modal">
-    <div id="comparison-dlg" class="inp-dlg">
-      <div class="dlg-title">
-        Select model to compare with current model
-        <img class="cancel-btn" src="images/cancel.png">
-        <img class="ok-btn" src="images/ok.png">
-      </div>
-      <input id="comparison-xml-file" type="file">
-    </div>
   </div>
   
   <!-- the CALL STACK modal shows the VM's expression call stack
