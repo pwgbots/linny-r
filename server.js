@@ -52,6 +52,9 @@ const
 
     // Get the platform name (win32, macOS, linux) of the user's computer.
     PLATFORM = os.platform(),
+    
+    // Get the local time zone offset in msec.
+    TIME_ZONE_OFFSET = new Date().getTimezoneOffset() * 60000,
 
     // Get version of the installed Linny-R package.
     VERSION_INFO = getVersionInfo();
@@ -123,13 +126,13 @@ try {
   console.log('WARNING: Failed to get user name');
 }
 
-// Only now require the Node.js modules that are not "built-in"
+// Only now require the Node.js modules that are not "built-in".
 
 const
     { DOMParser } = checkNodeModule('@xmldom/xmldom');
 
 function checkNodeModule(name) {
-  // Catches the error if Node.js module `name` is not available
+  // Catch the error if Node.js module `name` is not available.
   try {
     return require(name);
   } catch(err) {
@@ -141,7 +144,7 @@ function checkNodeModule(name) {
 // Currently, these external solvers are supported:
 const SUPPORTED_SOLVERS = ['gurobi', 'mosek', 'cplex', 'scip', 'lp_solve'];
 
-// Load class MILPSolver
+// Load class MILPSolver.
 const MILPSolver = require('./static/scripts/linny-r-milp.js');
 
 
@@ -217,14 +220,14 @@ function launchGUI() {
 
 // Server action logging functionality
 // ===================================
-// Only actions are logged to the console as with date and time;
-// error messages are not prefixed, so these are logged directly.
+// Only actions are logged to the console as with date and time.
+// Error messages are not prefixed, so these are logged directly.
 
 function logAction(msg) {
   // Log request processing to console with time-zone-aware date and time
   const
       t = new Date(),
-      tzt = new Date(t.getTime() - t.getTimezoneOffset()*60000),
+      tzt = new Date(t.getTime() - TIME_ZONE_OFFSET),
       dts = tzt.toISOString().substring(0, 19).replace('T', ' ');
   console.log(`[${dts}] ${msg}`);
 }
@@ -232,10 +235,10 @@ function logAction(msg) {
 // Version check functionality
 // ===========================
 // This section of code implements server responses to the request made
-// by the browser immediately after loading the GUI page (`index.html`)
+// by the browser immediately after loading the GUI page (`index.html`).
 
 function autoCheck(res) {
-  // Serves a string with the current version number plus info on a
+  // Serve a string with the current version number plus info on a
   // newer release if this is available.
   let check = VERSION_INFO.current + '|';
   if(VERSION_INFO.up_to_date) {
@@ -247,7 +250,7 @@ function autoCheck(res) {
 }
 
 function setNewerVersion() {
-  // Creates the file "newer_version" in the working directory, so that
+  // Create the file "newer_version" in the working directory, so that
   // when the server is run from the standard batch script it will detect
   // that an update is required.
   const nvf = path.join(WORKING_DIRECTORY, 'newer_version');
@@ -260,7 +263,7 @@ function setNewerVersion() {
 }
 
 function clearNewerVersion() {
-  // Forestalls auto-update by deleting the file "newer_version" that may
+  // Forestall auto-update by deleting the file "newer_version" that may
   // have been created at start-up from the working directory.
   try {
     fs.unlink(path.join(WORKING_DIRECTORY, 'newer_version'));
@@ -380,8 +383,9 @@ function pluralS(n, s) {
 //          information, such as size and time last modified.
 //  load    Return the content of the specified file.
 //  delete  Delete the specified file from the specified location.
+//  move    Move the specified file to the specified directory.
 //  store   Write XML content to the specified file in the specified location.
-//  purge   Delete all expired autosaved model files.
+//  purge   Delete all expired auto-saved model files.
 
 // Linny-R has a models repository on GitHub:
 const
@@ -465,7 +469,7 @@ function getDirectoryContents(root, rel_path='') {
             data = {
                 name: e.name.slice(0, -4),
                 size: stat.size,
-                time: stat.mtime
+                time: new Date(stat.mtime - TIME_ZONE_OFFSET)
               };
         // Add model file descriptor to the model list.
         c.models.push(data);
@@ -497,11 +501,14 @@ function getDirectoryContents(root, rel_path='') {
 function purgeAutoSaveDir(res, period) {
   // Delete all expired Linny-R model files from the autosave directory.
   const now = new Date();
-  period = (period ? parseInt(period) : 24) * 3600000;
-  let msg = '';
+  period = (period ? parseInt(period) : 24);
+  let msg = '',
+      fail_count = 0,
+      purge_count = 0;
   try {
-    let fail_count = 0;
-    const flist = fs.readdirSync(WORKSPACE.autosave);
+    const
+        msec =  period * 3600000,
+        flist = fs.readdirSync(WORKSPACE.autosave);
     for(const fn of flist) {
       // NOTE: Only consider Linny-R model files (extension .lnr).
       if(fn.endsWith('.lnr')) {
@@ -509,9 +516,10 @@ function purgeAutoSaveDir(res, period) {
             fp = path.join(WORKSPACE.autosave, fn),
             fstat = fs.statSync(fp);
         // Delete if file has expired.
-        if(now - fstat.mtimeMs > period) {
+        if(now - fstat.mtimeMs > msec) {
           try {
             fs.unlinkSync(fp);
+            purge_count++;
           } catch(err) {
             console.log('WARNING: Failed to delete', fp);
             console.log(err);
@@ -530,6 +538,8 @@ function purgeAutoSaveDir(res, period) {
     console.log(err);
   }
   // Empty message indicates success.
+  if(!msg && purge_count) msg = 'Purged ' + pluralS(purge_count, 'model') +
+    ` auto-saved more than ${pluralS(period, 'hour')} ago`;
   servePlainText(res, msg);
 }
 
@@ -618,6 +628,7 @@ function fetchGitHubDirs(res, dir) {
     if(!dir.parent) {
       // Serve the complete directory tree.
       stripParents(dir);
+      countModels(dir);
       serveJSON(res, dir);
     } else {
       // Continue with the parent directory.
@@ -688,8 +699,9 @@ function browse(res, sp) {
   // All other actions require root and path.
   const
       root = sp.get('root'),
-      rel_path = sp.get('path');
-  let file_name = sp.get('model') || '';
+      rel_path = sp.get('path'),
+      model_name = sp.get('model') || '';
+  let file_name = model_name;
   if(file_name && !file_name.endsWith('.lnr')) file_name += '.lnr';
   logAction(`File browser: ${action}  ${root}  ${rel_path}  ${file_name}`);
   let msg = '',
@@ -764,6 +776,25 @@ function browse(res, sp) {
       msg = `ERROR: Failed to read file "${full_path}"`;
       error = err;
     }
+  } else if(action === 'move') {
+    // NOTE: Models can be moved on
+    const
+        rel_to_path = sp.get('to_path') || '',
+        to_path = path.join(WORKSPACE.models, rel_to_path);
+    if(fs.existsSync(to_path)) {
+      const to_file = path.join(to_path, file_name);
+      try {
+        fs.renameSync(full_path, to_file);
+        servePlainText(res, `Moved model <tt>${model_name}</tt> to ` +
+            `workspace <tt>${path.join('models', rel_to_path)}</tt>`);
+        return;
+      } catch(err) {
+        msg = `WARNING: Failed to move "${full_path}" to "${to_path}"`;
+        error = err;          
+      }
+    } else {
+      msg = `WARNING: Destination path "${to_path}" not found`;
+    }
   } else if(action === 'delete') {
     try {
       fs.unlinkSync(full_path);
@@ -800,26 +831,27 @@ function browse(res, sp) {
 // ============================
 // This code section implements the retrieval of time series data from the URL
 // or file path (on local host) when such a URL or path is specified in the
-// Dataset dialog
+// Dataset dialog.
 
 function anyOSpath(p) {
   // Helper function that converts any path notation to platform notation
-  // based on the predominant separator
+  // based on the predominant separator.
   const
      s_parts = p.split('/'),
      bs_parts = p.split('\\'),
      parts = (s_parts.length > bs_parts.length ? s_parts : bs_parts);
-  // On macOS machines, paths start with a slash, so first substring is empty
+  // On macOS machines, paths start with a slash, so first substring is empty.
   if(parts[0].endsWith(':') && path.sep === '\\') {
-    // On Windows machines, add a backslash after the disk (if specified)
+    // On Windows machines, add a backslash after the disk (if specified).
     parts[0] += path.sep;
   }
-  // Reassemble path for the OS of this machine
+  // Reassemble path for the OS of this machine.
   return path.join(...parts);
 }
 
 function loadData(res, url) {
-  // Passed parameter is the URL or full path.
+  // Serve text content from a URL, or from a file when `url` specifies a
+  // directory path.
   logAction('Load data from ' + url);
   if(!url) servePlainText(res, 'ERROR: No URL or path');
   if(url.toLowerCase().startsWith('http')) {
@@ -937,7 +969,6 @@ function rcvrChannelList(res) {
     servePlainText(res, `ERROR: Failed to get channel list`);
   }
 }
-
 
 function rcvrListen(res, rpath) {
   // "Listen" at the channel means: look in the channel directory for a Linny-R
@@ -1276,9 +1307,9 @@ function storeAutoSaveSettings(res, sp) {
 //
 // To provide some minimum of security, the files that will be served
 // from the (main)/static directory are restricted to specific MIME
-// types, files, and sub-directories of (main)/static
+// types, files, and sub-directories of (main)/static.
 const STATIC_FILES = {
-    // MIME types of files that can be served
+    // MIME types of files that can be served.
     extensions: {
         js: 'application/javascript',
         xml: 'application/xml',
@@ -1295,14 +1326,14 @@ const STATIC_FILES = {
         txt: 'text/plain'
       },
     // Subdirectories of (main)/static/ directory from which files with
-    // accepted MIME types can be served
+    // accepted MIME types can be served.
     directories: {
         '/scripts': ['js'],
         '/images': ['icns', 'ico', 'png', 'svg'],
         '/fonts': ['otf', 'ttc', 'ttf'],
         '/sounds': ['wav']
       },
-    // Files that can be served from the (main)/static/ directory itself
+    // Files that can be served from the (main)/static/ directory itself.
     files: [
         '/index.html',
         '/show-png.html',
@@ -1381,7 +1412,7 @@ function processRequest(req, res, cmd, data) {
     } else if(action === 'solve') {
       serveJSON(res, SOLVER.solveBlock(sp));
     } else {
-      // Invalid action => return JSON with error message
+      // Invalid action => return JSON with error message.
       const msg = `Invalid action: "${action}"`;
       console.log(msg);
       serveJSON(res, {error: msg});
@@ -1449,7 +1480,7 @@ function serveJSON(res, obj) {
 }
 
 function permittedFile(path) {
-  // Returns TRUE when file specified by `path` may be served
+  // Return TRUE iff file specified by `path` may be served.
   if(path === '/' || path === '') path = '/index.html';
   if(STATIC_FILES.files.indexOf(path) >= 0) return true;
   const
@@ -1462,9 +1493,9 @@ function permittedFile(path) {
 }
 
 function serveStaticFile(res, path) {
-  // Serve the specified path (if permitted: only static files)
+  // Serve the specified path (if permitted: only static files).
   if(path === '/' || path === '') path = '/index.html';
-  // Serve files from the (main)/static/ subdirectory
+  // Serve files from the (main)/static/ subdirectory.
   logAction('Static file: ' + path);
   path = MODULE_DIRECTORY + '/static' + path;
   fs.readFile(path, (err, data) => {
@@ -1486,7 +1517,7 @@ function serveStaticFile(res, path) {
 //
 
 function commandLineSettings() {
-  // Sets default settings, and then checks the command line arguments.
+  // Set default settings, and then checks the command line arguments.
   const settings = {
       cli_name: (PLATFORM.startsWith('win') ? 'Command Prompt' : 'Terminal'),
       launch: false,
@@ -1603,7 +1634,7 @@ function createWorkspace() {
 }
 
 function createLaunchScript() {
-  // Creates platform-specific script with Linny-R start-up command
+  // Create platform-specific script with Linny-R start-up command.
   const
       lines = [
         '# The first line (without the comment symbol #) should be like this:',

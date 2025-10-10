@@ -124,7 +124,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         loadScripts(['-config', '-model', '-ctrl',
             '-gui-paper', '-gui-controller', '-gui-monitor',
             '-gui-file-manager', '-gui-expression-editor',
-            '-gui-model-autosaver', '-gui-scale-unit-manager',
+            '-gui-scale-unit-manager',
             '-gui-power-grid-manager', '-gui-actor-manager',
             '-gui-constraint-editor', '-gui-dataset-manager',
             '-gui-equation-manager', '-gui-chart-manager',
@@ -262,15 +262,16 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       <img id="new-btn" class="btn enab" src="images/new.png"
            title="Create new model">
       <img id="load-btn" class="btn enab" src="images/open.png"
-           title="Load model (Ctrl-L)">
+           title="Load model (Ctrl-L)
+&#x21A5; Alt-click to upload it via the browser">
       <img id="settings-btn" class="btn enab" src="images/settings.png"
            title="Change model settings (Alt-M)">
       <img id="save-btn" class="btn enab" src="images/save.png"
            title="Save model (Ctrl-S)
 &#x270E; Shift-click to save it under a different name (Ctrl-Shift-S)
-&#x2B73; Alt-click to download it directly via the browser (Alt-S)">
+&#x202F;&#x2B73;&#x202F;&#x202F;Alt-click to download it directly via the browser">
       <img id="actors-btn" class="btn enab" src="images/actors.png"
-           title="Manage actors (Ctrl-A)">
+           title="Manage actors (Alt-A)">
       <img id="dataset-btn" class="btn enab" src="images/dataset.png"
            title="Manage datasets (Ctrl-D)">
       <img id="equation-btn" class="btn enab" src="images/equation.png"
@@ -278,7 +279,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       <img id="chart-btn" class="btn enab" src="images/chart.png"
            title="Manage charts (Ctrl-O)">
       <img id="savediagram-btn" class="btn enab" src="images/download-diagram.png"
-           title="Download diagram as Portable Network Graphics bitmap image (Ctrl-P)
+           title="&#x202F;&#x2B73;&#x202F;&#x202F;Download diagram as Portable Network Graphics bitmap image (Ctrl-P)
 &#x270E; Shift-click to download as Scalable Vector Graphics (Ctrl-Shift-P)">
       <img id="sensitivity-btn" class="btn enab" src="images/sensitivity.png"
            title="Sensitivity analysis (Ctrl-J)">
@@ -380,7 +381,8 @@ and move the cursor over the status bar">
     <img id="replace-btn" class="btn disab" src="images/replace-product.png"
          title="Replace selected product by some other product (Alt-P)">
     <img id="clone-btn" class="btn disab" src="images/clone.png"
-         title="Copy selection (Ctrl-C) &ndash; Alt-click to clone (Alt-C)">
+         title="Copy selection (Ctrl-C)
+&#x2750; Alt-click to clone (Alt-C)">
     <img id="paste-btn" class="btn disab sep" src="images/paste.png"
          title="Paste selection (Ctrl-V)">
     <img id="delete-btn" class="btn disab sep" src="images/delete.png"
@@ -549,7 +551,7 @@ will be written with decimal comma instead of decimal point.">
   <div id="save-modal" class="modal">
     <div id="save-dlg" class="inp-dlg">
       <div class="dlg-title">
-        Save model
+        <span id="save-action">Save</span> model
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
@@ -608,6 +610,11 @@ will be written with decimal comma instead of decimal point.">
         <table id="browser-dir-table">
         </table>
       </div>
+      <div id="browser-model-header">
+        <div id="browser-name-header" class="sort-asc">Model name</div>
+        <div id="browser-time-header">Date and time</div>
+        <div id="browser-size-header">Size</div>
+      </div>
       <div id="browser-model-scroll-area">
         <table id="browser-model-table">
         </table>
@@ -634,11 +641,35 @@ will be written with decimal comma instead of decimal point.">
   <div id="password-modal" class="modal">
     <div id="password-dlg" class="inp-dlg">
       <div class="dlg-title">
-        <span id="password-action">Enter</span> password
+        Enter password
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
       <input id="password-code" type="password">
+    </div>
+  </div>    
+    
+  <!-- the SET PASSWORD dialog prompts the user for a password -->
+  <div id="set-password-modal" class="modal">
+    <div id="set-password-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Set password
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="set-password-code" type="password">
+    </div>
+  </div>    
+    
+  <!-- the CONFIRM PASSWORD dialog prompts to confirm a password -->
+  <div id="confirm-password-modal" class="modal">
+    <div id="confirm-password-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        Confirm password
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <input id="confirm-password-code" type="password">
     </div>
   </div>    
     

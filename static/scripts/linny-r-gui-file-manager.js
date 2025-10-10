@@ -46,13 +46,16 @@ class GUIFileManager {
     // file browser modal has already been created.
     const md = UI.modals.browser;
     this.modal = md;
-    UI.resizableDialog('browser');
+    UI.resizableDialog('browser', 'FILE_MANAGER');
     // However, all its components still need to be initialized.
     this.dir_table = md.element('dir-table');
     this.model_table = md.element('model-table');
     this.model_sa = md.element('model-scroll-area');
     this.system_btn = md.element('system-btn');
     this.delete_btn = md.element('delete-btn');
+    this.name_header = md.element('name-header');
+    this.time_header = md.element('time-header');
+    this.size_header = md.element('size-header');
     this.resizer = md.element('resize');
     // Root dir object will be fetched from server.
     this.root_dirs = {};
@@ -70,6 +73,9 @@ class GUIFileManager {
     // Number of sub-directories in the selected directory
     // (shown as the first rows of the models table)
     this.sd_count = 0;
+    // Model file name sort criterion and direction.
+    this.sort_key = 'name';
+    this.sort_direction = 'asc';
     // File name (without '.lnr') from which XML data has been read.
     this.model_file_name = '';
     // List of included models (inferred from clusters in current model).
@@ -80,7 +86,7 @@ class GUIFileManager {
     this.action = 'load';
     this.download_via_browser = false;
 
-    // Add event listeners to elements.
+    // Add event listeners to buttons.
     md.ok.addEventListener('click',
         () => FILE_MANAGER.enterKey());
     md.cancel.addEventListener('click',
@@ -93,8 +99,56 @@ class GUIFileManager {
         () => FILE_MANAGER.confirm_delete_modal.show());
     md.element('autosave-btn').addEventListener('click',
         () => FILE_MANAGER.showAutoSaveDialog());
+    
+    // Add event listeners to model table header.
+    this.name_header.addEventListener('click',
+        () => FILE_MANAGER.toggleSort('name'));
+    this.time_header.addEventListener('click',
+        () => FILE_MANAGER.toggleSort('time'));
+    this.size_header.addEventListener('click',
+        () => FILE_MANAGER.toggleSort('size'));
 
     // Add modal dialogs.
+    this.save_modal = new ModalDialog('save');
+    this.save_modal.ok.addEventListener('click',
+        () => FILE_MANAGER.saveAsNewModel());
+    this.save_modal.cancel.addEventListener('click',
+        () => FILE_MANAGER.save_modal.hide());
+    
+    // NOTE: Three different password modals: for setting, for confirming,
+    // and for authentication.
+    this.set_password_modal = new ModalDialog('set-password');
+    this.set_password_modal.ok.addEventListener('click',
+        () => FILE_MANAGER.confirmPassword());
+    this.set_password_modal.cancel.addEventListener('click',
+        () => FILE_MANAGER.set_password_modal.hide());
+    this.set_password_modal.element('code').addEventListener('input',
+        () => FILE_MANAGER.updatePasswordStrength());
+    // Set password dialog will (temporarily!) record the new password
+    // to be used for encryption, and also a boolean indicating whether
+    // the model should be "black-boxed" before saving. 
+    this.set_password_modal.encryption_code = '';
+    this.set_password_modal.as_black_box = false;
+
+    this.confirm_password_modal = new ModalDialog('confirm-password');
+    this.confirm_password_modal.ok.addEventListener('click',
+        () => FILE_MANAGER.encryptModel());
+    this.confirm_password_modal.cancel.addEventListener('click',
+        () => FILE_MANAGER.confirm_password_modal.hide());
+    this.confirm_password_modal.element('code').addEventListener('input',
+        () => FILE_MANAGER.comparePasswords());
+
+    this.password_modal = new ModalDialog('password');
+    this.password_modal.ok.addEventListener('click',
+        () => FILE_MANAGER.startToDecrypt());
+    this.password_modal.cancel.addEventListener('click',
+        () => FILE_MANAGER.password_modal.hide());
+    // NOTE: The encrypted content is (temporarily!) stored as a property
+    // of the "enter password" modal dialog.
+    this.password_modal.encrypted_msg = null;
+
+    // The Upload modal has a "select file" button that permits browsing
+    // the computer via the OS.
     this.upload_modal = new ModalDialog('upload');
     this.upload_modal.ok.addEventListener('click',
         () => FILE_MANAGER.uploadModelViaBrowser());
@@ -155,6 +209,69 @@ class GUIFileManager {
     this.autosave_timeout_id = 0;
   }
   
+  updateDialog() {
+    // Called only when resizing the modal dialog. No update needed
+    // except the column labels of the models table.
+    const mtbl = this.modal.element('model-table');
+    // Get the last table row (or NULL if none).
+    let mtlr = mtbl;
+    while(mtlr && mtlr.nodeName !== "TR") mtlr = mtlr.lastElementChild;
+    if(mtlr) {
+      // If row exists, get its TD elements of name, date and size.
+      const
+          name_td = mtlr.firstElementChild,
+          time_td = (name_td ? name_td.nextElementSibling : null),
+          size_td = (time_td ? time_td.nextElementSibling : null);
+      // NOTE: No date and size for directory rows...
+      if(time_td && size_td) {
+        this.name_header.style.width = window.getComputedStyle(name_td).width;
+        this.time_header.style.width = window.getComputedStyle(time_td).width;
+        this.size_header.style.width = window.getComputedStyle(size_td).width;
+      } else if(name_td) {
+        // If no model file rows, let name TD take the full table width.
+        this.name_header.style.width = window.getComputedStyle(mtbl).width;
+      }
+    }
+  }
+  
+  toggleSort(key) {
+    // Change sorting direction of model files.
+    const
+        old_key = this.sort_key,
+        old_div = this.modal.element(old_key + '-header'),
+        new_div = this.modal.element(key + '-header'),
+        old_direction = this.sort_direction,
+        new_direction = (old_direction === 'asc' ? 'desc' : 'asc');
+    this.sort_key = key;
+    // Only toggle between ascending and descending when already sorting
+    // on `key`; when changing key, start by sorting in ascending order. 
+    this.sort_direction = (old_key !== key ? 'asc' : new_direction);
+    old_div.classList.remove('sort-' + old_direction);
+    new_div.classList.add('sort-' + this.sort_direction);
+    if(this.selected_dir && this.m_count > 0) {
+      const
+          m_list = this.selected_dir.models,
+          smi = this.model_index - this.sd_count,
+          smn = (smi < 0 ? '' : m_list[smi].name),
+          sort_sign = (this.sort_direction === 'asc' ? 1 : -1),
+          sort = {
+              name: (a, b) => sort_sign * ciCompare(a.name, b.name),
+              time: (a, b) => sort_sign * a.time.localeCompare(b.time),
+              size: (a, b) => sort_sign * (a.size - b.size),
+          };
+      m_list.sort(sort[key]);
+      if(smn) {
+        for(let mi = 0; mi < m_list.length; mi++) {
+          if(m_list[mi].name === smn) {
+            this.model_index = this.sd_count + mi;
+            break;
+          }
+        }
+      }
+      this.updateModelTable();
+    }
+  }
+  
   updatePath() {
     // Update path of selected directory or model file (if any) as
     // displayed on status line.
@@ -173,7 +290,8 @@ class GUIFileManager {
           sd_root = this.selected_dir.root,
           sd_path = this.selected_dir.path;
       // Update the path.
-      path = '<em>(Linny-R)</em>' + this.separator + 'user';
+      path = ['<em title="', VM.working_directory, '">(Linny-R)</em>',
+          this.separator, 'user'].join('');
       if(sd_root === 'github') {
         path = 'linny-r-models' + sd_path + '/';
         path_div.style.color = '#400080';
@@ -254,7 +372,7 @@ class GUIFileManager {
     if(this.action === 'load') {
       // Prompt the modeler to confirm discarding unsaved changes, if any.
       const md = this.confirm_load_modal;
-      if(!md.follow_up && !UNDO_STACK.empty) {
+      if(!md.follow_up && UNDO_STACK.last_change > MODEL.last_modified) {
         md.follow_up = () => FILE_MANAGER.showDialog('load');
         md.show();
         return;
@@ -279,9 +397,11 @@ class GUIFileManager {
     this.updatePath();
     this.last_time_clicked = 0;
     md.show();
+    this.updateDialog();
   }
   
   updateButtons() {
+    // Update the buttons on the top toolbar.
     this.delete_btn.classList.add('off');
     if(this.selected_dir && this.model_index >= this.sd_count) {
       this.modal.ok.classList.remove('disab');
@@ -300,14 +420,18 @@ class GUIFileManager {
         index = rows.length;
     rows.push(['<tr id="brdir-', index, '" class="module', sel,
         '" title="', pluralS(d.mcount, 'model'),
-        '" onclick="FILE_MANAGER.selectDir(event, ', index, ')"><td>',
+        '" onclick="FILE_MANAGER.selectDir(event, ', index,
+        ');" ondragover="FILE_MANAGER.dragOver(event);" ',
+        'ondrop="FILE_MANAGER.handleDrop(event);"><td>',
         '<div class="dir', (d.subdirs.length ? '' : '-no'),
         '-btn" style="margin-left: ', level * 14,
-        'px" onclick="FILE_MANAGER.toggleDir(event, ', index, ')">',
+        'px" onclick="FILE_MANAGER.toggleDir(event, ', index,
+        ')">',
         // Triangle pointing down or right.
         (d.open ? '\u25BC' : '\u25BA'),
         '</div><img class="dir-icon" src="images/',
-        icon, (level && d.open ? '-open' : ''), '.png">',
+        icon, (level && d.open ? '-open' : ''),
+        '.png" ondragstart="noDrag(event)">',
         '<div class="dir-name">', d.name, '</div></td></tr>'].join(''));
     this.dir_list.push(d);
     if(d.open) {
@@ -341,8 +465,9 @@ class GUIFileManager {
         rows.push('<tr id="dir-entry-', index, '" class="module', sel,
             '" title="', pluralS(sd.mcount, 'model'),
             '" onclick="FILE_MANAGER.selectEntry(event, ', index,
-            ');" ><td colspan="3">',
-            '<img class="dir-icon" src="images/folder.png">',
+            ');" ondragover="FILE_MANAGER.dragOver(event)" ',
+            'ondrop="FILE_MANAGER.handleDrop(event)"><td colspan="3">',
+            '<img class="dir-icon" src="images/folder.png" ondragstart="noDrag(event)">',
             '<div class="dir-name">', sd.name, '</div></td></tr>');
         index += 1;
       }
@@ -352,19 +477,129 @@ class GUIFileManager {
             kbytes = UI.sizeInKBytesAsHTML(m.size),
             sel = (index === this.model_index ? ' sel-set' : '');
         rows.push('<tr id="dir-entry-', index, '" class="module', sel,
-            '" onclick="FILE_MANAGER.selectEntry(event, ', index, ');"><td>',
-            '<img class="dir-icon" src="images/icon.png">',
+            '" onclick="FILE_MANAGER.selectEntry(event, ', index,
+            ');"><td draggable="true" ondragstart="FILE_MANAGER.drag(event);">',
+            '<img class="dir-icon" src="images/icon-15.svg">',
             '<div class="dir-name">', m.name, '</div></td><td class="date-time">',
             m.time.substring(0, 16).replace('T', ' '),
             '</td><td class="k-bytes">',
             kbytes, '</td></tr>');
         index += 1;
       }
-      this.mcount = index - this.sd_count;
+      this.m_count = index - this.sd_count;
     }
     this.model_table.innerHTML = rows.join('');
-    this.model_sa.title = pluralS(this.mcount, 'model');
+    this.model_sa.title = pluralS(this.m_count, 'model');
+    this.updateDialog();
   }
+  
+  //
+  // Methods for moving a model via drag-drop
+  //
+  
+  drag(event) {
+    // Start dragging the selected model file.
+    let t = event.target;
+    while(t && t.nodeName !== 'TD') t = t.parentNode;
+    if(!t) return;
+    event.dataTransfer.setData('text', t.lastElementChild.innerText);
+    event.dataTransfer.setDragImage(t, 25, 0);  }
+  
+  targetDir(event) {
+    // Return the directory associated with the drag target element.
+    let t = event.target;
+    while(t && t.nodeName !== 'TR') t = t.parentNode;
+    if(!t) return null;
+    if(t.id.startsWith('brdir-')) {
+      const index = parseInt(t.id.substr(6));
+      return this.dir_list[index] || null;
+    }
+    if(t.id.startsWith('dir-entry-')) {
+      const index = parseInt(t.id.substring(10));
+      // In the right pane, ensure that it is not a model file.
+      if(index < this.sd_count) return this.selected_dir.subdirs[index];
+    }
+    return null;
+  }
+  
+  dragOver(event) {
+    // Drag target must be Home or one of its subdirectories.
+    const dir = this.targetDir(event);
+    // Then check whether the directory is user/models or one of its sub-dirs.
+    if(dir && dir.root === 'home') event.preventDefault();
+  }
+  
+  handleDrop(event) {
+    const dir = this.targetDir(event);
+    if(!(dir && this.selected_dir)) return;
+    event.preventDefault();
+    // Get the model file name from the dragged element.
+    const n = event.dataTransfer.getData('text');
+    // Double-check that `n` is a visible file name.
+    let mdl = null;
+    for(const m of this.selected_dir.models) {
+      if(m.name === n) {
+        mdl = m;
+        break;
+      }
+    }
+    if(!mdl) return;
+    fetch('browse/', postData({
+        action: 'move',
+        root: this.selected_dir.root,
+        path: this.selected_dir.path,
+        model: mdl.name,
+        to_path: dir.path
+      }))
+    .then(UI.fetchText)
+    .then((data) => {
+        if(UI.postResponseOK(data, true)) {
+          // NOTE: Both FROM & TO directory must be updated.
+          FILE_MANAGER.getDirContents(dir);
+          FILE_MANAGER.getDirContents();
+          setTimeout(() => {
+              FILE_MANAGER.model_index = -1;
+              FILE_MANAGER.updateModelTable();
+              FILE_MANAGER.updateButtons();
+           }, 250);
+        }
+      })
+    .catch(UI.fetchCatch);
+  }
+  
+  //
+  // Method for deletion (no undo!)
+  //
+
+  deleteModel() {
+    // Delete the selected model.
+    this.confirm_delete_modal.hide();
+    if(this.selected_dir && this.model_index >= this.sd_count) {
+      const mdl = this.selected_dir.models[this.model_index - this.sd_count];
+      if(mdl) fetch('browse/', postData({
+          action: 'delete',
+          root: this.selected_dir.root,
+          path: this.selected_dir.path,
+          model: mdl.name
+        }))
+      .then(UI.fetchText)
+      .then((data) => {
+          if(UI.postResponseOK(data, true)) {
+            FILE_MANAGER.getDirContents();
+            setTimeout(() => {
+                FILE_MANAGER.model_index = -1;
+                FILE_MANAGER.updateModelTable();
+                FILE_MANAGER.updateButtons();
+             }, 250);
+          }
+        })
+      .catch(UI.fetchCatch);
+    }
+  }
+  
+  //
+  // Methods for navigating & loading by mouse clicks or ENTER key.
+  //
   
   doubleClicked(row) {
     // Return TRUE if click on row should be interpreted as a double-click.
@@ -544,15 +779,35 @@ class GUIFileManager {
         .join(this.separator);
   }
 
+  saveModel(event) {
+    // Save the current model in the user workspace (via the server) when
+    // the Save button is clicked, or as a download (directly from the browser)
+    // when the Alt-button is pressed.
+    this.download_via_browser = event.altKey;
+    MODEL.clearSelection();
+    // Prompt for model name when still blank, or when Shift-key is pressed.
+    if(!MODEL.name || event.shiftKey) {
+      // Open "save model" dialog to let modeler specify name, author etc.
+      this.promptForModelName();
+    } else {
+      // Save using the current model properties (name, author, etc.)
+      this.saveAsNewModel(false);
+    }
+  }
+  
   promptForModelName() {
     // Prompt user for model name and author name.
     const
-        md = UI.modals.save,
+        md = this.save_modal,
         bb = md.element('black-box-div');
+    md.element('action').innerText = (this.download_via_browser ?
+        'Download' : 'Save');
     md.element('name').value = MODEL.name;
     md.element('author').value = MODEL.author;
     // Always show the encryption option.
     UI.setBox('save-encrypt', MODEL.encrypt);
+    // Always prompt to save *without* "black-boxing".
+    UI.setBox('save-black-box', false);
     // Only show the "black box" option if that is relevant.
     MODEL.inferBlackBoxEntities();
     if(Object.keys(MODEL.black_box_entities).length) {
@@ -563,21 +818,36 @@ class GUIFileManager {
     md.show('name');
   }
   
-  saveAsNewModel() {
-    // Change model properties (name, author, encrypt) and then save
-    // "as usual".
-    const md = UI.modals.save;
-    MODEL.name = md.element('name').value.trim();
-    // NOTE: Author names should not contain potential path delimiters.
-    MODEL.author = md.element('author').value.trim()
-        .replaceAll(/\\|\//g, '');
-    MODEL.encrypt = UI.boxChecked('save-encrypt');
+  saveAsNewModel(rename=true) {
+    // Change model properties (name, author, encrypt) unless `rename` is
+    // FALSE, and then save "as usual".
+    const
+        md = this.save_modal,
+        black_box = UI.boxChecked('save-black-box');
+    if(rename) {
+      MODEL.name = md.element('name').value.trim();
+      // NOTE: Author names should not contain potential path delimiters.
+      MODEL.author = md.element('author').value.trim()
+          .replaceAll(/\\|\//g, '');
+      MODEL.encrypt = UI.boxChecked('save-encrypt');
+    }
     if(!this.asFilePath(MODEL.name)) {
       UI.warn('Invalid model name');
+      // NOTE: Ensure that dialog fields are up-to-date.
+      md.element('name').value = MODEL.name;
+      md.element('author').value = MODEL.author;
       md.focus('name');
     } else {
       md.hide();
-      if(UI.boxChecked('save-black-box')) {
+      if(MODEL.encrypt) {
+        const pw_md = this.set_password_modal;
+        pw_md.encryption_code = '';
+        // NOTE: Record in the *Set* password modal whether the model
+        // should be black-boxed.
+        pw_md.as_black_box = black_box;
+        pw_md.show('code');
+        this.updatePasswordStrength();
+      } else if(black_box) {
         this.storeModel(MODEL.asBlackBoxXML);
       } else {
         this.storeModel(MODEL.asXML);
@@ -589,6 +859,8 @@ class GUIFileManager {
     // Store the current model.
     if(this.download_via_browser) {
       this.pushModelToBrowser(xml);
+      // NOTE: Downloading is not seen as a genuine "save to workspace",
+      // hence no update of "time last modified".
       return;
     }
     const fp = this.asFilePath(MODEL.name) || 'model';
@@ -605,37 +877,142 @@ class GUIFileManager {
           // Update the contents of the selected directory.
           FILE_MANAGER.getDirContents();
           UI.modals.browser.hide();
+          // Model was successfully saved => update "time last modified".
+          MODEL.last_modified = new Date();
         }
       })
     .catch(UI.fetchCatch);
   }
   
-  deleteModel() {
-    // Delete the selected model.
-    this.confirm_delete_modal.hide();
-    if(this.selected_dir && this.model_index >= this.sd_count) {
-      const mdl = this.selected_dir.models[this.model_index - this.sd_count];
-      if(mdl) fetch('browse/', postData({
-          action: 'delete',
-          root: this.selected_dir.root,
-          path: this.selected_dir.path,
-          model: mdl.name
-        }))
-      .then(UI.fetchText)
-      .then((data) => {
-          if(UI.postResponseOK(data, true)) {
-            FILE_MANAGER.getDirContents();
-            setTimeout(() => {
-                FILE_MANAGER.model_index = -1;
-                FILE_MANAGER.updateModelTable();
-                FILE_MANAGER.updateButtons();
-             }, 250);
-          }
-        })
-      .catch(UI.fetchCatch);
+  pushModelToBrowser(xml) {
+    // Save model as .lnr file.
+    UI.setMessage('Model file size: ' + UI.sizeInBytes(xml.length));
+    const el = document.getElementById('xml-saver');
+    el.href = 'data:attachment/text,' + encodeURI(xml);
+    console.log('Encoded file size:', el.href.length);
+    // Use sanitized model name as file name.
+    el.download = (this.asFilePath(MODEL.name, true) || 'model') + '.lnr';
+    if(el.href.length > 25*1024*1024 &&
+        navigator.userAgent.search('Chrome') <= 0) {
+      UI.notify('Model file size exceeds 25 MB. ' +
+          'If it does not download, store it via the file browser');
     }
+    el.click();
+    // Clear the HREF after 300 msec (because it may use a lot of memory)
+    // and then also update the Downloads directory of the File manager.
+    setTimeout(() => {
+          document.getElementById('xml-saver').href = '';
+          FILE_MANAGER.getDirContents(FILE_MANAGER.root_dirs.download);
+        }, 300);
+    this.download_via_browser = false;
+  }
+  
+  //
+  // Encryption-related methods
+  //
+
+  passwordStrength(pwd) {
+    // Compute strength score for password `pwd`.
+    if(pwd.length < CONFIGURATION.min_password_length) return 0;
+    let score = 1;
+    if(pwd.match(/[a-z]/) && pwd.match(/[A-Z]/)) score++;
+    if(pwd.match(/\d+/)) score++;
+    if(pwd.match(/.[!,@,#,$,%,^,&,*,?,_,~,-,(,)]/)) score++;
+    if(pwd.length > CONFIGURATION.min_password_length + 4) score++;
+    return score;
+  }
+  
+  updatePasswordStrength() {
+    // Reflect password strength in Set password dialog as a color
+    // on a red -> yellow -> green scale.
+    const code = this.set_password_modal.element('code');
+    code.className = 'pws-' + this.passwordStrength(code.value);
+  }
+  
+  comparePasswords() {
+    // Make dots in code field of Confirm password dialog green when
+    // passwords match.
+    const
+        ec = this.set_password_modal.encryption_code,
+        code = this.confirm_password_modal.element('code');
+    code.className = (code.value === ec ? 'pws-5' : '');
+  }
+  
+  confirmPassword() {
+    let md = this.set_password_modal,
+        code = md.element('code');
+    md.encryption_code = code.value;
+    // NOTE: Immediately clear input field in Set password dialog.
+    code.value = '';
+    if(md.encryption_code.length < CONFIGURATION.min_password_length) {
+      UI.warn('Password must be at least '+ CONFIGURATION.min_password_length +
+          ' characters long');
+      md.encryption_code = '';
+      code.focus();
+      return;
+    }
+    md.hide();
+    md = this.confirm_password_modal;
+    code = md.element('code');
+    code.value = '';
+    md.show('code');
+    this.comparePasswords();
+  }
+  
+  encryptModel() {
+    const
+        md = this.confirm_password_modal,
+        code = md.element('code'),
+        pwd = code.value;
+    // NOTE: Immediately clear input field of Confirm password modal.
+    code.value = '';
+    md.hide();
+    if(pwd !== this.set_password_modal.encryption_code) {
+      UI.warn('Encryption passwords did not match');
+      // NOTE: Also clear property of modal that stores password, to ensure
+      // that it cannot be viewed via the browser console.
+      this.set_password_modal.encryption_code = '';
+      return;
+    }
+    UI.setMessage('Encrypting...');
+    // Wait for key (NOTE: asynchronous functions defined in linny-r.js).
+    encryptionKey(pwd)
+      .then((key) => encryptMessage(
+              // NOTE: Whether to black-box the model is passed as a property
+              // of the Set password modal.
+              FILE_MANAGER.set_password_modal.as_black_box ?
+                  MODEL.asBlackBoxXML : MODEL.asXML,
+              key)
+          .then((enc) => this.storeModel(MODEL.asEncryptedXML(enc)))
+          .catch((err) => {
+              UI.alert('Encryption failed');
+              // NOTE: Clear stored password so it cannot be viewed.
+              FILE_MANAGER.set_password_modal.encryption_code = '';
+              FILE_MANAGER.set_password_modal.as_black_box = false;
+              console.log(err);
+            }))
+      .catch((err) => {
+          UI.alert('Failed to get encryption key');
+          console.log(err);
+          // NOTE: Clear stored password so it cannot be viewed.
+          FILE_MANAGER.set_password_modal.encryption_code = '';
+          FILE_MANAGER.set_password_modal.as_black_box = false;
+        });
   }
 
+  //
+  // Methods related to loading a model
+  //
+  
+  loadModel(upload=false) {
+    // Differentiate between loading via File manager and uploading via browser.
+    if(upload) {
+      this.showUploadModal();
+    } else {
+      this.showDialog('load');
+    }
+  }
+  
   showUploadModal() {
     // Clear path, as file upload via browser has no name.
     UI.modals.browser.hide();
@@ -669,7 +1046,6 @@ class GUIFileManager {
         }
         this.model_file_name = parts.join('.');
       }
-console.log('HERE model file', this.model_file_name);
       const reader = new FileReader();
       reader.onload = (event) =>
           FILE_MANAGER.decryptIfNeeded(event.target.result);
@@ -719,31 +1095,24 @@ console.log('HERE model file', this.model_file_name);
     // Otherwise, pass encryption parameters to the password modal dialog...
     const
         xml = parseXML(data),
-        md = UI.modals.password;
+        md = this.password_modal;
     md.encrypted_msg = {
         encryption: nodeContentByTag(xml, 'content'),
         latch: nodeParameterValue(xml, 'latch')
       };
-    // ... and change the dialog title so that it prompts for entering the
-    // password, and change the OK response so that it will decrypt.
-    md.element('action').innerHTML = 'Enter';
-    md.ok = UI.removeListeners(md.ok);
-    md.ok.addEventListener('click', () => FILE_MANAGER.startToDecrypt());
-    this.updateStrength();
     md.show('code');
   }
   
   startToDecrypt() {
     // Wrapper function to permit DOM events to occur first.
     const
-        md = UI.modals.password,
+        md = this.password_modal,
         encr_msg = md.encrypted_msg,
         code = md.element('code'),
         password = code.value;
     // NOTE: Immediately clear password field.
     code.value = '';
     md.hide();
-    UI.waitingCursor();
     UI.setMessage('Decrypting...');
     // NOTE: Asynchronous function tryToDecrypt is defined in linny-r-utils.js.
     setTimeout((msg, pwd, ok, err) => tryToDecrypt(msg, pwd, ok, err), 5,
@@ -751,13 +1120,14 @@ console.log('HERE model file', this.model_file_name);
         // The on_ok function
         (data) => {
             if(data) FILE_MANAGER.processXML(data);
-            UI.normalCursor();
-            UI.modals.password.encrypted_msg = null;
+            // CLear the encrypted content, as it may be huge.
+            FILE_MANAGER.password_modal.encrypted_msg = null;
           },
         // The on_error function
         (err) => {
             UI.warn('Failed to load encrypted model', err);
-            UI.modals.password.encrypted_msg = null;
+            // Here, too, cLear the encrypted content, as it may be huge.
+            FILE_MANAGER.password_modal.encrypted_msg = null;
           });
   }
   
@@ -1246,118 +1616,6 @@ console.log('HERE model file', this.model_file_name);
         })
       .catch(UI.fetchCatch);
   }
-  
-  passwordStrength(pwd) {
-    if(pwd.length < CONFIGURATION.min_password_length) return 0;
-    let score = 1;
-    if(pwd.match(/[a-z]/) && pwd.match(/[A-Z]/)) score++;
-    if(pwd.match(/\d+/)) score++;
-    if(pwd.match(/.[!,@,#,$,%,^,&,*,?,_,~,-,(,)]/)) score++;
-    if(pwd.length > CONFIGURATION.min_password_length + 4) score++;
-    return score;
-  }
-  
-  updateStrength() {
-    // Relects password strength in password field colors
-    const code = document.getElementById('password-code');
-    if(document.getElementById('password-action').innerHTML === 'Set') {
-      code.className = 'pws-' + this.passwordStrength(code.value);
-    } else {
-      code.className = '';
-    }
-  }
-  
-  confirmPassword() {
-    const
-        md = UI.modals.password,
-        code = md.element('code');
-    md.encryption_code = code.value;
-    // NOTE: immediately clear password field
-    code.value = '';
-    if(md.encryption_code.length < CONFIGURATION.min_password_length) {
-      UI.warn('Password must be at least '+ CONFIGURATION.min_password_length +
-          ' characters long');
-      md.encryption_code = '';
-      code.focus();
-      return;
-    }
-    md.element('action').innerHTML = 'Confirm';
-    md.ok = UI.removeListeners(md.ok);
-    md.ok.addEventListener('click', () => FILE_MANAGER.encryptModel());
-    this.updateStrength();
-    code.focus();
-  }
-  
-  saveModel(event) {
-    // Save the current model in the user workspace (via the server) when
-    // the Save button is clicked, or as a download (directly from the browser)
-    // when the Alt-button is pressed.
-    this.download_via_browser = event.altKey;
-    MODEL.clearSelection();
-    // Prompt for model name when still blank, or when Shift-key is pressed.
-    if(!MODEL.name || event.shiftKey) {
-      this.promptForModelName();
-    } else if(MODEL.encrypt) {
-      const md = UI.modals.password;
-      md.encryption_code = '';
-      md.element('action').innerHTML = 'Set';
-      md.ok = UI.removeListeners(md.ok);
-      md.ok.addEventListener('click', () => FILE_MANAGER.confirmPassword());
-      this.updateStrength();
-      md.show('code');
-    } else {
-      this.storeModel(MODEL.asXML);
-    }
-  }
-  
-  pushModelToBrowser(xml) {
-    // Save model as .lnr file.
-    UI.setMessage('Model file size: ' + UI.sizeInBytes(xml.length));
-    const el = document.getElementById('xml-saver');
-    el.href = 'data:attachment/text,' + encodeURI(xml);
-    console.log('Encoded file size:', el.href.length);
-    // Use sanitized model name as file name.
-    el.download = (this.asFilePath(MODEL.name, true) || 'model') + '.lnr';
-    if(el.href.length > 25*1024*1024 &&
-        navigator.userAgent.search('Chrome') <= 0) {
-      UI.notify('Model file size exceeds 25 MB. ' +
-          'If it does not download, store it via the file browser');
-    }
-    el.click();
-    // Clear the HREF after 3 seconds or it may use a lot of memory.
-    setTimeout(
-        () => { document.getElementById('xml-saver').href = ''; }, 3000);
-    UI.normalCursor();
-    this.download_via_browser = false;
-  }
-  
-  encryptModel() {
-    const
-        md = UI.modals.password,
-        code = md.element('code'),
-        pwd = code.value;
-    // NOTE: Immediately clear password field.
-    code.value = '';
-    md.hide();
-    if(pwd !== md.encryption_code) {
-      UI.warn('Encryption passwords did not match');
-      return;
-    }
-    UI.setMessage('Encrypting...');
-    UI.waitingCursor();
-    // Wait for key (NOTE: asynchronous functions defined in linny-r.js).
-    encryptionKey(pwd)
-      .then((key) => encryptMessage(MODEL.asXML, key)
-          .then((enc) => this.storeModel(MODEL.asEncryptedXML(enc)))
-          .catch((err) => {
-              UI.alert('Encryption failed');
-              console.log(err);
-            }))
-      .catch((err) => {
-          UI.alert('Failed to get encryption key');
-          console.log(err);
-        });
-  }
 
 //
 // Auto-save functionality
@@ -1408,28 +1666,33 @@ console.log('HERE model file', this.model_file_name);
           action: 'store',
           root: 'autosave',
           path: '',
-          model: this.asFilePath(`${mname}_by_${aname}.lnr`),
+          model: this.asFilePath(`${mname}_by_${aname}`),
           xml: MODEL.asXML
         }))
       .then(UI.fetchText)
       .then((data) => {
-          // Notify user where the model file has been stored.
-          if(UI.postResponseOK(data)) UI.notify(data);
+          if(UI.postResponseOK(data)) {
+            // Notify user where the model file has been stored.
+            UI.notify(data);
+            // Also update the Auto-save directory of the File manager.
+            FILE_MANAGER.getDirContents(FILE_MANAGER.root_dirs.autosave);
+            // NOTE: Auto-saving does not count as saving to workspace,
+            // hence no update of the model's "time last modified".
+          }
         })
       .catch(UI.fetchCatch);
   }
   
   purgeAutoSavedModels() {
+    // Delete model files that were auto-saved earlier than the set period ago.
     if(!this.autosave_settings) return;
     const h = this.autosave_settings.hours;
     if(h <= 0) return;
     fetch('browse/', postData({action: 'purge', period: h}))
       .then(UI.fetchText)
       .then((data) => {
-          // Notify user where the model file has been stored.
-          if(UI.postResponseOK(data)) {
-            console.log('HERE purge response', data);
-          }
+          // Notify user if model file have been purged or errors occurred.
+          if(data && UI.postResponseOK(data)) UI.notify(data);
         })
       .catch(UI.fetchCatch);    
   }
@@ -1510,8 +1773,6 @@ console.log('HERE model file', this.model_file_name);
     }
     // Dispose the model-for-comparison.
     this.model_B = null;
-    // Cursor is set to WAITING when loading starts.
-    UI.normalCursor();
   }
   
   propertyName(p) {

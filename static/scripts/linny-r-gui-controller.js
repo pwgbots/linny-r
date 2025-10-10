@@ -787,9 +787,9 @@ class GUIController extends Controller {
 
     // Initialize "main" modals, i.e., those that relate to the controller,
     // not to other dialog objects.
-    const main_modals = ['logon', 'model', 'browser', 'password', 'autosave',
-        'settings', 'actors', 'add-process', 'add-product', 'move', 'note',
-        'clone', 'replace', 'expression', 'server', 'solver', 'defaults', 'save'];
+    const main_modals = ['logon', 'model', 'browser', 'save', 'settings',
+        'actors', 'expression', 'server', 'solver', 'defaults',
+        'add-process', 'add-product', 'move', 'note', 'clone', 'replace'];
     for(const m of main_modals) this.modals[m] = new ModalDialog(m);
     
     // Property dialogs for entities may permit group editing.
@@ -884,9 +884,8 @@ class GUIController extends Controller {
     this.cc.addEventListener('drop', (event) => UI.drop(event));
 
     // Disable dragging on all images.
-    const nodrag = (event) => { event.preventDefault(); return false; };
     for(const img of document.getElementsByTagName('img')) {          
-      img.addEventListener('dragstart', nodrag);
+      img.addEventListener('dragstart', noDrag);
     }
     
     // Moving cursor over Linny-R logo etc. should display information
@@ -901,12 +900,12 @@ class GUIController extends Controller {
     this.buttons['new'].addEventListener('click',
         () => UI.promptForNewModel());
     this.buttons.load.addEventListener('click',
-        () => FILE_MANAGER.showDialog('load'));
+        (event) => FILE_MANAGER.loadModel(event.altKey));
     this.buttons.settings.addEventListener('click',
         () => UI.showSettingsDialog(MODEL));
     // NOTE: Save model prompts for new name when Shift-key is pressed.
     this.buttons.save.addEventListener('click',
-        () => FILE_MANAGER.saveModel(event));
+        (event) => FILE_MANAGER.saveModel(event));
     this.buttons.actors.addEventListener('click',
         () => ACTOR_MANAGER.showDialog());
     // NOTE: Diagram is now saved as PNG *unless* Shift-key is pressed.
@@ -946,8 +945,6 @@ class GUIController extends Controller {
       hl.classList.add('local-server');
       hl.addEventListener('click', () => UI.showServerModal());
     }
-    this.server_modal = new ModalDialog('server');
-    
 
     // Vertical tool bar buttons:
     this.buttons.clone.addEventListener('click',
@@ -1028,21 +1025,6 @@ class GUIController extends Controller {
     this.modals.model.cancel.addEventListener('click',
         () => UI.modals.model.hide());
 
-    this.modals.save.ok.addEventListener('click',
-        () => FILE_MANAGER.saveAsNewModel());
-    this.modals.save.cancel.addEventListener('click',
-        () => UI.modals.save.hide());
-
-    // NOTE: Encryption-related variables are stored as properties of
-    // the password modal dialog.
-    this.modals.password.encryption_code = '';
-    this.modals.password.encrypted_msg = null;
-    this.modals.password.post_decrypt_action = null;
-    this.modals.password.cancel.addEventListener('click',
-        () => UI.modals.password.hide());
-    this.modals.password.element('code').addEventListener('input',
-        () => FILE_MANAGER.updateStrength());
-
     this.modals.settings.ok.addEventListener('click',
         () => UI.updateSettings(MODEL));
     // NOTE: Model Settings dialog has an information button in its header.
@@ -1060,22 +1042,27 @@ class GUIController extends Controller {
             // Ensure that model documentation can no longer be edited.
             DOCUMENTATION_MANAGER.clearEntity([MODEL]);
           });
-    // Make the scale units and solver preferences buttons of the settings
-    // dialog responsive. Clicking will open these dialogs on top of the
-    // settings modal dialog.
+
+    // Make the scale units, solver preferences and power grid buttons
+    // of the settings dialog responsive. Clicking will open these dialogs
+    // on top of the settings modal dialog.
     this.modals.settings.element('scale-units-btn').addEventListener('click',
         () => SCALE_UNIT_MANAGER.show());
     this.modals.settings.element('solver-prefs-btn').addEventListener('click',
         () => UI.showSolverPreferencesDialog());
+    // The power grid options button should be visible only when the options
+    // checkbox is checked.
     this.modals.settings.element('power').addEventListener('click',
         () => UI.togglePowerGridButton());
     this.modals.settings.element('power-btn').addEventListener('click',
         () => POWER_GRID_MANAGER.show());
+
     // Make solver modal elements responsive.
     this.modals.solver.ok.addEventListener('click',
         () => UI.updateSolverPreferences());
     this.modals.solver.cancel.addEventListener('click',
         () => UI.modals.solver.hide());
+
     // Make server modal elements responsive.
     this.modals.server.ok.addEventListener('click',
         () => UI.changeSolver(UI.modals.server.element('solver').value));
@@ -1087,6 +1074,7 @@ class GUIController extends Controller {
         () => UI.shutDownToUpdate());
     this.modals.server.element('shut-down').addEventListener('click',
         () => UI.shutDownServer());
+
     // Make default model properties modal elements responsive.
     this.modals.defaults.ok.addEventListener('click',
         () => UI.changeDefaults());
@@ -1098,10 +1086,12 @@ class GUIController extends Controller {
         () => UI.addNode('process'));
     this.modals['add-process'].cancel.addEventListener('click',
         () => UI.modals['add-process'].hide());
+
     this.modals['add-product'].ok.addEventListener('click',
         () => UI.addNode('product'));
     this.modals['add-product'].cancel.addEventListener('click',
         () => UI.modals['add-product'].hide());
+
     this.modals.cluster.ok.addEventListener('click',
         () => UI.addNode('cluster'));
     this.modals.cluster.cancel.addEventListener('click',
@@ -2514,43 +2504,16 @@ class GUIController extends Controller {
       // holding SHIFT button down).
       if(!e.shiftKey) MODEL.clearSelection();
       // Compute defining points of rectangle (top left and bottom right).
-      const
-          tlx = Math.min(this.start_sel_x, this.mouse_up_x),
-          tly = Math.min(this.start_sel_y, this.mouse_up_y),
-          brx = Math.max(this.start_sel_x, this.mouse_up_x),
-          bry = Math.max(this.start_sel_y, this.mouse_up_y);
+      const rect = {
+          left: Math.min(this.start_sel_x, this.mouse_up_x),
+          top: Math.min(this.start_sel_y, this.mouse_up_y),
+          right: Math.max(this.start_sel_x, this.mouse_up_x),
+          bottom: Math.max(this.start_sel_y, this.mouse_up_y)
+        };
       // If rectangle has size greater than 2x2 pixels, select all elements
       // having their center inside the selection rectangle.
-      if(brx - tlx > 2 && bry - tly > 2) {
-        const
-            ol = [],
-            fc = MODEL.focal_cluster;
-        for(const p of fc.processes) {
-          if(p.x >= tlx && p.x <= brx && p.y >= tly && p.y < bry) ol.push(p);
-        }
-        for(const pp of fc.product_positions) {
-          if(pp.x >= tlx && pp.x <= brx && pp.y >= tly && pp.y < bry) {
-            ol.push(pp.product);
-          }
-        }
-        for(const c of fc.sub_clusters) {
-          if(c.x >= tlx && c.x <= brx && c.y >= tly && c.y < bry) ol.push(c);
-        }
-        for(const n of fc.notes) {
-          if(n.x >= tlx && n.x <= brx && n.y >= tly && n.y < bry) ol.push(n);
-        }
-        for(let k in MODEL.links) if(MODEL.links.hasOwnProperty(k)) {
-          const l = MODEL.links[k];
-          // Only add a link if both its nodes are selected as well.
-          if(fc.linkInList(l, ol)) ol.push(l);
-        }
-        for(let k in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(k)) {
-          const c = MODEL.constraints[k];
-          // Only add a constraint if both its nodes are selected as well.
-          if(fc.linkInList(c, ol)) ol.push(c);
-        }
-        // Having compiled the object list, actually select them.
-        MODEL.selectList(ol);
+      if(rect.right - rect.left > 2 && rect.bottom - rect.top > 2) {
+        MODEL.selectList(MODEL.focal_cluster.entitiesInRectangle(rect));
         this.paper.drawSelection(MODEL);
       }
       this.start_sel_x = -1;
@@ -2605,6 +2568,7 @@ class GUIController extends Controller {
           // make the action redoable.
           MODEL.moveSelection(mdx, mdy);
           UNDO_STACK.pop('move');
+          UNDO_STACK.ignoreLastChange();
         }
         // Double-clicking opens properties dialog, except for clusters;
         // then "drill down", i.e., make the double-clicked cluster focal.
@@ -2638,6 +2602,7 @@ class GUIController extends Controller {
         if(this.net_move_x < 0.5 && this.net_move_y < 0.5) {
           // No effective move of the selection => remove the UNDO.
           UNDO_STACK.pop('move');
+          UNDO_STACK.ignoreLastChange();
         }
         // Set cursor to pointer, as it should be on some node while dragging.
         this.paper.container.style.cursor = 'pointer';
@@ -2732,6 +2697,7 @@ class GUIController extends Controller {
         ttag = e.target.tagName,
         code = e.code,
         alt = e.altKey,
+        ctrl = e.ctrlKey || e.metaKey,
         topmod = this.topModal;
     // Modal dialogs: hide on ESC and move to next input on ENTER.
     // NOTE: Consider only the top modal (if any is showing).
@@ -2822,7 +2788,12 @@ class GUIController extends Controller {
       } else if(code === 'ArrowRight') {
         e.preventDefault();
         this.stepForward(e);
-      } else if(e.ctrlKey && code === 'KeyS') {
+      } else if(ctrl && code === 'KeyL') {
+        // Ctrl-L means: load model. Treat separately because Alt-key
+        // alters the way in which the model file is loaded.
+        e.preventDefault();
+        FILE_MANAGER.loadModel(alt);
+      } else if(ctrl && code === 'KeyS') {
         // Ctrl-S means: save model. Treat separately because Shift-key
         // and Alt-key alter the way in which the model file is saved.
         e.preventDefault();
@@ -2830,11 +2801,13 @@ class GUIController extends Controller {
       } else if(alt && code === 'KeyR') {
         // Alt-R means: run to diagnose infeasible/unbounded problem.
         VM.solveModel(true);
-      } else if(alt && ['KeyC', 'KeyM', 'KeyP'].indexOf(code) >= 0) {
-        // Special shortcut keys for "clone selection", "model settings"
-        // and "replace product".
+      } else if(alt && ['KeyA', 'KeyC', 'KeyM', 'KeyP'].indexOf(code) >= 0) {
+        // Special shortcut keys for "actors", "clone selection",
+        // "model settings" and "replace product".
         const be = new Event('click');
-        if(code === 'KeyC') {
+        if(code === 'KeyA') {
+          this.buttons.actors.dispatchEvent(be);
+        } else if(code === 'KeyC') {
           this.buttons.clone.dispatchEvent(be);
         } else if(code === 'KeyM') {
           this.buttons.settings.dispatchEvent(be);
@@ -2856,12 +2829,17 @@ class GUIController extends Controller {
             // is showing. 
             this.buttons['delete'].dispatchEvent(new Event('click'));
           }
-        } else if (code === 'Period' && (e.ctrlKey || e.metaKey)) {
+        } else if (code === 'Period' && ctrl) {
           // Ctrl-. (dot) moves entire diagram to upper-left corner.
           e.preventDefault();
           this.paper.fitToSize();
           MODEL.alignToGrid();
-        } else if (code >= 'KeyA' && code <= 'KeyZ' && (e.ctrlKey || e.metaKey)) {
+        } else if(code === 'KeyA' && ctrl) {
+          // Select *all* visible entities in focal cluster (no rectangle).
+          MODEL.selectList(MODEL.focal_cluster.entitiesInRectangle());
+          this.paper.drawSelection(MODEL);
+          this.updateButtons();
+        } else if (code > 'KeyA' && code <= 'KeyZ' && ctrl) {
           // ALWAYS prevent browser to do respond to Ctrl-letter commands.
           // NOTE: This cannot prevent a new tab from opening on Ctrl-T.
           e.preventDefault();
@@ -3342,7 +3320,7 @@ class GUIController extends Controller {
     // Prompt modeler to confirm discarding unsaved changes unless this
     // is the follow-up call.
     let md = FILE_MANAGER.confirm_load_modal;
-    if(!md.follow_up && !UNDO_STACK.empty) {
+    if(!md.follow_up && UNDO_STACK.last_change > MODEL.last_modified) {
       md.follow_up = () => UI.promptForNewModel();
       md.show();
     } else {
@@ -3418,6 +3396,7 @@ class GUIController extends Controller {
       an = md.element('actor').value;
       if(!this.validNames(nn, an)) {
         UNDO_STACK.pop();
+        UNDO_STACK.ignoreLastChange();
         return;
       }
       if(md.element('action').innerHTML === 'Edit') {
@@ -3458,6 +3437,7 @@ class GUIController extends Controller {
           an = md.element('actor').value;
           if(!this.validNames(nn, an)) {
             UNDO_STACK.pop();
+            UNDO_STACK.ignoreLastChange();
             return false;
           }
           n = MODEL.addProcess(nn, an);
@@ -3503,6 +3483,7 @@ class GUIController extends Controller {
           const vn = this.validName(nn);
           if(!vn) {
             UNDO_STACK.pop();
+            UNDO_STACK.ignoreLastChange();
             this.warningInvalidName(nn);
             return false;
           }
@@ -4143,7 +4124,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     if(ts === false) return false;
     const md = UI.modals.settings;
     if(ts <= 0) {
-      this.warn('Time step must be a positive number');
+      this.warn('Time step must be non-negative');
       md.element('time-scale').focus();
       return false;
     }

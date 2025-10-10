@@ -38,6 +38,12 @@ function isEmpty(obj) {
   return true;
 }
 
+function noDrag(event) {
+  // Function to prevent undesired dragging of elements.
+  event.preventDefault();
+  return false;
+}
+
 //
 // Functions that facilitate HTTP requests
 //
@@ -1341,6 +1347,7 @@ async function tryToDecrypt(msg, password, on_ok, on_error) {
 
 if(NODE) module.exports = {
   isEmpty: isEmpty,
+  noDrag: noDrag,
   postData: postData,
   pluralS: pluralS,
   safeStrToFloat: safeStrToFloat,

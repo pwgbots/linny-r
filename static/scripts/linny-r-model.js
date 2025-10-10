@@ -47,7 +47,11 @@ class LinnyRModel {
   reset() {
     // Reset model properties to their default values.
     const d = new Date();
+    // NOTE: Time created is used to uniquely identify model objects when
+    // copy-pasting across models. It is not stored as XML when saving a model. 
     this.time_created = d;
+    // Last modified is set *and* stored as XML when saving. It is also used to
+    // determine whether the last undo/redo occurred *after* the last save.
     this.last_modified = d;
     this.version = LINNY_R_VERSION;
     this.encrypt = false;
@@ -716,8 +720,6 @@ class LinnyRModel {
           // attribute is a modifier selector for this dataset.
             (attr === '' || ds.modifiers.hasOwnProperty(lca))) list.push(ds);
       }
-      // No other types of entity, so return this list.
-      return list;
     }
     if(VM.process_attr.indexOf(attr) >= 0 && et.indexOf('P') >= 0) {
       for(let k in this.processes) if(this.processes.hasOwnProperty(k)) {
@@ -1936,7 +1938,7 @@ class LinnyRModel {
       if(this.selection.indexOf(obj) < 0) this.selection.push(obj);
     }
     this.selection_related_arrows.length = 0;
-    // NOTE: does not redraw the graph -- the calling routine should do that
+    // NOTE: does not redraw the graph; the calling routine should do that.
   }
   
   get getSelectionPositions() {
@@ -2435,24 +2437,24 @@ class LinnyRModel {
         } else if(products.indexOf(ct) >= 0) {
           ct = this.objectByName(nt ? nt : prefix + ct.name);
         }
-        // Only now differentiate between links and constraints
+        // Only now differentiate between links and constraints.
         let c = null;
         if(l instanceof Link) {
-          // Add the new link ...
+          // Add the new link...
           c = this.addLink(cf, ct);
         } else {
-          // ... or the new constraint ...
+          // ... or the new constraint...
           c = this.addConstraint(cf, ct);
         }
         if(!c) return;
-        // ... but do not add it to the clone list if it already exists .
+        // ... but do not add it to the clone list if it already exists.
         if(c !== l) {
           c.copyPropertiesFrom(l);
           cloned_selection.push(c);
         }
       }
       if(cloned_selection.length > 0) {
-        // Prepare for redraw
+        // Prepare for redraw.
         this.focal_cluster.clearAllProcesses();
         this.focal_cluster.categorizeEntities();
         // Make the clone the new selection (so it can be moved easily).
@@ -3237,7 +3239,7 @@ class LinnyRModel {
         '</name><author>', xmlEncoded(this.author),
         '</author><notes>', xmlEncoded(this.comments),
         '</notes><version>',  xmlEncoded(LINNY_R_VERSION),
-        '</version><last-saved>',  xmlEncoded(this.last_modified.toString()),
+        '</version><last-saved>',  xmlEncoded(new Date().toString()),
         '</last-saved><time-scale>', this.time_scale,
         '</time-scale><time-unit>', this.time_unit,
         '</time-unit><default-scale-unit>', xmlEncoded(this.default_unit),
@@ -3330,6 +3332,7 @@ class LinnyRModel {
     this.inferBlackBoxEntities();
     const xml = this.asXML;
     this.black_box = false;
+    this.black_box_entities = {};
     return xml;
   }
   
@@ -5772,8 +5775,8 @@ class NodeBox extends ObjectWithXYWH {
   }
 
   get displayName() {
-    let n = this.name;
-    if(n.startsWith(UI.BLACK_BOX)) n = n.replace(UI.BLACK_BOX_PREFIX);
+    // NOTE: Display name will also be used as basis for identifier,
+    // variable names, etc.
     if(this.hasActor) return `${this.name} (${this.actor.name})`;
     return this.name;
   }
@@ -6281,20 +6284,20 @@ class Cluster extends NodeBox {
     this.notes = [];
     this.collapsed = false;
     // Flag to indicate that processes and their related links, as well as
-    // products unique to this cluster must be left out from the optimization
+    // products unique to this cluster must be left out from the optimization.
     this.ignore = false;
-    // Flag to indicate that this cluster is to be stored as "black box"
+    // Flag to indicate that this cluster is to be stored as "black box".
     this.black_box = false;
-    // Flag to indicate that this cluster is "black-boxed" and cannot be edited
+    // Flag to indicate that this cluster is "black-boxed" and cannot be edited.
     this.is_black_boxed = false;
-    // Slack uses tallies per time step the number of non-zero slack variables
+    // Slack uses tallies per time step the number of non-zero slack variables.
     this.slack_info = {};
-    // Clusters have 3 result attributes: CF, CI and CO
+    // Clusters have 3 result attributes: CF, CI and CO.
     this.cash_flow = [];
     this.cash_in = [];
     this.cash_out = [];
-    // The following properties are used for fast link drawing
-    // NOTE: if all_processes is NULL, these properties need to be recalculated
+    // The following properties are used for fast link drawing.
+    // NOTE: If all_processes is NULL, these properties need to be recalculated.
     this.all_processes = null;
     this.all_products = [];
     this.related_links = [];
@@ -6344,12 +6347,15 @@ class Cluster extends NodeBox {
   }
   
   get toBeBlackBoxed() {
+    // Return TRUE if this cluster is already a "black box", and also if the
+    // model is being saved as "black boxed" XML AND this cluster should then
+    // be "black boxed".
     return (this.is_black_boxed || MODEL.black_box && this.blackBoxed); 
   }
   
   get blackBoxName() {
-    // Return prefixed name if "black boxing" and this cluster is not already
-    // "black-boxed" and some parent cluster is marked as black box.
+    // Return prefixed name if "black boxing" AND this cluster is not already
+    // "black-boxed" AND some parent cluster is marked as black box.
     if(MODEL.black_box && !this.is_black_boxed &&
         this.cluster && this.cluster.blackBoxed) {
       return UI.BLACK_BOX_PREFIX + this.name;
@@ -6413,8 +6419,9 @@ class Cluster extends NodeBox {
         '</comments><process-set>'].join('');
     for(const p of this.processes) {
       let n = p.displayName;
+      //
       const id = UI.nameToID(n);
-      if(MODEL.black_box_entities.hasOwnProperty(id)) {
+      if(MODEL.black_box && MODEL.black_box_entities.hasOwnProperty(id)) {
         n = MODEL.black_box_entities[id];
       }
       xml += '<process-name>' + xmlEncoded(n) + '</process-name>';
@@ -6438,6 +6445,7 @@ class Cluster extends NodeBox {
   }
   
   initFromXML(node) {
+    // Set properties of this cluster as specified in the XML tree.
     this.x = safeStrToInt(nodeContentByTag(node, 'x-coord'));
     this.y = safeStrToInt(nodeContentByTag(node, 'y-coord'));
     this.comments = xmlDecoded(nodeContentByTag(node, 'comments'));
@@ -6515,7 +6523,7 @@ class Cluster extends NodeBox {
         MODEL.addCluster(name, actor, c);
       }
     }
-    // NOTE: the part " || hidden_pp" is to compensate for a bug -- see earlier note.
+    // NOTE: The part " || hidden_pp" is to compensate for a bug -- see earlier note.
     n = childNodeByTag(node, 'product-positions') || hidden_pp;
     if(n) {
       for(const c of n.childNodes) if(c.nodeName === 'product-position') {
@@ -6536,7 +6544,7 @@ class Cluster extends NodeBox {
   }
   
   onEdge(mpx, mpy) {
-    // Return TRUE if (x, y) is in right or bottom edge (15% band)
+    // Return TRUE if (x, y) is in right or bottom edge (15% band).
     let dx = mpx - this.x,
         dy = mpy - this.y;  
     if(this.collapsed) {
@@ -6545,31 +6553,34 @@ class Cluster extends NodeBox {
     }
     dx -= 0.4 * this.width;
     dy -= 0.4 * this.height;  
-    return dx > 0 && dx < 0.1 * this.width || dy > 0 && dy < 0.1 * this.height;    
+    return dx > 0 && dx < 0.1 * this.width || dy > 0 && dy < 0.1 * this.height;  
   }
 
   containsCluster(c) {
+    // Return TRUE if `c` is a descencant of this cluster in the
+    // cluster hierarchy.
     while(c && c !== this) c = c.cluster;
     return c !== null;
   }
 
   setCluster(c) {
-    // Place this cluster into the specified cluster `c`
-    // NOTE: cluster = NULL for the top cluster; this should never be altered
-    // NOTE: cluster cannot have itself as parent
+    // Place this cluster into the specified cluster `c`.
+    // NOTES:
+    // (1) Cluster = NULL for the top cluster; this should never be altered.
+    // (2) Cluster cannot have itself as parent.
     if(this.cluster && c !== this) {
-      // Remove this cluster from its current parent's sub-cluster list
+      // Remove this cluster from its current parent's sub-cluster list.
       const i = this.cluster.sub_clusters.indexOf(this);
       if(i >= 0) this.cluster.sub_clusters.splice(i, 1);
       // Set its new parent cluster pointer...
       this.cluster = c;
-      // ... and add it to the new parent cluster's sub-cluster list
+      // ... and add it to the new parent cluster's sub-cluster list.
       if(c.sub_clusters.indexOf(this) < 0) c.sub_clusters.push(this);
     }
   }
   
   indexOfProduct(p) {
-    // Returns the last position of product `p` in this cluster
+    // Return the last position of product `p` in this cluster.
     let i = this.product_positions.length - 1;
     while(i >= 0 && this.product_positions[i].product !== p) i--;
     return i;
@@ -6595,7 +6606,7 @@ class Cluster extends NodeBox {
   }
 
   containsProduct(p) {
-    // Return the subcluster of this cluster that contains product `p`,
+    // Return the sub-cluster of this cluster that contains product `p`,
     // or NULL if `p` does not occur in this cluster.
     if(this.indexOfProduct(p) >= 0) return this;
     for(const c of this.sub_clusters) {
@@ -6605,7 +6616,7 @@ class Cluster extends NodeBox {
   }
 
   containsProcess(p) {
-    // Return the subcluster of this cluster that contains process `p`, or null.
+    // Return the sub-cluster of this cluster that contains process `p`, or null.
     if(p.cluster === this) return this;
     for(const c of this.sub_clusters) {
       if(c.containsProcess(p)) return c; // recursion!
@@ -7037,32 +7048,61 @@ class Cluster extends NodeBox {
     return this.related_links.indexOf(l) >= 0;
   }
   
-  linkInList(l, list) {
+  linkInList(lc, list) {
     // Return TRUE iff both the FROM node and the TO node of link/constraint
-    // `l` are elements of `list`.
-    // NOTE: This method used in linny-r-gui.js to see which links
-    // and/or constraints are to be included when the modeler performs
-    // a "rectangular area select".
+    // `lc` are elements of `list`.
     let prod, proc;
-    if(l.to_node instanceof Process) {
-      proc = l.to_node;
-      prod = l.from_node;
+    if(lc.to_node instanceof Process) {
+      proc = lc.to_node;
+      prod = lc.from_node;
     } else {
-      proc = l.from_node;
-      prod = l.to_node;
+      // NOTE: For data links and constraints, `proc` may be a product node.
+      proc = lc.from_node;
+      prod = lc.to_node;
     }
     const
         proc_in = list.indexOf(proc) >= 0,
         prod_in = list.indexOf(prod) >= 0;
     if(proc_in && prod_in) return true;
+    // A link is also "in" if either or both its nodes are contained by a
+    // sub-cluster, unless both are in the *same* cluster.
     const
+        // Let con_N be the sub-cluster that contains node N.
         con_proc = (proc_in ? null : this.containsProcess(proc)),
         con_prod = (prod_in ? null : this.containsProduct(prod)),
-        con_proc_in = con_proc !== null && list.indexOf(con_proc) >= 0,
-        con_prod_in = con_prod !== null && list.indexOf(con_prod) >= 0;
+        con_proc_in = con_proc && list.indexOf(con_proc) >= 0,
+        con_prod_in = con_prod && list.indexOf(con_prod) >= 0;
     return (proc_in && con_prod_in) ||
         (prod_in && con_proc_in) ||
         (con_proc !== con_prod && con_proc_in && con_prod_in);
+  }
+  
+  entitiesInRectangle(rect=null) {
+    // Return a list of visible entities in this cluster, limited to those
+    // having their (x, y) position within `rect` (if specified).
+    // Links and constraints are included when
+    // Object `rect` must have properties top, right, bottom and left.
+    const
+        ol = [],
+        include = (o) => (rect ? (o.x >= rect.left && o.x <= rect.right &&
+            o.y >= rect.top && o.y < rect.bottom) : true);
+    // Iterate over all processes and product positions in *this* cluster.
+    for(const p of this.processes) if(include(p)) ol.push(p);
+    // NOTE: Test product positions, but include products.
+    for(const pp of this.product_positions) if(include(pp)) ol.push(pp.product);
+    for(const c of this.sub_clusters) if(include(c)) ol.push(c);
+    for(const n of this.notes) if(include(n)) ol.push(n);
+    // Then iterate over *all* links and constraints in the model, and test them
+    // by means of the `linkInList` method defined above.
+    for(let k in MODEL.links) if(MODEL.links.hasOwnProperty(k)) {
+      const l = MODEL.links[k];
+      if(this.linkInList(l, ol)) ol.push(l);
+    }
+    for(let k in MODEL.constraints) if(MODEL.constraints.hasOwnProperty(k)) {
+      const c = MODEL.constraints[k];
+      if(this.linkInList(c, ol)) ol.push(c);
+    }
+    return ol;
   }
 
   deleteProduct(p, with_xml=true) {
@@ -7949,7 +7989,7 @@ class Process extends Node {
     const
         an = (this.hasActor ? ` (${this.actor.name})` : ''),
         id = UI.nameToID(this.name + an);
-    if(MODEL.black_box_entities.hasOwnProperty(id)) {
+    if(MODEL.black_box && MODEL.black_box_entities.hasOwnProperty(id)) {
       // NOTE: "black-boxed" processes are saved anonymously, collapsed,
       // without comments or their (X, Y) position.
       n = MODEL.black_box_entities[id];
@@ -8448,7 +8488,7 @@ class Product extends Node {
     if(this.no_slack) p += ' no-slack="1"';
     if(this.no_links) p += ' no-links="1"';
     const id = UI.nameToID(n);
-    if(MODEL.black_box_entities.hasOwnProperty(id)) {
+    if(MODEL.black_box && MODEL.black_box_entities.hasOwnProperty(id)) {
       // NOTE: "black-boxed" products are saved anonymously without comments
       // or their (X, Y) position (which is redundant anyway).
       n = MODEL.black_box_entities[id];
@@ -8801,7 +8841,7 @@ class Link {
         tid = UI.nameToID(tn +
             (this.to_node.hasActor ? ` (${this.to_node.actor.name})` : ''));
     // NOTE: "black-boxed" links are saved anonymously without comments.
-    if(MODEL.black_box_entities.hasOwnProperty(fid)) {
+    if(MODEL.black_box && MODEL.black_box_entities.hasOwnProperty(fid)) {
       fn = MODEL.black_box_entities[fid];
       cmnts = '';
     }
@@ -9439,7 +9479,7 @@ class Dataset {
     for(const sel of sl) ml.push(this.modifiers[sel].asXML);
     // NOTE: "black-boxed" datasets are stored anonymously without comments.
     const id = UI.nameToID(n);
-    if(MODEL.black_box_entities.hasOwnProperty(id)) {
+    if(MODEL.black_box && MODEL.black_box_entities.hasOwnProperty(id)) {
       n = MODEL.black_box_entities[id];
       cmnts = '';
     }
@@ -9668,7 +9708,7 @@ class ChartVariable {
     // NOTE: A "black-boxed" model can comprise charts showing "anonymous"
     // entities, so the IDs of these entities must then be changed.
     let id = this.object.identifier;
-    if(MODEL.black_box_entities.hasOwnProperty(id)) {
+    if(MODEL.black_box && MODEL.black_box_entities.hasOwnProperty(id)) {
       id = UI.nameToID(MODEL.black_box_entities[id]);
     }
     const xml = ['<chart-variable',
@@ -12963,14 +13003,16 @@ class Constraint {
             (this.from_node.hasActor ? ` (${this.from_node.actor.name})` : '')),
         tid = UI.nameToID(tn +
             (this.to_node.hasActor ? ` (${this.to_node.actor.name})` : ''));
-    // NOTE: "black-boxed" constraints are saved anonymously without comments
-    if(MODEL.black_box_entities.hasOwnProperty(fid)) {
-      fn = MODEL.black_box_entities[fid];
-      cmnts = '';
-    }
-    if(MODEL.black_box_entities.hasOwnProperty(tid)) {
-      tn = MODEL.black_box_entities[tid];
-      cmnts = '';
+    // NOTE: "black-boxed" constraints are saved anonymously without comments.
+    if(MODEL.black_box) {
+      if(MODEL.black_box_entities.hasOwnProperty(fid)) {
+        fn = MODEL.black_box_entities[fid];
+        cmnts = '';
+      }
+      if(MODEL.black_box_entities.hasOwnProperty(tid)) {
+        tn = MODEL.black_box_entities[tid];
+        cmnts = '';
+      }
     }
     let xml = ['<constraint', (this.no_slack ? ' no-slack="1"' : ''),
       ' soc-direction="', this.soc_direction,

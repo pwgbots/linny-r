@@ -103,10 +103,21 @@ class UndoStack {
   clear() {
     this.undoables.length = 0;
     this.redoables.length = 0;
+    // NOTE: Set last change time to that of the model to prevent
+    // that modeler is warned that unsaved changes will be discarded.
+    this.last_change = (MODEL ? MODEL.last_modified : Date.now());
+    this.prev_change = this.last_change;
   }
   
-  get empty() {
-    return this.undoables.length + this.redoables.length === 0;
+  recordChange() {
+    // Advance time of last change.
+    this.prev_change = this.last_change;
+    this.last_change = new Date();
+  }
+  
+  ignoreLastChange() {
+    // Roll back time of last change.
+    this.last_change = this.prev_change;
   }
   
   get topUndo() {
@@ -160,7 +171,7 @@ class UndoStack {
     // NOTE: The IDs of objects are stored, rather than the objects themselves,
     // because deleted objects will have different memory addresses when
     // restored by an UNDO.
-
+    this.recordChange();
     // Any action except "move" is likely to invalidate the solver result.
     if(action !== 'move' && !(
       // Exceptions:
@@ -352,8 +363,10 @@ if (MODEL.focal_cluster === fc) {
   
   undo() {
     // Undo the most recent "undoable" action.
+    this.recordChange();
     let ue;
     if(this.undoables.length > 0) {
+      this.recordChange();
       UI.reset();
       // Get the action to be undone.
       ue = this.undoables.pop();
@@ -489,6 +502,8 @@ if (MODEL.focal_cluster === fc) {
           throw 'Failed to UNDO replace action';
         }
       }
+      // NOTE: Identifiers may have changed => update the list.
+      MODEL.inferIgnoredEntities();
       // Update the main window
       MODEL.focal_cluster.clearAllProcesses();
       UI.drawDiagram(MODEL);
@@ -503,6 +518,7 @@ if (MODEL.focal_cluster === fc) {
   redo() {
     // Restore the model to its state prior to the last undo
     if(this.redoables.length > 0) {
+      this.recordChange();
       UI.reset();
       let re = this.redoables.pop();
 //console.log('redo ' + re.fullAction);

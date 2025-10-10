@@ -1102,12 +1102,18 @@ table.power-flow th:not(:first-child) {
   filter: hue-rotate(230deg);
 }
 
-#password-dlg {
+/* styles for the three PASSWORD dialogs */
+
+#password-dlg,
+#set-password-dlg,
+#confirm-password-dlg {
   width: min-content;
   height: min-content;
 }
 
-#password-code {
+#password-code,
+#set-password-code,
+#confirm-password-code {
   margin: 2px;
   width: 160px;
 }
@@ -1412,6 +1418,10 @@ div.export {
 #model-name,
 #model-author {
   width: 220px;
+}
+
+#save-black-box-div {
+  margin-left: 125px;
 }
 
 #save-encrypt-lbl,
@@ -4824,12 +4834,54 @@ span.sd-clear {
   background-color: White;
 }
 
-#browser-model-scroll-area {
+#browser-model-header {
   position: absolute;
   left: calc(30% + 40px);
   top: 44px;
   width: calc(70% - 44px);
-  height: calc(100% - 64px);
+  height: 20px;
+  max-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  color: Gray;
+  background-color: White;
+  border: 1px solid Silver;
+}
+
+#browser-model-header > div {
+  display: inline-block;
+  padding-left: 3px;
+  height: 16px;
+  margin-top: 1px;
+  vertical-align: middle;
+}
+
+#browser-time-header,
+#browser-size-header {
+  border-left: 0.5px solid Silver;
+}
+
+div.sort-asc:after {
+  content: ' \2B67';
+  margin-left: 3px;  
+  margin-right: 3px;
+  margin-top: -2px;
+  color: Silver;
+}
+
+div.sort-desc:after {
+  content: ' \2B68';
+  margin-left: 3px;  
+  margin-right: 3px;
+  color: Silver;
+}
+
+#browser-model-scroll-area {
+  position: absolute;
+  left: calc(30% + 40px);
+  top: 64px;
+  width: calc(70% - 44px);
+  height: calc(100% - 84px);
   overflow-y: auto;
   border: 1px solid Silver;
   background-color: White;
