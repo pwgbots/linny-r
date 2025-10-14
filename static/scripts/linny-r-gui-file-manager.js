@@ -863,10 +863,14 @@ class GUIFileManager {
       // hence no update of "time last modified".
       return;
     }
+    // Models can be saved only in (a sub-dir of) the "home" directory.
+    if(this.selected_dir.root !== 'home') {
+      this.selected_dir = this.root_dirs.home; 
+    }
     const fp = this.asFilePath(MODEL.name) || 'model';
     fetch('browse/', postData({
         action: 'store',
-        root: this.selected_dir.root,
+        root: 'home',
         path: this.selected_dir.path,
         model: fp,
         xml: xml

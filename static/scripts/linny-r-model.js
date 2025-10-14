@@ -7120,7 +7120,7 @@ class Cluster extends NodeBox {
     // Remove product position of `p` in this cluster.
     this.product_positions.splice(i, 1);
     // Do not delete product from this cluster if it has links to
-    // processes in other clusters, of if this cluster is updating
+    // processes in other clusters, or if this cluster is updating
     // and binds the product as parameter.
     if(!p.allLinksInCluster(this) || (IO_CONTEXT && IO_CONTEXT.isBinding(p))) {
       // NOTE: Removing only the product position DOES affect the
