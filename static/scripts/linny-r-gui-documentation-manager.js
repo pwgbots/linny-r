@@ -392,13 +392,13 @@ class DocumentationManager {
     let list;
     for(let i = 0; i < html.length; i++) {
       // Paragraph with only dashes and spaces becomes a horizontal rule.
-      if(html[i].match(/^( *-)+$/)) {
+      if(html[i].match(/^(\s*-)+$/)) {
         html[i] = '<hr>';
       // Paragraph may contain a bulleted list.
-      } else if ((list = this.makeList(html[i], /^ *- +/, 'u')) !== false) {
+      } else if ((list = this.makeList(html[i], /^\s*-\s+/, 'u')) !== false) {
         html[i] = list;
       // Paragraph may contain a numbered list.
-      } else if ((list = this.makeList(html[i], /^ *\d+. +/, 'o')) !== false) {
+      } else if ((list = this.makeList(html[i], /^\s*\d+\.\s+/, 'o')) !== false) {
         html[i] = list;
       // Otherwise: default HTML paragraph.
       } else {
