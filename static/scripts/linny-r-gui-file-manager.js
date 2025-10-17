@@ -96,7 +96,12 @@ class GUIFileManager {
     md.element('download-btn').addEventListener('click',
         () => FILE_MANAGER.saveModel({altKey: true}));
     this.delete_btn.addEventListener('click',
-        () => FILE_MANAGER.confirm_delete_modal.show());
+        () => {
+            const md = UI.confirm_perform_modal;
+            md.action = () => FILE_MANAGER.deleteModel();
+            md.element('action').innerText = 'delete model';
+            md.show();
+          });
     md.element('autosave-btn').addEventListener('click',
         () => FILE_MANAGER.showAutoSaveDialog());
     
@@ -191,12 +196,6 @@ class GUIFileManager {
             md.follow_up = null;
           });
 
-    this.confirm_delete_modal = new ModalDialog('confirm-delete-model');
-    this.confirm_delete_modal.ok.addEventListener(
-        'click', () => FILE_MANAGER.deleteModel());
-    this.confirm_delete_modal.cancel.addEventListener(
-        'click', () => FILE_MANAGER.confirm_delete_modal.hide());
-    
     this.autosave_modal = new ModalDialog('autosave');
     this.autosave_modal.ok.addEventListener(
         'click', () => FILE_MANAGER.updateAutoSaveSettings());
@@ -231,6 +230,8 @@ class GUIFileManager {
         // If no model file rows, let name TD take the full table width.
         this.name_header.style.width = window.getComputedStyle(mtbl).width;
       }
+      // Ensure that selected model is visible (or if none, the first row).
+      UI.scrollIntoView(mtbl.rows[Math.max(0, this.model_index)]);
     }
   }
   
@@ -286,33 +287,31 @@ class GUIFileManager {
       if(png === 'autosave') png += '-folder';
       icon.src = `images/${png}.png`;
       icon.classList.remove('off');
-      const
-          sd_root = this.selected_dir.root,
-          sd_path = this.selected_dir.path;
+      const sd = this.selected_dir;
       // Update the path.
       path = ['<em title="', VM.working_directory, '">(Linny-R)</em>',
           this.separator, 'user'].join('');
-      if(sd_root === 'github') {
-        path = 'linny-r-models' + sd_path + '/';
+      if(sd.root === 'github') {
+        path = 'linny-r-models' + sd.path + '/';
         path_div.style.color = '#400080';
       } else {
-        if(sd_root === 'download') {
+        if(sd.root === 'download') {
           path = '<em>Downloads</em>';
-        } else if(sd_root === 'home') {
+        } else if(sd.root === 'home') {
           path += this.separator + 'models';
         } else {
           path += this.separator + 'autosave';          
         }
-        if(sd_path) path += this.separator + sd_path;
+        if(sd.path) path += this.separator + sd.path;
         path_div.style.color = 'Black';
       }
       const mi = this.model_index;
       if(mi >= 0) {
         path += this.separator;
-        if(mi < this.sd_count) {
-          path += this.selected_dir.subdirs[mi].name;
+        if(mi < sd.sdcount) {
+          path += sd.subdirs[mi].name;
         } else {
-          path += this.selected_dir.models[mi - this.sd_count].name + '.lnr';
+          path += sd.models[mi - sd.sdcount].name + '.lnr';
         }
       }
     } else {
@@ -369,6 +368,7 @@ class GUIFileManager {
     this.action = action;
     this.focal_table = this.dir_table;
     this.selected_dir = this.root_dirs.home || null;
+    this.model_index = -1;
     if(this.action === 'load') {
       // Prompt the modeler to confirm discarding unsaved changes, if any.
       const md = this.confirm_load_modal;
@@ -396,6 +396,8 @@ class GUIFileManager {
     this.updateButtons();
     this.updatePath();
     this.last_time_clicked = 0;
+    this.last_time_alpha_key = 0;
+    this.alpha_key = '';
     md.show();
     this.updateDialog();
   }
@@ -573,7 +575,6 @@ class GUIFileManager {
 
   deleteModel() {
     // Delete the selected model.
-    this.confirm_delete_modal.hide();
     if(this.selected_dir && this.model_index >= this.sd_count) {
       const mdl = this.selected_dir.models[this.model_index - this.sd_count];
       if(mdl) fetch('browse/', postData({
@@ -648,6 +649,49 @@ class GUIFileManager {
     }
   }
   
+  alphanumericKey(alpha) {
+    // Select model that matches key stroke sequence.
+    if(!this.selected_dir) return;
+    if(!this.selected_dir.models.length) return;
+    const
+        now = Date.now(),
+        dt = now - this.last_time_alpha_key;
+    this.last_time_alpha_key = now;
+    if(dt < 500) {
+      // Concatenate keys when typed rapidly one after another.
+      this.alpha_key += alpha;
+    } else {
+      // Otherwise, start with new search string.
+      this.alpha_key = alpha;
+    }
+    // Select first model having name starting with the search string.
+    const m_list = this.selected_dir.models;
+    let match = -1,
+        m_index = -1;
+    for(let mi = 0; mi < m_list.length; mi++) {
+      const m = m_list[mi].name.toLowerCase().indexOf(this.alpha_key);
+      if(m === 0) {
+        // First "start match" is selected.
+        m_index = mi;
+        break;
+      } else if(m > 0 && (match < 0 || m < match)) {
+        // Select only if substring occurs earlier in the name.
+        match = m;
+        m_index = mi;
+      }
+    }
+    if(m_index >= 0) {
+      this.model_index = this.sd_count + m_index;
+      this.updateModelTable();
+      this.updatePath();
+      UI.scrollIntoView(this.model_table.rows[this.model_index]);
+      this.focal_table = this.model_table;
+      return;
+    }
+    // No match => reset search string.
+    this.alpha_key = '';
+  }
+  
   getDirContents(d=this.selected_dir) {
     // Fetch contents for directory `d`.
     // NOTE: GitHub directory tree is static => do nothing. 
@@ -695,7 +739,7 @@ class GUIFileManager {
     }
   }
   
-  selectDir(event, n) {
+  selectDir(event, n, update_models=false) {
     // Select directory in list.
     event.stopPropagation();
     this.focal_table = this.dir_table;
@@ -708,7 +752,7 @@ class GUIFileManager {
       this.toggleDir(null, n);
     } else {
       this.updateDirectoryTable();
-      if(change) {
+      if(change || update_models) {
         this.model_index = -1;
         this.updateModelTable();
         this.updateButtons();
@@ -730,7 +774,7 @@ class GUIFileManager {
           if(!this.selected_dir.open) this.toggleDir(null, di);
           this.model_index = -1;
           // Then schedule that the double-clicked directory will be selected.
-          setTimeout((ndi) => FILE_MANAGER.selectDir(event, ndi),
+          setTimeout((ndi) => FILE_MANAGER.selectDir(event, ndi, true),
               // Wait for 300 ms; new dir index is selected plus sub-index + 1.
               300, di + n + 1);
         } else {
@@ -1074,12 +1118,15 @@ class GUIFileManager {
       UI.hideStayOnTopDialogs();
     }
     // Get the model entry.
-    fetch('browse/', postData({
+    const pd = {
           action: 'load',
           root: this.selected_dir.root,
           path: this.selected_dir.path,
           model: mdl.name
-        }))
+        };
+    // NOTE: Add hash code to request only when loading from GitHub.
+    if(pd.root === 'github') pd.sha = mdl.sha;
+    fetch('browse/', postData(pd))
       .then(UI.fetchText)
       .then((data) => {
           if(data && UI.postResponseOK(data)) {

@@ -1119,17 +1119,18 @@ NOTE: Products directly linked to such processes should have a proportional unit
     </div>
   </div>
 
-  <!-- the CONFIRM DELETE modal asks to confirm to delete file -->
-  <div id="confirm-delete-model-modal" class="modal">
-    <div id="confirm-delete-model-dlg" class="inp-dlg">
+  <!-- the CONFIRM PERFORM modal asks to confirm to a particular action -->
+  <div id="confirm-perform-modal" class="modal">
+    <div id="confirm-perform-dlg" class="inp-dlg">
       <div class="dlg-title" style="background-color: #cc88b0">
-        Confirm delete
+        Confirm
+        <span id="confirm-perform-action"></span>
       </div>
-      <div id="confirm-delete-model-msg">
+      <div id="confirm-perform-msg">
         This action cannot be undone.<br>
         Continue?
       </div>
-      <div id="confirm-delete-model-buttons">
+      <div id="confirm-perform-buttons">
         <img class="ok-btn" src="images/ok.png">
         Yes
         <img class="cancel-btn" src="images/cancel.png">
@@ -1934,8 +1935,8 @@ NOTE: * and ? will be interpreted as wildcards"
       <textarea id="expression-text" autocomplete="off" autocorrect="off"
                 autocapitalize="off" spellcheck="false"></textarea>
       <div id="expression-status">&nbsp;</div>
-      <div id="expression-info">
-      </div>
+      <div id="expression-info"></div>
+      <div id="expression-resize" class="resizer"></div>
     </div>
   </div>
 

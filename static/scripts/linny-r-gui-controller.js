@@ -792,6 +792,23 @@ class GUIController extends Controller {
         'add-process', 'add-product', 'move', 'note', 'clone', 'replace'];
     for(const m of main_modals) this.modals[m] = new ModalDialog(m);
     
+    // Several dialogs may ask to confirm some action.
+    this.confirm_perform_modal = new ModalDialog('confirm-perform');
+    this.confirm_perform_modal.ok.addEventListener(
+        'click', () => {
+            const md = UI.confirm_perform_modal;
+            md.hide();
+            // NOTE: Delete action function must be set by the calling method.
+            if(md.action) {
+              // Use setTimeout to ensure that modal is hidden first. 
+              setTimeout(md.action, 5);
+              // Clear action property to prevent unintended repetition.
+              md.action = null;
+            }
+          });
+    this.confirm_perform_modal.cancel.addEventListener(
+        'click', () => UI.confirm_perform_modal.hide());
+    
     // Property dialogs for entities may permit group editing.
     this.modals.cluster = new GroupPropertiesDialog('cluster', {
         'collapsed': 'collapsed',
@@ -1974,19 +1991,18 @@ class GUIController extends Controller {
   // Button functionality
   //
   
-  enableButtons(btns, blink=false) {
+  enableButtons(btns) {
     for(const btn of btns.trim().split(/\s+/)) {
       const b = document.getElementById(btn + '-btn');
-      b.classList.remove('disab', 'activ', 'blink');
+      b.classList.remove('disab', 'activ');
       b.classList.add('enab');
-      if(blink) b.classList.add('blink');
     }
   }
   
   disableButtons(btns) {
     for(const btn of btns.trim().split(/\s+/)) {
       const b = document.getElementById(btn + '-btn'); 
-      b.classList.remove('enab', 'activ', 'stay-activ', 'blink');
+      b.classList.remove('enab', 'activ', 'stay-activ');
       b.classList.add('disab');
     }
   }
@@ -2690,6 +2706,13 @@ class GUIController extends Controller {
     return topmod;
   }
   
+  get topManager() {
+    // Return the manager of the top draggable dialog, or NULL if none.
+    const last = this.dr_dialog_order.length - 1;
+    if(last >= 0) return window[this.dr_dialog_order[last].dataset.manager];
+    return null;
+  }
+  
   checkModals(e) {
     // Respond to Escape, Enter and shortcut keys.
     const
@@ -2724,13 +2747,9 @@ class GUIController extends Controller {
           if(btns.length > 0) btns[0].dispatchEvent(new Event('click'));
         }
         if(topmod.id === 'datasetgroup-modal') UI.modals.datasetgroup.enterKey();
-      } else if(this.dr_dialog_order.length > 0) {
-        // Send ENTER key event to the top draggable dialog.
-        const last = this.dr_dialog_order.length - 1;
-        if(last >= 0) {
-          const mgr = window[this.dr_dialog_order[last].dataset.manager];
-          if(mgr && 'enterKey' in mgr) mgr.enterKey();
-        }
+      } else {
+        const mgr = this.topManager;
+        if(mgr && 'enterKey' in mgr) mgr.enterKey();
       }
     } else if(code === 'Backspace' &&
         ttype !== 'text' && ttype !== 'password' && ttype !== 'textarea') {
@@ -2762,13 +2781,9 @@ class GUIController extends Controller {
           // For other modals, capture the event to prevent underlying
           // draggable dialogs to respond.
         } else {
-          // Send event to the top draggable dialog.
-          const last = this.dr_dialog_order.length - 1;
-          if(last >= 0) {
-            const mgr = window[this.dr_dialog_order[last].dataset.manager];
-            // NOTE: Pass key direction as -1 for UP and +1 for DOWN.
-            if(mgr && 'upDownKey' in mgr) mgr.upDownKey(e.keyCode - 39);
-          }
+          const mgr = this.topManager;
+          // NOTE: Pass key direction as -1 for UP and +1 for DOWN.
+          if(mgr && 'upDownKey' in mgr) mgr.upDownKey(e.keyCode - 39);
         }
       }
       // End, Home, and left and right arrow keys.
@@ -2814,8 +2829,24 @@ class GUIController extends Controller {
         } else if(code === 'KeyP') {
           this.buttons.replace.dispatchEvent(be);
         }
-      } else if(!e.shiftKey && !alt &&
-          (!topmod || ['KeyA', 'KeyC', 'KeyV'].indexOf(code) < 0)) {
+      } else if((topmod && topmod.id === 'browser-modal') ||
+          this.topManager === DATASET_MANAGER) {
+        // File browser responds to alphanumeric key press.
+        let alpha = '';
+        if('0123456789-_()'.indexOf(e.key) >= 0) {
+          alpha = e.key;
+        } else if(code >= 'KeyA' && code <= 'KeyZ') {
+          alpha = code.substring(3).toLowerCase();
+        }
+        if(alpha) {
+          e.preventDefault();
+          if(topmod) {
+            FILE_MANAGER.alphanumericKey(alpha);
+          } else {
+            DATASET_MANAGER.alphanumericKey(alpha);
+          }
+        }
+      } else if(!e.shiftKey && !alt && !topmod) {
         // Interpret special keys as shortcuts unless a modal dialog is open.
         if(code === 'Delete') {
           // DEL button => delete selection.
@@ -2840,7 +2871,7 @@ class GUIController extends Controller {
           this.paper.drawSelection(MODEL);
           this.updateButtons();
         } else if (code > 'KeyA' && code <= 'KeyZ' && ctrl) {
-          // ALWAYS prevent browser to do respond to Ctrl-letter commands.
+          // ALWAYS prevent web browser to do respond to Ctrl-letter commands.
           // NOTE: This cannot prevent a new tab from opening on Ctrl-T.
           e.preventDefault();
           let shortcut = code.substring(3);

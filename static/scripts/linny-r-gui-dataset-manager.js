@@ -48,13 +48,15 @@ class GUIDatasetManager extends DatasetManager {
         'click', () => DATASET_MANAGER.promptForDataset(event.shiftKey));
     document.getElementById('ds-data-btn').addEventListener(
         'click', () => DATASET_MANAGER.editData());
-    document.getElementById('ds-rename-btn').addEventListener(
+    this.rename_btn = document.getElementById('ds-rename-btn');
+    this.rename_btn.addEventListener(
         'click', () => DATASET_MANAGER.promptForName());
     document.getElementById('ds-clone-btn').addEventListener(
         'click', () => DATASET_MANAGER.cloneDataset());
     document.getElementById('ds-load-btn').addEventListener(
         'click', () => DATASET_MANAGER.load_csv_modal.show());
-    document.getElementById('ds-delete-btn').addEventListener(
+    this.delete_btn = document.getElementById('ds-delete-btn');
+    this.delete_btn.addEventListener(
         'click', () => DATASET_MANAGER.deleteDataset());
     this.dataset_table = document.getElementById('dataset-table');
     // Data properties pane below the dataset scroll area.
@@ -145,6 +147,8 @@ class GUIDatasetManager extends DatasetManager {
     this.edited_expression = null;
     this.clicked_object = null;
     this.last_time_clicked = 0;
+    this.last_time_alpha_key = 0;
+    this.alpha_key = '';
     this.focal_table = null;
     this.prefixed_datasets = [];
     this.expanded_rows = [];
@@ -204,7 +208,46 @@ class GUIDatasetManager extends DatasetManager {
       }
     }
   }
-  
+
+  alphanumericKey(alpha) {
+    // Select dataset that matches key stroke sequence.
+    const
+        now = Date.now(),
+        dt = now - this.last_time_alpha_key;
+    this.last_time_alpha_key = now;
+    if(dt < 500) {
+      // Concatenate keys when typed rapidly one after another.
+      this.alpha_key += alpha;
+    } else {
+      // Otherwise, start with new search string.
+      this.alpha_key = alpha;
+    }
+    // Select first visible row starting with the search string.
+    const rows = this.dataset_table.rows;
+    let row = null,
+        match = null;
+    for(let i = 0; i < rows.length; i++) {
+      row = rows[i];
+      const pref = row.dataset.prefix;
+      if(pref.replaceAll(': ', '').startsWith(this.alpha_key)) {
+        match = pref;
+        break;
+      }
+    }
+    // No match => reset search string.
+    if(match) {
+      // NOTE: Prevent keys being interpreted as clicks.
+      this.last_time_clicked = 0;
+      if(row.style.display === 'none') {
+        this.selectPrefixRow(match);
+      } else {
+        this.selectPrefixRow({target: row, by_key: true});
+      }
+    } else {
+      this.alpha_key = '';
+    }
+  }
+    
   expandToShow(name) {
     // Expand all prefix rows for dataset having `name` so as to make it visible.
     const pn = UI.prefixesAndName(name);
@@ -307,7 +350,7 @@ class GUIDatasetManager extends DatasetManager {
       this.updatePanes();
     }
     r.classList.add('sel-set');
-    if(!e.target) r.scrollIntoView({block: 'center'});
+    if(!e.target || e.by_key) r.scrollIntoView({block: 'center'});
     if(toggle || e.altKey || this.doubleClicked(r)) this.togglePrefixRow(e);
     this.updatePanes();      
   }
@@ -459,6 +502,8 @@ class GUIDatasetManager extends DatasetManager {
       } else {
         this.outcome.classList.add('not-selected');
       }
+      this.rename_btn.title = 'Rename selected dataset';
+      this.delete_btn.title = 'Delete selected dataset';
       UI.setImportExportBox('dataset', MODEL.ioType(sd));
       UI.enableButtons(btns);
     } else {
@@ -470,14 +515,11 @@ class GUIDatasetManager extends DatasetManager {
       this.prefixed_count.style.display = (pdsl ? 'block' : 'none');
       UI.disableButtons(btns);
       if(this.selected_prefix_row) {
-        UI.enableButtons('ds-rename ds-delete', true);
-        document.getElementById('ds-rename-btn')
+        UI.enableButtons('ds-rename ds-delete');
+        this.rename_btn
             .title = `Rename ${npds} by changing prefix "${this.selectedPrefix}"`;
-        document.getElementById('ds-delete-btn')
+        this.delete_btn
             .title = `Delete ${npds} having prefix "${this.selectedPrefix}"`;        
-      } else {
-        document.getElementById('ds-rename-btn').title = 'Rename selected dataset';
-        document.getElementById('ds-delete-btn').title = 'Delete selected dataset';
       }
     }
     this.updateModifiers();
@@ -656,7 +698,7 @@ class GUIDatasetManager extends DatasetManager {
     }
   }
   
-  promptForName() {
+  promptForName(confirm=true) {
     // Prompts the modeler for a new name for the selected dataset (if any)
     if(this.selected_dataset) {
       this.rename_modal.element('title').innerText = 'Rename dataset';
@@ -664,9 +706,17 @@ class GUIDatasetManager extends DatasetManager {
           this.selected_dataset.displayName;
       this.rename_modal.show('name');
     } else if(this.selected_prefix_row) {
-      this.rename_modal.element('title').innerText = 'Rename datasets by prefix';
-      this.rename_modal.element('name').value = this.selectedPrefix.slice(0, -2);
-      this.rename_modal.show('name');
+      const n = this.prefixed_datasets.length;
+      if(confirm) {
+        const md = UI.confirm_perform_modal;
+        md.action = () => DATASET_MANAGER.promptForName(false);
+        md.element('action').innerText = `rename ${n} datasets`;
+        md.show();
+      } else {
+        this.rename_modal.element('title').innerText = `Rename ${n} datasets by prefix`;
+        this.rename_modal.element('name').value = this.selectedPrefix.slice(0, -2);
+        this.rename_modal.show('name');
+      }
     }
   }
   
@@ -759,9 +809,16 @@ class GUIDatasetManager extends DatasetManager {
     return dsl;
   }
 
-  deleteDataset() {
+  deleteDataset(confirm=true) {
     // Delete selected dataset(s).
-    for(const ds of this.selectedAsList) {
+    const dsl = this.selectedAsList;
+    if(dsl.length > 1 && confirm) {
+      const md = UI.confirm_perform_modal;
+      md.action = () => DATASET_MANAGER.deleteDataset(false);
+      md.element('action').innerText = `delete ${dsl.length} datasets`;
+      md.show();
+    }
+    for(const ds of dsl) {
       MODEL.removeImport(ds);
       MODEL.removeExport(ds);
       delete MODEL.datasets[ds.identifier];

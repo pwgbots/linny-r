@@ -9417,8 +9417,8 @@ function VMI_add_bound_line_constraint(args) {
 }
 
 function VMI_add_peak_increase_constraints(args) {
-  // Adds constraints to compute peak increase for current block and
-  // for current block + look-ahead
+  // Add constraints to compute peak increase for current block and
+  // for current block + look-ahead.
   const
       vi = args[0], // tableau column of L[t]
       cvi = args[1], // tableau column of peak
@@ -9430,13 +9430,13 @@ function VMI_add_peak_increase_constraints(args) {
         VM.variables[vi - 1][0], VM.variables[vi - 1][1].displayName,
         VM.chunk_variables[cvi][0], cvbl.displayName);
   }
-  // For t = 1 to block length, add constraint to compute block peak increase
+  // For t = 1 to block length, add constraint to compute block peak increase.
   if(VM.offset < MODEL.block_length * VM.cols) {
     // (n) L[t] - BPI[b] <= BP[b-1]  (where b denotes the block number)
     VMI_clear_coefficients();
     VM.coefficients[lci] = 1;
     VM.coefficients[cbici] = -1;
-    // Set RHS to highest level computed in previous blocks
+    // Set RHS to highest level computed in previous blocks.
     VM.rhs = cvbl.b_peak[VM.block_count - 1];
     VMI_add_constraint(VM.LE);
     return;
@@ -9446,9 +9446,9 @@ function VMI_add_peak_increase_constraints(args) {
   // (o) L[t] - BPI[b] - CPI[b] <= BP[b-1]
   VM.coefficients[lci] = 1;
   VM.coefficients[cbici] = -1;
-  // NOTE: next index always points to LA peak increase 
+  // NOTE: Next index always points to LA peak increase.
   VM.coefficients[cbici + 1] = -1;
-  // Set RHS to highest level computed in previous blocks
+  // Set RHS to highest level computed in previous blocks.
   VM.rhs = cvbl.b_peak[VM.block_count - 1];
   VMI_add_constraint(VM.LE);
 }
@@ -9458,7 +9458,7 @@ function VMI_add_peak_increase_at_t_0(args) {
   // to the product level for which a constraint is being defined.
   // This means that the coefficient for (B or LA) peak increase[b] must
   // equal the link rate.
-  // NOTE: only execute this operation at start of block or of LA period
+  // NOTE: Only execute this operation at start of block or of LA period.
   if(VM.offset && VM.offset !== MODEL.block_length * VM.cols) return;
   const
       cvi = args[0] + (VM.offset ? 1 : 0),

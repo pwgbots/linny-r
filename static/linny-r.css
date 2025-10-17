@@ -135,6 +135,10 @@ body {
   flex-direction: column;
 }
 
+color-test {
+  color: #000000;
+}
+
 blockquote {
   font-size: 10px;
   margin-left: 9px;
@@ -2082,6 +2086,8 @@ div.export {
 #expression-dlg {
   width: 550px;
   height: 325px;
+  min-width: 350px;
+  min-height: 250px;
 }
 
 #expression-property {
@@ -2132,7 +2138,7 @@ div.export {
   position: absolute;
   border: solid 1px #e2d8e8;
   bottom: 0;
-  width: 536px;
+  width: calc(100% - 30px);;
   margin: 2px;
   padding: 2px;
 }
@@ -2144,9 +2150,11 @@ div.export {
   background-color: #fafcfe;
   top: 22px;
   left: 2px;
-  width: calc(100% - 9px);
+  width: calc(100% - 14px);
   height: calc(100% - 29px);
+  overflow-y: scroll;
   padding: 2px;
+  padding-right: 6px;
   font-family: Serif;
   font-size: 13px;
 }
@@ -4964,12 +4972,12 @@ td.date-time {
   text-overflow: ellipsis;
 }
 
+#update-modal,
+#include-modal,
 #autosave-modal,
 #defaults-modal,
-#include-modal,
-#update-modal,
-#confirm-load-model-modal,
-#confirm-delete-model-modal {
+#confirm-perform-modal,
+#confirm-load-model-modal {
   z-index: 105; /* on top of the BROWSER modal */
 }
 
@@ -5114,14 +5122,14 @@ select.i-param {
   max-width: calc(100% - 15px);
 }
 
-#confirm-load-model-dlg,
-#confirm-delete-model-dlg {
+#confirm-perform-dlg,
+#confirm-load-model-dlg {
   width: min-content;
   height: min-content;
 }
 
-#confirm-load-model-msg,
-#confirm-delete-model-msg {
+#confirm-perform-msg,
+#confirm-load-model-msg {
   margin: 4px;
   white-space: nowrap;
   line-height: 16px;
@@ -5963,9 +5971,9 @@ div.call-stack-expr {
 }
 
 #move-buttons,
-#confirm-load-model-buttons,
-#confirm-delete-model-buttons,
-#check-update-buttons {
+#check-update-buttons,
+#confirm-perform-buttons,
+#confirm-load-model-buttons {
   width: 100%;
   height: 23px;
   padding-top: 3px;
@@ -5975,9 +5983,9 @@ div.call-stack-expr {
 }
 
 #move-buttons > img,
-#confirm-load-model-buttons > img,
-#confirm-delete-model-buttons > img,
-#check-update-buttons > img {
+#check-update-buttons > img,
+#confirm-perform-buttons > img,
+#confirm-load-model-buttons > img {
   float: none;
   height: 23px;
   width: 23px;

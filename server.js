@@ -223,13 +223,15 @@ function launchGUI() {
 // Only actions are logged to the console as with date and time.
 // Error messages are not prefixed, so these are logged directly.
 
+function localTimeString(dt) {
+  // Convert GMT date-time `dt` to time-zone aware time.
+  const tzt = new Date(dt.getTime() - TIME_ZONE_OFFSET);
+  return tzt.toISOString().substring(0, 19).replace('T', ' ');
+}
+
 function logAction(msg) {
-  // Log request processing to console with time-zone-aware date and time
-  const
-      t = new Date(),
-      tzt = new Date(t.getTime() - TIME_ZONE_OFFSET),
-      dts = tzt.toISOString().substring(0, 19).replace('T', ' ');
-  console.log(`[${dts}] ${msg}`);
+  // Log request processing to console with time-zone aware date and time.
+  console.log(`[${localTimeString(new Date())}] ${msg}`);
 }
 
 // Version check functionality
@@ -544,16 +546,25 @@ function purgeAutoSaveDir(res, period) {
 }
 
 //
-// Auxiliary functions for browsing GitHub.
+// Auxiliary variables and functions for browsing GitHub.
 //
+
+let GITHUB_LAST_MODIFIED = 0;
 
 function fetchGitHubText(response) {
   // Standard first THEN function for FETCH calls.
-  if(response.ok) return response.text();
+  if(response.ok) {
+    if(response.headers.has('last-modified')) {
+      // Store time last modified for this GitHub page.
+      const dlm = Date.parse(response.headers.get('last-modified'));
+      GITHUB_LAST_MODIFIED = new Date(dlm - TIME_ZONE_OFFSET);
+    }
+    return response.text();
+  }
   console.log(`ERROR ${response.status}: ${response.statusText}`);
   return '';
 }
-  
+
 function parseGitHubDirContents(json) {
   // Parse JSON string and extract names of sub-directories and models.
   const dc = {subdirs: [], models: []};
@@ -563,11 +574,13 @@ function parseGitHubDirContents(json) {
       if(entry.type === 'dir') {
         dc.subdirs.push(entry.name);
       } else if(entry.type === 'file' && entry.name.endsWith('.lnr')) {
-        // NOTE: GitHub does not pass "time last modified".
         dc.models.push({
             name: entry.name.slice(0, -4),
             size: entry.size,
-            time: ''
+            time: GITHUB_LAST_MODIFIED,
+            // NOTE: Also pass SHA256 fingerprint, as this will be used to
+            // identify cached files (to prevent unnecessary calls to GitHub).
+            sha: entry.sha
           });
       }
     }
@@ -628,7 +641,7 @@ function fetchGitHubDirs(res, dir) {
     if(!dir.parent) {
       // Serve the complete directory tree.
       stripParents(dir);
-      countModels(dir);
+      console.log(`${pluralS(countModels(dir), 'model')} on GitHub`);
       serveJSON(res, dir);
     } else {
       // Continue with the parent directory.
@@ -700,7 +713,8 @@ function browse(res, sp) {
   const
       root = sp.get('root'),
       rel_path = sp.get('path'),
-      model_name = sp.get('model') || '';
+      model_name = sp.get('model') || '',
+      github_sha = sp.get('sha') || '';
   let file_name = model_name;
   if(file_name && !file_name.endsWith('.lnr')) file_name += '.lnr';
   logAction(`File browser: ${action}  ${root}  ${rel_path}  ${file_name}`);
@@ -708,10 +722,35 @@ function browse(res, sp) {
       full_path = '';
   if(root === 'github') {
     if(action === 'load') {
-      // Serve the GitHub file contents as plain text.
+      if(github_sha) {
+        // Check whether file is cached in auto-save directory.
+        full_path = path.join(WORKSPACE.autosave, `github-${github_sha}.lnr`);
+        if(fs.existsSync(full_path)) {
+          try {
+            // Serve file contents and exit.
+            servePlainText(res, fs.readFileSync(full_path, 'utf8'));
+            console.log(`Served model file from cache: SHA ${github_sha}`);
+            return;
+          } catch(err) {
+            console.log(`ERROR: Failed to read file "${full_path}"`, err);
+          }
+        }
+      }
+      // If not cached, fetch the file from GitHub.
       fetch(GITHUB_LOAD_URL + rel_path + '/' + file_name)
         .then(fetchGitHubText)
-        .then((data) => servePlainText(res, data))
+        .then((data) => {
+            if(github_sha) {
+              // Cache data as GitHub file in auto-save directory.
+              try {
+                fs.writeFileSync(full_path, data);
+              } catch(err) {
+                console.log(`ERROR: Failed to write file "${full_path}"`, err);
+              }
+            }
+            // Serve the GitHub file contents as plain text.
+            servePlainText(res, data);
+          })
         .catch(() => {
             console.log('NOTE: No connection with GitHub');
             // Serve "empty text" if no connection.

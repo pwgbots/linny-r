@@ -165,6 +165,8 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
 </p>`;
     // Add listeners to the GUI elements.
     const md = UI.modals.expression;
+    // Expression editor is a resizable *modal* dialog.
+    UI.resizableDialog('expression', 'X_EDIT');
     md.ok.addEventListener('click', () => X_EDIT.parseExpression());
     md.cancel.addEventListener('click', () => X_EDIT.cancel());
     // NOTE: This modal also has an information button in its header.
@@ -234,6 +236,10 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
     // Clear edited expression attributes of other dialogs.
     DATASET_MANAGER.edited_expression = null;
     EQUATION_MANAGER.edited_expression = null;
+  }
+  
+  updateDialog() {
+    // No need to update dialog, as all its components resize by default.
   }
   
   parseExpression() {

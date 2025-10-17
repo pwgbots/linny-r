@@ -378,26 +378,26 @@ if (MODEL.focal_cluster === fc) {
 //console.log(ue);
       if(ue.action === 'move') {
         this.doMove(ue);
-        // NOTE: doMove modifies the undo edit so that it can be used as redo edit
+        // NOTE: `doMove` modifies the undo edit so that it can be used as redo edit.
         this.redoables.push(ue);
       } else if(ue.action === 'add') {
         // UNDO add means deleting the lastly added entity
         let obj = MODEL.objectByID(ue.object_id);
         if(obj) {
-          // Prepare UndoEdit for redo
+          // Prepare UndoEdit for redo.
           const ot = obj.type;
           // Set properties to [class name, identifier] (for tooltip display and redo)
           ue.properties = [ot, ue.object_id];
           // NOTE: `action` remains "add", but ID is set to null because otherwise
-          // the fullAction method would fail
+          // the fullAction method would fail.
           ue.object_id = null;
           // Push the "delete" UndoEdit back onto the undo stack so that XML will
-          // be added to it
+          // be added to it.
           this.undoables.push(ue);
           // Mimic the exact selection state immediately after adding the entity
           MODEL.clearSelection();
           MODEL.select(obj);
-          // Execute the proper delete, depending on the type of entity
+          // Execute the proper delete, depending on the type of entity.
           if(ot === 'Link') {
             MODEL.deleteLink(obj);
           } else if(ot === 'Note') {
@@ -406,41 +406,41 @@ if (MODEL.focal_cluster === fc) {
             MODEL.deleteCluster(obj);
           } else if(ot === 'Product') {
             // NOTE: `deleteProduct` deletes the ProductPosition, and the product
-            // itself only if needed 
+            // itself only if needed.
             MODEL.focal_cluster.deleteProduct(obj);
           } else if(ot === 'Process') {
             MODEL.deleteNode(obj);
           }
           // Clear the model's selection, since we've bypassed the regular
-          // `deleteSelection` routine
+          // `deleteSelection` routine.
           MODEL.selection.length = 0;
-          // Move the UndoEdit to the redo stack
+          // Move the UndoEdit to the redo stack.
           this.redoables.push(this.undoables.pop());
         }
       } else if(ue.action === 'delete') {
         this.restoreFromXML(ue.xml);
-        // Restore the selection as it was at the time of the "delete" action
+        // Restore the selection as it was at the time of the "delete" action.
         MODEL.selectList(ue.getSelection);
-        // Clear the XML (not useful for REDO delete)
+        // Clear the XML (not useful for REDO delete).
         ue.xml = null;   
         this.redoables.push(ue);
       } else if(ue.action === 'drop' || ue.action === 'lift') {
-        // Restore the selection as it was at the time of the action
+        // Restore the selection as it was at the time of the action.
         MODEL.selectList(ue.getSelection);
-        // NOTE: first focus on the original target cluster
+        // NOTE: first focus on the original target cluster.
         MODEL.focal_cluster = MODEL.objectByID(ue.object_id);
-        // Drop the selection "back" to the focal cluster
+        // Drop the selection "back" to the focal cluster.
         MODEL.dropSelectionIntoCluster(ue.cluster);
-        // Refocus on the original focal cluster
+        // Refocus on the original focal cluster.
         MODEL.focal_cluster = ue.cluster;
         // NOTE: now restore the selection in THIS cluster!
         MODEL.selectList(ue.getSelection);
-        // Now restore the position of the nodes
+        // Now restore the position of the nodes.
         MODEL.setSelectionPositions(ue.properties);
         this.redoables.push(ue);
-        // NOTE: a drop action will always be preceded by a move action 
+        // NOTE: A drop action will always be preceded by a move action.
         if(ue.action === 'drop') {
-          // Double-check, and if so, undo this move as well
+          // Double-check, and if so, undo this move as well.
           if(this.topUndo === 'move') this.undo();
         }
       } else if(ue.action === 'replace') {
@@ -496,7 +496,7 @@ if (MODEL.focal_cluster === fc) {
               MODEL.deleteConstraint(c);
             }
           }
-          // NOTE: same UndoEdit object can be used for REDO
+          // NOTE: Same UndoEdit object can be used for REDO.
           this.redoables.push(ue);
         } else {
           throw 'Failed to UNDO replace action';
