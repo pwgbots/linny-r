@@ -400,12 +400,11 @@ The user workspace is created when the server is run for the first time.
 The sub-directories of this directory `user` are used by Linny-R to store files.
 
 * `autosave` will contain models that have been _auto-saved_ 
-* `channel` and `callback` will be used to interact with Linny-R via its _Receiver_ 
+* `channel` will be used to interact with Linny-R via its _Receiver_ 
 * `data` will be used by the _Dataset Manager_ to locate datasets for which
   a path has been specified
-* `models` will contain models that you saved by `Shift`-clicking on the
-  _Save_ button, or using the keyboard shortcut `Ctrl+Shift+S`
-* `modules` will contain models stored in the `local host` _repository_
+* `models` will contain models that you saved by clicking the _Save_ button
+   or using the keyboard shortcut `(Shift) Ctrl-S`.
 * `reports` will contain text files with time series data and statistics in
   tab-separated format that can be imported or copy/pasted into Excel
 * `solver` will contain the files that are exchanged with the Mixed Integer
