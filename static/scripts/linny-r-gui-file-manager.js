@@ -207,7 +207,7 @@ class GUIFileManager {
     // Keep track of time-out interval of auto-saving feature.
     this.autosave_timeout_id = 0;
   }
-  
+
   updateDialog() {
     // Called only when resizing the modal dialog. No update needed
     // except the column labels of the models table.
@@ -908,9 +908,9 @@ class GUIFileManager {
       return;
     }
     // Models can be saved only in (a sub-dir of) the "home" directory.
-    if(this.selected_dir.root !== 'home') {
-      this.selected_dir = this.root_dirs.home; 
-    }
+    // NOTE: Always select the Home *root*; a specific sub-directory must
+    // be specified via the model name.
+    this.selected_dir = this.root_dirs.home; 
     const fp = this.asFilePath(MODEL.name) || 'model';
     fetch('browse/', postData({
         action: 'store',
@@ -921,7 +921,15 @@ class GUIFileManager {
       }))
     .then(UI.fetchText)
     .then((data) => {
-        if(UI.postResponseOK(data, true)) {
+        if(UI.postResponseOK(data)) {
+          // When model was *auto*-saved...
+          if(data.indexOf('autosave') >= 0) {
+            // ... just mention it on the status line.
+            UI.setMessage(data);
+          } else {
+            // Otherwise use notification (with bell sound).
+            UI.notify(data);
+          }
           // Update the contents of the selected directory.
           FILE_MANAGER.getDirContents();
           UI.modals.browser.hide();

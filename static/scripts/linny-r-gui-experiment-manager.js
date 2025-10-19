@@ -464,6 +464,8 @@ class GUIExperimentManager extends ExperimentManager {
   
   promptForName() {
     if(this.selected_experiment) {
+      this.rename_modal.element('former-name')
+          .innerText = this.selected_experiment.title;
       this.rename_modal.element('name').value = '';
       this.rename_modal.show('name');
     }

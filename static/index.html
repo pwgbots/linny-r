@@ -51,209 +51,14 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 -->
   <link rel="shortcut icon" type="image/png" href="images/icon.png">
-  <!-- NOTE: do not display the page until after software update check -->
-  <style>body { display: none; }</style>
-  <script>
-    // Create global variables
-    var
-      // NODE = false indicates that modules need not export their properties
-      NODE = false,
-      // Version number
-      LINNY_R_VERSION = '0',
-      // GitHub repository
-      GITHUB_REPOSITORY = 'https://github.com/pwgbots/linny-r',
-      // Linny-R server hosting public channels
-      PUBLIC_LINNY_R_URL = 'https://sysmod.tbm.tudelft.nl/linny-r',
-      // Create the XML parser
-      XML_PARSER = new DOMParser(),
-      // NOTE: global variables will be initialized when page has loaded
-      // The controller object (User Interface)
-      UI = null,
-      // The current model
-      MODEL = null,
-      // @@ TO DO: make an IO context STACK to permit nested modules 
-      IO_CONTEXT = null,
-      // Manager objects that will act as controller and/or viewer
-      X_EDIT = null,
-      MONITOR = null,
-      FILE_MANAGER = null,
-      DATASET_MANAGER = null,
-      CHART_MANAGER = null,
-      EXPERIMENT_MANAGER = null,
-      SENSITIVITY_ANALYSIS = null,
-      CONSTRAINT_EDITOR = null,
-      DOCUMENTATION_MANAGER = null,
-      TEX_MANAGER = null,
-      RECEIVER = null,
-      // Stack for undo/redo operations
-      UNDO_STACK = null,
-      // The virtual machine
-      VM = null,
-    
-    // Load audio files
-      SOUNDS = {
-          notification: new Audio('sounds/notification.wav'),
-          warning: new Audio('sounds/warning.wav'),
-          error: new Audio('sounds/error.wav')
-        };
-      
-      
-    function loadLinnyR() {
-      // Ensures that the Linny-R HTML and scripts will be the latest version
-      // by reloading unless URL contains current time stamp truncated to 10 s
-      const d = new Date(),
-            t = Math.floor(d.getTime() / 10000), // getTime returns milliseconds
-            url = window.location.href;
-      if(url.indexOf('?x=' + t) < 0) {
-        // NOTE: URL may contain user user ID (e-mail address)
-        const split = url.split('?u='),
-              base = split[0],
-              userid = (split.length > 1 ? '&u=' + split[1] : '');
-        // NOTE: remove prior '?x=' cache buster if any
-        window.location.assign(base.split('?x=')[0] + '?x=' + t + userid);
-      } else {
-        // Reload the style sheet
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.type = 'text/css';
-        link.href = 'linny-r.css?x=' + t;
-        link.media = 'all';
-        document.getElementById('doc-head').appendChild(link);
-        // Reload the scripts in their proper sequence, i.e., such that all
-        // classes are initialized before their instances are created
-        loadScripts(['-config', '-model', '-ctrl',
-            '-gui-paper', '-gui-controller', '-gui-monitor',
-            '-gui-file-manager', '-gui-expression-editor',
-            '-gui-scale-unit-manager',
-            '-gui-power-grid-manager', '-gui-actor-manager',
-            '-gui-constraint-editor', '-gui-dataset-manager',
-            '-gui-equation-manager', '-gui-chart-manager',
-            '-gui-sensitivity-analysis', '-gui-experiment-manager',
-            '-gui-documentation-manager', '-gui-finder', '-gui-receiver',
-            '-gui-undo-redo', '-vm', '-utils'], t);
-      }
-    }
-
-    function loadScripts(sl, t) {
-      if(sl.length == 0) {
-        // Initialize only after all scripts have loaded
-        initializeLinnyR();
-      } else {
-        const
-            s = sl.shift(),
-            head = document.getElementById('doc-head'),
-            script = document.createElement('script');
-        // NOTE: recursive call after script s has loaded
-        script.onload = () => {
-            console.log('Loaded script: linny-r' + s);
-            loadScripts(sl, t);
-          };
-        script.src= 'scripts/linny-r' + s + '.js?x=' + t;
-        head.appendChild(script);
-      }
-    }
-    
-    function checkForUpdates() {
-      fetch('auto-check')
-        .then((response) => response.text())
-        .then((data) => {
-            console.log('Version check:', data);
-            const info = data.split('|');
-            if(info.length > 1) {
-              LINNY_R_VERSION = info[0];
-              const v = 'Version ' + LINNY_R_VERSION;
-              // Update the "home page" of the documentation manager.
-              DOCUMENTATION_MANAGER.about_linny_r =
-                  DOCUMENTATION_MANAGER.about_linny_r.replace(
-                      '[LINNY_R_VERSION]', v);
-              // Update the version number in the browser's upper left corner.
-              document.getElementById('linny-r-version-number').innerHTML = v;
-              // NOTE: Server detects "version 0" when npmjs website was
-              // not reached; if so, do not suggest a new version exists.
-              if(info[1] !== 'up-to-date' && info[1] !== '0') {
-                // Inform user that newer version exists.
-                UI.newer_version = info[1];
-                let msg = ['<a href="', GITHUB_REPOSITORY,
-                    '/releases/tag/v', info[1],
-                    '" title="Click to view version release notes" ',
-                    'target="_blank">Version <strong>',
-                    info[1], '</strong></a> released on ',
-                    info[2].substring(0, 21),' can be installed.'].join('');
-                const blinker = UI.check_update_modal.element('manual');
-                if(majorNewVersion(LINNY_R_VERSION, info[1])) {
-                  // Major version requires manual install...
-                  msg += ['<br><strong>NOTE:</strong> ',
-                      'This is a <em>major</em> version change, so automatic ',
-                      'updating is <strong>not</strong> possible.<br>',
-                      'Please read <a href="', GITHUB_REPOSITORY,
-                      '/linny-r#updating-to-the-latest-version-of-linny-r" ',
-                      'target="_blank"> this information on GitHub</a> ',
-                      ' on how to manually upgrade Linny-R.'].join('');
-                  // ... so shutdown instead of update...
-                  UI.removeListeners(UI.check_update_modal.ok)
-                      .addEventListener('click', () => UI.shutDownServer());
-                  // ... and show blinking notification in dialog header.
-                  blinker.style.display = 'inline-block';
-                } else{
-                  blinker.style.display = 'none';
-                }
-                UI.check_update_modal.element('msg').innerHTML = msg;
-                UI.check_update_modal.show();
-                UI.check_update_modal.element('buttons').style.display = 'block';
-              }
-            } else {
-              // Invalid server response (should not occur, but just in case)
-              UI.warn('Version check failed: "' + data + '"');
-            }
-            // Schedule a new check 8 hours from now
-            setTimeout(checkForUpdates, 8*3600000);
-
-          })
-        .catch((error) => UI.warn(UI.WARNING.NO_CONNECTION, error));
-    }
-    
-    function initializeLinnyR() {
-      // Protect user from unintentionally closing the browser.
-      // NOTE: Obsolete now that browsers override with own prompt.
-      window.onbeforeunload = () => { return 'Exit Linny-R?'; };
-      // NOTE: First create UI and Documentation Manager to report messages.
-      UI = new GUIController();
-      UI.addListeners();
-      DOCUMENTATION_MANAGER = new DocumentationManager();
-      // Create the virtual machine
-      VM = new VirtualMachine();
-      // Create the GUI-only objects
-      UNDO_STACK = new UndoStack();
-      X_EDIT = new ExpressionEditor();
-      ACTOR_MANAGER = new ActorManager();
-      SCALE_UNIT_MANAGER = new ScaleUnitManager();
-      POWER_GRID_MANAGER = new PowerGridManager();
-      EQUATION_MANAGER = new EquationManager();
-      FINDER = new Finder();
-      CONSTRAINT_EDITOR = new ConstraintEditor();  
-      // NOTE: Instantiate the GUI classes, not their superclasses
-      FILE_MANAGER = new GUIFileManager();
-      DATASET_MANAGER = new GUIDatasetManager();
-      CHART_MANAGER = new GUIChartManager();
-      SENSITIVITY_ANALYSIS = new GUISensitivityAnalysis();
-      EXPERIMENT_MANAGER = new GUIExperimentManager();
-      MONITOR = new GUIMonitor();
-      RECEIVER = new GUIReceiver();
-      // Check for software updates only when running on local server
-      // NOTE: do this *after* GUI elements have been created, as the
-      // updater uses a dialog
-      if(!SOLVER.user_id) checkForUpdates();
-      // Create a new Linny-R model.
-      UI.createNewModel();
-      // Connect the virtual machine (may prompt for password).
-      MONITOR.connectToServer();
-    }
-    
-  </script>
+  <script type="text/javascript" src="scripts/linny-r-boot.js"></script>
   <script type="text/javascript" src="scripts/iro.min.js"></script>
 </head>
-<body onload="loadLinnyR();">
-  <!-- header shows top menu bar -->
+<!-- NOTE: Do not display the page until all scripts have been loaded
+     and software update request has been made.
+  -->
+<body hidden onload="loadLinnyR();">
+  <!-- Header shows top menu bar. -->
   <header>
     <img id="static-icon" src="images/icon.svg">
     <img id="linny-r-name" src="images/linny-r.svg">
@@ -298,7 +103,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       <img id="update-btn" class="btn enab off" src="images/update.png"
            title="Update clusters that have been included in the model">
     </div>
-    <!-- if diagram is not the TOP cluster, show a button to move up to the parent cluster -->
+    <!-- If diagram is not the TOP cluster, show a button to move up to
+         the parent cluster.
+      -->
     <div id="focal-cluster">
       <img id="focal-black-box" class="btn" src="images/is-black-box.png"
            title="This cluster is a &quot;black box&quot;" hidden>
@@ -308,13 +115,13 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       <img id="lift-btn" class="btn disab" src="images/lift.png"
            title="Move selection to parent cluster">
     </div>
-    <!-- Server host depicted in upper right corner -->
-    <div id="server-host-icon" style="float: right">
+    <!-- Server host is depicted in upper right corner. -->
+    <div id="server-host-icon">
       <img id="host-logo" src="images/host-logo.png"
            title="Solver host">
     </div>
   </header>
-  <!-- the main window pane shows the diagram (SVG image) -->
+  <!-- The main window pane shows the diagram (SVG image). -->
   <main>
     <div id="cc">
       <svg id="svg-root" version="1.1" xmlns="http://www.w3.org/2000/svg"
@@ -364,7 +171,9 @@ and move the cursor over the status bar">
       </tr>
     </table>
   </footer>
-  <!-- the side bar holds buttons for editing the model (ADD, DELETE, UNDO, REDO) and for running it -->
+  <!-- The side bar holds buttons for editing the model (ADD, DELETE, UNDO, REDO)
+       and for running it.
+    -->
   <div id="sidebar">
     <img id="process-btn" class="btn toggle enab" src="images/process.png"
          title="Add process">
@@ -376,16 +185,16 @@ and move the cursor over the status bar">
          title="Add composite constraint">
     <img id="cluster-btn" class="btn toggle disab" src="images/cluster.png"
          title="Add cluster">
-    <img id="note-btn" class="btn toggle enab sep" src="images/note.png"
+    <img id="note-btn" class="btn toggle enab v-sep" src="images/note.png"
          title="Add note">
     <img id="replace-btn" class="btn disab" src="images/replace-product.png"
          title="Replace selected product by some other product (Alt-P)">
     <img id="clone-btn" class="btn disab" src="images/clone.png"
          title="Copy selection (Ctrl-C)
 &#x2750; Alt-click to clone (Alt-C)">
-    <img id="paste-btn" class="btn disab sep" src="images/paste.png"
+    <img id="paste-btn" class="btn disab v-sep" src="images/paste.png"
          title="Paste selection (Ctrl-V)">
-    <img id="delete-btn" class="btn disab sep" src="images/delete.png"
+    <img id="delete-btn" class="btn disab v-sep" src="images/delete.png"
          title="Delete">
     <img id="undo-btn" class="btn enab" src="images/undo.png"
          title="Undo (Ctrl-Z)">
@@ -399,14 +208,17 @@ and move the cursor over the status bar">
          title="Reset model (Ctrl-K)">
   </div>
   
-  <!-- these hidden DIVs help to output create files to the browser as "attachments" (downloads) --> 
+  <!-- These hidden DIVs help to output created files to the browser as
+       "attachments" (downloads).
+    --> 
   <a id="xml-saver" target='_blank' hidden="hidden"></a>
   <a id="svg-saver" target='_blank' hidden="hidden"></a>
 
-  <!-- the following hidden DIVs are dialog windows that are shown as "modals",
-       i.e., disabling all other functions -->
+  <!-- The following hidden DIVs are dialog windows that are shown as "modals",
+       i.e., disabling all other functions.
+    -->
 
-  <!-- the LOGON dialog prompts for (optional) user name and password -->
+  <!-- The LOGON dialog prompts for (optional) user name and password. -->
   <div id="logon-modal" class="modal">
     <div id="logon-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -414,20 +226,14 @@ and move the cursor over the status bar">
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <table style="width: 100%">
+      <table id="logon-tbl">
         <tr>
-          <td>Mail address:</td>
-          <td>
-            <input id="logon-name" style="width: 221px"
-                   type="text" autocomplete="off">
-          </td>
+          <td>Mail&nbsp;address:</td>
+          <td><input id="logon-name" type="text" autocomplete="off"></td>
         </tr>
         <tr>
           <td>Password:</td>
-          <td>
-            <input id="logon-password" style="width: 219px"
-                   type="password" autocomplete="off">
-          </td>
+          <td><input id="logon-password" type="password" autocomplete="off"></td>
         </tr>
         <tr>
           <td colspan="2">
@@ -441,7 +247,7 @@ and move the cursor over the status bar">
     </div>
   </div>
 
-  <!-- the SERVER dialog permits solver selection, update and shut-down -->
+  <!-- The SERVER dialog permits solver selection, update and shut-down. -->
   <div id="server-modal" class="modal">
     <div id="server-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -467,7 +273,7 @@ and move the cursor over the status bar">
     </div>
   </div>
   
-  <!-- the DEFAULTS dialog permits modifying the Linny-R configuration file -->
+  <!-- The DEFAULTS dialog permits modifying the Linny-R configuration file. -->
   <div id="defaults-modal" class="modal">
     <div id="defaults-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -475,7 +281,7 @@ and move the cursor over the status bar">
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <table style="margin: 1px">
+      <table id="defaults-tbl">
         <tr>
           <td>
             <label>Author name:</label>
@@ -485,15 +291,13 @@ and move the cursor over the status bar">
         <tr>
           <td>
             <label>Currency unit:</label>
-            <input id="defaults-currency" type="text"
-                   autocomplete="off" style="width: 45px">
+            <input id="defaults-currency" type="text" autocomplete="off">
           </td>
         </tr>
         <tr>
           <td>
             <label>Time step:</label>
-            <input id="defaults-time-scale" type="text"
-                   autocomplete="off" style="width: 50px">
+            <input id="defaults-time-scale" type="text" autocomplete="off">
             <select id="defaults-time-unit">
               <option value="year">year</option>
               <option value="week">week</option>
@@ -507,22 +311,21 @@ and move the cursor over the status bar">
         <tr>
           <td>
             <label>Product unit:</label>
-            <input id="defaults-scale-unit" type="text"
-                   autocomplete="off" style="width: 50px">
+            <input id="defaults-scale-unit" type="text" autocomplete="off">
           </td>
         </tr>
         <tr title="When checked, data copied to clipboard from the Chart manager
 will be written with decimal comma instead of decimal point.">
           <td>
             <div id="defaults-comma" class="box clear"></div>
-            <div id="defaults-comma-lbl">Use decimal comma</div>
+            <div class="box-lbl">Use decimal <u>comma</u> when copying data</div>
           </td>
         </tr>
       </table>
     </div>
   </div>
   
-  <!-- the MODEL dialog prompts for (optional) model name and author name -->
+  <!-- The MODEL dialog prompts for (optional) model name and author name. -->
   <div id="model-modal" class="modal">
     <div id="model-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -530,7 +333,7 @@ will be written with decimal comma instead of decimal point.">
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <table style="width: 100%">
+      <table>
         <tr>
           <td>Name:</td>
           <td>
@@ -547,7 +350,7 @@ will be written with decimal comma instead of decimal point.">
     </div>
   </div>
 
-  <!-- the SAVE dialog prompts for a new model name and more -->
+  <!-- The SAVE dialog prompts for a new model name and more. -->
   <div id="save-modal" class="modal">
     <div id="save-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -555,7 +358,7 @@ will be written with decimal comma instead of decimal point.">
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <table style="width: 100%">
+      <table>
         <tr title="Use slash(es) to specify a subdirectory of the user workspace">
           <td>Name:</td>
           <td>
@@ -584,7 +387,7 @@ will be written with decimal comma instead of decimal point.">
     </div>
   </div>
 
-  <!-- The BROWSER modal is the main dialog for the File manager -->
+  <!-- The BROWSER modal is the main dialog for the File manager. -->
   <div id="browser-modal" class="modal">
     <div id="browser-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -625,7 +428,7 @@ will be written with decimal comma instead of decimal point.">
     </div>
   </div>
     
-  <!-- the UPLOAD dialog permits loading a model via the internet browser -->
+  <!-- The UPLOAD dialog permits loading a model via the internet browser. -->
   <div id="upload-modal" class="modal">
     <div id="upload-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -637,7 +440,7 @@ will be written with decimal comma instead of decimal point.">
     </div>
   </div>
 
-  <!-- the PASSWORD dialog prompts the user for a password -->
+  <!-- The PASSWORD dialog prompts the user for a password. -->
   <div id="password-modal" class="modal">
     <div id="password-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -649,7 +452,7 @@ will be written with decimal comma instead of decimal point.">
     </div>
   </div>    
     
-  <!-- the SET PASSWORD dialog prompts the user for a password -->
+  <!-- The SET PASSWORD dialog prompts the user for a password. -->
   <div id="set-password-modal" class="modal">
     <div id="set-password-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -661,7 +464,7 @@ will be written with decimal comma instead of decimal point.">
     </div>
   </div>    
     
-  <!-- the CONFIRM PASSWORD dialog prompts to confirm a password -->
+  <!-- The CONFIRM PASSWORD dialog prompts to confirm a password. -->
   <div id="confirm-password-modal" class="modal">
     <div id="confirm-password-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -673,7 +476,7 @@ will be written with decimal comma instead of decimal point.">
     </div>
   </div>    
     
-  <!-- the AUTOSAVE dialog allows the user to change auto-save settings -->
+  <!-- The AUTOSAVE dialog allows the user to change auto-save settings. -->
   <div id="autosave-modal" class="modal">
     <div id="autosave-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -694,12 +497,13 @@ will be written with decimal comma instead of decimal point.">
     </div>
   </div>
   
-  <!-- the UNITS datalist is a placeholder for scale units -->
+  <!-- The UNITS datalist is a placeholder for scale units. -->
   <datalist id="units-data">
     <option value="1">
+    <!-- Unit list is updated by the GUI controller. -->
   </datalist>
   
-  <!-- the MODEL SETTINGS dialog allows the user to modify model parameters -->
+  <!-- The MODEL SETTINGS dialog allows the user to modify model parameters. -->
   <div id="settings-modal" class="modal">
     <div id="settings-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -709,54 +513,48 @@ will be written with decimal comma instead of decimal point.">
         <img class="info-btn" src="images/info.png"
              title="View/edit the documentation for this model">
       </div>
-      <table style="width: 100%; white-space: nowrap">
+      <table>
         <tr>
           <td>Name:</td>
-          <td><input id="settings-name" type="text" autocomplete="off"
-                     style="width:270px"></td>
+          <td><input id="settings-name" type="text" autocomplete="off"></td>
         </tr>
         <tr>
           <td>Author:</td>
-          <td><input id="settings-author" type="text" autocomplete="off"
-                     style="width:270px"></td>
+          <td><input id="settings-author" type="text" autocomplete="off"></td>
         </tr>
         <tr>
           <td colspan="2">Default product unit:&nbsp;
             <input id="settings-product-unit" type="text"
-                   list="units-data" autocomplete="off" style="width:80px">
-            <img id="settings-scale-units-btn" class="sbtn" src="images/scale.png"
-                 title="View scale units">
+                   list="units-data" autocomplete="off">
+            <img id="settings-scale-units-btn" class="sbtn"
+                 src="images/scale.png" title="View scale units">
           </td>
         </tr>
         <tr>
           <td colspan="2">Currency unit:&nbsp;
-            <input id="settings-currency-unit" type="text"
-                   autocomplete="off" style="width:45px">
+            <input id="settings-currency-unit" type="text" autocomplete="off">
           </td>
         </tr>
-      </table>
-      <table style="width:100%; white-space: nowrap">
         <tr>
-          <td style="padding:0px">
+          <td colspan="2">
             <div id="settings-block-arrows" class="box clear"></div>
+            <div class="box-lbl">Show hidden flows as block arrows</div>
           </td>
-          <td style="padding-bottom:1px">Show hidden flows as block arrows</td>
         </tr>
         <tr>
-          <td style="padding:0px">
+          <td colspan="2">
             <div id="settings-align-to-grid" class="box clear"></div>
-          </td>
-          <td style="padding-bottom:1px">Snap to alignment grid with
-            <input id="settings-grid-pixels" type="text" autocomplete="off"
-                   style="width:35px;text-align:center"> pixels resolution
+            <div id="settings-grid">
+              Snap to alignment grid with
+              <input id="settings-grid-pixels" type="text" autocomplete="off">
+              pixels resolution
+            </div>
           </td>
         </tr>
         <tr>
           <td colspan="2">Time step:&nbsp;
-            <input id="settings-time-scale" type="text" autocomplete="off"
-                   style="width:50px">
-            <select id="settings-time-unit"
-                    style="height:20px;font-size:12px;vertical-align:top">
+            <input id="settings-time-scale" type="text" autocomplete="off">
+            <select id="settings-time-unit">
               <option value="year">year</option>
               <option value="week">week</option>
               <option value="day">day</option>
@@ -768,88 +566,77 @@ will be written with decimal comma instead of decimal point.">
         </tr>
         <tr>
           <td colspan="2">
-            Optimize from&nbsp;step&nbsp;t<sub><small>0</small></sub> = 
-            <input id="settings-period-start" type="text" autocomplete="off"
-                   style="width:50px">
-            &nbsp;&nbsp;to&nbsp;&nbsp;t<sub><small>N</small></sub> = 
-            <input id="settings-period-end" type="text" autocomplete="off"
-                   style="width:50px">
+            Optimize from&nbsp;step&nbsp;t<sub><small>1</small></sub> = 
+            <input id="settings-period-start" type="text" autocomplete="off">
+            &nbsp;to&nbsp;&nbsp;t<sub><small>N</small></sub> = 
+            <input id="settings-period-end" type="text" autocomplete="off">
           </td>
         </tr>
         <tr>
           <td colspan="2">Block length:&nbsp;
-            <input id="settings-block-length" type="text" autocomplete="off"
-                   style="width:50px"> &nbsp;&nbsp;Look-ahead:&nbsp;
-            <input id="settings-look-ahead" type="text" autocomplete="off"
-                   style="width:50px"> time steps
+            <input id="settings-block-length" type="text" autocomplete="off">
+            &nbsp;&nbsp;Look-ahead:&nbsp;
+            <input id="settings-look-ahead" type="text" autocomplete="off">
+            time steps
           </td>
         </tr>
         <tr>
           <td colspan="2">Solver time limit:&nbsp;
-            <input id="settings-time-limit" type="text" autocomplete="off"
-                   style="width:35px;text-align:center"> seconds per block
+            <input id="settings-time-limit" type="text" autocomplete="off">
+            seconds per block
             <img id="settings-solver-prefs-btn" class="sbtn" src="images/settings.png"
                  title="Set solver preferences">
           </td>
         </tr>
         <tr title="When checked, finite process bounds and slack variables are always added">
-          <td style="padding:0px">
+          <td colspan="2">
             <div id="settings-diagnose" class="box clear"></div>
+            <div class="box-lbl">Diagnose infeasible/unbounded problems</div>
           </td>
-          <td style="padding-bottom:1px">Diagnose infeasible/unbounded problems</td>
-          </div>
         </tr>
         <tr>
-          <td style="padding:0px">
+          <td colspan="2">
             <div id="settings-power" class="box clear"></div>
-          </td>
-          <td>
-            <span style="padding-bottom:1px">Support power grid options</span>
+            <div class="box-lbl">Support power grid options</div>
             <img id="settings-power-btn" class="sbtn" src="images/power.png"
                  title="View/edit power grid settings">
           </td>
         </tr>
         <tr>
-          <td style="padding:0px">
+          <td colspan="2">
             <div id="settings-cost-prices" class="box clear"></div>
+            <div class="box-lbl">Infer and display cost prices</div>
           </td>
-          <td style="padding-bottom:1px">Infer and display cost prices</td>
         </tr>
         <tr>
-          <td style="padding:0px">
+          <td colspan="2">
             <div id="settings-negative-flows" class="box clear"></div>
+            <div class="box-lbl">Do not warn when process levels are < 0</div>
           </td>
-          <td style="padding-bottom:1px">Do not warn when process levels are < 0</td>
         </tr>
         <tr>
-          <td style="padding:0px">
+          <td colspan="2">
             <div id="settings-decimal-comma" class="box clear"></div>
-          </td>
-          <td style="padding-bottom:1px">
-            Use decimal <u>comma</u> when copying data to clipboard
+            <div class="box-lbl">Use decimal <u>comma</u> when copying data to clipboard</div>
           </td>
         </tr>
         <tr title="Reports will be saved in user/reports/, and removed after 24 h">
-          <td style="padding:0px">
+          <td colspan="2">
             <div id="settings-report-results" class="box clear"></div>
-          </td>
-          <td style="padding-bottom:1px">
-            Report results after each run
+            <div class="box-lbl">Report results after each run</div>
           </td>
         </tr>
         <tr>
-          <td style="padding:0px">
+          <td colspan="2">
             <div id="settings-encrypt" class="box clear"></div>
-          </td>
-          <td style="padding-bottom:1px">
-            Encrypt with password
+            <div class="box-lbl">Encrypt with password</div>
           </td>
         </tr>
       </table>
     </div>
   </div>
 
-  <!-- the SCALE UNITS dialog allows viewing/editing scale units -->
+  <!-- The SCALE UNITS dialog allows viewing/editing scale units. -->
   <div id="scale-units-modal" class="modal">
     <div id="scale-units-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -871,7 +658,7 @@ will be written with decimal comma instead of decimal point.">
     </div>
   </div>
 
-  <!-- the ADD SCALE UNIT dialog prompts for a new scale unit -->
+  <!-- The ADD SCALE UNIT dialog prompts for a new scale unit. -->
   <div id="new-scale-unit-modal" class="modal">
     <div id="new-scale-unit-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -898,7 +685,7 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
     </div>
   </div>
 
-  <!-- the POWER GRIDS dialog allows viewing/editing power grids -->
+  <!-- The POWER GRIDS dialog allows viewing/editing power grids. -->
   <div id="power-grids-modal" class="modal">
     <div id="power-grids-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -917,28 +704,20 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
         <table id="power-grids-table">
         </table>
       </div>
-      <table>
-        <tr title="Checked aspects will be ignored for all power grids">
-          <td style="padding-bottom: 3px; font-style: italic">Disregard:</td>
-          <td style="padding: 0px; width: 20px">
-            <div id="power-grids-capacity" class="box clear"></div>
-          </td>
-          <td style="padding-bottom: 3px; width: 70px">Congestion</td>
-          <td style="padding: 0px; width: 20px">
-            <div id="power-grids-KVL" class="box clear"></div>
-          </td>
-          <td style="padding-bottom: 3px; width: 35px"
-              title="Kirchhoff's Voltage Law">KVL</td>
-          <td style="padding: 0px; width: 20px">
-            <div id="power-grids-losses" class="box clear"></div>
-          </td>
-          <td style="padding-bottom: 3px">Losses</td>
-        </tr>
-      </table>
+      <div id="power-grids-aspects"
+           title="Checked aspects will be ignored for all power grids">
+        <div class="box-lbl-low"><em>Disregard:</em>&nbsp</div>
+        <div id="power-grids-capacity" class="box clear"></div>
+        <div class="box-lbl-low">Congestion</div>
+        <div id="power-grids-KVL" class="box clear"></div>
+        <div class="box-lbl-low" title="Kirchhoff's Voltage Law">KVL</div>
+        <div id="power-grids-losses" class="box clear"></div>
+        <div class="box-lbl-low">Losses</div>
+      </div>
     </div>
   </div>
 
-  <!-- the ADD POWER GRID dialog prompts for a new power grid -->
+  <!-- The ADD POWER GRID dialog prompts for a new power grid. -->
   <div id="new-power-grid-modal" class="modal">
     <div id="new-power-grid-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -946,27 +725,26 @@ NOTE: Unit symbols are case-sensitive, so BTU &ne; Btu">
         <img class="cancel-btn" src="images/cancel.png"">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <table style="margin: auto">
+      <table id="new-power-grid-tbl">
         <tr>
-          <td colspan="2">Name:</td>
+          <td>Name:</td>
           <td>
             <input id="new-power-grid-name" type="text" autocomplete="off">
           </td>
         </tr>
         <tr>
-          <td colspan="2">
+          <td>
             Voltage:
           </td>
           <td>
             <input id="new-power-grid-voltage" type="text" autocomplete="off">
-            kV
-            <span style="margin-left: 40px">Color:</span>
+            kV&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Color:
             <input id="new-power-grid-color" type="color">
           </td>
         </tr>
         <tr title="Unit of the level of power grid processes.
 NOTE: Products directly linked to such processes should have a proportional unit.">
-          <td colspan="3">
+          <td colspan="2">
             Power unit:
             <select id="new-power-grid-unit">
               <option value="W">watt (W)</option>
@@ -977,18 +755,14 @@ NOTE: Products directly linked to such processes should have a proportional unit
           </td>
         </tr>
         <tr title="When checked, Kirchhoff's voltage law will be observed">
-          <td style="padding: 0px; margin-bottom: 1px; width: 20px">
+          <td colspan="2">
             <div id="grid-kirchhoff" class="box clear"></div>
-          </td>
-          <td colspan="2" style="padding-bottom:4px">
-            Add power flow constraints
+            <div class="box-lbl-low">Add power flow constraints</div>
           </td>
         </tr>
         <tr title="Power loss is computed by approximating rP&sup2;">
           <td colspan="2">
             Losses:
-          </td>
-          <td>
             <select id="new-power-grid-losses">
               <option value="0">Disregard</option>
               <option value="1">Proportional with load</option>
@@ -1001,7 +775,7 @@ NOTE: Products directly linked to such processes should have a proportional unit
     </div>
   </div>
 
-  <!-- the SOLVER dialog permits specifying solver preference and tolerances -->
+  <!-- The SOLVER dialog permits specifying solver preference and tolerances. -->
   <div id="solver-modal" class="modal">
     <div id="solver-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -1009,40 +783,39 @@ NOTE: Products directly linked to such processes should have a proportional unit
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <table style="width: 100%">
+      <table>
         <tr title="This solver will be used if it is installed">
-          <td colspan="2">
+          <td>
             <label>Preferred solver:</label>
             <select id="solver-preference">
             </select>
           </td>
         </tr>
         <tr title="Tolerance may range from 1e-9 to 0.1">
-          <td colspan="2">
+          <td>
             <label>Integer feasibility tolerance:</label>
-            <input id="solver-int-feasibility" style="width: 65px"
+            <input id="solver-int-feasibility"
                    placeholder="5e-7" type="text" autocomplete="off">
           </td>
         </tr>
         <tr title="Relative gap may range from 0 to 0.5">
-          <td colspan="2">
+          <td>
             <label>Relative MIP gap:</label>
-            <input id="solver-mip-gap" style="width: 65px"
+            <input id="solver-mip-gap"
                    placeholder="1e-4" type="text" autocomplete="off">
           </td>
         </tr>
         <tr title="When checked, small slack uses are reported in monitor">
-          <td style="padding: 0px; width: 20px">
+          <td>
             <div id="solver-show-notices" class="box clear"></div>
-          </td>
-          <td style="padding-bottom:4px">Report small slack uses</td>
+            <div class="box-lbl">Report small slack uses</div>
           </td>
         </tr>
       </table>
     </div>
   </div>
 
-  <!-- the INCLUDE dialog prompts for a prefix and parameter bindings -->
+  <!-- The INCLUDE dialog prompts for a prefix and parameter bindings. -->
   <div id="include-modal" class="modal">
     <div id="include-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -1050,17 +823,17 @@ NOTE: Products directly linked to such processes should have a proportional unit
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div style="margin:2px">
+      <div id="include-cluster-div">
         <label>Cluster:</label>
         <input id="include-prefix" type="text"
                placeholder="(name must be unique)" autocomplete="off">
       </div>
-      <div style="margin:2px">
+      <div id="include-actor-div">
         <label>Actor:</label>
         <input id="include-actor" type="text"
                placeholder="(no actor)" autocomplete="off">
       </div>
-      <div style="font-weight: bold; margin:4px 2px 2px 2px">
+      <div  id="include-bindings-div">
         Parameter bindings:
       </div>
       <div id="include-scroll-area">
@@ -1068,15 +841,17 @@ NOTE: Products directly linked to such processes should have a proportional unit
     </div>
   </div>  
 
-  <!-- the UPDATE dialog prompts for a module name -->
+  <!-- The UPDATE dialog prompts for the module name to be selected
+       from the list of modules that have been included in the model.
+    -->
   <div id="update-modal" class="modal">
-    <div id="update-dlg" class="inp-dlg" style="min-width: 335px">
+    <div id="update-dlg" class="inp-dlg">
       <div class="dlg-title">
         Update clusters previously included from a model file
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div style="padding: 2px">
+      <div id="update-clusters-div">
         <div>
           Update using model: <span id="update-name"></span>
         </div>
@@ -1100,10 +875,10 @@ NOTE: Products directly linked to such processes should have a proportional unit
     </div>
   </div>  
 
-  <!-- the CONFIRM LOAD modal asks to confirm to load model -->
+  <!-- The CONFIRM LOAD modal asks to confirm to load model. -->
   <div id="confirm-load-model-modal" class="modal">
     <div id="confirm-load-model-dlg" class="inp-dlg">
-      <div class="dlg-title" style="background-color: #cc88b0">
+      <div class="dlg-title dlg-alert">
         Confirm load model
       </div>
       <div id="confirm-load-model-msg">
@@ -1119,10 +894,10 @@ NOTE: Products directly linked to such processes should have a proportional unit
     </div>
   </div>
 
-  <!-- the CONFIRM PERFORM modal asks to confirm to a particular action -->
+  <!-- The CONFIRM PERFORM modal asks to confirm to a particular action. -->
   <div id="confirm-perform-modal" class="modal">
     <div id="confirm-perform-dlg" class="inp-dlg">
-      <div class="dlg-title" style="background-color: #cc88b0">
+      <div class="dlg-title dlg-alert">
         Confirm
         <span id="confirm-perform-action"></span>
       </div>
@@ -1139,7 +914,9 @@ NOTE: Products directly linked to such processes should have a proportional unit
     </div>
   </div>
 
-  <!-- the ACTOR dialog allows modification of the name and relative weight of a selected actor -->
+  <!-- The ACTOR dialog allows modification of the name and relative weight
+       of a selected actor.
+    -->
   <div id="actor-modal" class="modal">
     <div id="actor-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -1147,12 +924,11 @@ NOTE: Products directly linked to such processes should have a proportional unit
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <table style="width: 100%">
+      <table>
         <tr>
           <td>Name:</td>
           <td>
-            <input id="actor-name" type="text" autocomplete="off"
-              style="width:222px">
+            <input id="actor-name" type="text" autocomplete="off">
           </td>
           <td>
             <div id="actor-io"
@@ -1166,8 +942,7 @@ NOTE: Products directly linked to such processes should have a proportional unit
         <tr>
           <td>Weight:</td>
           <td>
-            <input id="actor-W" type="text" autocomplete="off"
-                   style="width:222px">
+            <input id="actor-W" type="text" autocomplete="off">
           </td>
           <td>
             <img id="actor-W-x" class="sbtn enab" src="images/edit.png"
@@ -1178,10 +953,10 @@ NOTE: Products directly linked to such processes should have a proportional unit
     </div>
   </div>
 
-  <!-- The ACTORS (plural!) dialog displays a scrollable list of all actors;
-       clicking an actor will open the ACTOR dialog for that actor.
+  <!-- The ACTORS (plural!) dialog displays a scrollable list of all actors.
+       Clicking an actor will open the ACTOR dialog for that actor.
        NOTE: Changes to this list are discarded if CANCEL is clicked.
-   -->
+    -->
   <div id="actors-modal" class="modal">
     <div id="actors-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -1213,7 +988,7 @@ NOTE: Products directly linked to such processes should have a proportional unit
         <div id="actors-weight-hdr"
              title="Multiplier of actor cash flow in objective function
 &rarr; Set to 0 to disregard an actor's interest
-&rarr; Use conditional expression (e.g., R=3 ? 0 : 1) to differentiate between rounds">
+&rarr; Use conditional expression (e.g., r = 3 ? 0 : 1) to differentiate between rounds">
           Weight
         </div>
         <div id="rounds-hdr"
@@ -1221,16 +996,18 @@ NOTE: Products directly linked to such processes should have a proportional unit
         </div>
       </div>
       <div id="actors-scroll">
-        <table id="actors-table" width="100%"></table>
+        <table id="actors-table"></table>
       </div>
     </div>
   </div>
 
-  <!-- NOTE: the following hidden DIVs implement dialogs for the buttons on
-       the side bar -->
+  <!-- NOTE: The following hidden DIVs implement modal dialogs for the buttons on
+       the side bar.
+    -->
 
-  <!-- the ADD PROCESS dialog prompts only for the process name and (optionally)
-       the name of the actor "owning" it -->
+  <!-- The ADD PROCESS dialog prompts only for the process name and (optionally)
+       the name of the actor "owning" it.
+    -->
   <div id="add-process-modal" class="modal">
     <div id="add-process-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -1238,26 +1015,26 @@ NOTE: Products directly linked to such processes should have a proportional unit
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <table style="width: 100%">
+      <table>
         <tr>
           <td>Name:</td>
           <td>
-            <input id="add-process-name" style="width:223px" type="text"
-                   autocomplete="off">
+            <input id="add-process-name" type="text" autocomplete="off">
           </td>
         </tr>
         <tr>
           <td>Actor:</td>
           <td>
-            <input id="add-process-actor" style="width:223px" type="text"
-                   autocomplete="off">
+            <input id="add-process-actor" type="text" autocomplete="off">
           </td>
         </tr>
       </table>
     </div>
   </div>
 
-  <!-- the ADD PRODUCT dialog prompts only for the product name and its unit of measure -->
+  <!-- The ADD PRODUCT dialog prompts only for the product name
+       and its unit of measure.
+    -->
   <div id="add-product-modal" class="modal">
     <div id="add-product-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -1265,35 +1042,32 @@ NOTE: Products directly linked to such processes should have a proportional unit
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <table style="width: 100%">
+      <table>
         <tr>
           <td>Name:</td>
-          <td colspan="3">
-            <input id="add-product-name"
-                   style="width:223px" type="text" autocomplete="off">
+          <td>
+            <input id="add-product-name" type="text" autocomplete="off">
           </td>
         </tr>
         <tr>
           <td>Unit:</td>
           <td>
             <input id="add-product-unit" list="units-data"
-                   style="width:70px" type="text" autocomplete="off">
+                   type="text" autocomplete="off">
+            <div id="add-product-data" class="box clear"></div>
+            <div class="box-lbl">Data</div>
           </td>
-          <td style="width:20px;padding:0px">
-            <div id="add-product-data" class="box clear">
-          </td>
-          <td style="white-space:nowrap">Data</td>
         </tr>
       </table>
     </div>
   </div>
 
-  <!-- the CLUSTER dialog prompts only for the process name and (optionally)
-       the name of the actor "owning" it
-       NOTE: this dialog is also used to *edit* these properties of an existing
+  <!-- The CLUSTER dialog prompts only for the process name and (optionally)
+       the name of the actor "owning" it.
+       NOTE: This dialog is also used to *edit* these properties of an existing
        cluster, as clusters have no other intrinsic properties (they merely
-       group other Linny-R entities)
-   -->
+       group other Linny-R entities).
+    -->
   <div id="cluster-modal" class="modal">
     <div id="cluster-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -1302,19 +1076,17 @@ NOTE: Products directly linked to such processes should have a proportional unit
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <table style="width: 100%">
+      <table>
         <tr>
           <td>Name:</td>
           <td colspan="2">
-            <input id="cluster-name" style="width: 270px" type="text"
-                   autocomplete="off">
+            <input id="cluster-name" type="text" autocomplete="off">
           </td>
         </tr>
         <tr>
           <td>Actor:</td>
           <td>
-            <input id="cluster-actor" style="width: 242px" type="text"
-                   autocomplete="off">
+            <input id="cluster-actor" type="text" autocomplete="off">
           </td>
           <td>
             <img id="cluster-include-btn" class="mbtn enab" src="images/open.png"
@@ -1324,27 +1096,18 @@ NOTE: Products directly linked to such processes should have a proportional unit
       </table>
       <div id="cluster-options" hidden>
         <div id="cluster-collapsed" class="box clear"></div>
-        <div style="display: inline-block; vertical-align: top;
-                    margin-right: 15px; padding-top: 3px">
-          Display as small square
-        </div>
+        <div class="box-lbl-low">Display as small square&nbsp;&nbsp;&nbsp;</div>
         <div id="cluster-ignore" class="box clear"></div>
-        <div style="display: inline-block; vertical-align: top;
-                    margin-right: 15px; padding-top: 3px">
-          Ignore
-        </div>
+        <div class="box-lbl-low">Ignore&nbsp;&nbsp;&nbsp;</div>
         <div id="cluster-black-box" class="box clear"></div>
-        <div style="display: inline-block; vertical-align: top;
-                    padding-top: 3px">
-          Black box
-        </div>
+        <div class="box-lbl-low">Black box</div>
       </div>
     </div>
   </div>
   
-  <!-- The NOTE dialog -- notes have no name as identifier => no input field
-       NOTE: this dialog is also used to *edit* an existing note
-   -->
+  <!-- The NOTE dialog -- notes have no name as identifier => no input field.
+       NOTE: This dialog is also used to *edit* an existing note.
+    -->
   <div id="note-modal" class="modal">
     <div id="note-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -1359,29 +1122,23 @@ NOTE: Products directly linked to such processes should have a proportional unit
         <input id="note-C" type="text" autocomplete="off"
           title="0 = yellow (default), 1 = green, 2 = blue, 3 = purple, 4 = white, 5 = ALERT">
         <img id="note-C-x" class="sbtn enab" src="images/edit.png"
-             title="Edit expression for note color"
-            style="margin-top: -3px">
+             title="Edit expression for note color">
       </div>
     </div>
   </div>
 
-  <!--
-    The MODIFY LINK dialog allows specifying link properties. The names of the FROM and
-    TO nodes are set dynamically (as inner HTML). The proprties that can be changed are
-    the multiplier and the rate, and for "typical" links (product flows Q -> P) the
-    % allocated cost for the TO-node.
-
-    NOTE: links to "information products" can be defined to calculate the actual flow
-    by multiplying the rate with different variables:
-
-    The "actual flow" is calculated as rate * multiplier
-   -->
+  <!-- The MODIFY LINK dialog allows specifying link properties. The names of
+       the FROM and TTO nodes are set dynamically (as inner HTML). The proprties
+       that can be changed are the multiplier and the rate, and for "typical" links
+       (product flows Q -> P) the % allocated cost for the TO-node.
+    -->
   <div id="link-modal" class="modal">
     <div id="link-dlg" class="inp-dlg">
       <div class="dlg-title">
-        <!-- link arrow symbol depends on type of link: product => solid,
-             data => dashed; no spacing between <span> elements, as these
-             elements have left and right padding. -->
+        <!-- The link arrow symbol depends on type of link: product => solid,
+             data => dashed. No spacing between <span> elements, as these
+             elements have left and right padding.
+          -->
         <div id="link-x-y">Link X<span id="link-arrow-1">&#x279D;</span>Y:</div>
         <div id="link-from-name" title="FROM">
         </div><span id="link-arrow-2">&#x279D;</span><div id="link-to-name" title="TO">
@@ -1390,11 +1147,12 @@ NOTE: Products directly linked to such processes should have a proportional unit
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <table style="width: 100%">
+      <table>
+        <!-- NOTE: Only links to "information products" can have different rate multipliers. -->
         <tr id="link-multiplier-row">
-          <td style="vertical-align: baseline">
+          <td>
             Multiplier:
-            <select id="link-multiplier" style="font-size: 9pt">
+            <select id="link-multiplier">
               <option id="link-flow" selected="selected" value="0">
                 Level of X (no flow symbol)
               </option>
@@ -1442,17 +1200,16 @@ NOTE: Products directly linked to such processes should have a proportional unit
             Rate (<span id="link-to-unit">unit</span>/<span id="link-from-unit">level</span>):
             <input id="link-R" type="text" autocomplete="off">
             <img id="link-R-x" class="sbtn enab"
-                 title="Edit expression for link rate" src="images/edit.png"
-                 style="margin-top: -3px">
+                 title="Edit expression for link rate" src="images/edit.png">
           </td>
         </tr>
+        <!-- NOTE: Only output liks can have a delay and a share of cost. -->
         <tr id="link-output-row" hidden="hidden">
-          <td style="vertical-align: baseline">
+          <td>
             Delay &delta;:
             <input id="link-D" type="text" autocomplete="off">
             <img id="link-D-x" class="sbtn enab"
-                 title="Edit expression for link delay" src="images/edit.png"
-                 style="margin-top: -3px">
+                 title="Edit expression for link delay" src="images/edit.png">
             <div id="link-output-soc">
               Attributed share of cost:
               <input id="link-share-of-cost" type="text" autocomplete="off">%
@@ -1476,27 +1233,25 @@ NOTE: Products directly linked to such processes should have a proportional unit
              (the global variable CONSTRAINT_EDITOR). This editor tracks all edits in its own
              properties; a new instance of Constraint is created (or edits to an existing
              instance become effectuated) only when OK is clicked.
-   -->
+    -->
   <div id="constraint-modal" class="modal">
     <div id="constraint-dlg" class="inp-dlg">
-      <div class="dlg-title">Constraint X <span style="font-weight: normal">&#x219D;</span> Y
+      <div class="dlg-title">Constraint X <span class="normal">&#x219D;</span> Y
         <span id="constraint-group"></span>
-        <div style="display: inline-block; margin-left: 219px; margin-bottom: -7px">
-          <img class="cancel-btn" src="images/cancel.png">
-          <img class="ok-btn" src="images/ok.png"
-               style="margin-left: 4px; margin-bottom: 3px">
-        </div>
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+
       </div>
       <div id="constraint-button-bar">
         <img id="add-point-btn" class="mbtn enab" src="images/add.png"
              title="Add new point to selected bound line">
         <img id="del-point-btn" class="mbtn disab"
              title="Remove selected point from bound line" src="images/remove.png">
-        <img id="add-bl-btn" class="mbtn enab" title="Add new bound line"
-             style="margin-left: 15px" src="images/pwlf.png">
-        <img id="bl-data-btn" class="mbtn enab" title="Add/modify bound line data"
-             src="images/dataset.png">
-        <!-- NOTE: values correspond to constants used by Virtual Machine -->
+        <img id="add-bl-btn" class="mbtn enab" src="images/pwlf.png"
+             title="Add new bound line">
+        <img id="bl-data-btn" class="mbtn enab" src="images/dataset.png"
+             title="Add/modify bound line data">
+        <!-- NOTE: Values correspond to constants used by Virtual Machine. -->
         <select id="bl-type" title="Bound type">
           <option value="1">&le;</option>
           <option value="3" selected>=</option>
@@ -1506,7 +1261,7 @@ NOTE: Products directly linked to such processes should have a proportional unit
              title="Delete selected bound line">
       </div>
       <div id="constraint-y-label">% range of <span id="constraint-to-name"></span></div>
-      <!-- NOTE: this is the div that will contain the chart's SVG image -->
+      <!-- NOTE: This is the div that will contain the chart's SVG image. -->
       <div id="constraint-container"></div>
       <div id="constraint-x-label">% range of <span id="constraint-from-name"></span></div>
       <div id="constraint-pos-x">X = 0</div>
@@ -1566,10 +1321,10 @@ Each line should represent the points of a different bound line.">
         <span id="boundline-data-line-number"></span>
         (<span id="boundline-data-line-count">no data</span>)
       </div>
-      <div id="boundline-data-sel-titles" style="display: block;">
+      <div id="boundline-data-sel-titles">
         <span>Selector</span>
-        <span style="margin-left: 38px">Line index expression or
-        <span class="blpoints">points expression</span></span>
+        <span class="bl-index">Line index expression or
+        <span class="bl-points">points expression</span></span>
       </div>
       <div id="boundline-data-sel-area">
         <table id="boundline-data-sel-table">
@@ -1582,9 +1337,8 @@ Each line should represent the points of a different bound line.">
              src="images/rename.png" title="Rename selected selector">
         <img id="bl-edit-sel-btn" class="btn disab"
              src="images/edit.png" title="Edit expression of selected selector">
-        <img id="bl-delete-sel-btn" class="btn disab"
-             src="images/delete.png" title="Delete selected selector"
-             style="margin-left: 20px">
+        <img id="bl-delete-sel-btn" class="btn disab h-sep"
+             src="images/delete.png" title="Delete selected selector">
       </div>
     </div>
   </div>
@@ -1627,7 +1381,7 @@ Each line should represent the points of a different bound line.">
       <input id="process-UB" type="text" autocomplete="off">
       <img id="process-UB-x" class="sbtn enab" src="images/edit.png"
            title="Edit expression for upper process bound">
-      <!-- "equal bounds" button is displayed middle-left of the two input fields -->
+      <!-- The "equal bounds" button is displayed middle-left of the two input fields. -->
       <div id="process-UB-equal" class="bbtn ne" title="Set equal bounds"></div>
       <div id="process-IL-lbl">Initial level:</div>
       <input id="process-IL" type="text" autocomplete="off">
@@ -1675,7 +1429,7 @@ Each line should represent the points of a different bound line.">
     </div>
   </div>
 
-  <!-- PRODUCT properties dialog -->
+  <!-- The PRODUCT properties dialog permits editing a product. -->
   <div id="product-modal" class="modal">
     <div id="product-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -1714,7 +1468,7 @@ Each line should represent the points of a different bound line.">
       <input id="product-UB" type="text" autocomplete="off">
       <img id="product-UB-x" class="sbtn enab" src="images/edit.png"
            title="Edit expression for upper product bound">
-      <!-- "equal bounds" button is displayed middle-left of the two input fields -->
+      <!-- The "equal bounds" button is displayed middle-left of the two input fields. -->
       <div id="product-UB-equal" class="bbtn ne" title="Set equal bounds"></div>
       <div id="product-IL-lbl">Initial level:</div>
       <input id="product-IL" type="text" autocomplete="off">
@@ -1750,7 +1504,7 @@ Each line should represent the points of a different bound line.">
     </div>
   </div>
 
-  <!-- the DATASET GROUP modal allows editing properties of multiple datasets -->
+  <!-- The DATASET GROUP modal allows editing properties of multiple datasets. -->
   <div id="datasetgroup-modal" class="modal">
     <div id="datasetgroup-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -1793,7 +1547,7 @@ Each line should represent the points of a different bound line.">
       <div id="datasetgroup-modif-header">Modifiers</div>
       <div id="datasetgroup-modif-titles">
         <span>Selector</span>
-        <span style="margin-left: 35px">Expression</span>
+        <span class="lm35">Expression</span>
       </div>
       <div id="datasetgroup-modif-scroll-area">
         <table id="datasetgroup-modif-table">
@@ -1806,14 +1560,13 @@ Each line should represent the points of a different bound line.">
              title="Rename selected modifier">
         <img id="dsg-edit-modif-btn" class="btn disab"
              src="images/edit.png" title="Edit expression of selected modifier">
-        <img id="dsg-delete-modif-btn" class="btn disab"
-             src="images/delete.png" title="Delete selected modifier"
-             style="margin-left: 20px">
+        <img id="dsg-delete-modif-btn" class="btn disab h-sep"
+             src="images/delete.png" title="Delete selected modifier">
       </div>
     </div>
   </div>
   
-  <!-- the GROUP SELECTOR dialog prompts for a new selector -->
+  <!-- The GROUP SELECTOR dialog prompts for a new selector. -->
   <div id="group-selector-modal" class="modal">
     <div id="group-selector-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -1829,7 +1582,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- The CLONE dialog prompts for a prefix -->
+  <!-- The CLONE dialog prompts for a prefix for the selection-to-be-cloned. -->
   <div id="clone-modal" class="modal">
     <div id="clone-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -1837,12 +1590,12 @@ NOTE: * and ? will be interpreted as wildcards"
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div style="font-size: 11px; margin: 2px">
+      <div id="clone-instruction">
         Prefix + actor should result in unique new names
         for selected processes and clusters.<br>
         <em>Products will NOT be cloned unless a prefix is specified.</em>
       </div>
-      <table style="width: 100%">
+      <table>
         <tr>
           <td>Prefix:</td>
           <td>
@@ -1858,7 +1611,7 @@ NOTE: * and ? will be interpreted as wildcards"
       </table>
       <div>
         <div id="clone-renumbering" class="box clear"></div>
-        <div style="display:inline-block; vertical-align:top; margin-top:3px"
+        <div class="box-lbl-low"
              title="NOTE: This applies only to selected processes and products">
           Use incremental numbering where possible
         </div>
@@ -1866,10 +1619,10 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>  
 
-  <!-- The MOVE modal asks to confirm to move node to focal cluster -->
+  <!-- The MOVE modal asks to confirm to move node to focal cluster. -->
   <div id="move-modal" class="modal">
     <div id="move-dlg" class="inp-dlg">
-      <div class="dlg-title" style="background-color: #cc88b0">
+      <div class="dlg-title dlg-alert">
         Confirm move
       </div>
       <div id="move-msg">
@@ -1887,7 +1640,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- REPLACE PRODUCT dialog -->
+  <!-- The REPLACE PRODUCT dialog asks to select another product. -->
   <div id="replace-modal" class="modal">
     <div id="replace-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -1895,20 +1648,22 @@ NOTE: * and ? will be interpreted as wildcards"
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div style="margin: 0 0 2px 2px; width: 100%">
+      <div id="replace-div">
         <label>Replace by:</label>
-        <select id="replace-by-name"></select>
+        <select id="replace-by-name">
+          <!-- Possible replacement options are added by the GUI controller. -->
+        </select>
         <div id="replace-option"
              title="When checked, only the links shown in this diagram will be redirected">
           <div id="replace-local" class="box clear"></div>
-          <div style="display: inline-block">(locally)</div>
+          <div class="box-lbl-low">(locally)</div>
         </div>
       </div>
     </div>
   </div>
       
 
-  <!-- EXPRESSION EDITOR dialog -->
+  <!-- The EXPRESSION EDITOR dialog is a resizable modal dialog. -->
   <div id="expression-modal" class="modal">
     <div id="expression-dlg" class="inp-dlg">
       <div class="dlg-title">Editing expression for
@@ -1941,7 +1696,7 @@ NOTE: * and ? will be interpreted as wildcards"
   </div>
 
 
-  <!-- the DATASET MANAGER dialog allows definition of datasets -->
+  <!-- The DATASET MANAGER dialog allows definition of datasets. -->
   <div id="dataset-dlg" class="inp-dlg">
     <div id="dataset-hdr" class="dragger dlg-title">Dataset manager
       <img id="dataset-close-btn" class="close-btn" src="images/close.png">
@@ -1958,8 +1713,7 @@ NOTE: * and ? will be interpreted as wildcards"
       <img id="ds-load-btn" class="btn enab" src="images/open.png"
            title="Load dataset(s) from CSV file">
       <img id="ds-delete-btn" class="btn disab" src="images/delete.png"
-           title="Delete selected dataset"
-           style="position: absolute; right: 2px">
+           title="Delete selected dataset">
     </div>
     <div id="dataset-header">Datasets</div>
     <div id="dataset-scroll-area">
@@ -1999,7 +1753,7 @@ NOTE: * and ? will be interpreted as wildcards"
     <div id="dataset-modif-ds-name"></div>
     <div id="dataset-modif-titles">
       <span>Selector</span>
-      <span style="margin-left: 35px">Expression</span>
+      <span class="lm35">Expression</span>
     </div>
     <div id="dataset-modif-scroll-area">
       <table id="dataset-modif-table">
@@ -2012,17 +1766,16 @@ NOTE: * and ? will be interpreted as wildcards"
            title="Rename selected modifier">
       <img id="ds-edit-modif-btn" class="btn disab"
            src="images/edit.png" title="Edit expression of selected modifier">
-      <img id="ds-delete-modif-btn" class="btn disab"
-           src="images/delete.png" title="Delete selected modifier"
-           style="margin-left: 20px">
-      <img id="ds-convert-modif-btn" class="btn enab blink"
+      <img id="ds-delete-modif-btn" class="btn disab h-sep"
+           src="images/delete.png" title="Delete selected modifier">
+      <img id="ds-convert-modif-btn" class="btn enab h-sep blink"
            src="images/dataset.png" title="Convert modifiers to prefixed datasets"
-           style="margin-left: 20px; display: none">
+           hidden>
     </div>
     <div id="dataset-resize" class="resizer"></div>
   </div>
 
-  <!-- the NEW DATASET dialog prompts for the name of a new dataset -->
+  <!-- The NEW DATASET dialog prompts for the name of a new dataset. -->
   <div id="new-dataset-modal" class="modal">
     <div id="new-dataset-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2034,7 +1787,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the RENAME DATASET dialog prompts for the new name of a dataset -->
+  <!-- The RENAME DATASET dialog prompts for the new name of a dataset. -->
   <div id="rename-dataset-modal" class="modal">
     <div id="rename-dataset-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2046,8 +1799,9 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
   
-  <!-- the LOAD CSV dialog prompts the user for a CSV file on disk
-       to be loaded -->
+  <!-- The LOAD CSV dialog prompts the user for a CSV file on disk
+       to be loaded.
+    -->
   <div id="load-csv-modal" class="modal">
     <div id="load-csv-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2059,7 +1813,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the NEW SELECTOR dialog prompts for a new selector for a dataset -->
+  <!-- The NEW SELECTOR dialog prompts for a new selector for a dataset. -->
   <div id="new-selector-modal" class="modal">
     <div id="new-selector-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2075,7 +1829,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the RENAME SELECTOR dialog prompts for a new selector name -->
+  <!-- The RENAME SELECTOR dialog prompts for a new selector name. -->
   <div id="rename-selector-modal" class="modal">
     <div id="rename-selector-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2090,7 +1844,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the CONVERT MODIFIER prompts for the new name of a dataset -->
+  <!-- The CONVERT MODIFIER prompts for the new name of a dataset. -->
   <div id="convert-modifiers-modal" class="modal">
     <div id="convert-modifiers-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2098,7 +1852,7 @@ NOTE: * and ? will be interpreted as wildcards"
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div style="margin: 4px">
+      <div id="convert-modifiers-div">
         Each modifier will become a dataset
         <tt><em>prefix</em>:&nbsp;<em>selector</em></tt>
         using this prefix: 
@@ -2107,11 +1861,11 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the SERIES dialog presents the properties of the time series
+  <!-- The SERIES dialog presents the properties of the time series
        data of the selected dataset, including a text area for copy/paste
        of numbers while showing the line count and checking for correct
-       number format
-   -->
+       number format.
+    -->
   <div id="series-modal" class="modal">
     <div id="series-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2133,11 +1887,11 @@ NOTE: * and ? will be interpreted as wildcards"
       <div id="series-time-step-lbl">Time step:</div>
       <input id="series-time-scale" type="text" autocomplete="off">
       <select id="series-time-unit">
-        <!-- options are added by DATASET_MANAGER -->
+        <!-- Options are added by DATASET_MANAGER. -->
       </select>
       <div id="series-method-lbl">Method:</div>
       <select id="series-method">
-        <!-- options are added by DATASET_MANAGER -->
+        <!-- Options are added by DATASET_MANAGER. -->
       </select>
       <div id="series-remote">
         <img id="series-clip" src="images/paperclip.png">
@@ -2157,7 +1911,7 @@ NOTE: * and ? will be interpreted as wildcards"
   </div>
 
 
-  <!-- the EQUATION dialog allows definition of equations -->
+  <!-- The EQUATION dialog allows definition of equations. -->
   <div id="equation-dlg" class="inp-dlg">
     <div id="equation-hdr" class="dragger dlg-title">Equation manager
       <img id="equation-close-btn" class="close-btn" src="images/close.png">
@@ -2185,7 +1939,7 @@ NOTE: * and ? will be interpreted as wildcards"
     <div id="equation-resize" class="resizer"></div>
   </div>
 
-  <!-- the NEW EQUATION dialog prompts for the name of a new equation -->
+  <!-- The NEW EQUATION dialog prompts for the name of a new equation. -->
   <div id="new-equation-modal" class="modal">
     <div id="new-equation-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2197,7 +1951,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the RENAME EQUATION dialog prompts for the new name of an equation -->
+  <!-- The RENAME EQUATION dialog prompts for the new name of an equation. -->
   <div id="rename-equation-modal" class="modal">
     <div id="rename-equation-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2209,7 +1963,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the CLONE EQUATION dialog prompts for the new name of an equation -->
+  <!-- The CLONE EQUATION dialog prompts for the new name of an equation. -->
   <div id="clone-equation-modal" class="modal">
     <div id="clone-equation-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2222,7 +1976,7 @@ NOTE: * and ? will be interpreted as wildcards"
   </div>
 
 
-  <!-- the CHART dialog allows definition of charts and displays them -->
+  <!-- The CHART dialog allows definition of charts and displays them. -->
   <div id="chart-dlg" class="inp-dlg">
     <div id="chart-hdr" class="dragger dlg-title">Chart manager
       <div id="chart-experiment-info"></div>
@@ -2242,7 +1996,7 @@ NOTE: * and ? will be interpreted as wildcards"
              title="Delete selected chart">
       </div>
       <select id="chart-selector">
-        <!-- options are added by the chart manager -->
+        <!-- Options are added by the Chart manager. -->
       </select>
       <div id="chart-histogram" class="box clear"></div>
       <div id="chart-histogram-lbl">As histogram</div>
@@ -2264,7 +2018,7 @@ NOTE: * and ? will be interpreted as wildcards"
       <div id="chart-title-lbl">With title</div>
       <div id="chart-legend-lbl">Legend:</div>
       <select id="chart-legend">
-        <!-- options are added by the chart manager -->
+        <!-- Options are added by the Chart manager. -->
       </select>
       <div id="chart-variables-header">
         Variables:
@@ -2312,10 +2066,10 @@ NOTE: * and ? will be interpreted as wildcards"
       </div>
     </div>
     <div id="chart-display-panel">
-      <!-- NOTE: the scroller scrolls when the container is "stretched" -->
+      <!-- NOTE: The scroller scrolls when the container is "stretched". -->
       <div id="chart-svg-scroller">
         <div id="chart-svg-container">
-          <!-- NOTE: this is the div that will contain the chart's SVG image -->
+          <!-- NOTE: This is the div that will contain the chart's SVG image. -->
           <div id="chart-svg"></div>
         </div>
       </div>
@@ -2340,7 +2094,7 @@ NOTE: * and ? will be interpreted as wildcards"
                title="Download chart as bitmap image (PNG)
 &#x270E; Shift-click to download chart as Scalable Vector Graphics (SVG)">
           <img id="chart-widen-btn" class="btn enab" src="images/stretch.png"
-               title="Widen chart" style="margin-left: 12px">
+               title="Widen chart">
           <img id="chart-narrow-btn" class="btn enab" src="images/compress.png"
                title="Narrow chart">
         </div>
@@ -2355,7 +2109,7 @@ NOTE: * and ? will be interpreted as wildcards"
     <div id="chart-resize" class="resizer"></div>
   </div>
 
-  <!-- the VARIABLE dialog allows formatting a chart variable -->
+  <!-- The VARIABLE dialog allows formatting a chart variable. -->
   <div id="variable-modal" class="modal">
     <div id="variable-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2363,51 +2117,42 @@ NOTE: * and ? will be interpreted as wildcards"
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div style="padding: 4px; width: 100px">
+      <div id="variable-format-div">
         <div id="variable-color-div">
-          <div style="display:inline-block; vertical-align:top">Color:</div>
+          <div id="variable-color-lbl">Color:</div>
           <div id="variable-color" title="Click to copy, Shift-click to paste"></div>
           <div id="variable-paste-color"></div>
         </div>
         <div id="variable-absolute-div"
-             title="Plot the absolute value of this variable"
-             style="margin: 2px -2px">
+             title="Plot the absolute value of this variable">
           <div id="variable-absolute" class="box clear"></div>
-          <div style="display:inline-block; vertical-align:top; margin-top: 3px">
-            Absolute
-          </div>
+          <div class="box-lbl-low">Absolute</div>
         </div>
-        <div id="variable-scale-div" style="margin-top: 3px">
-          <div style="display:inline-block; vertical-align:top; margin-top: 2px">
-            Scale by:
-          </div>
+        <div id="variable-scale-div">
+          <div id="variable-scale-lbl">Scale by:</div>
           <input id="variable-scale" type="text" autocomplete="off">
         </div>
-        <div id="variable-width-div" style="margin: 4px 4px 8px 0px">
-          <div style="display:inline-block; vertical-align:top; margin-top: 2px">
-            Line width:
-          </div>
+        <div id="variable-width-div">
+          <div id="variable-width-lbl">Line width:</div>
           <input id="variable-width" type="text" autocomplete="off">
         </div>
-        <div id="variable-stacked-div" style="margin: -2px -2px">
+        <div id="variable-stacked-div">
           <div id="variable-stacked" class="box clear"></div>
-          <div style="display:inline-block; vertical-align:top; margin-top: 3px">
-            Stacked area
-          </div>
+          <div class="box-lbl-low">Stacked area</div>
         </div>
       </div>
       <div id="color-picker"></div>
       <div id="change-equation-btns">
         <img id="chart-rename-equation-btn" class="btn enab"
              src="images/rename.png" title="Rename equation">
-        <img id="chart-edit-equation-btn" class="btn enab"
-             src="images/edit.png" style="margin-left: 4px"
+        <img id="chart-edit-equation-btn" class="btn enab spaced"
+             src="images/edit.png"
              title="Edit equation">
       </div>
     </div>
   </div>
 
-  <!-- the ADD VARIABLE dialog allows selecting a variable to add to the chart -->
+  <!-- The ADD VARIABLE dialog allows selecting a variable to add to the chart. -->
   <div id="add-variable-modal" class="modal">
     <div id="add-variable-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2430,8 +2175,9 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
   
-  <!-- the ADD WILDCARD VARIABLES dialog allows selecting wildcard
-       variables from a list to be added to the current chart -->
+  <!-- The ADD WILDCARD VARIABLES dialog allows selecting wildcard
+       variables from a list to be added to the current chart.
+    -->
   <div id="add-wildcard-variables-modal" class="modal">
     <div id="add-wildcard-variables-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2446,7 +2192,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
   
-  <!-- the RENAME CHART dialog prompts for the new title for a chart -->
+  <!-- The RENAME CHART dialog prompts for the new title for a chart. -->
   <div id="rename-chart-modal" class="modal">
     <div id="rename-chart-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2458,7 +2204,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the SENSITIVITY dialog allows sensitivity analysis -->
+  <!-- The SENSITIVITY dialog allows sensitivity analysis. -->
   <div id="sensitivity-dlg" class="inp-dlg">
     <div id="sensitivity-hdr" class="dragger dlg-title">Sensitivity analysis
       <img id="sensitivity-close-btn" class="close-btn" src="images/close.png">
@@ -2479,8 +2225,8 @@ NOTE: * and ? will be interpreted as wildcards"
         <div id="sa-p-btns">
           <img id="sa-p-add-btn" class="v-btn" src="images/add.png"
                title="Add parameter">
-          <img id="sa-p-up-btn" class="v-btn v-disab"
-               src="images/up.png" style="margin-left: 4px"
+          <img id="sa-p-up-btn" class="v-btn v-disab spaced"
+               src="images/up.png"
                title="Move selected parameter up in list">
           <img id="sa-p-down-btn" class="v-btn v-disab"
                src="images/down.png"
@@ -2497,8 +2243,8 @@ NOTE: * and ? will be interpreted as wildcards"
         <div id="sa-o-btns">
           <img id="sa-o-add-btn" class="v-btn" src="images/add.png"
                title="Add outcome">
-          <img id="sa-o-up-btn" class="v-btn v-disab"
-               src="images/up.png" style="margin-left: 4px"
+          <img id="sa-o-up-btn" class="v-btn v-disab spaced"
+               src="images/up.png"
                title="Move selected outcome up in list">
           <img id="sa-o-down-btn" class="v-btn v-disab"
                src="images/down.png"
@@ -2559,8 +2305,9 @@ NOTE: * and ? will be interpreted as wildcards"
     <div id="sensitivity-resize" class="resizer"></div>
   </div>
 
-  <!-- the ADD SA VARIABLE dialog allows selecting a variable as parameter
-       or outcome for sensitivity analysis -->
+  <!-- The ADD SA VARIABLE dialog allows selecting a variable as parameter
+       or outcome for sensitivity analysis.
+    -->
   <div id="add-sa-variable-modal" class="modal">
     <div id="add-sa-variable-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2586,7 +2333,7 @@ NOTE: * and ? will be interpreted as wildcards"
   </div>
 
 
-  <!-- the EXPERIMENT dialog is the GUI of the Experiment manager -->
+  <!-- The EXPERIMENT dialog is the GUI of the Experiment manager. -->
   <div id="experiment-dlg" class="inp-dlg">
     <div id="experiment-hdr" class="dragger dlg-title">Experiment manager
       <img id="experiment-close-btn" class="close-btn" src="images/close.png">
@@ -2604,7 +2351,6 @@ NOTE: * and ? will be interpreted as wildcards"
         <img id="xp-reset-btn" class="btn enab off" src="images/reset.png"
              title="Clear results for selected experiment">
         <img id="xp-delete-btn" class="btn disab" src="images/delete.png"
-             style="position: absolute; right: 2px"
              title="Delete selected experiment">
       </div>
       <div id="experiment-header">Experiments</div>
@@ -2717,8 +2463,9 @@ NOTE: * and ? will be interpreted as wildcards"
         <select id="viewer-scale">
           <option title="Values as computed"
                   value="val" selected="selected">Values</option>
-          <option title="Difference with reference configuration"
-                  value="dif" style="background-color: orange">Difference</option>
+          <option id="viewer-difference-option"
+                  title="Difference with reference configuration"
+                  value="dif">Difference</option>
           <option title="Regret (difference with highest value in scenario)"
                   value="reg">Regret (-)</option>
           <option title="Computing time used by solver (in seconds)"
@@ -2738,7 +2485,7 @@ NOTE: * and ? will be interpreted as wildcards"
     <div id="experiment-resize" class="resizer"></div>
   </div>
 
-  <!-- the NEW dialog prompts for the name of a new experiment -->
+  <!-- The NEW dialog prompts for the name of a new experiment. -->
   <div id="xp-new-modal" class="modal">
     <div id="xp-new-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2750,13 +2497,12 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the RENAME dialog prompts for the new name of an experiment -->
+  <!-- The RENAME dialog prompts for the new name of an experiment. -->
   <div id="xp-rename-modal" class="modal">
     <div id="xp-rename-dlg" class="inp-dlg">
       <div class="dlg-title">
-        New name for
-        <div class="sdsn"
-             style="width: 110px" id="xp-rename-former-name"></div>
+        New title for
+        <div id="xp-rename-former-name"></div>
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
@@ -2764,10 +2510,10 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the SELECTOR ORDER dialog permits specifying how selectors should
+  <!-- The SELECTOR ORDER dialog permits specifying how selectors should
        be sorted. The selectors may contain a leading or trailing * as
        wildcard, and can be separated by spacrs, comma's or semicolons.
-   -->
+    -->
   <div id="sel-order-modal" class="modal">
     <div id="sel-order-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2782,7 +2528,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the PARAMETER dialog prompts for a dataset or chart name -->
+  <!-- The PARAMETER dialog prompts for a dataset or chart name. -->
   <div id="xp-parameter-modal" class="modal">
     <div id="xp-parameter-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2795,7 +2541,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the DOWNLOAD dialog asks which outcomes to save, and how -->
+  <!-- The DOWNLOAD dialog asks which outcomes to save, and how. -->
   <div id="xp-download-modal" class="modal">
     <div id="xp-download-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2852,7 +2598,7 @@ NOTE: * and ? will be interpreted as wildcards"
       </fieldset>
       <fieldset id="xp-download-format">
         <legend>Format:</legend>
-        <div style="margin-left: 5px">
+        <div id="xp-download-format-div">
           <label for="xp-download-separator">Separator:</label>
           <select id="xp-download-separator">
             <option value="comma">Comma</option>
@@ -2872,7 +2618,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the ITERATOR dialog permits editing the iterator ranges -->
+  <!-- The ITERATOR dialog permits editing the iterator ranges. -->
   <div id="xp-iterator-modal" class="modal">
     <div id="xp-iterator-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2921,7 +2667,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the SETTINGS dialog permits editing the model settings dimensions -->
+  <!-- The SETTINGS dialog permits editing the model settings dimensions. -->
   <div id="xp-settings-modal" class="modal">
     <div id="xp-settings-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2947,7 +2693,7 @@ NOTE: * and ? will be interpreted as wildcards"
     </div>
   </div>
 
-  <!-- the SETTINGS SELECTOR dialog prompts for a selector + string -->
+  <!-- The SETTINGS SELECTOR dialog prompts for a selector + string. -->
   <div id="xp-settings-selector-modal" class="modal">
     <div id="xp-settings-selector-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2959,7 +2705,7 @@ NOTE: * and ? will be interpreted as wildcards"
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div style="padding: 2px; white-space: nowrap">
+      <div class="xp-s-div">
         <label>Selector:</label>
         <input id="xp-settings-selector-code" type="text"
                title="Max. 10 characters (only alphanumericals, +, -, and %)" 
@@ -2974,7 +2720,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
     </div>
   </div>
 
-  <!-- the SETTINGS DIMENSION dialog prompts for a selector combination -->
+  <!-- The SETTINGS DIMENSION dialog prompts for a selector combination. -->
   <div id="xp-settings-dimension-modal" class="modal">
     <div id="xp-settings-dimension-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -2984,7 +2730,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div style="padding: 2px; white-space: nowrap"
+      <div class="xp-s-div"
            title="One or more model settings selectors, separated by spaces">
         <label>Selectors:</label>
         <input id="xp-settings-dimension-string" type="text" autocomplete="off">
@@ -2992,7 +2738,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
     </div>
   </div>
 
-  <!-- the ACTOR DIMENSION dialog permits editing these dimensions -->
+  <!-- The ACTOR DIMENSION dialog permits editing these dimensions. -->
   <div id="xp-actor-dimension-modal" class="modal">
     <div id="xp-actor-dimension-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -3010,7 +2756,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
     </div>
   </div>
 
-  <!-- the ACTOR SELECTOR dialog prompts for a selector -->
+  <!-- The ACTOR SELECTOR dialog prompts for a selector. -->
   <div id="xp-actor-selector-modal" class="modal">
     <div id="xp-actor-selector-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -3018,7 +2764,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div style="padding: 2px; white-space: nowrap">
+      <div class="xp-s-div">
         <label>Selector:</label>
         <input id="xp-actor-selector-code" type="text" autocomplete="off"
                title="Max. 10 characters (only alphanumericals, +, -, and %)" 
@@ -3027,7 +2773,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
           (clear to remove)
         </span>
       </div>
-      <div style="padding: 2px; white-space: nowrap">
+      <div class="xp-s-div">
         <label>Rounds sequence:</label>
         <input id="xp-actor-selector-rounds" type="text" autocomplete="off"
                title="One or more round letters">
@@ -3035,7 +2781,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
     </div>
   </div>
 
-  <!-- the COMBINATION dialog permits editing the combination dimensions -->
+  <!-- The COMBINATION dialog permits editing the combination dimensions. -->
   <div id="xp-combination-modal" class="modal">
     <div id="xp-combination-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -3061,7 +2807,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
     </div>
   </div>
 
-  <!-- the COMBINATION SELECTOR dialog prompts for a selector + string -->
+  <!-- The COMBINATION SELECTOR dialog prompts for a selector + string. -->
   <div id="xp-combination-selector-modal" class="modal">
     <div id="xp-combination-selector-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -3073,7 +2819,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div style="padding: 2px; white-space: nowrap">
+      <div class="xp-s-div">
         <label>Selector:</label>
         <input id="xp-combination-selector-code" type="text"
                title="Max. 10 characters (only alphanumericals, +, -, and %)" 
@@ -3085,7 +2831,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
     </div>
   </div>
 
-  <!-- the COMBINATION DIMENSION dialog prompts for a combination dimension -->
+  <!-- The COMBINATION DIMENSION dialog prompts for a combination dimension. -->
   <div id="xp-combination-dimension-modal" class="modal">
     <div id="xp-combination-dimension-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -3095,7 +2841,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div style="padding: 2px; white-space: nowrap"
+      <div class="xp-s-div"
            title="One or more combination selectors, separated by spaces">
         <label>Selectors:</label>
         <input id="xp-combination-dimension-string" type="text" autocomplete="off">
@@ -3106,7 +2852,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
   <!-- The "clusters to ignore" dialog displays a scrollable list of clusters
        set to be ignored for specified selectors.
        NOTE: Changes to this list are discarded if CANCEL is clicked.
-   -->
+    -->
   <div id="xp-clusters-modal" class="modal">
     <div id="xp-clusters-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -3139,7 +2885,7 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
   </div>
 
 
-  <!-- the FINDER dialog allows searching for occurrence of entities -->
+  <!-- The FINDER dialog allows searching for occurrence of entities. -->
   <div id="finder-dlg" class="inp-dlg">
     <div id="finder-hdr" class="dragger dlg-title">
       <span id="finder-title">Find occurrences of entities</span>
@@ -3199,8 +2945,9 @@ where X can be one or several of these letters: ABCDELPQ">
     <div id="finder-resize" class="resizer"></div>
   </div>
 
-  <!-- the CONFIRM ADD CHART VARIABLES modal asks to confirm to add a
-       specific attribute of the filtered entities to the current chart -->
+  <!-- The CONFIRM ADD CHART VARIABLES modal asks to confirm to add a
+       specific attribute of the filtered entities to the current chart.
+    -->
   <div id="confirm-add-chart-variables-modal" class="modal">
     <div id="confirm-add-chart-variables-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -3208,7 +2955,7 @@ where X can be one or several of these letters: ABCDELPQ">
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div style="margin: 2px; padding-right: 2px; white-space: nowrap">
+      <div class="xp-s-div">
         <div id="confirm-add-chart-variables-attr-of">
           <select id="confirm-add-chart-variables-attribute"></select> of
         </div>
@@ -3216,20 +2963,16 @@ where X can be one or several of these letters: ABCDELPQ">
       </div>
       <div>
         <div id="confirm-add-chart-variables-absolute" class="box clear"></div>
-        <div style="display:inline-block; vertical-align:top; margin-top: 3px">
-          Plot absolute values
-        </div>
+        <div class="box-lbl">Plot absolute values</div>
       </div>
       <div>
         <div id="confirm-add-chart-variables-stacked" class="box clear"></div>
-        <div style="display:inline-block; vertical-align:top; margin-top: 3px">
-          Plot as stacked areas
-        </div>
+        <div class="box-lbl">Plot as stacked areas</div>
       </div>
     </div>
   </div>
 
-  <!-- the MONITOR dialog shows solver progress and messages, and model equations -->
+  <!-- The MONITOR dialog shows solver progress and messages, and model equations. -->
   <div id="monitor-dlg" class="inp-dlg">
     <div id="monitor-hdr" class="dragger dlg-title">Solver monitor
       <img id="monitor-close-btn" class="close-btn" src="images/close.png">
@@ -3262,7 +3005,7 @@ where X can be one or several of these letters: ABCDELPQ">
     <div id="monitor-resize" class="resizer"></div>
   </div>
   
-  <!-- the CHANNEL dialog prompts for two paths: channel and call-back -->
+  <!-- The CHANNEL dialog prompts for a channel name. -->
   <div id="channel-modal" class="modal">
     <div id="channel-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -3270,7 +3013,7 @@ where X can be one or several of these letters: ABCDELPQ">
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <div style="margin:3.5px">
+      <div class="channel-div">
         <div>
           Channel:
           <select id="channel-name" type="text" autocomplete="off" disabled
@@ -3288,7 +3031,7 @@ where X can be one or several of these letters: ABCDELPQ">
     </div>
   </div>
 
-  <!-- the DOCUMENTATION dialog shows user comments and Linny-R docu-items -->
+  <!-- The DOCUMENTATION dialog shows user comments and Linny-R docu-items. -->
   <div id="documentation-dlg" class="inp-dlg">
     <div id="documentation-hdr" class="dragger dlg-title">
       <div id="docu-item-title">Documentation</div>
@@ -3334,17 +3077,18 @@ where X can be one or several of these letters: ABCDELPQ">
       <div class="docu-sym" id="docu-warning">&#x26A0;</div>
     </div>
     <div id="docu-message-hint">
-      To view messages, <span style="font-style: normal">Shift</span>-move
+      To view messages, <span class="normal">Shift</span>-move
       cursor over status bar 
     </div>
     <div id="documentation-resize" class="resizer"></div>
   </div>
   
-  <!-- the CALL STACK modal shows the VM's expression call stack
-       when an error has occurred -->
+  <!-- The CALL STACK modal shows the VM's expression call stack
+       when an error has occurred.
+    -->
   <div id="call-stack-modal" class="modal">
     <div id="call-stack-dlg" class="inp-dlg">
-      <div class="dlg-title" style="background-color: #cc88b0">
+      <div class="dlg-title dlg-alert">
         <div id="call-stack-error"></div>
         <img id="call-stack-close-btn" class="close-btn" src="images/close.png">
       </div>
@@ -3352,10 +3096,10 @@ where X can be one or several of these letters: ABCDELPQ">
     </div>
   </div>
   
-  <!-- the CHECK UPDATE modal notifies that an update is available -->
+  <!-- The CHECK UPDATE modal notifies that an update is available. -->
   <div id="check-update-modal" class="modal">
     <div id="check-update-dlg" class="inp-dlg">
-      <div class="dlg-title" style="background-color: #cc88b0">
+      <div class="dlg-title dlg-alert">
         Linny-R software update
         <span id="check-update-manual" class="blink" hidden>
           Requires manual istallation
@@ -3371,10 +3115,10 @@ where X can be one or several of these letters: ABCDELPQ">
     </div>
   </div>
 
-  <!-- the UPDATING modal notifies that an update is in progress -->
+  <!-- The UPDATING modal notifies that an update is in progress. -->
   <div id="updating-modal" class="modal">
     <div id="updating-dlg" class="inp-dlg">
-      <div class="dlg-title" style="background-color: #cc88b0">
+      <div class="dlg-title dlg-alert">
         Linny-R software update in progress
       </div>
       <div id="updating-msg">
@@ -3388,7 +3132,7 @@ where X can be one or several of these letters: ABCDELPQ">
     </div>
   </div>
 
-  <!-- the PASTE dialog prompts for a prefix and parameter bindings -->
+  <!-- The PASTE dialog prompts for a prefix and parameter bindings. -->
   <div id="paste-modal" class="modal">
     <div id="paste-dlg" class="inp-dlg">
       <div class="dlg-title">
@@ -3437,7 +3181,7 @@ where X can be one or several of these letters: ABCDELPQ">
     </div>
   </div>  
 
-  <!--- rotating Linny-R logo icon -->
+  <!--- The rotating Linny-R logo icon. -->
   <div id="rotating-icon">
     <div>
       <img src="images/octaeder.svg">

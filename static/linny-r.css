@@ -169,7 +169,11 @@ main {
   background-color: #faf8f9;
 }
 
-/* the chart container that holds the SVG paper in the main area */
+#server-host-icon {
+  float: right;
+}
+
+/* The chart container that holds the SVG paper in the main area */
 #cc {
   min-width: 100%;
   min-height: 80vh;
@@ -254,8 +258,16 @@ img.btn {
   vertical-align: middle;
 }
 
-img.sep {
+img.v-sep {
   margin-bottom: 13px;
+}
+
+img.h-sep {
+  margin-left: 20px;
+}
+
+img.spaced {
+  margin-left: 4px;
 }
 
 img.enab {
@@ -286,6 +298,10 @@ img.off {
   50% {
     opacity: 0.5;
   }
+}
+
+span.normal {
+  font-style: normal;
 }
 
 div.blink,
@@ -665,8 +681,8 @@ div.modal {
   background-color: rgba(0, 0, 0, 0.1);
 }
 
-/* on top of the "modal layer", modal dialogs appear in the center of
-   the browser window */
+/* On top of the "modal layer", modal dialogs appear in the center of
+   the browser window. */
 div.inp-dlg {
   position: absolute; 
   top: 0; 
@@ -688,8 +704,12 @@ div.dlg-title {
   white-space: nowrap;
 }
 
-/* all input dialogs have an OK button and a CANCEL button,
-   stay-on-top dialogs have a CLOSE button */
+div.dlg-alert {
+  background-color: #cc88b0;
+}
+
+/* All input dialogs have an OK button and a CANCEL button,
+   stay-on-top dialogs have a CLOSE button. */
 img.ok-btn,
 img.cancel-btn,
 img.close-btn,
@@ -702,7 +722,7 @@ img.info-btn {
   cursor: pointer;
 }
 
-/* To appear responsive to cursor, buttons change brightness */
+/* To appear responsive to cursor, buttons change brightness. */
 img.ok-btn:hover,
 img.inline-ok-btn:hover,
 img.close-btn:hover,
@@ -742,8 +762,8 @@ img.ok-btn.disab {
 }
 
 /* CHECK BOX styles
-   NOTE: separate style names `abox` and `vbox` so that different events can be
-   bound dynamically to actor and variable check boxes */
+   NOTE: Separate style names `abox` and `vbox` so that different events can be
+   bound dynamically to actor and variable check boxes. */
 div.box,
 div.abox,
 div.vbox {
@@ -817,9 +837,22 @@ div.checked.not-same-not-changed {
   background-image: url('images/check-on-not-same-not-changed.png');
 }
 
+div.box-lbl {
+  display: inline-block;
+  vertical-align: top;
+  padding-top: 1px;
+}
 
-/* NOTE: the name of the focal cluster is displayed to the right of
-         the top bar buttons */
+div.box-lbl-low {
+  display: inline-block;
+  vertical-align: top;
+  padding-top: 3px;
+  margin-right: 5px;
+}
+
+
+/* NOTE: The name of the focal cluster is displayed to the right of
+         the top bar buttons. */
 #focal-cluster {
   display: inline-block;
   margin-left: 50px;
@@ -835,8 +868,13 @@ div.checked.not-same-not-changed {
 
 /* LOGON modal dialog */
 #logon-dlg {
-  width: 303px;
+  width: min-content;
   height: min-content;
+}
+
+#logon-name,
+#logon-password {
+ width: 220px;
 }
 
 /* LOAD modal dialog */
@@ -926,13 +964,17 @@ div.checked.not-same-not-changed {
 }
 
 #new-power-grid-dlg {
-  width: 225px;
+  width: 220px;
   height: min-content;
   max-height: 450px;
 }
 
+#new-power-grid-tbl {
+  margin: auto;
+}
+
 #new-power-grid-name {
-  width: 170px;
+  width: 165px;
 }
 
 #new-power-grid-voltage {
@@ -976,6 +1018,10 @@ div.checked.not-same-not-changed {
   max-height: 250px;
   overflow-y: auto;
   border-top: 1px solid Silver;
+}
+
+#power-grids-aspects {
+  margin: 2px;
 }
 
 div.menu-plate,
@@ -1077,24 +1123,82 @@ table.power-flow th:not(:first-child) {
   height: min-content;
 }
 
+#settings-name,
+#settings-author {
+  width: 270px;
+}
+
+#defaults-scale-unit,
+#settings-product-unit {
+  width: 80px;
+}
+
+#settings-scale-units-btn:hover,
+#settings-solver-prefs-btn:hover {
+  filter: brightness(200%);
+}
+
+#defaults-currency,
+#settings-currency-unit {
+  width: 45px;
+}
+
+#settings-grid {
+  display: inline-block;
+  vertical-align: top;
+  margin-top: -2px;
+}
+
+#settings-grid-pixels,
+#settings-time-limit {
+  width: 35px;
+  text-align: center;
+}
+
+#defaults-time-scale,
+#settings-time-scale,
+#settings-period-start,
+#settings-period-end,
+#settings-block-length,
+#settings-look-ahead {
+  width: 50px;
+}
+
+#defaults-time-unit,
+#settings-time-unit {
+  height: 20px;
+  font-size: 12px;
+  vertical-align: top;
+}
+
 #settings-solver-prefs-btn,
 #settings-scale-units-btn {
-  margin-left: 0px;
-  margin-right: 7px;
+  margin-left: 2px;
   margin-top: -3px;
   cursor: pointer;
   filter: brightness(85%);
 }
 
-#settings-solver-prefs-btn:hover, 
-#settings-scale-units-btn:hover {
-  filter: brightness(200%);
+#settings-block-arrows,
+#settings-align-to-grid,
+#settings-diagnose,
+#settings-power,
+#settings-cost-prices,
+#settings-negative-flows,
+#defaults-comma,
+#settings-decimal-comma,
+#settings-report-results,
+#settings-encrypt {
+  margin: 0;
+}
+
+#settings-align-to-grid {
+  margn-top: 2px;
 }
 
 #settings-power-btn {
-  margin-left: 0px;
-  margin-right: 7px;
-  margin-top: -3px;
+  margin-left: 2px;
+  margin-top: -5px;
   cursor: pointer;
 }
 
@@ -1106,7 +1210,26 @@ table.power-flow th:not(:first-child) {
   filter: hue-rotate(230deg);
 }
 
-/* styles for the three PASSWORD dialogs */
+/* Styles for the SOLVER PREFERENCES dialog */
+#solver-modal {
+  z-index: 110; /* on top of the SETTINGS dialog */
+}
+
+#solver-dlg {
+  width: 225px;
+  height: min-content;
+}
+
+#solver-mip-gap,
+#solver-int-feasibility {
+  width: 65px;
+}
+
+#solver-show-notices {
+  margin: 0;
+}
+
+/* Styles for the three PASSWORD dialogs */
 
 #password-dlg,
 #set-password-dlg,
@@ -1150,16 +1273,6 @@ input.pws-5 {
   background-color: #c0ffc0;
 }
 
-/* styles for the SOLVER PREFERENCES dialog */
-#solver-modal {
-  z-index: 110; /* on top of the SETTINGS dialog */
-}
-
-#solver-dlg {
-  width: 250px;
-  height: min-content;
-}
-
 /* styles for the ACTOR DIALOG
    NOTE: the z-index is very high for this dialog, as it should appear
    on top of the ACTOR LIST DIALOG
@@ -1173,10 +1286,15 @@ input.pws-5 {
   height: 72px;
 }
 
-/* styles for the ACTOR LIST DIALOG */
-#actor-list-dlg {
+#actor-W,
+#actor-name {
+  width: 222px;
+}
+
+/* Styles for the ACTORS dialog. */
+#actors-dlg {
   width: 365px;
-  height: 350px;
+  height: min-content;
 }
 
 #round-settings {
@@ -1288,6 +1406,7 @@ td.opt {
   padding-left: 3px;
   width:calc(100% - 6px);
   overflow-y: scroll;
+  margin-bottom: 3px;
 }
 
 #actors-table {
@@ -1313,17 +1432,6 @@ tr.actor:hover {
   background-color: #dfe0ff;
 }
 
-td.a-box {
-  width: 20px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-td.a-box > div.abox {
-  margin-left: 4px;
-}
-
 td.a-name {
   width: 208px;
   max-width: 208px;
@@ -1334,11 +1442,19 @@ td.a-name {
 
 
 td.a-weight {
-  width: 124px;
-  max-width: 124px;
+  width: 120px;
+  max-width: 120px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+td.a-boxlist {
+  white-space: nowrap;
+}
+
+td.a-boxlist > div.abox {
+  margin-left: 4px;
 }
 
 td.import,
@@ -1400,17 +1516,11 @@ div.export {
   height: min-content;
 }
 
-#defaults-comma {
-  margin: 0px;
+#defaults-tbl {
+  margin: 1px;
 }
 
-#defaults-comma-lbl {
-  display: inline-block;
-  vertical-align: top;
-  padding-top: 2px;
-}
-
-/* styles for the MODEL and SAVE dialogs */
+/* Styles for the MODEL and SAVE dialogs. */
 #save-dlg,
 #model-dlg {
   width: min-content;
@@ -1437,23 +1547,48 @@ div.export {
 
 /* styles for the ADD PROCESS dialog */
 #add-process-dlg {
-  width: 270px;
-  height: 70px;
+  width: min-content;
+  height: min-content;
 }
 
-/* styles for the ADD PRODUCT dialog */
+#add-process-name,
+#add-process-actor {
+  width: 225px;
+}
+
+/* Styles for the ADD PRODUCT dialog. */
 #add-product-dlg {
-  width: 270px;
-  height: 70px;
+  width: min-content;
+  height: min-content;
 }
 
-/* styles for the CLUSTER dialog */
+#add-product-name {
+  width: 225px;
+}
+
+#add-product-unit {
+  width: 70px;
+}
+
+#add-product-data {
+  vertical-align: top;
+}
+
+/* Styles for the CLUSTER dialog. */
 #cluster-dlg {
   width: 315px;
   height: min-content;
 }
 
-/* the MOVE modal asks whether node should be moved to focal cluster */
+#cluster-name {
+  width: 270px;
+}
+
+#cluster-actor {
+  width: 242px;
+}
+
+/* Styles for the MOVE dialog. */
 #move-dlg {
   width: 270px;
   height: 120px;
@@ -1472,7 +1607,7 @@ div.export {
   white-space: nowrap;
 }
 
-/* styles for the NOTE dialog */
+/* Styles for the NOTE dialog. */
 #note-dlg {
   width: 320px;
   height: 200px;
@@ -1495,10 +1630,18 @@ div.export {
   font-size: 13px;
 }
 
+#note-C-x {
+  margin-top: -3px;
+}
+
 /* styles for the CONSTRAINT dialog */
 #constraint-dlg {
   width: 445px;
   height: 75px;
+}
+
+#add-bl-btn {
+  margin-left: 15px;
 }
 
 #c-threshold, #c-low, #c-high {
@@ -1968,15 +2111,20 @@ div.export {
   font-size: 11px;
 }
 
+#clone-instruction {
+  font-size: 11px;
+  margin: 2px;
+}
+
 #clone-prefix,
 #clone-actor {
   width: 210px;
   font-size: 12px;
 }
 
-/* styles for the REPLACE dialog */
+/* Styles for the REPLACE dialog. */
 #replace-dlg {
-  width: 375px;
+  width: min-content;
   height: min-content;
 }
 
@@ -1995,6 +2143,11 @@ div.export {
   text-decoration: underline dotted 2px;
 }
 
+#replace-div {
+  min-width: 200px;
+  margin: 3px 0 3px 2px;
+}
+
 #replace-by-name {
   font-size: 12px;
   max-width: 235px;
@@ -2002,12 +2155,8 @@ div.export {
 
 #replace-option {
   display: inline-block;
-  width: 65px;
-  margin: 2px 0 0 6px;
-}
-
-#replace-local {
-  margin-bottom: -3px;
+  margin: 0px 0 0 6px;
+  vertical-align: bottom;
 }
 
 /* styles for the LINK properties dialog */
@@ -2062,6 +2211,11 @@ div.export {
 #link-D {
   width: 135px;
   margin: 0 0 2px 0;
+}
+
+#link-R-x,
+#link-D-x {
+  margin-top: -3px;
 }
 
 #link-output-row {
@@ -2467,6 +2621,22 @@ div.menu-item:hover {
   background-color: #e0e0e0;
 }
 
+span.bl-index {
+  margin-left: 38px;
+}
+
+span.bl-points {
+  color: #8020a0;
+  text-shadow: #b9c 0.5px 0.5px;
+}
+
+span.bl-points::before {
+  content: ' \2234';
+  color: #b00080;
+  font-weight: bolder;
+  margin-right: 2px;  
+}
+
 td.bl-odnr {
   text-align: right;
   padding-left: 3px;
@@ -2579,14 +2749,9 @@ div.dragger {
   font-weight: 600;
 }
 
-div.sdsn {
-  display: inline-block;
-  vertical-align: top;
-  font-style: italic;
-  width: calc(100% - 115px);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+#ds-delete-btn {
+  position: absolute;
+  right: 2px;
 }
 
 td.it {
@@ -2603,25 +2768,6 @@ div.io-box {
   border: 1.5px solid gray;
   box-shadow: 1.3px 1.3px gray;
   color: #e0e0e0;
-}
-
-#ds-filter-btn {
-  height: 12px;
-  width: 12px;
-}
-
-#ds-filter-bar {
-  position: absolute;
-  top: 60px;
-  left: 2px;
-  width: calc(40% - 4px);
-  display: none;
-}
-
-#ds-filter-text {
-  max-height: 16px;
-  width: calc(100% - 1px);
-  font-size: 10px;
 }
 
 #dataset-scroll-area {
@@ -2805,18 +2951,6 @@ div.modif::before {
   content: ' \2045';
   color: #b00080;
   margin-right: 2px;
-}
-
-span.blpoints {
-  color: #8020a0;
-  text-shadow: #b9c 0.5px 0.5px;
-}
-
-span.blpoints::before {
-  content: ' \2234';
-  color: #b00080;
-  font-weight: bolder;
-  margin-right: 2px;  
 }
 
 div.outcome::before,
@@ -3089,13 +3223,17 @@ td.equation-expression-multi {
 
 /* CONVERT MODIFIERS modal dialog */
 #convert-modifiers-dlg {
-  width: 220px;
-  height: 84px;
+  width: min-content;
+  height: min-content;
+}
+
+#convert-modfiers-div {
+  margin: 4px;
 }
 
 #convert-modifiers-prefix {
   margin: 3px;
-  width: calc(100% - 8px);
+  width: 200px;
 }
 
 /* SERIES modal dialog */
@@ -3564,6 +3702,10 @@ img.v-disab {
   margin-left: 4px;
 }
 
+#chart-widen-btn {
+  margin-left: 12px;
+}
+
 #chart-prefix-div {
   display: inline-block;
   margin-left: 12px;
@@ -3609,6 +3751,16 @@ img.v-disab {
   text-overflow: ellipsis;
 }
 
+#variable-format-div {
+  width: 100px;
+  padding: 4px;
+}
+
+#variable-color-lbl {
+  display: inline-block;
+  vertical-align: top;
+}
+
 #variable-color {
   display: inline-block;
   width: 15px;
@@ -3616,6 +3768,10 @@ img.v-disab {
   border: 1px solid Black;
   background-color: #c00000;
   cursor: pointer;
+}
+
+#variable-absolute-div {
+  margin-top: -2px;
 }
 
 #variable-paste-color {
@@ -3628,16 +3784,40 @@ img.v-disab {
   background-color: #c00000;
 }
 
+#variable-scale-div {
+  margin-top: 3px;
+}
+
+#variable-scale-lbl {
+  display: inline-block;
+  vertical-align: top;
+  margin-top: 2px;
+}
+
 #variable-scale {
   display: inline-block;
   width: 40px;
   margin-left: 2px;
 }
 
+#variable-width-div {
+  margin: 4px 4px 8px 0px;
+}
+
+#variable-width-lbl {
+  display: inline-block;
+  vertical-align: top;
+  margin-top: 2px;
+}
+
 #variable-width {
   display: inline-block;
   width: 28px;
   margin-left: 2px;
+}
+
+#variable-stacked-div {
+  margin: -6px -2px;
 }
 
 #variable-buttons > img.btn {
@@ -4014,7 +4194,7 @@ td.sa-not-run {
   color: #806000;
 }
 
-/* the EXPERIMENT DIALOG displays the experiment manager */
+/* The EXPERIMENT DIALOG displays the experiment manager. */
 #experiment-dlg {
   display: none;
   z-index: 25;
@@ -4040,6 +4220,11 @@ td.sa-not-run {
 #experiment-params-buttons > img.btn {
   height: 20px;
   width: 20px;
+}
+
+#xp-delete-btn {
+  position: absolute;
+  right: 2px;
 }
 
 #experiment-header {
@@ -4106,12 +4291,17 @@ td.sa-not-run {
   width: 170px;
 }
 
-/* enhance brightness for dark v-btn buttons */
+/* Enhance brightness for dark v-btn buttons. */
 #sa-p-down-btn:hover,
 #sa-o-down-btn:hover,
 #xp-d-down-btn:hover,
 #xp-d-settings-btn:hover {
   filter: brightness(200%);
+}
+
+div.xp-s-div {
+  padding: 2px;
+  white-space: nowrap;
 }
 
 #experiment-d-scroll-area {
@@ -4220,6 +4410,11 @@ td.sa-not-run {
 #viewer-scale {
   width: 75px;
   font-size: 10px;
+}
+
+/* Highlight the "difference relative to selected" option. */
+#viewer-difference-option {
+  background-color: orange;
 }
 
 #viewer-bar {
@@ -4486,8 +4681,19 @@ div.no-colors {
 }
 
 #xp-rename-dlg {
-  width: 240px;
+  width: 350px;
+  min-width: 140px;
   height: 45px;
+}
+
+#xp-rename-former-name {
+  max-width: 220px;
+  white-space: nowrap;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-style: italic;
+  font-weight: normal;
 }
 
 #xp-rename-name {
@@ -4681,6 +4887,10 @@ span.sd-clear {
   padding-left: 0px;  
 }
 
+#xp-download-format-div {
+  margin-left: 5px;
+}
+
 #xp-download-separator,
 #xp-download-quotes {
   font-size: 11px;
@@ -4796,7 +5006,7 @@ span.sd-clear {
   width: 18px;
 }
 
-/* the BROWSER DIALOG displays the file browser */
+/* The BROWSER DIALOG is a resizable modal dialog for the File manager */
 #browser-dlg {
   margin: auto;
   width: 450px;
@@ -4972,19 +5182,19 @@ td.date-time {
   text-overflow: ellipsis;
 }
 
+ /* These modals must be top of the BROWSER modal. */
 #update-modal,
 #include-modal,
 #autosave-modal,
 #defaults-modal,
 #confirm-perform-modal,
 #confirm-load-model-modal {
-  z-index: 105; /* on top of the BROWSER modal */
+  z-index: 105;
 }
 
-#paste-dlg,
-#update-dlg,
+/* Styles for the INCLUDE CLUSTER dialog. */
 #include-dlg {
-  width: 320px;
+  width: min-content;
   height: min-content;
 }
 
@@ -4998,14 +5208,43 @@ td.date-time {
 }
 
 #include-prefix {
-  width: calc(100% - 50px);
+  width: calc(100% - 48px);
   font-size: 12px;
 }
 
+#include-actor-div,
+#include-cluster-div,
+#include-bindings-div {
+  margin: 2px;
+}
+
+#include-bindings-div {
+  margin-top: 4px;
+  font-weight: bold;
+}
+
 #include-actor {
-  width: calc(100% - 50px);
+  width: calc(100% - 48px);
   font-size: 12px;
   margin-left: 9px;
+}
+
+#include-scroll-area {
+  width: 320px !important;
+  margin-bottom: 2px;
+}
+
+
+/* Styles for the UPDATE CLUSTER dialog. */
+#update-dlg {
+  width: min-content;
+  height: min-content;
+  min-width: 335px;
+  max-width: 550px;
+}
+
+#update-clusters-div {
+  padding: 2px;
 }
 
 #update-name {
@@ -5044,6 +5283,12 @@ div.update-cc {
   max-height: 150px !important;
   background-color: White;
   border: 1px solid Silver;
+}
+
+/* Styles for the PASTE (from "clipboard") dialog. */
+#paste-dlg {
+  width: 320px;
+  height: min-content;  
 }
 
 div.paste-tactic {
@@ -5311,6 +5556,10 @@ img.finder {
 #datasetgroup-dlg {
   width: 440px;
   height: 190px;
+}
+
+span.lm35 {
+  margin-left: 35px;
 }
 
 #datasetgroup-prefix-lbl {
@@ -5687,6 +5936,10 @@ div.sel-tab {
 #channel-dlg {
   width: 208px;
   height: min-content;  
+}
+
+#channel-div {
+  margin: 3.5px;
 }
 
 #channel-name {

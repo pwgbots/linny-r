@@ -116,30 +116,36 @@ class ActorManager {
     this.sequence.placeholder =
         VM.round_letters.slice(1, this.rounds + 1) + ' (default)';
     this.sequence.value = MODEL.round_sequence;
-    const ioc = ['', ' import', ' export'];
-    for(let i = 0; i < MODEL.actor_list.length; i++) {
+    const
+        ioc = ['', ' import', ' export'],
+        rows = MODEL.actor_list.length,
+        vrows = Math.min(10, rows),
+        scroll = (rows > vrows);
+    for(let ai = 0; ai < rows; ai++) {
       const
-          a = MODEL.actor_list[i],
+          a = MODEL.actor_list[ai],
           bits = a[2],
           rf = [];
+      // NOTE: `bits` encodes for max. 31 rounds whether round `r` is checked.
       let b = 1;
       for(let r = 1; r <= this.rounds; r++) {
-        rf.push('<div id="a-box-', i, '-', r, '" class="abox ',
+        rf.push('<div id="a-box-', ai, '-', r, '" class="abox ',
             ((bits & b) != 0 ? 'checked' : 'clear'), '"></div>');
         b *= 2;
       }
+      if(scroll) rf.push('<div style="width: 14px"></div>');
       html += ['<tr class="actor" onmouseover="ACTOR_MANAGER.showActorInfo(',
-          i, ', event.shiftKey);"><td id="a-name-', i,
-          '" class="a-name', ioc[a[4]], '">', a[1], '</td><td id="a-weight-', i,
-          '" class="a-weight">', a[3], '</td><td class="a-box">', rf.join(''),
-          '</td></tr>'].join('');
+          ai, ', event.shiftKey);"><td id="a-name-', ai,
+          '" class="a-name', ioc[a[4]], '">', a[1],
+          '</td><td id="a-weight-', ai, '" class="a-weight">', a[3],
+          '</td><td class="a-boxlist">', rf.join(''), '</td></tr>'].join('');
     }
-    const rows = Math.min(9, MODEL.actor_list.length - 1);
-    this.dialog.style.height = (103 + 23 * rows) + 'px';
-    this.dialog.style.width = (342 + (rows ? 18 : 0) + 22 * this.rounds) + 'px';
-    this.scroll_area.style.height = (24 + 23 * rows) + 'px';
-    this.scroll_area.style.overflowY = (rows ? 'scroll' : 'clip');
-    // Update column headers
+    // NOTE: Permit max. 9 rows in dialog.
+    // When more than 9 rows, add space for scroll bar.
+    this.dialog.style.width = (342 + (scroll ? 14 : 0) + 22 * this.rounds) + 'px';
+    this.scroll_area.style.height = (24 + 23 * vrows) + 'px';
+    this.scroll_area.style.overflowY = (scroll ? 'scroll' : 'clip');
+    // Update column headers.
     const rch = [];
     for(let r = 1; r <= this.rounds; r++) {
       rch.push('<div id="round-', r, '" class="round-nr',
@@ -287,12 +293,24 @@ class ActorManager {
   updateActorProperties() {
     // This method is called when the modeler clicks OK on the actor list dialog.
     this.updateRoundFlags();
-    const xp = new ExpressionParser('');
+    const
+        xp = new ExpressionParser(''),
+        renamed_actors = [];
     let ok = true;
+    const seq = this.sequence.value;
+    if(this.checkRoundSequence(seq) === false) {
+      document.getElementById('default-sequence').focus();
+      return;
+    }
+    MODEL.round_sequence = seq;
+    MODEL.rounds = this.rounds;
     for(const ali of MODEL.actor_list) {
       const a = MODEL.actors[ali[0]];
       // Rename actor if name has been changed.
-      if(a.displayName != ali[1]) a.rename(ali[1]);
+      if(a.displayName != ali[1]) {
+        a.rename(ali[1]);
+        renamed_actors.push(a);
+      }
       // Set its round flags
       a.round_flags = ali[2];
       // Double-check: parse expression if weight has been changed.
@@ -310,11 +328,12 @@ class ActorManager {
       // Update import/export status.
       MODEL.ioUpdate(a, ali[4]);
     }
-    const seq = this.sequence.value;
-    if(this.checkRoundSequence(seq) === false) ok = false;
     if(ok) {
-      MODEL.round_sequence = seq;
-      MODEL.rounds = this.rounds;
+      const el = MODEL.entitiesByActor(renamed_actors);
+      if(el.length) {
+        for(const e of el) e.resize();
+        UI.drawDiagram(MODEL);
+      }
       UI.modals.actors.hide();
     }
   }

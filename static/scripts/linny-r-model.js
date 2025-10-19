@@ -837,6 +837,20 @@ class LinnyRModel {
     return el;
   }
   
+  entitiesByActor(al) {
+    // Return list of processes and clusters whose actor occurs in `al`.
+    const el = [];
+    for(let k in this.processes) if(this.processes.hasOwnProperty(k)) {
+      const p = this.processes[k];
+      if(al.indexOf(p.actor) >= 0) el.push(p);
+    }
+    for(let k in this.clusters) if(this.clusters.hasOwnProperty(k)) {
+      const c = this.clusters[k];
+      if(al.indexOf(c.actor) >= 0) el.push(c);
+    }
+    return el;
+  }
+  
   get clustersToIgnore() {
     // Return a "dictionary" with all clusters that are to be ignored.
     const cti = {};
@@ -5153,27 +5167,27 @@ class Actor {
   }
   
   rename(name) {
-    // Change the name of this actor
+    // Change the name of this actor.
     // NOTE: since version 1.3.2, colons are prohibited in actor names to
-    // avoid confusion with prefixed entities; they are silently removed
-    // to avoid model compatibility issues
+    // avoid confusion with prefixed entities. They are silently removed
+    // to avoid model compatibility issues.
     name = UI.cleanName(name).replace(':', '');
     if(!UI.validName(name)) {
       UI.warn(UI.WARNING.INVALID_ACTOR_NAME);
       return null;
     }
-    // Create a new actor entry
+    // Create a new actor entry.
     const
         a = MODEL.addActor(name),
         old_name = this.name,
         old_id = this.identifier;
-    // Rename the current instance
-    // NOTE: this object should persist, as many other objects refer to it
+    // Rename the current instance.
+    // NOTE: This object should persist, as many other objects refer to it.
     this.name = a.name;
     // Put it in the "actor dictionary" of the model at the place of the newly
-    // created instance (which should automatically be garbage-collected)
+    // created instance (which should automatically be garbage-collected).
     MODEL.actors[a.identifier] = this;
-    // Remove the old entry
+    // Remove the old entry.
     delete MODEL.actors[old_id];
     MODEL.replaceEntityInExpressions(old_name, this.name);
     MODEL.inferIgnoredEntities();
