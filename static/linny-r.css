@@ -4682,12 +4682,12 @@ div.no-colors {
 
 #xp-rename-dlg {
   width: 350px;
-  min-width: 140px;
   height: 45px;
 }
 
 #xp-rename-former-name {
   max-width: 220px;
+  vertical-align: bottom;
   white-space: nowrap;
   display: inline-block;
   overflow: hidden;
