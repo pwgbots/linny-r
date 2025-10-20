@@ -921,15 +921,7 @@ class GUIFileManager {
       }))
     .then(UI.fetchText)
     .then((data) => {
-        if(UI.postResponseOK(data)) {
-          // When model was *auto*-saved...
-          if(data.indexOf('autosave') >= 0) {
-            // ... just mention it on the status line.
-            UI.setMessage(data);
-          } else {
-            // Otherwise use notification (with bell sound).
-            UI.notify(data);
-          }
+        if(UI.postResponseOK(data, true)) {
           // Update the contents of the selected directory.
           FILE_MANAGER.getDirContents();
           UI.modals.browser.hide();
@@ -1732,7 +1724,10 @@ class GUIFileManager {
       .then((data) => {
           if(UI.postResponseOK(data)) {
             // Notify user where the model file has been stored.
-            UI.notify(data);
+            // NOTE: Use `setMessage` to do this unobtrusively
+            // (no color or sound) since exceptions will have been
+            // handled by `postResponseOK`.
+            UI.setMessage(data);
             // Also update the Auto-save directory of the File manager.
             FILE_MANAGER.getDirContents(FILE_MANAGER.root_dirs.autosave);
             // NOTE: Auto-saving does not count as saving to workspace,

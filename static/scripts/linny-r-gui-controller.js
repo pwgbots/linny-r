@@ -1014,6 +1014,15 @@ class GUIController extends Controller {
         () => UI.jumpToIssue());
     document.getElementById('next-issue').addEventListener('click',
         () => UI.updateIssuePanel(1));
+    document.getElementById('recall-btn').addEventListener('click',
+        () => {
+            // Open the documentation manager if still closed.
+            if(!DOCUMENTATION_MANAGER.visible) {
+              UI.buttons.documentation.dispatchEvent(new Event('click'));
+            }
+            // Then show all infoline messages since last model load.
+            DOCUMENTATION_MANAGER.showInfoMessages(true);
+          });
 
     // Make "stay active" buttons respond to Shift-click.
     const tf = (event) => UI.toggleButton(event);

@@ -12,7 +12,9 @@ University of Technology, starting in 2009. The project to develop a browser-
 based version started in 2017. See https://linny-r.org for more information.
 
 This HTML document (index.html) provides the browser-based GUI for editing and
-executing Linny-R models. See the <head> section for required JavaScript files.
+executing Linny-R models. The associated CSS file should be located in the same
+directory (Linny-R)/static/. The JavaScript files should be located in the
+sub-directory (Linny-R)/static/scripts.
 
 NOTE: One of these files (iro.js) is authored by James Daniel. This JS code
 implements the elegant color picker that appears in the Edit variable dialog
@@ -51,7 +53,8 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 -->
   <link rel="shortcut icon" type="image/png" href="images/icon.png">
-  <script type="text/javascript" src="scripts/linny-r-boot.js"></script>
+  <!-- NOTE: The bootstrap script will dynamically load all other scripts. -->
+  <script type="text/javascript" src="scripts/linny-r-bootstrap.js"></script>
   <script type="text/javascript" src="scripts/iro.min.js"></script>
 </head>
 <!-- NOTE: Do not display the page until all scripts have been loaded
@@ -165,8 +168,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         </td>
         <td id="info-line" title="Status bar"></td>
         <td id="recall-btn"
-          title="To view previous messages, open the information dialog (Ctrl-I)
-and move the cursor over the status bar">
+          title="Click to view previous notifications, warnings and error messages">
         </td>
       </tr>
     </table>

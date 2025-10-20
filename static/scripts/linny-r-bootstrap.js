@@ -1,3 +1,39 @@
+/*
+Linny-R is an executable graphical specification language for (mixed integer)
+linear programming (MILP) problems, especially unit commitment problems (UCP).
+The Linny-R language and tool have been developed by Pieter Bots at Delft
+University of Technology, starting in 2009. The project to develop a browser-
+based version started in 2017. See https://linny-r.org for more information.
+
+This JavaScript file (linny-r-bootstrap.js) dynamically loads all other
+JavaScript files that implement the Linny-R modeling environment. It defines
+global variables for the GUI components and makes requests to the local server
+to get data on the available solvers, and to check whether a new release of
+the Linny-R software is available.
+*/
+
+/*
+Copyright (c) 2017-2025 Delft University of Technology
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
 // Create global variables
 var
   // NODE = false indicates that modules need not export their properties
@@ -43,28 +79,33 @@ var
   
   
 function loadLinnyR() {
-  // Ensures that the Linny-R HTML and scripts will be the latest version
-  // by reloading unless URL contains current time stamp truncated to 10 s
-  const d = new Date(),
-        t = Math.floor(d.getTime() / 10000), // getTime returns milliseconds
-        url = window.location.href;
+  // Ensure that the Linny-R HTML and scripts will be the latest version
+  // by reloading unless URL contains current time stamp truncated to 10 s.
+  const
+      d = new Date(),
+      // `getTime` returns milliseconds => divide by 10 thousand.
+      t = Math.floor(d.getTime() / 10000),
+      url = window.location.href;
   if(url.indexOf('?x=' + t) < 0) {
-    // NOTE: URL may contain user user ID (e-mail address)
+    // Time stamp in URL is missing or not very recent => reload.
+    // NOTE: URL may contain user user ID (e-mail address).
     const split = url.split('?u='),
           base = split[0],
           userid = (split.length > 1 ? '&u=' + split[1] : '');
-    // NOTE: remove prior '?x=' cache buster if any
+    // NOTE: Remove prior '?x=' cache buster if any, add new time stamp,
+    // and then reload.
     window.location.assign(base.split('?x=')[0] + '?x=' + t + userid);
   } else {
-    // Reload the style sheet
+    // Load the style sheet.
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.type = 'text/css';
+    // Adding the time stamp prevents reloading from the browser cache.
     link.href = 'linny-r.css?x=' + t;
     link.media = 'all';
     document.getElementById('doc-head').appendChild(link);
     // Reload the scripts in their proper sequence, i.e., such that all
-    // classes are initialized before their instances are created
+    // classes are initialized before their instances are created.
     loadScripts(['-config', '-model', '-ctrl',
         '-gui-paper', '-gui-controller', '-gui-monitor',
         '-gui-file-manager', '-gui-expression-editor',
@@ -79,25 +120,31 @@ function loadLinnyR() {
 }
 
 function loadScripts(sl, t) {
+  // Load first script in list `sl` via URL with time stamp `t` added
+  // as parameter ?x=t to prevent loading an old version from the browser
+  // cache. Repeat this until list `sl` is empty.
   if(sl.length == 0) {
-    // Initialize only after all scripts have loaded
+    // Initialize only after all scripts have loaded.
     initializeLinnyR();
   } else {
     const
         s = sl.shift(),
         head = document.getElementById('doc-head'),
         script = document.createElement('script');
-    // NOTE: recursive call after script s has loaded
+    // NOTE: Recursive call after script s has loaded.
     script.onload = () => {
         console.log('Loaded script: linny-r' + s);
         loadScripts(sl, t);
       };
     script.src= 'scripts/linny-r' + s + '.js?x=' + t;
+    // Add the script to the DOM tree.
     head.appendChild(script);
   }
 }
 
 function checkForUpdates() {
+  // Request the server to get the current version number, and check
+  // whether a newer release is available.
   fetch('auto-check')
     .then((response) => response.text())
     .then((data) => {
@@ -112,8 +159,8 @@ function checkForUpdates() {
                   '[LINNY_R_VERSION]', v);
           // Update the version number in the browser's upper left corner.
           document.getElementById('linny-r-version-number').innerHTML = v;
-          // NOTE: Server detects "version 0" when npmjs website was
-          // not reached; if so, do not suggest a new version exists.
+          // NOTE: Server detects "version 0" when npmjs website was *not*
+          // reached. If so, do not suggest that a new version exists.
           if(info[1] !== 'up-to-date' && info[1] !== '0') {
             // Inform user that newer version exists.
             UI.newer_version = info[1];
@@ -146,10 +193,10 @@ function checkForUpdates() {
             UI.check_update_modal.element('buttons').style.display = 'block';
           }
         } else {
-          // Invalid server response (should not occur, but just in case)
+          // Invalid server response (should not occur, but just in case).
           UI.warn('Version check failed: "' + data + '"');
         }
-        // Schedule a new check 8 hours from now
+        // Schedule a new check 8 hours from now.
         setTimeout(checkForUpdates, 8*3600000);
 
       })
@@ -164,9 +211,9 @@ function initializeLinnyR() {
   UI = new GUIController();
   UI.addListeners();
   DOCUMENTATION_MANAGER = new DocumentationManager();
-  // Create the virtual machine
+  // Create the virtual machine.
   VM = new VirtualMachine();
-  // Create the GUI-only objects
+  // Create the GUI-only objects.
   UNDO_STACK = new UndoStack();
   X_EDIT = new ExpressionEditor();
   ACTOR_MANAGER = new ActorManager();
@@ -175,7 +222,7 @@ function initializeLinnyR() {
   EQUATION_MANAGER = new EquationManager();
   FINDER = new Finder();
   CONSTRAINT_EDITOR = new ConstraintEditor();  
-  // NOTE: Instantiate the GUI classes, not their superclasses
+  // NOTE: Instantiate the GUI classes, not their superclasses.
   FILE_MANAGER = new GUIFileManager();
   DATASET_MANAGER = new GUIDatasetManager();
   CHART_MANAGER = new GUIChartManager();
@@ -183,9 +230,9 @@ function initializeLinnyR() {
   EXPERIMENT_MANAGER = new GUIExperimentManager();
   MONITOR = new GUIMonitor();
   RECEIVER = new GUIReceiver();
-  // Check for software updates only when running on local server
-  // NOTE: do this *after* GUI elements have been created, as the
-  // updater uses a dialog
+  // Check for software updates only when running on local server.
+  // NOTE: Do this *after* GUI elements have been created, as the
+  // updater uses a dialog.
   if(!SOLVER.user_id) checkForUpdates();
   // Create a new Linny-R model.
   UI.createNewModel();
