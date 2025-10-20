@@ -1,26 +1,25 @@
-<!DOCTYPE html>
-<!--
+/*
 Linny-R is an executable graphical specification language for (mixed integer)
 linear programming (MILP) problems, especially unit commitment problems (UCP).
 The Linny-R language and tool have been developed by Pieter Bots at Delft
 University of Technology, starting in 2009. The project to develop a browser-
 based version started in 2017. See https://linny-r.org for more information.
 
-This HTML document (show-diff.html) is loaded into a new browser tab when the
-user clicks on the "Differences can be viewed here" link on the status line.
-It retrieves the HTML that was written to the browser's localStorage, and then
-displays it as part of this document.
--->
+This JavaScript file (linny-r-show-diff.js) comprises only the function that
+retrieves HTML code from the browser storage. This HTML code is placed there
+by the File manager after comparing the current model (A) with another model
+(B) loaded for comparison.
+*/
 
-<!--
-Copyright (c) 2022-2025 Delft University of Technology
+/*
+Copyright (c) 2017-2025 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+in the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in
 all copies or substantial portions of the Software.
@@ -32,18 +31,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
--->
-<html lang="en-US">
-<head>
-  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
-  <title>Model comparison</title>
-  <link rel="shortcut icon" type="image/png" href="images/icon-blue.png">
-  <link rel="stylesheet" href="linny-r-show-diff.css">
-  <script type="text/javascript" src="scripts/linny-r-show-diff.js"></script>
-</head>
-<body id="show-diff-body" onload="retrieveHTML();">
-  <div class="show-diff">
-    Retrieving report &mdash; please wait...
-  </div>
-</body>
-</html>
+*/
+
+function retrieveHTML() {
+  // Get an HTML string from the local storage and display it as the body
+  // of this document (file "show-diff.html").
+  content = window.localStorage.getItem('linny-r-differences-A-B');
+  document.getElementById('show-diff-body').innerHTML = content;
+}

@@ -6246,7 +6246,7 @@ div.call-stack-expr {
   padding-bottom: 3px;
 }
 
-/* The UPDATING modal notifies that update is in progress */
+/* The UPDATING modal notifies that update is in progress. */
 
 #updating-dlg {
   width: 325px;
