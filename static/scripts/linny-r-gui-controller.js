@@ -19,7 +19,7 @@ Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights to
 use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-of the Software, and to permit persons to whom the Software is furnished to do
+of the Software, and to permit persons to whom the Software furnished to do
 so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in
@@ -1419,6 +1419,7 @@ class GUIController extends Controller {
     md.element('time-unit').value = CONFIGURATION.default_time_unit;
     md.element('scale-unit').value = CONFIGURATION.default_scale_unit;
     this.setBox('defaults-comma', CONFIGURATION.decimal_comma);
+    this.setBox('defaults-show-notices', CONFIGURATION.slight_slack_notices);
     md.show('author');
   }
   
@@ -1441,7 +1442,8 @@ class GUIController extends Controller {
         default_time_scale: ts,
         default_time_unit: md.element('time-unit').value,
         default_scale_unit: md.element('scale-unit').value.trim() || '1',
-        decimal_comma: this.boxChecked('defaults-comma')
+        decimal_comma: this.boxChecked('defaults-comma'),
+        slight_slack_notices: this.boxChecked('defaults-show-notices')
       };
     this.updateDefaults(JSON.stringify(d));
   }
@@ -3368,10 +3370,11 @@ class GUIController extends Controller {
       md.follow_up = null;
       // Prompt for model name and author name.
       this.hideStayOnTopDialogs();
-      // Clear name, but set author field to current author.
+      // Clear name, but set author field to default author or author of
+      // the current model.
       md = this.modals.model;
       md.element('name').value = '';
-      md.element('author').value = MODEL.author;
+      md.element('author').value = CONFIGURATION.user_name || MODEL.author;
       md.show('name');
     }
   }
@@ -4203,8 +4206,8 @@ console.log('HERE name conflicts', name_conflicts, mapping);
         e = md.element('product-unit'),
         dsu = UI.cleanName(e.value) || '1';
     model.name = md.element('name').value.trim();
-    // Display model name in browser unless blank
-    document.title = model.name || 'Linny-R';
+    // Display model name in browser unless blank.
+    document.title = model.nameWithoutPath || 'Linny-R';
     // NOTE: Author names should not contain potential path delimiters.
     model.author = md.element('author').value.trim().replaceAll(/\\|\//g, '');
     if(!model.scale_units.hasOwnProperty(dsu)) model.addScaleUnit(dsu);
@@ -4650,7 +4653,8 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     p.equal_bounds = this.getEqualBounds('product-UB-equal');
     const pnl = p.no_links;
     p.no_links = this.boxChecked('product-no-links');
-    let must_redraw = (pnl !== p.no_links);
+    // NOTE: Always resize because size co-depends on bounds.
+    const must_redraw = (p.resize() || pnl !== p.no_links);
     MODEL.ioUpdate(p, this.getImportExportBox('product'));
     // If a group was edited, update all entities in this group. 
     if(md.group.length > 0) md.updateModifiedProperties(p);

@@ -118,6 +118,8 @@ NOTE: When omitted, the third parameter c defaults to (a+b)/2">triangular</code>
   <code title="weibull(X;Y) evaluates as a random number from the Weibull(&lambda;,k) distribution">weibull</code>,
   <code title="max(X1;&hellip;;Xn) evaluates as the highest value of X1, &hellip;, Xn">max</code>,
   <code title="min(X1;&hellip;;Xn) evaluates as the lowest value of X1, &hellip;, Xn">min</code>,
+  <code title="mpp(R;N;PV) evaluates as the minimum periodic payment (annuity)
+to obtain a present value PV in N periods with an interest rate R.">mpp</code>,
   <code title="npv(R;N;CF) evaluates as the net present value of a constant cash flow of CF
 for a period of N time steps with a discount rate R, i.e., &Sigma; CF/(1+r)\u2071 for i=0, &hellip;, N-1.
 NOTE: When the grouping contains more than 3 arguments, npv(R;X0;&hellip;;Xn)

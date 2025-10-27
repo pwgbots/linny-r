@@ -8097,6 +8097,26 @@ function VMI_triangular(x) {
   }
 }
 
+function VMI_mpp(x) {
+  // Replace the top list (!) A of the stack by the minimum periodic payment
+  // (mpp) of the 3 arguments in A. A[0] is the interest rate r, A[1] is the
+  // number of time periods n, and A[2] is the required present value PV.
+  // The minimum periodic payment MPP can then be inferred using the standard
+  // equation PV = MPP * (1 - (1+r)^-n) / r.
+  const d = x.top();
+  if(d !== false) {
+    if(d instanceof Array && d.length === 3) {
+      // Algebra gives MPP = PV * r / (1 - (1+r)^-n).
+      const mpp = d[2] * d[0] / (1 - Math.pow(1 + d[0], -d[1]));
+      if(DEBUGGING) console.log('MPP (' + d.join(', ') + ') = ' + mpp);
+      x.retop(mpp);
+    } else {
+      if(DEBUGGING) console.log('MPP: invalid parameter(s) ' + d);
+      x.retop(VM.PARAMS);
+    }
+  }
+}
+
 function VMI_npv(x) {
   // Replace the top list (!) A of the stack by the net present value (NPV)
   // of the arguments in A. A[0] is the interest rate r, A[1] is the number
@@ -9541,12 +9561,12 @@ const
       '~', 'not', 'abs', 'sin', 'cos', 'atan', 'ln',
       'exp', 'sqrt', 'round', 'int', 'fract', 'min', 'max',
       'binomial', 'exponential', 'normal', 'poisson', 'triangular',
-      'weibull', 'npv'],
+      'weibull', 'mpp', 'npv'],
   MONADIC_CODES = [
       VMI_negate, VMI_not, VMI_abs, VMI_sin, VMI_cos, VMI_atan, VMI_ln,
       VMI_exp, VMI_sqrt, VMI_round, VMI_int, VMI_fract, VMI_min, VMI_max,
       VMI_binomial, VMI_exponential, VMI_normal, VMI_poisson, VMI_triangular,
-      VMI_weibull, VMI_npv],
+      VMI_weibull, VMI_mpp, VMI_npv],
   DYADIC_OPERATORS = [
       ';', '?', ':', 'or', 'and',
       '=', '<>', '!=', '>', '<', '>=', '<=',
@@ -9564,7 +9584,7 @@ const
   
   // Compiler checks for reducing codes to unset its "concatenating" flag
   REDUCING_CODES = [VMI_at, VMI_min, VMI_max, VMI_binomial, VMI_normal,
-      VMI_triangular, VMI_weibull, VMI_npv],
+      VMI_triangular, VMI_weibull, VMI_mpp, VMI_npv],
   
   // Custom operators may make an expression level-based
   LEVEL_BASED_CODES = [],

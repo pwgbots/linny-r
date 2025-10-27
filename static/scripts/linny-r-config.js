@@ -34,27 +34,39 @@ SOFTWARE.
 
 // The configuration properties may be altered according to user preferences.
 const CONFIGURATION = {
+    // NOTE: As of version 3.0, the settings that are most likely to be
+    // customized *can* be configured via the Defaults button of the Solver
+    // dialog. This applies for the following eight properties:
+    
     // When specified, the user name will be used as author name of models;
     // otherwise the user name as defined by the operating system will be used.
     user_name: '',
-    // When decimal comma = TRUE, data copied to clipboard from the chart manager
-    // will be written with decimal comma instead of decimal point.
-    // NOTE: May be overruled by model settings.
-    decimal_comma: false,
     // Default properties for new models.
     default_currency_unit: 'EUR',
     default_time_scale: 1,
     default_time_unit: 'hour',
+    // Unit 1 denotes "no unit" (abstract scale).
+    default_scale_unit: '1',
+    // When decimal comma = TRUE, data copied to clipboard from the Chart manager
+    // will be written with decimal comma instead of decimal point.
+    // NOTE: May be overruled by model settings.
+    decimal_comma: false,
+    // By default, the monitor will notify where and when small amounts of slack
+    // (< 1e-6) are used. Set to FALSE to suppress such notices).
+    slight_slack_notices: true,
+    
+    // NOTE: The following properties can *NOT* be configured via the browser.
+    
     // Standard scale units to be included in new models.
     scale_units: [
         // Units can be defined as 3-tuples [name, scalar, base unit], e.g.,
         // ['MJ', '1', '1'],
         // ['kWh', '3.6', 'MJ']
       ],
-    default_scale_unit: '1',  // 1 denotes "no unit" (abstract scale)
+    
     // Font properties for SVG diagrams.
     // NOTE: When a font name comprises multiple words, it must be enclosed
-    // like so: &quot;Times New Roman&quot;
+    // like so: '&quot;Times New Roman&quot;'.
     default_font_name: 'Arial',
     // Undo stack size limits the number of user actions that can be undone.
     undo_stack_size: 20,
@@ -63,9 +75,6 @@ const CONFIGURATION = {
     // is passed to the solver. On faster machines, the value of this constant
     // can be increased.
     progress_needle_interval: 100,
-    // By default, the monitor will notify where and when small amounts of slack
-    // (< 1e-6) are used (set to FALSE to suppress such notices).
-    slight_slack_notices: true,  
     // Allow some control over the size of cluster nodes.
     min_cluster_size: 80,
     // To enhance security, a minimum password length is enforced.

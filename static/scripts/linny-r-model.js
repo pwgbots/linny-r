@@ -161,6 +161,11 @@ class LinnyRModel {
         ' (' + (this.author || 'unknown author') + ')';
   }
   
+  get nameWithoutPath() {
+    // Name without its optional OS path prefix.
+    return this.name.split(/\/|\\/).pop().trim();
+  }
+  
   get diagramName() {
     // Display name for focal cluster (the visible diagram).
     return (this.focal_cluster.parent ?
@@ -5956,7 +5961,7 @@ class NodeBox extends ObjectWithXYWH {
   }
   
   resize() {
-    // Resize this node; returns TRUE iff size has changed.
+    // Resize this node, and return TRUE iff size has changed.
     // Therefore, keep track of original width and height.
     const
         ow = this.width,
@@ -5987,6 +5992,7 @@ class NodeBox extends ObjectWithXYWH {
       }
       this.width = this.frame_width + this.height - 1;
     }
+    // Return whether size has changed.
     return this.width != ow || this.height != oh;
   }
 

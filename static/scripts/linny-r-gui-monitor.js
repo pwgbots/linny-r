@@ -382,6 +382,7 @@ class GUIMonitor {
                 MODEL.currency_unit = CONFIGURATION.default_currency_unit;
                 MODEL.default_unit = CONFIGURATION.default_scale_unit;
                 MODEL.decimal_comma = CONFIGURATION.decimal_comma;
+                MODEL.show_notices = CONFIGURATION.slight_slack_notices;
              }
             } catch(err) {
               console.log(err, data);

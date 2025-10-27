@@ -261,11 +261,14 @@ class Paper {
       above_upper_bound: '#b0b0ff',
       // Clusters are mixed if they involve GE as well as LE slack
       beyond_both_bounds: '#ffb0ff',
-      // ... and different shades of green if within or on their bounds
+      // ... and different shades of green if within or on their bounds.
       neg_within_bounds: '#e0ffb0',
       pos_within_bounds: '#b0ffe0',
       zero_within_bounds: '#c8ffc8',
-      // Product are filled in darker green shades ...
+      neg_within_bounds_font: '#804000',
+      pos_within_bounds_font: '#005090',
+      within_bounds_font: '#007000',
+      // Product are filled in darker green shades...
       below_zero_fill: '#c0f070',
       above_zero_fill: '#70f0c0',
       at_zero_fill: '#98f098',
@@ -288,7 +291,6 @@ class Paper {
       unit: '#006000', // dark green
       consumed: '#b00000', // deep red
       produced: '#0000b0', // navy blue
-      within_bounds_font: '#007000', // dark green
       // Process with level > 0 has a dark blue rim and production level font
       active_process: '#000080',
       // The % (level / process upper bound) is drawn as a vertical bar
@@ -939,7 +941,7 @@ class Paper {
     // Resize paper if necessary.
     this.extend();
     // Display model name in browser.
-    document.title = mdl.name || 'Linny-R';
+    document.title = mdl.nameWithoutPath || 'Linny-R';
   }
   
   drawSelection(mdl, dx=0, dy=0) {
@@ -2201,7 +2203,7 @@ class Paper {
         // Underline the lower bound to indicate semi-continuity.
         proc.shape.addPath(
             ['M', tx + lbo, ',', ty + sh/2, 'L', tx + lbo + lbw, ',', ty + sh/2],
-            {'fill': 'none', stroke: font_color, 'stroke-width': 0.4});
+            {'fill': 'none', stroke: font_color, 'stroke-width': 0.5});
         // By default, no ON/OFF indicator.
         s = '';
         if(MODEL.solved && l !== VM.UNDEFINED) {
@@ -2325,13 +2327,13 @@ class Paper {
   }
   
   drawProduct(prod, dx=0, dy=0) {
-    // Clear previous drawing
+    // Clear previous drawing.
     prod.shape.clear();
-    // Do not draw product unless it has a position in the focal cluster
+    // Do not draw product unless it has a position in the focal cluster.
     let pp = prod.positionInFocalCluster;
 
     if(!pp) return;
-    // Set X and Y to correct value for this diagram
+    // Set X and Y to correct value for this diagram.
     prod.x = pp.x;
     prod.y = pp.y;
     let s,
@@ -2368,18 +2370,18 @@ class Paper {
         ub = prod.upper_bound.result(MODEL.t);
       }
     }
-    // When model not solved, use initial level
+    // When model not solved, use initial level.
     let l = prod.actualLevel(MODEL.t);
     if(!MODEL.solved  && prod.initial_level.defined) {
       l = prod.initial_level.result(1);
     }
     if(first_commit_option) {
-      // Set short-dashed rim if not committed yet at time t
+      // Set short-dashed rim if not committed yet at time t.
       if(!MODEL.solved || prod.start_ups.length === 0 ||
           MODEL.t < prod.start_ups[0]) {
         sda = UI.sda.shorter_dash;
       } else {
-        // Otherwise, set longer-dashed rim to denote "has been committed"
+        // Otherwise, set longer-dashed rim to denote "has been committed".
         sda = UI.sda.longer_dash;
       }
     }
@@ -2389,7 +2391,7 @@ class Paper {
     } else  {
       stroke_color = ignored ? this.palette.ignore :
           (prod.no_slack ? 'black' : this.palette.node_rim);
-      // Thick rim if deleting this product only occurs in the focal cluster
+      // Thick rim if deleting this product only occurs in the focal cluster.
       stroke_width = (prod.allLinksInCluster(MODEL.focal_cluster) ? 1.5 : 0.6);
     }
     if(prod.hasBounds) {
@@ -2420,10 +2422,13 @@ class Paper {
           // shown as more reddish / bluish shades of green.
           if(l < -VM.ON_OFF_THRESHOLD) {
             fill_color = this.palette.neg_within_bounds;
+            font_color = this.palette.neg_within_bounds_font;
           } else if(l > VM.ON_OFF_THRESHOLD) {
             fill_color = this.palette.pos_within_bounds;
+            font_color = this.palette.pos_within_bounds_font;
           } else {
             fill_color = this.palette.zero_within_bounds;
+            font_color = this.palette.within_bounds_font;
           }
           if(ub - lb < VM.NEAR_ZERO) {
             // When LB = UB, fill completely in the color, but ...
@@ -2433,15 +2438,13 @@ class Paper {
                   this.palette.pos_constant);  
             }
           } else if(ub - l < VM.SIG_DIF_LIMIT) {
-            // Black font and darker fill color indicate "at upper bound".
-            font_color = 'black';
+            // Deeper fill shade indicate "at upper bound".
             fill_color = (ub > 0 ? this.palette.at_pos_ub_fill :
                 (ub < 0 ? this.palette.at_neg_ub_fill :
                     this.palette.at_zero_ub_fill));
             at_bound = true;
           } else if (l - lb < VM.SIG_DIF_LIMIT) {
-            // Font and rim color indicate "at lower bound".
-            font_color = 'black';
+            // Deeper fill shade indicates "at lower bound".
             fill_color = (lb > 0 ? this.palette.at_pos_lb_fill :
                 (lb < 0 ? this.palette.at_neg_lb_fill :
                     this.palette.at_zero_lb_fill));
@@ -2449,7 +2452,6 @@ class Paper {
           } else {
             // Set "partial fill" flag if not at lower bound and UB < INF.
             pf = ub < VM.PLUS_INFINITY;
-            font_color = this.palette.within_bounds_font;
           }
         }
       } else if(ub - lb < VM.NEAR_ZERO) {
@@ -2496,9 +2498,9 @@ class Paper {
       }
     }
     if(prod.is_buffer) {
-      // Products with storage capacity show their partial fill
+      // Products with storage capacity show their partial fill.
       pf = true;
-      // Background fill color of buffers is white unless exceptional
+      // Background fill color of buffers is white unless exceptional.
       let npfbg = 'white';
       if(fill_color === this.palette.above_upper_bound ||
           fill_color === this.palette.below_lower_bound ||
@@ -2507,7 +2509,7 @@ class Paper {
         npfbg = fill_color;
         pf = false;
       }
-      // Products are displayed as "roundboxes" with sides that are full hemicircles
+      // Products are displayed as "roundboxes" with sides that are full hemicircles.
       prod.shape.addRect(x, y, 2*hw, 2*hh,
           {fill: npfbg, stroke: stroke_color, 'stroke-width': 3, rx: hh, ry: hh});
       // Draw thin white line insize thick border to suggest a double rim
@@ -2592,19 +2594,28 @@ class Paper {
         lw = 0,
         lx = x + hw - 3;
     if(!ignored && (MODEL.solved || (l > 0 && l < VM.EXCEPTION))) {
-      // Write the stock level in the right semicircle
+      // Write the stock level in the right semicircle.
       s = VM.sig4Dig(l);
       bb = this.numberSize(s, 9, 700);
       lw = bb.width;
       hlh = bb.height/2 + 1;
       const attr = {'font-size': 9, 'text-anchor': 'end'};
-      // NOTE: use anchor to align the stock level text to the right side
+      // NOTE: Use anchor to align the stock level text to the right side.
       if(l <= VM.ERROR) {
         attr.fill = this.palette.VM_error;
       } else {
         attr.fill = font_color;
         attr['font-weight'] = 700;
-        if(at_bound) attr['text-decoration'] = 'solid black underline';
+        if(at_bound) {
+          // Underline level to indicate "at bound".
+          // NOTE: Draw underline as path because text decoration is not
+          // always rendered, e.g. not by LaTeX/Overleaf.
+          prod.shape.addPath(
+              ['M', lx - lw, ',', y - 1, 'L', lx, ',', y - 1],
+              {'fill': 'none', stroke: 'black', 'stroke-width': 0.55});
+          // Original code used text decoration attribute.
+          // attr['text-decoration'] = 'solid black underline';
+        }
       }
       prod.shape.addNumber(lx, y - hlh, s, attr);
     }
