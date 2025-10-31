@@ -4148,7 +4148,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     this.setBox('settings-cost-prices', model.infer_cost_prices);
     this.setBox('settings-negative-flows', model.ignore_negative_flows);
     this.setBox('settings-report-results', model.report_results);
-    this.setBox('settings-encrypt', model.encrypt);
+    this.setBox('settings-encrypt', model.prompt_to_encrypt);
     const pg_btn = md.element('power-btn');
     pg_btn.style.display = (model.with_power_flow ? 'inline-block' : 'none');
     if(model.ignore_grid_capacity || model.ignore_KVL || model.ignore_power_losses) {
@@ -4214,7 +4214,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     model.default_unit = dsu;
     model.currency_unit = md.element('currency-unit').value.trim();
     model.report_results = UI.boxChecked('settings-report-results');
-    model.encrypt = UI.boxChecked('settings-encrypt');
+    model.prompt_to_encrypt = UI.boxChecked('settings-encrypt');
     model.decimal_comma = UI.boxChecked('settings-decimal-comma');
     model.always_diagnose = this.boxChecked('settings-diagnose');
     // Notify modeler that diagnosis changes the value of +INF.

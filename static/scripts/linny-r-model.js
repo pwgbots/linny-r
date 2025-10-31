@@ -54,7 +54,6 @@ class LinnyRModel {
     // determine whether the last undo/redo occurred *after* the last save.
     this.last_modified = d;
     this.version = LINNY_R_VERSION;
-    this.encrypt = false;
     this.time_scale = CONFIGURATION.default_time_scale;
     this.time_unit = CONFIGURATION.default_time_unit;
     this.currency_unit = CONFIGURATION.default_currency_unit;
@@ -111,6 +110,7 @@ class LinnyRModel {
     this.ignore_negative_flows = false;
     this.report_results = false;
     this.show_block_arrows = true;
+    this.prompt_to_encrypt = false;
     this.last_zoom_factor = 1;
     
     // Default solver settings
@@ -2917,7 +2917,7 @@ class LinnyRModel {
       this.rounds = safeStrToInt(nodeParameterValue(node, 'rounds'), 1);
       this.actors[UI.nameToID(UI.NO_ACTOR)].round_flags = safeStrToInt(
           nodeParameterValue(node, 'no-actor-round-flags'));
-      this.encrypt = nodeParameterValue(node, 'encrypt') === '1';
+      this.prompt_to_encrypt = nodeParameterValue(node, 'encrypt') === '1';
       this.decimal_comma = nodeParameterValue(node, 'decimal-comma') === '1';
       this.align_to_grid = nodeParameterValue(node, 'align-to-grid') === '1';
       this.with_power_flow = nodeParameterValue(node, 'power-flow') === '1';
@@ -3242,7 +3242,7 @@ class LinnyRModel {
         // models having this option switched off. 
         '" diagnose="', (this.always_diagnose ? '1' : '0'),
         '"'].join('');
-    if(this.encrypt) p += ' encrypt="1"';
+    if(this.prompt_to_encrypt) p += ' encrypt="1"';
     if(this.decimal_comma) p += ' decimal-comma="1"';
     if(this.align_to_grid) p += ' align-to-grid="1"';
     if(this.with_power_flow) p += ' power-flow="1"';
@@ -9657,13 +9657,14 @@ class ChartVariable {
     this.maximum = 0;
     this.non_zero_tally = 0;
     this.exceptions = 0;
+    this.outliers = [];
     this.bin_tallies = [];
     // The actual wildcard index is set for each variable that is added
     // during this "expansion".
     this.wildcard_index = false;
   }
   
-  setProperties(obj, attr, stck, clr, sf=1, abs=false, lw=1, vis=true, sort='not') {
+  setProperties(obj, attr, stck, clr, sf=1, abs=false, lw=1, vis=true, sort='not', clip=false) {
     // Sets the defining properties for this chart variable.
     this.object = obj;
     this.attribute = attr;
@@ -9674,6 +9675,7 @@ class ChartVariable {
     this.line_width = lw;
     this.visible = vis;
     this.sorted = sort;
+    this.clipped = clip;
   }
   
   get type() {

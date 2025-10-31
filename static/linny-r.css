@@ -416,6 +416,7 @@ input[type="password"] {
 input[type="text"]:disabled {
   color: Gray;
   background-color: #f4f0f2;
+  border-color: #c0c0c080 !important;
 }
 
 div.lbl-disab {
@@ -1179,6 +1180,7 @@ table.power-flow th:not(:first-child) {
   filter: brightness(85%);
 }
 
+/* No margin around check boxes having thier own table cells */
 #settings-block-arrows,
 #settings-align-to-grid,
 #settings-diagnose,
@@ -1186,6 +1188,7 @@ table.power-flow th:not(:first-child) {
 #settings-cost-prices,
 #settings-negative-flows,
 #defaults-comma,
+#defaults-show-notices,
 #settings-decimal-comma,
 #settings-report-results,
 #settings-encrypt {
@@ -1534,8 +1537,8 @@ div.export {
   width: 220px;
 }
 
-#save-black-box-div {
-  margin-left: 125px;
+#save-encrypt-div {
+  margin-right: 125px;
 }
 
 #save-encrypt-lbl,

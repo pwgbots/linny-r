@@ -829,35 +829,43 @@ class GUIFileManager {
     // when the Alt-button is pressed.
     this.download_via_browser = event.altKey;
     MODEL.clearSelection();
-    // Prompt for model name when still blank, or when Shift-key is pressed.
-    if(!MODEL.name || event.shiftKey) {
+    // Prompt for model name when still blank, or when "prompt for encryption"
+    // option is set, "black boxing" is relevant, or Shift-key is pressed.
+    MODEL.inferBlackBoxEntities();
+    const bbox = (Object.keys(MODEL.black_box_entities).length > 0);
+    if(!MODEL.name || MODEL.prompt_to_encrypt || bbox || event.shiftKey) {
       // Open "save model" dialog to let modeler specify name, author etc.
-      this.promptForModelName();
+      // NOTE: Pass `bbox` to prevent inferring BB entities again.
+      this.promptForModelName(bbox);
     } else {
       // Save using the current model properties (name, author, etc.)
       this.saveAsNewModel(false);
     }
   }
   
-  promptForModelName() {
+  promptForModelName(bbox) {
     // Prompt user for model name and author name.
     const
         md = this.save_modal,
-        bb = md.element('black-box-div');
+        enc_div = md.element('encrypt-div'),
+        bb_div = md.element('black-box-div'),
+        options_div = md.element('options');
     md.element('action').innerText = (this.download_via_browser ?
         'Download' : 'Save');
     md.element('name').value = MODEL.name;
     md.element('author').value = MODEL.author;
-    // Always show the encryption option.
-    UI.setBox('save-encrypt', MODEL.encrypt);
-    // Always prompt to save *without* "black-boxing".
+    // Always prompt to save *without* encryption or "black-boxing".
+    UI.setBox('save-encrypt', false);
     UI.setBox('save-black-box', false);
-    // Only show the "black box" option if that is relevant.
-    MODEL.inferBlackBoxEntities();
-    if(Object.keys(MODEL.black_box_entities).length) {
-      bb.style.display = 'inline-block';
+    // Only show options DIV when "prompt for encryption" option is set,
+    // and/or when some clusters are checked for "black-boxing".
+    const enc = MODEL.prompt_to_encrypt;
+    if(bbox || enc) {
+      options_div.style.display = 'block';
+      enc_div.style.display = (enc ? 'inline-block' : 'none');
+      bb_div.style.display = (bbox ? 'inline-block' : 'none');
     } else {
-      bb.style.display = 'none';
+      options_div.style.display = 'none';      
     }
     md.show('name');
   }
@@ -873,7 +881,6 @@ class GUIFileManager {
       // NOTE: Author names should not contain potential path delimiters.
       MODEL.author = md.element('author').value.trim()
           .replaceAll(/\\|\//g, '');
-      MODEL.encrypt = UI.boxChecked('save-encrypt');
     }
     if(!this.asFilePath(MODEL.name)) {
       UI.warn('Invalid model name');
@@ -883,7 +890,7 @@ class GUIFileManager {
       md.focus('name');
     } else {
       md.hide();
-      if(MODEL.encrypt) {
+      if(UI.boxChecked('save-encrypt')) {
         const pw_md = this.set_password_modal;
         pw_md.encryption_code = '';
         // NOTE: Record in the *Set* password modal whether the model
@@ -892,6 +899,7 @@ class GUIFileManager {
         pw_md.show('code');
         this.updatePasswordStrength();
       } else if(black_box) {
+        // No encryption => save the "black boxed" model XML.
         this.storeModel(MODEL.asBlackBoxXML);
       } else {
         this.storeModel(MODEL.asXML);

@@ -323,6 +323,12 @@ will be written with decimal comma instead of decimal point.">
             <div class="box-lbl">Use decimal <u>comma</u> when copying data</div>
           </td>
         </tr>
+        <tr title="When checked, small slack uses are reported in monitor">
+          <td>
+            <div id="defaults-show-notices" class="box checked"></div>
+            <div class="box-lbl">Report small slack uses</div>
+          </td>
+        </tr>
       </table>
     </div>
   </div>
@@ -374,10 +380,12 @@ will be written with decimal comma instead of decimal point.">
           </td>
         </tr>
       </table>
-      <div>
-        <div id="save-encrypt" class="box clear"></div>
-        <div id="save-encrypt-lbl">
-          Encrypt
+      <div id="save-options">
+        <div id="save-encrypt-div">
+          <div id="save-encrypt" class="box clear"></div>
+          <div id="save-encrypt-lbl">
+            Encrypt
+          </div>
         </div>
         <div id="save-black-box-div">
           <div id="save-black-box" class="box clear"></div>
@@ -610,6 +618,12 @@ will be written with decimal comma instead of decimal point.">
             <div class="box-lbl">Infer and display cost prices</div>
           </td>
         </tr>
+        <tr title="Reports will be saved in user/reports/, and removed after 24 h">
+          <td colspan="2">
+            <div id="settings-report-results" class="box clear"></div>
+            <div class="box-lbl">Report results after each run</div>
+          </td>
+        </tr>
         <tr>
           <td colspan="2">
             <div id="settings-negative-flows" class="box clear"></div>
@@ -622,16 +636,10 @@ will be written with decimal comma instead of decimal point.">
             <div class="box-lbl">Use decimal <u>comma</u> when copying data to clipboard</div>
           </td>
         </tr>
-        <tr title="Reports will be saved in user/reports/, and removed after 24 h">
-          <td colspan="2">
-            <div id="settings-report-results" class="box clear"></div>
-            <div class="box-lbl">Report results after each run</div>
-          </td>
-        </tr>
         <tr>
           <td colspan="2">
             <div id="settings-encrypt" class="box clear"></div>
-            <div class="box-lbl">Encrypt with password</div>
+            <div class="box-lbl">Prompt for encryption with password when saving</div>
           </td>
         </tr>
       </table>
