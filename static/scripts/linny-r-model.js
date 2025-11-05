@@ -2803,13 +2803,13 @@ class LinnyRModel {
     for(let k in this.clusters) if(this.clusters.hasOwnProperty(k)) {
       for(const n of this.clusters[k].notes) n.rewriteFields(en1, en2);
     }
+    let replace_msg = '';
     if(ioc.replace_count) {
       this.variable_count += ioc.replace_count;
-      this.expression_count += ioc.expression_count; 
-      if(notify) {
-        UI.notify(`Renamed ${pluralS(ioc.replace_count, 'variable')} in ` +
-            pluralS(ioc.expression_count, 'expression'));
-      }
+      this.expression_count += ioc.expression_count;
+      replace_msg = pluralS(ioc.replace_count, 'variable') + ' in ' +
+          pluralS(ioc.expression_count, 'expression');
+      if(notify) UI.notify('Renamed ' + replace_msg);
     }
     // Also rename entities in parameters and outcomes of sensitivity analysis.
     for(let i = 0; i < this.sensitivity_parameters.length; i++) {
@@ -2828,6 +2828,8 @@ class LinnyRModel {
     }
     // Name was changed, so update controller dialogs to display the new name.
     UI.updateControllerDialogs('CDEFJX');
+    // NOTE: The return value is used by the Equation manager.
+    if(!notify) return replace_msg;
   }
 
   replaceAttributeInExpressions(ena, a) {
@@ -5082,7 +5084,7 @@ class PowerGrid {
     return ['<grid', p, '><id>', this.id,
         '</id><name>', xmlEncoded(this.name),
         '</name><notes>', xmlEncoded(this.comments),
-        '</notes><color>', this.color,
+        '</notes><color>', xmlDecoded(this.color),
         '</color><kilovolts>', this.kilovolts,
         '</kilovolts><power-unit>', this.power_unit,
         '</power-unit></grid>'].join('');
@@ -5094,7 +5096,7 @@ class PowerGrid {
     this.name = xmlDecoded(nodeContentByTag(node, 'name'));
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     this.kirchhoff = nodeParameterValue(node, 'kirchhoff') === '1';
-    this.color = nodeContentByTag(node, 'color');
+    this.color = xmlDecoded(nodeContentByTag(node, 'color'));
     this.kilovolts = safeStrToFloat(nodeContentByTag(node, 'kilovolts'), 150);
     this.power_unit = nodeContentByTag(node, 'power-unit') || 'MW';
   }
@@ -9657,14 +9659,17 @@ class ChartVariable {
     this.maximum = 0;
     this.non_zero_tally = 0;
     this.exceptions = 0;
-    this.outliers = [];
+    this.clip_min = 0;
+    this.clip_max = 0;
     this.bin_tallies = [];
+    this.line_path = '';
     // The actual wildcard index is set for each variable that is added
     // during this "expansion".
     this.wildcard_index = false;
   }
   
-  setProperties(obj, attr, stck, clr, sf=1, abs=false, lw=1, vis=true, sort='not', clip=false) {
+  setProperties(obj, attr, stck, clr, sf=1, abs=false, lw=1,
+      clip=false, vis=true, sort='not') {
     // Sets the defining properties for this chart variable.
     this.object = obj;
     this.attribute = attr;
@@ -9726,6 +9731,16 @@ class ChartVariable {
     return bar + this.object.displayName + '|' + this.attribute + bar + sf;
   }
   
+  get legendName() {
+    // When this variable is scaled, replace the multiplication 'x' by the
+    // nicer multiplication symbol.
+    let n = this.displayName;
+    if(this.scale_factor !== 1) {
+      n = n.replace(/\s\(x([^\)]+)\)$/, ' (\u2715$1)');
+    }
+    return n;
+  }
+  
   get asXML() {
     // NOTE: A "black-boxed" model can comprise charts showing "anonymous"
     // entities, so the IDs of these entities must then be changed.
@@ -9734,15 +9749,16 @@ class ChartVariable {
       id = UI.nameToID(MODEL.black_box_entities[id]);
     }
     const xml = ['<chart-variable',
-        (this.stacked ? ' stacked="1"' : ''),
         (this.absolute ? ' absolute="1"' : ''),
+        (this.stacked ? ' stacked="1"' : ''),
+        (this.clipped ? ' clipped="1"' : ''),
         (this.visible ? ' visible="1"' : ''),
         (this.wildcard_index !== false ?
             ` wildcard-index="${this.wildcard_index}"` : ''),
         ` sorted="${this.sorted}"`,
         '><object-id>', xmlEncoded(id),
         '</object-id><attribute>', xmlEncoded(this.attribute),
-        '</attribute><color>', this.color,
+        '</attribute><color>', xmlEncoded(this.color),
         '</color><scale-factor>', VM.sig4Dig(this.scale_factor, true),
         '</scale-factor><line-width>', VM.sig4Dig(this.line_width),
         '</line-width></chart-variable>'].join('');
@@ -9751,22 +9767,101 @@ class ChartVariable {
   
   get lowestValueInVector() {
     // Return the computed statistical minimum OR vector[0] (if valid & lower).
-    let v = this.minimum;
-    if(this.vector.length > 0) v = this.vector[0];
-    if(v < VM.MINUS_INFINITY || v > VM.PLUS_INFINITY || v > this.minimum) {
-      return this.minimum;
+    let min = this.minimum;
+    if(this.clipped) {
+      // Ensure that y-axes has some part < 0 when clipped range is above 0
+      // while some outlier < 
+      const mmsd = this.mean - Math.sqrt(this.variance);
+      if(min < 0 && this.clip_min > mmsd) {
+        min = Math.min(mmsd, -0.5);
+      } else {
+        min = this.clip_min;
+      }
     }
-    return v;
+    let v = min;
+    if(this.vector.length > 0) v = this.vector[0];
+    if(v < VM.MINUS_INFINITY || v > VM.PLUS_INFINITY || v >= min) return min;
+    if(!this.clipped) return v;
+    return min;
   }
 
   get highestValueInVector() {
     // Return the computed statistical maximum OR vector[0] (if valid & higher).
-    let v = this.maximum;
+    const max = (this.clipped ? this.clip_max : this.maximum);
+    let v = max;
     if(this.vector.length > 0) v = this.vector[0];
-    if(v < VM.MINUS_INFINITY || v > VM.PLUS_INFINITY || v < this.maximum) {
-      return this.maximum;
+    if(v < VM.MINUS_INFINITY || v > VM.PLUS_INFINITY || v <= max) return max;
+    if(!this.clipped) return v;
+    return max;
+  }
+  
+  labelOutliers(v) {
+    // Add potential outliers of vector `v` to outlier lookup.
+    if(this.clipped) {
+      for(let t = 0; t < v.length; t++) {
+        const vv = v[t];
+        if(vv < this.clip_min || vv > this.clip_max) {
+          if(!v.stacked || this.outliers.hasOwnProperty(t)) {
+            this.outliers[t] = vv;
+          }
+        }
+      }
     }
-    return v;
+  }
+  
+  get outlierSVG() {
+    // Generate SVG for clipped points of this variable.
+    const labels = [];
+    if(this.clipped && !isEmpty(this.outliers)) {
+      const
+          min_y = this.chart.plot_min_y,
+          max_y = this.chart.plot_max_y,
+          // Y-value for top & bottom edges of plot area.
+          bottom = this.chart.plot_oy,
+          top = bottom - this.chart.plot_height,
+          // Horizontal space per time step.
+          dx = this.chart.plot_width / this.chart.total_time_steps;
+      for(const t in this.outliers) if(this.outliers.hasOwnProperty(t)) {
+        const
+            vv = this.outliers[t],
+            at_bottom = vv < min_y;
+        if(at_bottom || vv > max_y) {
+          const
+              // Center the triangle: shift by half a width except for t=0.
+              cx = this.chart.plot_ox + t * dx - (t > 0 ? dx / 2 : 0),
+              // Triangle points up or down.
+              dy = (at_bottom ? 7 : -7),
+              y = (at_bottom ? bottom : top),
+              d = `M${cx - 3} ${y} L${cx} ${y + dy} L${cx + 3} ${y} Z`,
+              opac = (this.stacked ? 0.4 : 1);
+          // Triangle up at top of plot area.
+          labels.push('<path d="', d, '" stroke="', this.color,
+              '" stroke-width="', this.line_width * 0.2, '" fill="', this.color,
+              '" fill-opacity="', opac, '"><title>y = ', VM.sig4Dig(vv),
+              '</title></path>');
+        }
+      }
+    }
+    return labels.join('');
+  }
+  
+  sortVector(v) {
+    // Sort vector `v` if this chart variable is set to be sorted.
+    if(this.sorted === 'no') return;
+    if(this.sorted === 'asc') {
+      // Sort values in ascending order.
+      // NOTE: Do not use default sort, as this performs *string* comparison!
+      v.sort((a, b) => a - b);
+    } else if(this.sorted === 'desc') {
+      // Sort values in descending order.
+      v.sort((a, b) => b - a);
+    } else if(this.chart.time_step_numbers) {
+      // Fill vector with its values sorted by time step.
+      const tsn = this.chart.time_step_numbers;
+      for(let i = 0; i < this.vector.length; i++) {
+        v[i] = this.vector[tsn[i]];
+      }
+    }    
   }
 
   initFromXML(node) {
@@ -9791,12 +9886,14 @@ class ChartVariable {
         obj,
         xmlDecoded(nodeContentByTag(node, 'attribute')),
         nodeParameterValue(node, 'stacked') === '1',
-        nodeContentByTag(node, 'color'),
+        xmlDecoded(nodeContentByTag(node, 'color')),
         safeStrToFloat(nodeContentByTag(node, 'scale-factor')),
         nodeParameterValue(node, 'absolute') === '1',
         safeStrToFloat(nodeContentByTag(node, 'line-width')),
+        nodeParameterValue(node, 'clipped') === '1',
         nodeParameterValue(node, 'visible') === '1',
-        nodeParameterValue(node, 'sorted') || 'not');
+        nodeParameterValue(node, 'sorted') || 'not'
+      );
     return true;
   }
 
@@ -9923,6 +10020,26 @@ class ChartVariable {
       }
       this.variance = sumsq / t_end;
     }
+    if(this.clipped) {
+      const
+          sd3 = 3 * Math.sqrt(this.variance),
+          c_low = this.mean - sd3,
+          c_high = this.mean + sd3;
+      let min = VM.PLUS_INFINITY,
+          max = VM.MINUS_INFINITY;
+      for(let t = 1; t <= t_end; t++) {
+        v = this.vector[t];
+        // Here, too, ignore exceptional values, and use 0 instead.
+        if(v < VM.MINUS_INFINITY || v > VM.PLUS_INFINITY) v = 0;
+        // Get min and max *within* clipping range.
+        if(v > max && v < c_high) max = v;
+        if(v < min && v > c_low) min = v;
+      }
+      // The these min and max are the actual clipping limits.
+      this.clip_min = min;
+      this.clip_max = max;
+      
+    }
   }
   
   tallyVector() {
@@ -9947,28 +10064,16 @@ class ChartVariable {
 
   setLinePath(x0, y0, dx, dy) {
     // Set SVG path unless already set or line not visible.
-    if(this.line_path.length === 0 && this.visible) {
-      // Vector may have to be sorted in some way.
+    if(!this.line_path && this.visible) {
       const vect = this.vector.slice();
-      if(this.sorted === 'asc') {
-        // Sort values in ascending order.
-        vect.sort();
-      } else if(this.sorted === 'desc') {
-        // Sort values in descending order.
-        vect.sort((a, b) => { return b - a; });
-      } else if(this.chart.time_step_numbers) {
-        // Fill vector with its values sorted by time step.
-        const tsn = this.chart.time_step_numbers;
-        for(let i = 0; i < this.vector.length; i++) {
-          vect[i] = this.vector[tsn[i]];
-        }
-      }
-      //
-      let y = y0 - this.vector[0] * dy;
+      // Vector may have to be sorted in some way.
+      this.sortVector(vect);
+      this.labelOutliers(vect);
+      let y = y0 - vect[0] * dy;
       const
           path = ['M', x0, ',', y],
           l = vect.length;
-      // NOTE: Now we can use relative line coordinates
+      // NOTE: Now we can use relative line coordinates.
       for(let t = 1; t < l; t++) {
         const new_y = y0 - vect[t] * dy;
         path.push(`v${new_y - y}h${dx}`);
@@ -10299,9 +10404,10 @@ class Chart {
         'px" text-anchor="middle" alignment-baseline="middle"',
         ' height="', CHART_MANAGER.container_height,
         '" width="', CHART_MANAGER.container_width,
-        '" viewBox="0 0 ', width, ' ', height, '">',
-        //  style="overflow: hidden; position: relative;"
-        '<defs>', CHART_MANAGER.fill_patterns, '</defs>'].join('');
+        '" viewBox="0 0 ', width, ' ', height, '"><defs>',
+        // NOTE: No closing tag </defs> because this will be added later, after
+        // the chart area (to be used as clipping rectangle) has been computed.
+        CHART_MANAGER.fill_patterns.replaceAll(/[\n\r]/g, '')].join('');
     // NOTE: `rl`, `rt`, `rw` and `rh` define the XY-rectangle for plotting.
     let
         // Assume max. 7 digits for Y-scale numbers.
@@ -10368,7 +10474,7 @@ class Chart {
           leg_top = rt + 0.5*(rh - leg_height);
         } else if(this.legend_position != 'none') {
           leg_height = font_height;
-          leg_width = tvnw + vv * 2 * sym_size;
+          leg_width = tvnw + vv * 3 * sym_size;
           leg_left = rl + 0.5*(rw - leg_width);
           rh -= leg_height + margin;
           if(this.legend_position === 'top') {
@@ -10388,7 +10494,7 @@ class Chart {
             const v = this.variables[i];
             if(v.visible) {
               // Add arrow indicating sort direction to name if applicable.
-              const vn = v.displayName + CHART_MANAGER.sort_arrows[v.sorted];
+              const vn = v.legendName + CHART_MANAGER.sort_arrows[v.sorted];
               if(v.stacked || this.histogram || stat_bars) {
                 this.addSVG(['<rect x="', x, '" y="', y - sym_size + 2,
                     '" width="', sym_size, '" height="', sym_size,
@@ -10407,7 +10513,7 @@ class Chart {
               if(this.legend_position === 'right') {
                 y += 1.5* font_height;
               } else {
-                x += 2 * sym_size + vnw[i];
+                x += 3 * sym_size + vnw[i];
               }
             } 
           }
@@ -10438,7 +10544,6 @@ class Chart {
       first_step = 1;
       last_step = time_steps;
     }
-    
     // Calculate the range for the Y-axis (over all visible chart variables).
     // NOTE: Let scale start at 0 unless minimum < 0 EXCEPT for a histogram.
     let minv = (this.histogram ? VM.PLUS_INFINITY : 0),
@@ -10503,7 +10608,6 @@ class Chart {
     // Now all vectors have been computed. If `display` is FALSE, this
     // indicates that data is used only to save model results.
     if(!display) return;
-    
     // Define the bins when drawing as histogram.
     if(this.histogram) {
       this.value_range = maxv - minv;
@@ -10516,7 +10620,7 @@ class Chart {
           bin_size *= 10;
           scalar *= 10;
         }
-        // Now look for nearest "nice" number as bin size
+        // Now look for nearest "nice" number as bin size.
         let base = 0,
             base_n = [1, 2, 5];
         while(!base) {
@@ -10532,18 +10636,18 @@ class Chart {
             }
           }
         }
-        // Scale back
+        // Scale back.
         base /= scalar;
         this.bin_interval = base;
         this.first_bin = Math.floor(minv / base + 1 + VM.NEAR_ZERO) * base;
-        // NOTE: floor rounds to 0, so subtract 1 interval if minv < 0
+        // NOTE: floor rounds to 0, so subtract 1 interval if minv < 0.
         if(minv < 0) this.first_bin -= base;
       }
     }
 
-    // Compute tallies only for histogram    
+    // Compute tallies only for histogram.
     if(this.histogram) {
-      // For histograms, minv = 0 and maxv = highest tally
+      // For histograms, minv = 0 and maxv = highest tally.
       minv = 0;
       maxv = 0;
       for(let i = 0; i < this.variables.length; i++) {
@@ -10571,11 +10675,16 @@ class Chart {
     // plotting run statistics as bar chart. 
     if(!(this.histogram || stat_bars)) this.sortLeadTimeVector();
 
-    // Draw the grid rectangle
+    // Add a clipping rectangle for the chart area to the DEFS section.
+    // NOTE: Allow 2px extra on the left so that thick lines will also be
+    // thick at t=0.
+    this.addSVG(['<clipPath id="c_l_i_p__r_e_c_t__ID*"><rect x="', rl - 2,
+        '" y="', rt, '" width="', rw + 1.5, '" height="', rh, '"/></clipPath></defs>']);
+    // Draw the grid rectangle.
     this.addSVG(['<rect id="c_h_a_r_t__a_r_e_a__ID*" x="', rl, '" y="', rt,
         '" width="', rw, '" height="', rh,
         '" fill="white" stroke="gray" stroke-width="1"></rect>']);
-    // Draw the title (if shown) in a larger font
+    // Draw the title (if shown) in a larger font.
     if(this.show_title) {
       this.addText(rl + rw / 2, 0.7*font_height,
           this.title + runnrs, 'black', font_height*1.2, 'font-weight="bold"');
@@ -10592,12 +10701,12 @@ class Chart {
       this.plot_width = rw;
       this.plot_height = rh;
       if(this.histogram) {
-        // Draw bin boundaries along the horizontal axis
+        // Draw bin boundaries along the horizontal axis.
         dx = rw / this.bins;
         x = rl;
         let b = this.first_bin - this.bin_interval;
         for(let i = 0; i < this.bins; i++) {
-          // Draw ticks to emphasize that numbers are bin *boundaries*
+          // Draw ticks to emphasize that numbers are bin *boundaries*.
           this.addSVG(['<line x1="', x, '" y1="', rt + rh - 3, '" x2="', x,
               '" y2="', rt + rh + 3, '" stroke="black" stroke-width="1.5"/>']);
           this.addText(x, y, VM.sig2Dig(b));
@@ -10640,7 +10749,7 @@ class Chart {
         // Draw the time labels along the horizontal axis.
         // TO DO: Convert to time units if modeler checks this additional option.
         // Draw the time step duration in bottom-left corner.
-        this.addText(1, y, 'dt = ' + this.timeScaleAsString(this.time_scale),
+        this.addText(1, y, '\u0394t = ' + this.timeScaleAsString(this.time_scale),
             'black', font_height, 'text-anchor="start"');
         // Calculate width corresponding to one half time step.
         const half_t = rw * 0.5 / time_steps;
@@ -10677,6 +10786,8 @@ class Chart {
             t += step;
           }
         }
+        // Reset outlier lookups.
+        for(const v of this.variables) v.outliers = {};
         // NOTE: Ignore "stacked" when displaying *multiple* run results.
         if(runs.length <= 1) {
           // Add up the stacked variable vectors to adjust min and max if needed.
@@ -10688,20 +10799,27 @@ class Chart {
               v.computeVector();
             }
             if(v.visible && v.stacked) {
-              for(let t = 0; t < v.vector.length; t++) {
-                sv[t] += v.vector[t];
-              }
-            }
-            // NOTE: Do this INSIDE the loop, as MIN and MAX of stacked variables
-            // must be calculated on the basis of each line in the stacked chart.
-            for(let t = 0; t < sv.length; t++) {
-              const v = sv[t];
-              if(!isNaN(v)) {
-                minv = Math.min(minv, v);
-                maxv = Math.max(maxv, v);
+              const vect = v.vector.slice();
+              v.sortVector(vect);
+              for(let t = 0; t < vect.length; t++) {
+                let vv = vect[t];
+                if(v.clipped) {
+                  // Cap outliers to 3 standard deviations.
+                  const sov = sv[t] + vv; 
+                  if(sov > v.clip_max) {
+                    v.outliers[t] = sov;
+                    vv = v.clip_max;
+                  } else if(sov < v.clip_min) {
+                    v.outliers[t] = sov;
+                    vv = v.clip_min;
+                  }
+                }
+                sv[t] += vv;
               }
             }
           }
+          minv = Math.min(minv, Math.min(...sv));
+          maxv = Math.max(maxv, Math.max(...sv));
         }
         // Ignore minute differences from 0 to prevent unnecessary whitespace.
         if(Math.abs(minv) < VM.SIG_DIF_FROM_ZERO) minv = 0;
@@ -10710,7 +10828,7 @@ class Chart {
         maxv *= (maxv > 0 ? 1.1 : 0.9);
         if(minv < 0) minv *= 1.1;
       }
-      // For bar chart, maxv must be non-negative.
+      // For bar chart, `maxv` must be non-negative.
       if(stat_bars) maxv = Math.max(maxv, 0);
       const range = maxv - minv;
       this.plot_min_y = minv;
@@ -10727,7 +10845,7 @@ class Chart {
         const labels = [];
         while(y - maxy <= VM.NEAR_ZERO) {
           // NOTE: Large values having exponents will be "neat" numbers,
-          // so then display fewer decimals, as these will be zeroes.
+          // so then display fewer decimals, as these will be zeros.
           const v = (Math.abs(y) > 1e5 ? VM.sig2Dig(y) : VM.sig4Dig(y));
           // NOTE: Force number to become a string so that its length
           // attribute can be used when drawing it.
@@ -10833,6 +10951,11 @@ class Chart {
             }
           }
         } else if(vv > 0) {
+          // Collect SVG for outlier points.
+          const outlier_svg = [];
+          // Add group with clip path so that plotted lines and areas will be
+          // clipped against the plot area rectangle.
+          this.addSVG(['<g clip-path="url(#c_l_i_p__r_e_c_t__ID*)">']);
           // Draw areas of stacked variables.
           if(runs.length <= 1) {
             // Draw the variables that are "stacked" first UNLESS multiple runs.
@@ -10851,20 +10974,11 @@ class Chart {
                   this.run_index = runs[0];
                   v.computeVector();
                 }
-                // Vector may have to be sorted in some way.
                 const vect = v.vector.slice();
-                if(v.sorted === 'asc') {
-                  // Sort values in ascending order.
-                  vect.sort();
-                } else if(v.sorted === 'desc') {
-                  // Sort values in descending order.
-                  vect.sort((a, b) => { return b - a; });
-                } else if(this.time_step_numbers) {
-                  // Fill vector with its values sorted by time step.
-                  for(let i = 0; i < v.vector.length; i++) {
-                    vect[i] = v.vector[this.time_step_numbers[i]];
-                  }
-                }
+                // Only then sort the vector if needed.
+                v.sortVector(vect);
+                // Add SVG for outliers.
+                v.labelOutliers(vect);
                 // NOTE: Add x-value to x0, but SUBTRACT y-value from y0!
                 x = x0;
                 y = y0 - vect[0]*dy - offset[0];
@@ -10917,6 +11031,7 @@ class Chart {
                 this.addSVG(['<path d="', v.line_path, '" stroke="', v.color,
                     '" stroke-width="', v.line_width * 2, sda, 
                     '" fill="none" fill-opacity="0" pointer-events="none" />']);
+                outlier_svg.push(v.outlierSVG);
               }
             } else {
               // No need to recompute vector.
@@ -10924,8 +11039,12 @@ class Chart {
               this.addSVG(['<path d="', v.line_path, '" stroke="', v.color,
                   '" stroke-width="', v.line_width * 2,
                   '" fill="none" fill-opacity="0" pointer-events="none" />']);
+              outlier_svg.push(v.outlierSVG);
             }
           }
+          // Add the closing tag of the group.
+          this.addSVG('</g>');
+          this.addSVG(outlier_svg.join(''));
         }
       }
     }

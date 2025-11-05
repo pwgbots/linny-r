@@ -3773,10 +3773,6 @@ img.v-disab {
   cursor: pointer;
 }
 
-#variable-absolute-div {
-  margin-top: -2px;
-}
-
 #variable-paste-color {
   display: none;
   vertical-align: top;
@@ -3787,8 +3783,9 @@ img.v-disab {
   background-color: #c00000;
 }
 
-#variable-scale-div {
-  margin-top: 3px;
+#variable-absolute-div {
+  margin-top: -3px;
+  margin-left: -2px;
 }
 
 #variable-scale-lbl {
@@ -3804,7 +3801,7 @@ img.v-disab {
 }
 
 #variable-width-div {
-  margin: 4px 4px 8px 0px;
+  margin-top: 3px;
 }
 
 #variable-width-lbl {
@@ -3820,7 +3817,13 @@ img.v-disab {
 }
 
 #variable-stacked-div {
-  margin: -6px -2px;
+  margin-top: -2px;
+  margin-left: -2px;
+}
+
+#variable-clipped-div {
+  margin-top: -1px;
+  margin-left: -2px;
 }
 
 #variable-buttons > img.btn {

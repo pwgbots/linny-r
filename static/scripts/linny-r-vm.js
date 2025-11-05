@@ -2658,7 +2658,12 @@ class VirtualMachine {
     return Math.round(n);
 */
     let s = n.toString();
-    const prec = n.toPrecision(2);
+    const
+        prec = n.toPrecision(2),
+        precf = parseFloat(prec),
+        rn = Math.round(n);
+    // Prevent cases like 1001 becoming "1.0e+3".
+    if(Math.abs(precf - n) >= Math.abs(rn - n)) s = rn.toString();
     if(prec.length < s.length) s = prec;
     const expo = n.toExponential(1);
     if(expo.length < s.length) s = expo;
@@ -2689,7 +2694,12 @@ class VirtualMachine {
     return Math.round(n);
 */
     let s = n.toString();
-    const prec = n.toPrecision(4);
+    const
+        prec = n.toPrecision(4),
+        precf = parseFloat(prec),
+        rn = Math.round(n);
+    // Prevent cases like 100001 becoming "1.00e+5".
+    if(Math.abs(precf - n) >= Math.abs(rn - n)) s = rn.toString();
     if(prec.length < s.length) s = prec;
     const expo = n.toExponential(2);
     if(expo.length < s.length) s = expo;

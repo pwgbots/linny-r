@@ -314,6 +314,8 @@ class EquationManager {
         m = MODEL.equations_dataset.addModifier(sel);
     // NULL indicates invalid name.
     if(!m) return;
+    // Keep track of number of chart variables that is renamed.
+    let cv_cnt = 0;
     // If only case has changed, update the selector.
     // NOTE: Equation names may contain spaces; if so, reduce to single space.
     if(m === oldm) {
@@ -326,24 +328,23 @@ class EquationManager {
       m.expression.attribute = m.selector;
       this.deleteEquation();
       this.selected_modifier = m;
-    }
-    // Update all chartvariables referencing this dataset + old selector
-    let cv_cnt = 0;
-    for(const c of MODEL.charts) {
-      for(const v of c.variables) {
-        if(v.object === MODEL.equations_dataset && v.attribute === olds) {
-          v.attribute = m.selector;
-          cv_cnt++;
+      // Update all chartvariables referencing the old modifier.
+      for(const c of MODEL.charts) {
+        for(const v of c.variables) {
+          if(v.object === oldm) {
+            v.object = m;
+            cv_cnt++;
+          }
         }
       }
     }
     // Also replace old selector in all expressions (count these as well)
-    // NOTE: equation selectors in variables are similar to entity names
-    const xr_cnt = MODEL.replaceEntityInExpressions(olds, m.selector);
-    // Notify modeler of changes (if any)
+    // NOTE: Equation selectors in variables are similar to entity names.
+    const xr_msg = MODEL.replaceEntityInExpressions(olds, m.selector, false);
+    // Notify modeler of changes (if any).
     const msg = [];
     if(cv_cnt) msg.push(pluralS(cv_cnt, ' chart variable'));
-    if(xr_cnt) msg.push(pluralS(xr_cnt, ' expression variable'));
+    if(xr_msg) msg.push(xr_msg);
     if(msg.length) {
       UI.notify('Updated ' +  msg.join(' and '));
       // Also update these stay-on-top dialogs, as they may display a

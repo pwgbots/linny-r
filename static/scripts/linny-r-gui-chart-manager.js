@@ -515,19 +515,18 @@ class GUIChartManager extends ChartManager {
           r = c.chart_area_rect,
           ox = r.left * scale,
           w = r.width * scale,
-          x = e.pageX -
-              this.svg_container.getBoundingClientRect().left + window.scrollX,
-          y = e.pageY -
-              this.svg_container.getBoundingClientRect().top + window.scrollY,
+          rect = this.svg_container.getBoundingClientRect(),
+          x = e.pageX - rect.left + window.scrollX,
+          y = e.pageY - rect.top + window.scrollY,
           yfract = (c.plot_oy - y / scale) / c.plot_height,
-          yval = c.plot_min_y + yfract * (c.plot_max_y - c.plot_min_y),
-          yhigh = Math.max(Math.abs(c.plot_min_y), Math.abs(c.plot_max_y)),
-          yres = (yhigh > 1000 ? Math.round(yhigh / 500) :
-              (yhigh < 100 ? 0.0001 : 1)),
+          yrange = c.plot_max_y - c.plot_min_y,
+          yval = c.plot_min_y + yfract * yrange,
+          yres = (yrange / rect.height).toPrecision(1),
           ysign = (yval < 0 ? '-' : ''),
-          ytrunc = Math.abs(Math.round(yval / yres) * yres),
-          yprec = (ytrunc >= 10000 || ytrunc < 0.0001 ?
-              ytrunc.toExponential(1) : ytrunc.toPrecision(2)),
+          ytrunc = Math.abs(Math.round(yval / yres) * yres).toPrecision(3),
+          ytruncf = parseFloat(ytrunc),
+          yprec = (ytrunc.length > 7 ?
+              ytruncf.toExponential(1) : ytruncf.toPrecision(2)),
           ystr = (Math.abs(parseFloat(yprec)) === 0 ? '0' : ysign + yprec),
           ylbl = (yfract < 0 || yfract > 1 || c.plot_min_y >= c.plot_max_y ?
               '' : 'y = ' + ystr);
@@ -642,7 +641,7 @@ class GUIChartManager extends ChartManager {
       const nv = new ChartVariable(nc);
       nv.setProperties(cv.object, cv.attribute, cv.stacked,
           cv.color, cv.scale_factor, cv.absolute, cv.line_width,
-          cv.visible, cv.sorted);
+          cv.clipped, cv.visible, cv.sorted);
       nc.variables.push(nv);
     }
     this.chart_index = MODEL.indexOfChart(nc.title);
@@ -844,8 +843,9 @@ class GUIChartManager extends ChartManager {
     if(this.chart_index >= 0 && this.variable_index >= 0) {
       const cv = MODEL.charts[this.chart_index].variables[this.variable_index];
       document.getElementById('variable-dlg-name').innerHTML = cv.displayName;
-      UI.setBox('variable-stacked', cv.stacked);
       UI.setBox('variable-absolute', cv.absolute);
+      UI.setBox('variable-stacked', cv.stacked);
+      UI.setBox('variable-clipped', cv.clipped);
       // Pass TRUE tiny flag to permit very small scaling factors.
       this.variable_modal.element('scale').value = VM.sig4Dig(cv.scale_factor, true);
       this.variable_modal.element('width').value = VM.sig4Dig(cv.line_width);
@@ -951,8 +951,9 @@ class GUIChartManager extends ChartManager {
       const
           c = MODEL.charts[this.chart_index],
           cv = c.variables[this.variable_index];
-      cv.stacked = UI.boxChecked('variable-stacked');
       cv.absolute = UI.boxChecked('variable-absolute');
+      cv.stacked = UI.boxChecked('variable-stacked');
+      cv.clipped = UI.boxChecked('variable-clipped');
       cv.scale_factor = s;
       // Prevent negative or near-zero line width.
       cv.line_width = Math.max(0.001, w);
@@ -1053,7 +1054,7 @@ class GUIChartManager extends ChartManager {
       if(v.visible) {
         // NOTE: While still solving, display t-1 as N.
         const n = Math.max(0, v.N);
-        html.push('<tr><td class="v-name">', v.displayName, '</td><td>', n,
+        html.push('<tr><td class="v-name">', v.legendName, '</td><td>', n,
             '</td><td title="', v.minimum.toPrecision(8), '">', data[nr][0],
             '</td><td title="', v.maximum.toPrecision(8), '">', data[nr][1],
             '</td><td title="', v.mean.toPrecision(8), '">', data[nr][2],
@@ -1138,19 +1139,22 @@ class GUIChartManager extends ChartManager {
   }
   
   downloadChart(shift) {
-    // Pushes the SVG of the selected chart as file to the browser.
+    // Pushe the SVG of the selected chart as file to the browser.
     if(this.chart_index >= 0) {
-      const svg = MODEL.charts[this.chart_index].svg;
+      const
+          chart = MODEL.charts[this.chart_index],
+          svg = chart.svg;
+      // NOTE: Chart image file name will be based on chart title.
       if(shift) {
-        FILE_MANAGER.pushOutSVG(svg);
+        FILE_MANAGER.pushOutSVG(svg, chart.title);
       } else {
-        FILE_MANAGER.pushOutPNG(svg);
+        FILE_MANAGER.pushOutPNG(svg, chart.title);
       }
     }
   }
 
   drawChart() {
-    // Displays the selected chart unless an experiment is running, or
+    // Display the selected chart unless an experiment is running, or
     // already busy with an earlier drawChart call.
     if(MODEL.running_experiment) {
       UI.notify(UI.NOTICE.NO_CHARTS);
@@ -1158,12 +1162,12 @@ class GUIChartManager extends ChartManager {
       this.drawing_chart = true;
       CHART_MANAGER.actuallyDrawChart();
     } else {
-      console.log(`Skipped drawing chart "${MODEL.charts[this.chart_index]}"`);
+      console.log(`Skipped drawing chart "${MODEL.charts[this.chart_index].title}"`);
     }
   }
   
   actuallyDrawChart() {
-    // Draws the chart, and resets the cursor when done
+    // Draw the chart, and reset the cursor when done
     MODEL.charts[this.chart_index].draw();
     this.drawing_chart = false;
     this.drawTable();
