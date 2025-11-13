@@ -418,6 +418,7 @@ UI.logHeapSize(`BEFORE creating post data`);
             columns: VM.columnsInBlock,
             data: VM.lines,
             solver: MODEL.preferred_solver,
+            diagnose: MODEL.always_diagnose,
             timeout: top,
             inttol: MODEL.integer_tolerance,
             mipgap: MODEL.MIP_gap

@@ -3651,6 +3651,8 @@ class LinnyRModel {
             p = (p === 0 ? 1 : 0);
           } else if(l.multiplier === VM.LM_POSITIVE) {
             p = (p > 0 ? 1 : 0);
+          } else if(l.multiplier === VM.LM_NEGATIVE) {
+            p = (p < 0 ? 1 : 0);
           } else if(l.multiplier === VM.LM_THROUGHPUT) {
             // Link rates default to 1, so take # links in as throughput.
             p *= l.from_node.inputs.length;
@@ -5849,8 +5851,8 @@ class NodeBox extends ObjectWithXYWH {
       n += ' [';
       if(this instanceof Process || this instanceof Product) {
         n += this.level_var_index;
-        if(this.on_off_var_index >= 0) {
-          n += ', ' + this.on_off_var_index;
+        if(this.is_zero_var_index >= 0) {
+          n += ', ' + this.is_zero_var_index;
           if(this.start_up_var_index >= 0) {
             n += ', ' + this.start_up_var_index;
           }
@@ -7673,8 +7675,8 @@ class Node extends NodeBox {
   
   get needsOnOffData() {
     // Return TRUE if this node requires a binary ON/OFF variable.
-    // This means that at least one output link must have the "start-up",
-    // "positive", "zero", "shut-down", "spinning reserve" or
+    // This means that at least one output link must have the "positive",
+    // "zero", "negative", "start-up", "shut-down", "spinning reserve" or
     // "first commit" multiplier.
     // NOTE: As of version 2.0.0, power grid processes also need ON/OFF.
     if(this.grid) return true;
@@ -7683,14 +7685,6 @@ class Node extends NodeBox {
         return true;
       }
     }
-    return false;
-  }
-
-  get needsIsZeroData() {
-    // Return TRUE if this node requires a binary IS ZERO variable.
-    // This means that at least one output link must have the "zero"
-    // multiplier.
-    for(const l of this.outputs) if(l.multiplier === VM.LM_ZERO) return true;
     return false;
   }
 
@@ -7865,8 +7859,8 @@ class Node extends NodeBox {
       if(lm === VM.LM_FIRST_COMMIT) return (this.start_ups.indexOf(t) === 0 ? 1 : 0);
       let l = (t < 0 ? this.initial_level.result(1) : this.level[t]);
       if(l === undefined) return VM.UNDEFINED;
-      l = (Math.abs(l) < VM.NEAR_ZERO ? 0 : 1);
-      if(lm === VM.LM_POSITIVE) return l;
+      if(lm === VM.LM_POSITIVE) return (l > VM.NEAR_ZERO ? 1 : 0);
+      if(lm === VM.LM_NEGATIVE) return (l < -VM.NEAR_ZERO ? 1 : 0);
       if(lm === VM.LM_ZERO) return 1 - l;
     }
     if(t < 0) return this.initial_level.result(1);
@@ -8420,8 +8414,8 @@ class Product extends Node {
       // Dynamic rate => inflows cannot constrain the UB any further.
       if(!r.isStatic) return max_ub;
       let rate = r.result(0);
-      if([VM.LM_STARTUP, VM.LM_POSITIVE, VM.LM_ZERO, VM.LM_FIRST_COMMIT,
-            VM.LM_SHUTDOWN].indexOf(l.multiplier) >= 0) {
+      if([VM.LM_STARTUP, VM.LM_POSITIVE, VM.LM_ZERO, VM.LM_NEGATIVE,
+          VM.LM_FIRST_COMMIT, VM.LM_SHUTDOWN].indexOf(l.multiplier) >= 0) {
         // For binary multipliers, the rate is the highest possible flow.
         // NOTE: Do not add negative flows, as actual flow may be 0.
         sum += Math.max(0, rate);

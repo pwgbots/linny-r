@@ -208,11 +208,12 @@ module.exports = class MILPSolver {
       s.solver_model = path.join(workspace.solver_output, 'solver_model.lp');
       s.solution = path.join(workspace.solver_output, 'gurobi.json');
       s.log = path.join(workspace.solver_output, 'gurobi.log');
-      // NOTE: Arguments 0, 1 and 2 will be updated for each solver run.
+      // NOTE: Arguments 0, 1, 2 and 3 will be updated for each solver run.
       s.args = [
           'timeLimit=30',
           'intFeasTol=5e-7',
           'MIPGap=1e-4',
+          'NumericFocus=0',
           'JSONSolDetail=1',
           `LogFile=${s.log}`,
           `ResultFile=${s.solution}`,
@@ -479,7 +480,8 @@ module.exports = class MILPSolver {
     }
     let timeout = parseInt(sp.get('timeout')),
         inttol = parseFloat(sp.get('inttol')),
-        mipgap = parseFloat(sp.get('mipgap'));
+        mipgap = parseFloat(sp.get('mipgap')),
+        diagnose = sp.get('diagnose') === 'true';
     // Default timeout per block is 30 seconds.
     if(isNaN(timeout)) timeout = 30;
     // Default integer feasibility tolerance is 5e-7.
@@ -496,10 +498,10 @@ module.exports = class MILPSolver {
     } else {
       mipgap = Math.max(0, Math.min(0.5, mipgap));        
     }
-    return this.runSolver(this.id, timeout, inttol, mipgap, result);
+    return this.runSolver(this.id, timeout, inttol, mipgap, diagnose, result);
   }
 
-  runSolver(id, timeout, inttol, mipgap, result) {
+  runSolver(id, timeout, inttol, mipgap, diagnose, result) {
     // Set `id` to be the active solver if it is installed, and set the
     // solver parameters. NOTE: These will have been validated.
     this.id = (this.solver_list[id] ? id : this.default_solver);
@@ -513,6 +515,7 @@ module.exports = class MILPSolver {
         s.args[0] = `timeLimit=${timeout}`;
         s.args[1] = `intFeasTol=${inttol}`;
         s.args[2] = `MIPGap=${mipgap}`;
+        s.args[3] = `NumericFocus=${diagnose ? 3 : 0}`;
         const options = {windowsHide: true};
         spawn = child_process.spawnSync(s.path, s.args, options);
       } else {

@@ -4851,10 +4851,10 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     // For multipliers requiring a binary variable, and also for those
     // based on the node's upper bound, warn the modeler when the UB for
     // this node is infinite or unspecified.
-    if(VM.LM_NEEDING_ON_OFF.indexOf(m) >= 0 || m === VM.LM_AVAILABLE_CAPACITY) {
+    if(VM.LM_NEEDING_ON_OFF.indexOf(m) >= 0) {
       if(!l.from_node.upper_bound.text) {
         UI.warn('Infinite upper bound of <strong>' + l.from_node.displayName +
-                `</strong> will cause issues for ${VM.LM_SYMBOLS[m]} link`);
+            `</strong> will cause issues for ${VM.LM_SYMBOLS[m]} link`);
       }
     }
     // NOTE: Share of cost is input as a percentage, but stored as a floating

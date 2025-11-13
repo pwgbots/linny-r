@@ -1187,14 +1187,23 @@ NOTE: Products directly linked to such processes should have a proportional unit
               <option id="link-off" value="7">
                 0 (zero: 1 if X[t] = 0, otherwise 0)
               </option>
+              <option id="link-minus" value="14">
+                &minus; (negative: 1 if X[t] < 0, otherwise 0)
+              </option>
               <option id="link-shutdown" value="10">
                 &#x25BC; (shut-down: 1 if X[t-1] > 0 &and; X[t] = 0, otherwise 0)
               </option>
               <option id="link-slack" value="12">
-                &#x21A5; (available capacity: UB - X[t])
+                &#x21A5; (maximum ramp-up: UB - X[t])
+              </option>
+              <option id="link-slack" value="13">
+                &#x21A7; (maximum ramp-down: -LB - X[t])
               </option>
               <option id="link-spinning" value="8">
                 &#x2934; (spinning reserve: UB - X[t] if X[t] > 0, otherwise 0)
+              </option>
+              <option id="link-cycle" value="15">
+                &#x27F3; (cycle: 1 if X ends a cycle in time step t, otherwise 0)
               </option>
               <option id="link-first-commit" value="9">
                 &#10034; (first commit: 1 if X[t] > 0 &and; X[i] = 0 &forall; i &lt; t, otherwise 0)

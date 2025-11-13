@@ -1378,6 +1378,7 @@ const STATIC_FILES = {
         '/show-png.html',
         '/show-diff.html',
         '/linny-r.css',
+        '/linny-r-show-diff.css',
         '/favicon.ico',
       ]
   };

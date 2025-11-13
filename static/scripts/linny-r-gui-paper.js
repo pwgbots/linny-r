@@ -1409,10 +1409,11 @@ class Paper {
         epy = arrw.to_y - (shift + headshift) * dy / l;
         arrw.shape.addCircle(epx, epy, 5,
             {stroke:stroke_color, 'stroke-width': 0.5, fill: 'white'});
-        // MU symbol does not center prettily => raise by 1 px
-        const raise = (luc.multiplier === VM.LM_MEAN ||
-            luc.multiplier === VM.LM_STARTUP ||
-            luc.multiplier === VM.LM_THROUGHPUT ? 1 :
+        // Some symbols do not center prettily => raise by 1 or 1.5 px
+        const
+            raise_1px = ([VM.LM_INCREASE, VM.LM_MEAN, VM.LM_STARTUP,
+                VM.LM_THROUGHPUT].indexOf(luc.multiplier) >= 0),
+            raise = (raise_1px ? 1 :
                 (luc.multiplier === VM.LM_PEAK_INC ? 1.5 : 0));
         arrw.shape.addText(epx, epy - raise, VM.LM_SYMBOLS[luc.multiplier],
             {fill: 'black'});
@@ -2031,20 +2032,21 @@ class Paper {
       }
       // For options, set longer-dashed rim if committed at time <= t
       const fcn = (is_fc_option ? proc : fc_option_node);
-      // NOTE: When initial level > 0, option is already committed at t=0.
-      if(fcn && (fcn.actualLevel(0) > 0 ||
+      // NOTE: When initial level =/= 0, option is already committed at t=0.
+      if(fcn && (Math.abs(fcn.actualLevel(0)) > VM.NEAR_ZERO ||
          (fcn.start_ups.length > 0 && MODEL.t >= fcn.start_ups[0]))) {
         sda = UI.sda.longer_dash;
       }
     } else if(il) {
       // Display non-zero initial level black-on-white, and then also
-      // display the level bar
+      // display the level bar.
       if(il < 0 && lb < -VM.NEAR_ZERO) {
         bar_ratio = il / lb;
       } else if(il > 0 && ub > VM.NEAR_ZERO) {
         bar_ratio = il / ub;
       }
       bar_color = this.palette.src_snk;
+      l = il;
     }
     // Being selected overrules special border properties except SDA
     if(proc.selected) {
@@ -2177,7 +2179,7 @@ class Paper {
           // If lb <> 0 then lb...ub (with ellipsis).
           s += '\u2026' + ubs;
         } else {
-          // If gid process or lb = 0, show only the upper bound.
+          // If grid process or lb = 0, show only the upper bound.
           s = ubs;
           lbw = 0;
         }
@@ -2197,8 +2199,7 @@ class Paper {
           {'font-size': 6, fill: 'black', 'text-anchor':'start'});
       }
       // Show start/stop-related status right of the process boundaries.
-      // NOTE: lb must be > 0 for start/stop to work.
-      if(proc.level_to_zero && lbw) {
+      if(proc.is_zero_var_index >= 0) {
         font_color = 'black';
         // Underline the lower bound to indicate semi-continuity.
         proc.shape.addPath(
@@ -2212,12 +2213,15 @@ class Paper {
               pl = proc.actualLevel(MODEL.t - 1),
               su = proc.start_ups.indexOf(MODEL.t),
               sd = proc.shut_downs.indexOf(MODEL.t);
-          if(Math.abs(l) > VM.NEAR_ZERO) {
+          if(Math.abs(l) > VM.ON_OFF_THRESHOLD) {
             // Process is ON
-            if(Math.abs(pl) < VM.NEAR_ZERO && su >= 0) {
+            if(Math.abs(pl) < VM.ON_OFF_THRESHOLD && su >= 0) {
               font_color = this.palette.switch_on_off;
               // Start-up arrow or first-commit asterisk.
-              s = VM.LM_SYMBOLS[su ? VM.LM_STARTUP : VM.LM_FIRST_COMMIT];
+              // NOTE: No asterisk when FC is ignored because initial level
+              // is non-zero.
+              s = VM.LM_SYMBOLS[su || proc.first_commit_var_index < 0 ?
+                  VM.LM_STARTUP : VM.LM_FIRST_COMMIT];
             } else if(su >= 0) {
               font_color = 'black';
               s = '\u25B3'; // Outline triangle up to indicate anomaly.
