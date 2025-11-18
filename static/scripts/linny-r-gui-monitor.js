@@ -173,15 +173,19 @@ class GUIMonitor {
     let b = this.shown_block;
     // By default, show information on the block being calculated.
     if(b === 0) b = this.block_count;
+    // Legend to variables is not block-dependent.
+    this.variables_text.value = VM.variablesLegend();
     if(this.block_count === 0) {
       this.messages_text.value = VM.no_messages;
       this.equations_text.value = VM.no_equations;
     } else if(b <= VM.messages.length) {
       this.messages_text.value = VM.messages[b - 1];
-      this.equations_text.value = VM.equations[b - 1];
+      let eqs = VM.equations[b - 1];
+      for(const k in VM.variables_dictionary) if(VM.variables_dictionary.hasOwnProperty(k)) {
+        eqs = eqs.replaceAll(k, VM.variables_dictionary[k]);
+      }
+      this.equations_text.value = eqs;
     }
-    // Legend to variables is not block-dependent.
-    this.variables_text.value = VM.variablesLegend();
     // Show the text area for the selected tab.
     if(this.tab !== tab) {
       let mt = 'monitor-' + this.tab;

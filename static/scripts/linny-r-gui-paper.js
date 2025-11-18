@@ -904,8 +904,10 @@ class Paper {
 
   relDif(n1, n2) {
     // Returns the relative difference (n1 - n2) / |n2| unless n2 is
-    // near-zero; then it returns the absolute difference n1 - n2
+    // near-zero; then it returns the absolute difference n1 - n2.
     const div = Math.abs(n2);
+    // NOTE: Return 0 when n1 and n2 both are near-zero.
+    if(div < VM.ON_OFF_THRESHOLD && Math.abs(n1) < VM.ON_OFF_THRESHOLD) return 0;
     if(div < VM.NEAR_ZERO) {
       return n1 - n2;
     }
@@ -1461,15 +1463,20 @@ class Paper {
         // For power links, only draw the rate when the model has been run
         // and the actual flow is less than the process level (so the rate
         // then reflects the loss).
-        const
-            absf = Math.abs(af),
-            apl = Math.abs(proc.actualLevel(MODEL.t));
-        with_rate = MODEL.solved && apl - absf > VM.SIG_DIF_FROM_ZERO;
-        font_color = 'gray';
-        s = VM.sig4Dig(absf / apl);
-        bb = this.numberSize(s);
-        th = bb.height;
-        tw = Math.max(th, bb.width);
+        if(luc.to_node.is_data) {
+          // No loss rates on data links from grod processes. 
+          with_rate = false;
+        } else {
+          const
+              absf = Math.abs(af),
+              apl = Math.abs(proc.actualLevel(MODEL.t));
+          with_rate = MODEL.solved && apl - absf > VM.SIG_DIF_FROM_ZERO;
+          font_color = 'gray';
+          s = VM.sig4Dig(absf / apl);
+          bb = this.numberSize(s);
+          th = bb.height;
+          tw = Math.max(th, bb.width);
+        }
       }
       if(with_rate) {
         // Draw the rate in a semi-transparent white roundbox.
@@ -1959,6 +1966,10 @@ class Paper {
     let l = (MODEL.solved ? proc.actualLevel(MODEL.t) : VM.NOT_COMPUTED),
         lb = proc.lower_bound.result(MODEL.t),
         ub = (proc.equal_bounds ? lb : proc.upper_bound.result(MODEL.t));
+    if(proc.grid && MODEL.ignore_grid_capacity) {
+      lb = VM.MINUS_INFINITY;
+      ub = VM.PLUS_INFINITY;
+    }
     // NOTE: By default, lower bound = 0 (but do show exceptional values).
     if(lb === VM.UNDEFINED && !proc.lower_bound.defined) lb = 0;
     let hw,
@@ -2033,7 +2044,7 @@ class Paper {
       // For options, set longer-dashed rim if committed at time <= t
       const fcn = (is_fc_option ? proc : fc_option_node);
       // NOTE: When initial level =/= 0, option is already committed at t=0.
-      if(fcn && (Math.abs(fcn.actualLevel(0)) > VM.NEAR_ZERO ||
+      if(fcn && (!fcn.actualLevel(0) ||
          (fcn.start_ups.length > 0 && MODEL.t >= fcn.start_ups[0]))) {
         sda = UI.sda.longer_dash;
       }
@@ -2155,9 +2166,15 @@ class Paper {
           proc.shape.addNumber(cx, cy, s,
               {'font-size': 9, 'fill': font_color, 'font-weight': 700});
         }
-        if(proc.grid && POWER_GRID_MANAGER.inCycle(proc)) {
-          proc.shape.addText(x + hw - 2, y - hh + bh + 3, '\u27F3',
-            {'font-size': 9, fill: 'black', 'text-anchor':'end'});
+        if(proc.grid) {
+          const sign = POWER_GRID_MANAGER.inCycle(proc);
+          if(sign) {
+            const
+                sym = (sign === '+' ? '\u2941' : '\u2940'),
+                oc = (sign === '+' ? '#0000E0' : '#E00000');
+            proc.shape.addText(x + hw - 2, y - hh + bh + 3, sym,
+              {'font-size': 9, fill: oc, 'text-anchor':'end'});
+          }
         }
       }
       // Draw boundaries in upper left corner
@@ -2175,7 +2192,7 @@ class Paper {
       } else {
         const ubs = (ub >= VM.PLUS_INFINITY && !proc.upper_bound.defined ?
             '\u221E' : VM.sig4Dig(ub));
-        if(Math.abs(lb) > VM.NEAR_ZERO && !proc.grid) {
+        if(lb && !proc.grid) {
           // If lb <> 0 then lb...ub (with ellipsis).
           s += '\u2026' + ubs;
         } else {
@@ -2191,20 +2208,23 @@ class Paper {
           btw = bb.width + 2,
           sh = bb.height,
           tx = x - hw + 1,
-          ty = y - hh + sh/2 + 1;
+          ty = y - hh + sh/2 + 1,
+          bc = (proc.grid && MODEL.ignore_grid_capacity ? '#A00080' : 'black');
       proc.shape.addNumber(tx + btw/2, ty, s,
-          {fill: 'black', 'font-style': bfs});
+          {fill: bc, 'font-style': bfs});
       if(proc.grid) {
         proc.shape.addText(tx + 1, ty + 8, proc.grid.power_unit,
-          {'font-size': 6, fill: 'black', 'text-anchor':'start'});
+          {'font-size': 6, fill: bc, 'text-anchor':'start'});
       }
       // Show start/stop-related status right of the process boundaries.
       if(proc.is_zero_var_index >= 0) {
         font_color = 'black';
-        // Underline the lower bound to indicate semi-continuity.
-        proc.shape.addPath(
-            ['M', tx + lbo, ',', ty + sh/2, 'L', tx + lbo + lbw, ',', ty + sh/2],
-            {'fill': 'none', stroke: font_color, 'stroke-width': 0.5});
+        if(proc.level_to_zero) {
+          // Underline the lower bound to indicate semi-continuity.
+          proc.shape.addPath(
+              ['M', tx + lbo, ',', ty + sh/2, 'L', tx + lbo + lbw, ',', ty + sh/2],
+              {'fill': 'none', stroke: font_color, 'stroke-width': 0.5});
+        }
         // By default, no ON/OFF indicator.
         s = '';
         if(MODEL.solved && l !== VM.UNDEFINED) {
@@ -2233,7 +2253,7 @@ class Paper {
             }
           } else {
             // Process is OFF => check previous level.
-           if(Math.abs(pl) > VM.NEAR_ZERO && sd >= 0) {
+           if(pl && sd >= 0) {
               // Process was on, and is now switched OFF.
               font_color = this.palette.switch_on_off;
               s = VM.LM_SYMBOLS[VM.LM_SHUTDOWN];
@@ -2436,7 +2456,7 @@ class Paper {
           }
           if(ub - lb < VM.NEAR_ZERO) {
             // When LB = UB, fill completely in the color, but ...
-            if(prod.isConstant && Math.abs(l) > VM.NEAR_ZERO) {
+            if(l && prod.isConstant) {
               // ... non-zero constants have less saturated shades.
               fill_color = (l < 0 ? this.palette.neg_constant :
                   this.palette.pos_constant);  
@@ -2460,7 +2480,7 @@ class Paper {
         }
       } else if(ub - lb < VM.NEAR_ZERO) {
         // Not solved but equal bounds => probably constants.
-        if(prod.isConstant && Math.abs(ub) > VM.NEAR_ZERO) {
+        if(ub && prod.isConstant) {
           // Non-zero constants have less saturated shades.
           fill_color = (ub < 0 ? this.palette.neg_constant :
               this.palette.pos_constant);  
@@ -2664,7 +2684,7 @@ class Paper {
         mp = prod.price.result(MODEL.t),
         // Italics denote "price is dynamic"
         pfs = (prod.price.isStatic ? 'normal' : 'italic');
-    if((Math.abs(mp) - VM.NEAR_ZERO > 0) && (mp < VM.UNDEFINED)) {
+    if(mp && mp < VM.UNDEFINED) {
       s = VM.sig4Dig(mp);
       if(mp > 0) {
         font_color = 'black';

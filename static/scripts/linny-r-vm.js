@@ -405,7 +405,7 @@ class Expression {
     } else if(this.stack.length < 1) {
       if(v[t] > VM.ERROR) v[t] = VM.UNDERFLOW;
     } else {
-      v[t] = this.stack.pop();
+      v[t] = VM.noNearZero(this.stack.pop());
     }
     this.trace('RESULT = ' + VM.sig4Dig(v[t]));
     // Store wildcard result also in "normal" vector
@@ -462,8 +462,6 @@ class Expression {
       v[t] = VM.NOT_COMPUTED;
       this.compute(t, number);
     }
-    // Apply the ON/OFF threshold. VM.NEAR_ZERO
-    if(Math.abs(v[t]) < VM.ON_OFF_THRESHOLD) v[t] = 0;
     // NOTE: When this expression is the "active" parameter for sensitivity
     // analysis, the result is multiplied by 1 + delta %.
     if(sap) {
@@ -2231,7 +2229,8 @@ class VirtualMachine {
     // their target without displaying them in red or blue to signal
     // shortage or surplus.
     this.SIG_DIF_LIMIT = 0.001;
-    // Numbers near zero are displayed as +0 or -0.
+    // Non-zero numbers that with 4-digit accuracy would display as 0
+    // are displayed as +0 or -0.
     this.SIG_DIF_FROM_ZERO = 5e-5;
     // ON/OFF threshold is used to differentiate between level = 0 and
     // still "ON" (will be displayed as +0).
@@ -2265,19 +2264,7 @@ class VirtualMachine {
       UO3: true,
       DO3: true
     };
-  
-    // VM constants for specifying the type of cash flow operation.
-    this.CONSUME = 0;
-    this.PRODUCE = 1;
-    this.ONE_C = 2;
-    this.TWO_X = 3;
-    this.THREE_X = 4;
-    this.SPIN_RES = 5;
-    this.PEAK_INC = 6;
-    // Array of corrsponding strings for more readable debugging information.
-    this.CF_CONSTANTS = ['CONSUME', 'PRODUCE', 'ONE_C', 'TWO_X',
-        'THREE_X', 'SPIN_RES'];
-    
+
     // Constraint cost price transfer direction.
     this.SOC_X_Y = 1;
     this.SOC_Y_X = -1;
@@ -2302,7 +2289,7 @@ class VirtualMachine {
     this.LM_CYCLE = 15; // Symbol: cycle arrow
 
     // List of link multipliers that require binary ON/OFF variables
-    this.LM_NEEDING_ON_OFF = [5, 6, 7, 8, 9, 10, 13];
+    this.LM_NEEDING_ON_OFF = [5, 6, 7, 8, 9, 10, 14];
     this.LM_SYMBOLS = ['', '\u21C9', '\u0394', '\u03A3', '\u03BC', '\u25B2',
         '+', '0', '\u2934', '\u2732', '\u25BC', '\u2A39', '\u21A5', '\u21A7',
         '\u2212', '\u27F3'];
@@ -2607,6 +2594,12 @@ class VirtualMachine {
     UI.readyToSolve();
   }
   
+  noNearZero(r) {
+    // Return 0 when `r` is (near) zero, and otherwise `r`.
+    if(Math.abs(r) <= this.NEAR_ZERO) return 0;
+    return r;
+  }
+  
   inLookAhead(t) {
     // Return TRUE if VM is executing its tableau construction code AND
     // time step `t` falls in the look-ahead period of the previous block.
@@ -2744,7 +2737,7 @@ class VirtualMachine {
     // Return result only when test is *not* an exceptional value.
     if(test >= VM.MINUS_INFINITY && test <= VM.PLUS_INFINITY) {
       // Apply the NON_ZERO threshold.
-      if(Math.abs(result) < VM.NEAR_ZERO) return 0;
+      if(Math.abs(result) <= VM.NEAR_ZERO) return 0;
       return result;
     }
     // Otherwise, return the exceptional value.
@@ -3206,14 +3199,15 @@ class VirtualMachine {
       p.semic_var_index = this.addVariable('SB', p);
     }
     // Some "data-only" link multipliers require additional variables.
-    if(p.needsOnOffData) {
-      // When ON/OFF is relevant, add 4 binary variables as explained
-      // some 1100 lines below (around line 4250).
-      // NOTE: Do *NOT* alter the adding sequence, as some VM instructions
-      // use the IZ index to infer the indices of other binaries.
+    // NOTE: As of version 2.0, power grid processes also need ON/OFF.
+    const nood = p.needsOnOffData;
+    if(nood || p.grid) {
+      // When ON/OFF is relevant, add 3 binary variables as explained
+      // some 1100 lines below (around line 4250)...
       p.plus_var_index = this.addVariable('POS', p);
       p.is_zero_var_index = this.addVariable('IZ', p);
       p.minus_var_index = this.addVariable('NEG', p);
+      // ... and also add the level partitioning variables.
       p.pep_var_index = this.addVariable('PEP', p);
       p.nep_var_index = this.addVariable('NEP', p);
       p.psc_var_index = this.addVariable('PSC', p);
@@ -3229,7 +3223,7 @@ class VirtualMachine {
         if(p.needsFirstCommitData) {
           // NOTE: First commit is trivial (always 0) when `p` has a non-zero
           // level at t=0.
-          if(Math.abs(p.actualLevel(0)) > VM.NEAR_ZERO) {
+          if(p.actualLevel(0)) {
             UI.warn(`${p.type} <strong>${p.displayName}</strong> is already committed at t=0`);
           } else {
             p.start_up_count_var_index = this.addVariable('SC', p);
@@ -3316,6 +3310,8 @@ class VirtualMachine {
   variablesLegend() {
     // Return a string with each variable code and full name on a
     // separate line.
+    // Meanwhile, construct "dictionary" for variables.
+    this.variables_dictionary = {};
     const
         vcnt = this.variables.length,
         z = vcnt.toString().length;
@@ -3324,9 +3320,11 @@ class VirtualMachine {
     for(let i = 0; i < vcnt; i++) {
       const
           obj = this.variables[i][1],
-          v = 'X' + (i+1).toString().padStart(z, '0') + ' ' + obj.displayName,
-          p = (obj instanceof Process && obj.pace > 1 ? ' 1/' + obj.pace : '');
-      l += v + ' [' + this.variables[i][0] + p + ']\n';
+          x = 'X' + (i+1).toString().padStart(z, '0'),
+          p = (obj instanceof Process && obj.pace > 1 ? ' 1/' + obj.pace : ''),
+          v = obj.displayName  + ' [' + this.variables[i][0] + p + ']';
+      l += `${x} ${v}\n`;
+      this.variables_dictionary[x] = v;
     }
     if(this.chunk_variables.length > 0) {
       const chof = this.cols * this.chunk_length + 1;
@@ -3335,16 +3333,17 @@ class VirtualMachine {
             obj = this.chunk_variables[i][1],
             // NOTE: Chunk offset takes into account that variable
             // indices are 0-based.
-            cvi = chof + i;
-        let v = 'X' + cvi.toString().padStart(z, '0');
-        v += '     '.slice(v.length) + obj.displayName;
-        l += v + ' [' + this.chunk_variables[i][0] + ']\n';
+            cvi = chof + i,
+            x = 'X' + cvi.toString().padStart(z, '0'),
+            v = obj.displayName + ' [' + this.chunk_variables[i][0] + ']';      
+        l += `${x}${'     '.slice(x.length)}${v}\n`;
+        this.variables_dictionary[x] = v;
       }
     }
     return l;
   }
   
-  setBoundConstraints(p) {
+  setProductBoundConstraints(p) {
     // Set LB and UB constraints for product `p`.
     // NOTE: This method affects the VM coefficient vector, so this vector
     // should be saved (using a VM instruction) if it is needed later.
@@ -3368,7 +3367,6 @@ class VirtualMachine {
       if(p.lower_bound.defined) {
         if(p.lower_bound.isStatic) {
           l = p.lower_bound.result(0);
-          if(Math.abs(l) <= VM.NEAR_ZERO) l = 0;
         } else {
           l = p.lower_bound;
         }
@@ -3379,7 +3377,6 @@ class VirtualMachine {
       } else if(p.upper_bound.defined) {
         if(p.upper_bound.isStatic) {
           u = p.upper_bound.result(0);
-          if(Math.abs(u) <= VM.NEAR_ZERO) u = 0;
         } else {
           u = p.upper_bound;
         }
@@ -3579,6 +3576,8 @@ class VirtualMachine {
       const p = MODEL.processes[k];
       if(p.needsMaximumData) {
         // First variable: "peak increase" for block.
+        // NOTE: Peak increase index starts at 0 and relates to the
+        // chunk variables list, not the tableau columns.
         p.peak_inc_var_index = cvi;
         this.chunk_variables.push(['b-peak', p]);
         cvi++;
@@ -3616,8 +3615,8 @@ class VirtualMachine {
     for(const k of actor_keys) {
       const a = MODEL.actors[k];
       // NOTE: Add fourth parameter TRUE to signal that the SOLVER's
-      // infinity constants should be used, as this is likely to be more
-      // efficient, while cash flows are inferred properties and will not
+      // infinity constants should be used, because this is likely to be more
+      // efficient, and as cash flows are inferred properties, this will not
       // result in an "unbounded problem" error message from the solver.
       this.code.push(
           [VMI_set_bounds, [a.cash_in_var_index,
@@ -3663,21 +3662,10 @@ class VirtualMachine {
         for(j = 0; j < MODEL.rounds; j++) {
           if((rf & b) != 0) {
             this.fixed_var_indices[j][p.level_var_index] = true;
-            // @@ TO DO: fix associated binary variables if applicable!
+            // @@ TO DO: fixate associated binary variables if applicable!
           }
           b *= 2;
         }
-      }
-      if(p.needsOnOffData) {
-        // Set bounds on the "epsilon"-related variables.
-        this.code.push([VMI_set_bounds,
-            [p.nep_var_index, 0, VM.ON_OFF_THRESHOLD, true]]);
-        this.code.push([VMI_set_bounds,
-            [p.pep_var_index, 0, VM.ON_OFF_THRESHOLD, true]]);
-        this.code.push([VMI_set_bounds,
-            [p.nsc_var_index, VM.ON_OFF_THRESHOLD, VM.PLUS_INFINITY, true]]);
-        this.code.push([VMI_set_bounds,
-            [p.psc_var_index, VM.ON_OFF_THRESHOLD, VM.PLUS_INFINITY, true]]);
       }
     }
 
@@ -3703,50 +3691,43 @@ class VirtualMachine {
         this.code.push([VMI_set_bounds,
             [vi, VM.MINUS_INFINITY, VM.PLUS_INFINITY]]);
       }
-      if(p.needsOnOffData) {
-        // Set bounds on the "epsilon"-related variables.
-        this.code.push([VMI_set_bounds,
-            [p.nep_var_index, 0, VM.ON_OFF_THRESHOLD, true]]);
-        this.code.push([VMI_set_bounds,
-            [p.pep_var_index, 0, VM.ON_OFF_THRESHOLD, true]]);
-        this.code.push([VMI_set_bounds,
-            [p.nsc_var_index, VM.ON_OFF_THRESHOLD, VM.PLUS_INFINITY, true]]);
-        this.code.push([VMI_set_bounds,
-            [p.psc_var_index, VM.ON_OFF_THRESHOLD, VM.PLUS_INFINITY, true]]);
-      }
     }
     
     // NEXT: Define objective function that maximizes total cash flow.
 
-    // NOTE: As of 19 October 2020, the objective function is *explicitly*
-    //       calculated as the (weighted) sum of the cash flows of actors
-    //       by adding two EQ constraints per actor.
-
-    // NOTE: Each process generates cash flow proportional to its production
-    //       level if it produces and/or consumes a product having a price.
-    //       Cash flow is negative (cash OUT) if a product is consumed AND
-    //       has price > 0, but positive (cash IN) if a product is produced
-    //       and has price < 0. Likewise for the other two cases.
-    //       To calculate the coefficient for the process variable, the
-    //       multiplier rates of the links in and out must be calculated (at
-    //       run time when dynamic expressions) such that they will add to the
-    //       correct cash flow variable (cash IN or cash OUT) of the actor
-    //       "owning" the process.
-    //       To achieve this, the VM has (as of 21 October 2020) a special
-    //       instruction  VMI_update_cash_coefficient  that operates on two
-    //       separate coefficient vectors: one for cash IN and one for cash OUT.
-    //       It first calculates the coefficient value (based on link direction,
-    //       level, price and rate) and then ADDS it to the process coefficient
-    //       in the *cash IN* vector if result > 0, or SUBTRACTS it from the
-    //       process coefficient in the *cash OUT* vector if result < 0.
-    //       This ensures that all coefficients will be >= 0 for both cash IN
-    //       and cash OUT, so that the constraints Cin - a1P1 - ... - anPn = 0
-    //       will result in positive values for both flows.
-    //       Then in the objective function each actor a will have two variables
-    //       contributing the weighted difference + WaCin - WaCout. 
-    // NOTE: The VM has a coefficients vector, and VM instructions operate
-    //       on this vector. If expressions for process properties are
-    //       static, more efficient VM instructions are used.
+    // NOTES:
+    // (1) As of 19 October 2020, the objective function is *explicitly*
+    //     calculated as the (weighted) sum of the cash flows of actors
+    //     by adding two EQ constraints per actor.
+    // (2) Each process generates cash flow proportional to its production
+    //     level if it produces and/or consumes a product having a price.
+    //     Cash flow is negative (cash OUT) if a product is consumed AND
+    //     has price > 0, but positive (cash IN) if a product is produced
+    //     and has price < 0. Likewise for the other two cases.
+    //     To calculate the coefficient for the process variable, the
+    //     multiplier rates of the links in and out must be calculated (at
+    //     run time when dynamic expressions) such that they will add to the
+    //     correct cash flow variable (cash IN or cash OUT) of the actor
+    //     "owning" the process.
+    //     To achieve this, the VM has (since October 2020, revised in
+    //     November 2025) a special instruction  VMI_update_cash_coefficient
+    //     that operates on two separate coefficient vectors: one for cash IN
+    //     and one for cash OUT.
+    //     It first calculates the coefficient value (based on link direction,
+    //     level, price and rate) and then ADDS it to the process coefficient
+    //     in the *cash IN* vector if result > 0, or SUBTRACTS it from the
+    //     process coefficient in the *cash OUT* vector if result < 0.
+    //     This ensures that all coefficients will be >= 0 for both cash IN
+    //     and cash OUT, so that the constraints Cin - a1P1 - ... - anPn = 0
+    //     will result in positive values for both flows.
+    //     Then in the objective function each actor a will have two variables
+    //     contributing the weighted difference + WaCin - WaCout.
+    // (3) As of version 3.0, for processes that may have LB < 0, the level
+    //     is partitioned, and coefficients are added to/subtracted from the
+    //     (always non-negative) variables PEP, NEP, PSC and NSC.
+    // (4) The VM has a coefficients vector, and VM instructions operate on
+    //     this vector. If expressions for process properties are static, more
+    //     efficient VM instructions are used.
 
     // Initially assume "no cash flows for any actor to be considered".
     // This flag will be set to FALSE when some actor cash flow constraint
@@ -3772,136 +3753,32 @@ class VirtualMachine {
             // having a market price.
             for(const l of p.inputs) if(!MODEL.ignored_entities[l.identifier] &&
                 l.from_node.price.defined) {
-              if(l.from_node.price.isStatic && l.relative_rate.isStatic) {
-                const c = l.from_node.price.result(0) * l.relative_rate.result(0);
-                // NOTE: VMI_update_cash_coefficient has at least 4 arguments:
-                // flow (CONSUME or PRODUCE), type (specifies the number and
-                // type of arguments), the level_var_index of the process,
-                // and the delay.
-                // NOTE: Input links cannot have delay, so then delay = 0.
-                if(Math.abs(c) > VM.NEAR_ZERO) {
-                  // Consumption rate & price are static: pass one constant.
-                  this.code.push([VMI_update_cash_coefficient,
-                    [VM.CONSUME, VM.ONE_C, p.level_var_index, 0, c]]);
-                }
-              } else {
-                // No further optimization: assume two dynamic expressions.
-                this.code.push([VMI_update_cash_coefficient,
-                  [VM.CONSUME, VM.TWO_X, p.level_var_index, 0,
-                   l.from_node.price, l.relative_rate]]);
-              }
-            } // END of FOR ALL input links
+              // Modern instruction type: pass link instead of variable index.
+              this.code.push([VMI_update_cash_coefficient, l]);
+            }
           }
-          // Now iterate over links OUT, but only consider produced
-          // products having a (non-zero) market price.
+          // Now iterate over links OUT, but only consider produced products
+          // having a (non-zero) market price.
           // NOTE: Grid processes can have output links to *data* products,
           // so do NOT skip this iteration...
           for(const l of p.outputs) {
             const
-                tnpx = l.to_node.price,
+                lm = l.modifier,
                 // ... but DO skip links from grid processes to regular products.
-                skip = p.grid && !l.to_node.is_data;
-            if(!(skip || MODEL.ignored_entities[l.identifier]) && tnpx.defined &&
-                !(tnpx.isStatic && Math.abs(tnpx.result(0)) < VM.NEAR_ZERO)) {
-              // By default, use the process level as multiplier.
-              let vi = p.level_var_index;
-              // For "binary data links", use the correct binary variable
-              // instead of the level.
-              if(l.multiplier === VM.LM_STARTUP) {
-                vi = p.start_up_var_index;
-              } else if(l.multiplier === VM.LM_FIRST_COMMIT) {
-                vi = p.first_commit_var_index;
-                // NOTE: If `p` has a non-zero initial value, first commit links
-                // are ignored.
-                if(vi < 0) continue;
-              } else if(l.multiplier === VM.LM_SHUTDOWN) {
-                vi = p.shut_down_var_index;
-              } else if(l.multiplier === VM.LM_POSITIVE) {
-                vi = p.plus_var_index;
-              } else if(l.multiplier === VM.LM_ZERO) {
-                vi = p.is_zero_var_index;
-              } else if(l.multiplier === VM.LM_NEGATIVE) {
-                vi = p.minus_var_index;
-              }
-              // NOTE: "throughput", "spinning reserve" and "peak increase"
-              // are special cases that send a different parameter list.
-              if(l.multiplier === VM.LM_THROUGHPUT) {
-                // When throughput is read from process Y, calculation
-                // is simple: no delays, so the flow over link `l`
-                // equals the (sum of all Ri) times the level of Y
-                // times the rate of `l`.
-                for(const ll of l.from_node.inputs) {
-                  // NOTE: No attempt for efficiency -- assume that
-                  // price and both rates are dynamic.
-                  this.code.push([VMI_update_cash_coefficient, [
-                      VM.PRODUCE, VM.THREE_X, vi, l.flow_delay, tnpx,
-                      l.relative_rate, ll.relative_rate]]);
-                }
-              } else if(l.multiplier === VM.LM_SPINNING_RESERVE) {
-                // "spinning reserve" equals UB - level if level > 0,
-                // and otherwise 0. The cash flow then equals
-                // ON/OFF * UB * price * rate MINUS level * price * rate,
-                // hence a special instruction type.
-                // NOTE: Only the ON/OFF variable determines whether
-                // there will be any cash flow, hence it is passed as
-                // the primary variable, and the process level as the
-                // secondary variable.
-                this.code.push([VMI_update_cash_coefficient, [
-                    VM.PRODUCE, VM.SPIN_RES, p.is_zero_var_index,
-                    l.flow_delay, vi, l.from_node.upper_bound, tnpx,
-                    l.relative_rate]]);
-              } else if(l.multiplier === VM.LM_MAX_INCREASE) {
-                // "remaining capacity" equals UB - level. This is a
-                // simpler version of "spinning reserve". We signal this
-                // by passing -1 as the index of the secondary variable,
-                // and the level variable index as the primary variable.
-                this.code.push([VMI_update_cash_coefficient, [
-                    VM.PRODUCE, VM.SPIN_RES, vi, // <-- now as primary
-                    l.flow_delay, -1, // <-- signal that it is "MAX_INC"
-                    l.from_node.upper_bound, tnpx, l.relative_rate]]);
-              } else if(l.multiplier === VM.LM_PEAK_INC) {
-                // NOTE: "peak increase" may be > 0 only in the first
-                // time step of the block being optimized, and in the
-                // first step of the look-ahead period (if peak rises
-                // in that period), and will be 0 in all other time steps.
-                // The VM instruction handles this.
-                // NOTE: Delay is always 0 for this link flow.
-                this.code.push([VMI_update_cash_coefficient, [
-                    VM.PRODUCE, VM.PEAK_INC, p.peak_inc_var_index, 0,
-                    tnpx, l.relative_rate]]);
-              } else if(tnpx.isStatic && l.relative_rate.isStatic) {
-                // If link rate and product price are static, only add
-                // the variable if rate*price is non-zero (and then pass
-                // the constant rate*price to the VM instruction.
-                const c = tnpx.result(0) * l.relative_rate.result(0);
-                if(Math.abs(c) > VM.NEAR_ZERO) {
-                  // Production rate & price are static: pass one constant.
-                  this.code.push([VMI_update_cash_coefficient,
-                      [VM.PRODUCE, VM.ONE_C, vi, l.flow_delay, c]]);
-                  // When multiplier is Delta, subtract level in previous t
-                  // (so add 1 to flow delay, and consume, rather than
-                  // produce).
-                  if(l.multiplier === VM.LM_INCREASE) {
-                    this.code.push([VMI_update_cash_coefficient,
-                        // NOTE: 6th argument = 1 indicates "delay + 1".
-                        [VM.CONSUME, VM.ONE_C, vi, l.flow_delay, c, 1]]);
-                  }
-                }
-              } else {
-                // Production rate or price are dynamic: pass two expressions.
-                this.code.push([VMI_update_cash_coefficient, [
-                    VM.PRODUCE, VM.TWO_X, vi, l.flow_delay,
-                    tnpx, l.relative_rate]]);
-                // When multiplier is Delta, consume level in previous t.
-                if(l.multiplier === VM.LM_INCREASE) {
-                  this.code.push([VMI_update_cash_coefficient, [
-                      VM.CONSUME, VM.TWO_X, vi, l.flow_delay,
-                      // NOTE: Now 7th argument indicates "delay + 1".
-                      tnpx, l.relative_rate, 1]]);
-                }
-              }
+                skip = (p.grid && !l.to_node.is_data) ||
+                    // If `p` has a non-zero initial value, first commit occurs
+                    // at t=0, and then no binary FC indicator is added.
+                    (lm === VM.LM_FIRST_COMMIT && p.first_commit_var_index < 0) ||
+                    // Throughput of processes is not meaningful because the
+                    // inputs of a process may have different units.
+                    // The GUI prohibits throughput data links for processes,
+                    // but - just in case - skip them here.
+                    (lm === VM.LM_THROUGHPUT);
+            if(!(skip || MODEL.ignored_entities[l.identifier]) &&
+                l.to_node.price.defined) {
+              this.code.push([VMI_update_cash_coefficient, l]);
             }
-          } // END of FOR ALL output links
+          }
         } // END of IF process "owned" by actor a
       } // END of FOR ALL processes
 
@@ -4005,39 +3882,7 @@ class VirtualMachine {
     // NEXT: Add semi-continuous constraints only if not supported by solver.
     if(!this.noSemiContinuous) {
       for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
-        const
-            p = MODEL.processes[k],
-            svi = p.semic_var_index;
-        if(svi >= 0) {
-          const
-              vi = p.level_var_index,
-              lbx = p.lower_bound,
-              ubx = (p.equal_bounds && lbx.defined ? lbx : p.upper_bound);
-          // LB*binary - level <= 0
-          this.code.push(
-            [VMI_clear_coefficients, null],
-            [VMI_add_const_to_coefficient, [vi, -1]]
-          );
-          if(lbx.isStatic) {
-            this.code.push([VMI_add_const_to_coefficient,
-                [svi, lbx.result(0)]]);
-          } else {
-            this.code.push([VMI_add_var_to_coefficient, [svi, lbx]]);
-          }
-          this.code.push([VMI_add_constraint, VM.LE]);          
-          // level - UB*binary <= 0
-          this.code.push(
-            [VMI_clear_coefficients, null],
-            [VMI_add_const_to_coefficient, [vi, 1]]
-          );
-          if(ubx.isStatic) {
-            this.code.push([VMI_subtract_const_from_coefficient,
-                [svi, ubx.result(0)]]);
-          } else {
-            this.code.push([VMI_subtract_var_from_coefficient, [svi, ubx]]);
-          }
-          this.code.push([VMI_add_constraint, VM.LE]);          
-        }
+        this.code.push([VMI_add_semicontinuous_constraints, MODEL.processes[k]]);
       }
     }
     
@@ -4144,17 +3989,7 @@ class VirtualMachine {
             // Link `l` is Y-->Z and "reads" the total inflow into Y
             // over links Xi-->Y having rate Ri and when Y is a
             // product potentially also delay Di.
-            if(fn instanceof Process) {
-              // When throughput is read from process Y, the flow
-              // over link `l` equals the (sum of all Ri) times the
-              // level of Y times the rate of `l`
-              for(const ll of fn.inputs) {
-                this.code.push([VMI_add_throughput_to_coefficient,
-                    [vi, l.relative_rate, l.flow_delay,
-                        // Input links of processes have no delay
-                        ll.relative_rate, 0]]);
-              }
-            } else {
+            if(!(fn instanceof Process)) {
               // When read from product Y, throughput to be added to
               // Z equals sum of inflows of FROM node Y:
               //   Xi --(r2,d2)--> Y --(r1,d1)--> Z
@@ -4302,7 +4137,7 @@ class VirtualMachine {
       } // END of IF p not a constant
 
       // Set the bound constraints on the product stock variable
-      this.setBoundConstraints(p);
+      this.setProductBoundConstraints(p);
     } // End of FOR all products
 
     // NEXT: add constraints that will set values of binary variables
@@ -4361,14 +4196,14 @@ class VirtualMachine {
        because neither NEGL nor POSL can "match" a near-zero value. Hence the
        following constraint makes that OFF=1 if NEP and/or PEP are non-zero. 
 
-       (e) NEP + PEP - M*OFF <= 0  (so OFF=1 if |L| < epsilon)
+       (e) NEP + PEP - M*IZ <= 0  (so IZ=1 if |L| < epsilon)
        
        To ensure that NEGL and POSL do not cancel each other out, NEG and POS
        cannot add up to more than 1:
        
        (f) POS + NEG <= 1
 
-       No variable ON is computed since 1 - OFF can be used.
+       No variable ON is computed since (POS + NEG) can be used.
 
        To compute the start-up binary SU, we add these constraints:
        (e)  OO[t-1] - OO[t] + SU[t] >= 0
@@ -4436,15 +4271,11 @@ class VirtualMachine {
 
     for(const p of pp_nodes) {
       if(p.is_zero_var_index >= 0) {
-        // NOTE: For grid element processes, the ON/OFF binary is set by
-        // the VMI_add_grid_process_constraints.
-        if(!p.grid) {
-          // Add code for the four constraints that set the binaries.
-          // NOTE: As of version 3.0 (November 2025) this is done efficiently
-          // by the new VM instruction VMI_add_NZP_binary_constraints that
-          // simply takes the node `p` as parameter.
-          this.code.push([VMI_add_NZP_binary_constraints, p]);
-        }
+        // Add code for the four constraints that set the binaries.
+        // NOTE: As of version 3.0 (November 2025) this is done efficiently
+        // by the new VM instruction VMI_add_NZP_binary_constraints that
+        // simply takes the node `p` as parameter.
+        this.code.push([VMI_add_NZP_binary_constraints, p]);
         // Also add constraints for start-up and first commit (if needed).
         if(p.start_up_var_index >= 0) {
           this.code.push([VMI_add_startup_constraints, p]);
@@ -4624,6 +4455,8 @@ class VirtualMachine {
     if(n < 0.5 * VM.MINUS_INFINITY && n > VM.BEYOND_MINUS_INFINITY) {
       return VM.MINUS_INFINITY;
     }
+    // NOTE: Also round near-zero values to 0.
+    if(Math.abs(n) <= VM.NEAR_ZERO) return 0;
     return n;
   }
 
@@ -4689,7 +4522,7 @@ class VirtualMachine {
             x[a.cash_in_var_index + j] * this.cash_scalar);
         a.cash_out[b] = this.checkForInfinity(
             x[a.cash_out_var_index + j] * this.cash_scalar);
-        a.cash_flow[b] = a.cash_in[b] - a.cash_out[b];
+        a.cash_flow[b] = this.noNearZero(a.cash_in[b] - a.cash_out[b]);
         if(!MODEL.ignore_negative_flows) {
           // Count occurrences of a negative cash flow (threshold -0.5 cent).
           if(b <= this.nr_of_time_steps && a.cash_in[b] < -0.005) {
@@ -4707,6 +4540,10 @@ class VirtualMachine {
         b++;
       }
     }
+    // Initialize total power flows per grid as 0.
+    for(let k in MODEL.power_grids) if(MODEL.power_grids.hasOwnProperty(k)) {
+      MODEL.power_grids[k].total_flows = 0;
+    }
     // Set production levels and start-up moments for all processes.
     for(let k in MODEL.processes) if(MODEL.processes.hasOwnProperty(k) &&
         !MODEL.ignored_entities[k]) {
@@ -4715,7 +4552,8 @@ class VirtualMachine {
           has_NZP = (p.is_zero_var_index >= 0),
           has_SU = (p.start_up_var_index >= 0),
           has_SD = (p.shut_down_var_index >= 0);
-      // Clear all start-ups and shut-downs at t >= bb.
+      // Clear all start-ups and shut-downs at t >= bb, as these may have
+      // been set for time steps in the look-ahead period.
       if(has_SU) p.resetStartUps(bb);
       if(has_SD) p.resetShutDowns(bb);
       // NOTE: `b` is the index to be used for the vectors.
@@ -4724,12 +4562,29 @@ class VirtualMachine {
       // NOTE: -1 because indices start at 1, but list is zero-based.
       let j = -1; 
       for(let i = 0; i < abl; i++) {
+        // NOTE: CheckForInfinity also rounds near-zero values to 0.
         p.level[b] = this.checkForInfinity(x[p.level_var_index + j]);
         if(has_NZP) {
+          // NOTE: Some solvers (Gurobi!) may return real numbers instead of
+          // integers, typically near-zero or near-one, so only consider
+          // values near 1 to indicate start-up.
+          // If IZ = 1, set level to 0.
+          if(x[p.is_zero_var_index + j] > 0.999) {
+            // If IZ = 1, set (near-zero) level to 0.
+            if(p.level[b]) {
+              // Log to the console if level is clearly higher than near-zero.
+              if(Math.abs(p.level[b]) > VM.SIG_DIF_FROM_ZERO) {
+                console.log('NOTE: Level of', p.displayName,
+                    'is truncated from', p.level[b],
+                    'to 0 because OFF =', x[p.is_zero_var_index + j],
+                    'POS =', x[p.plus_var_index + j],
+                    'NEG =', x[p.minus_var_index + j]);
+              }
+              // Always truncate.
+              p.level[b] = 0;
+            }
+          }
           if(has_SU) {
-            // NOTE: Some solvers (Gurobi!) may return real numbers instead of
-            // integers, typically near-zero or near-one, so only consider
-            // values near 1 to indicate start-up.
             if(x[p.start_up_var_index + j] > 0.999) {
               p.start_ups.push(b);
             }
@@ -4739,7 +4594,22 @@ class VirtualMachine {
               p.shut_downs.push(b);
             }
           }
+        } else {
+          const apl = Math.abs(p.level[b]);
+          if(apl < 0.005) {
+            // Test small but not evidently near-zero values by scaling
+            // them to the process bounds.
+            const
+                lb = p.lower_bound.result(b),
+                br = (p.equal_bounds ? 0 : p.upper_bound.result(b) - lb);
+            if(br > 1 && apl / br < VM.ON_OFF_THRESHOLD) {
+              console.log('Level of', p.displayName, 'at t =', b,
+                  'is virtually zero (' +  apl + ') considering bound range', br);
+              p.level[b] = 0;
+            }
+          }
         }
+        if(p.grid) p.grid.total_flows += Math.abs(p.level[b]);
         // Advance column offset in tableau by the # cols per time step.
         j += this.cols;
         // Advance to the next time step in this block.
@@ -4780,8 +4650,8 @@ class VirtualMachine {
         b++;
       }
     }
-    // Get values of peak increase variables from solution vector
-    // NOTE: computed offset takes into account that chunk variable list
+    // Get values of peak increase variables from solution vector.
+    // NOTE: Computed offset takes into account that chunk variable list
     // is zero-based!
     const offset = this.cols * abl;
     for(let i = 0; i < ncv; i++) {
@@ -4930,13 +4800,13 @@ class VirtualMachine {
         // (typically values below the non-zero tolerance of the solver).
         let pl = p.nonZeroLevel(bt);
         if(l.multiplier === VM.LM_SPINNING_RESERVE) {
-          pl = (pl > VM.NEAR_ZERO ? p.upper_bound.result(bt) - pl : 0);
+          pl = (pl > 0 ? p.upper_bound.result(bt) - pl : 0);
         } else if(l.multiplier === VM.LM_POSITIVE) {
-          pl = (pl > VM.NEAR_ZERO ? 1 : 0);
+          pl = (pl > 0 ? 1 : 0);
         } else if(l.multiplier === VM.LM_ZERO) {
-          pl = (Math.abs(pl) <= VM.NEAR_ZERO ? 1 : 0);
+          pl = (pl ? 0 : 1);
         } else if(l.multiplier === VM.LM_NEGATIVE) {
-          pl = (pl < -VM.NEAR_ZERO ? 1 : 0);
+          pl = (pl < 0 ? 1 : 0);
         } else if(l.multiplier === VM.LM_STARTUP) {
           // NOTE: For start-up, first commit and shut-down, the level
           // can be ignored, as it suffices to check whether time step
@@ -5016,7 +4886,7 @@ class VirtualMachine {
         }
         // Preserve special values such as INF, UNDEFINED and VM error codes.
         let rr = l.relative_rate.result(bt);
-        if(p.grid) {
+        if(p.grid && !l.to_node.is_data) {
           // For grid processes, rates depend on losses, which depend on
           // the process level, and whether the link is P -> Q or Q -> P.
           rr = 1;
@@ -5029,7 +4899,10 @@ class VirtualMachine {
           }
         }
         const af = this.severestIssue([pl, rr], rr * pl);
+        // NOTE: Round near-zero actual flows to exactly 0.
         l.actual_flow[b] = (Math.abs(af) > VM.NEAR_ZERO ? af : 0);
+        // This means that testing whether flow > 0, flow < 0, or =/= 0, this
+        // need not be done with VM.NEAR_ZERO.
       }
     }
     // Report power losses per grid, if applicable.
@@ -5038,7 +4911,13 @@ class VirtualMachine {
       for(let k in MODEL.power_grids) if(MODEL.power_grids.hasOwnProperty(k)) {
         const pg = MODEL.power_grids[k];
         if(pg.loss_approximation > 0) {
-          ll.push(`${pg.name}: ${VM.sig4Dig(pg.total_losses / cbl)} ${pg.power_unit}`);
+          const
+              atf = pg.total_flows / cbl,
+              atl = pg.total_losses / cbl,
+              perc = (atf <= VM.NEAR_ZERO ? '' :
+                  [' (', (100 * atl / atf).toPrecision(3), '% of ',
+                      VM.sig4Dig(atf), ' ', pg.power_unit, ')'].join(''));
+          ll.push(`${pg.name}: ${VM.sig4Dig(atl)} ${pg.power_unit} ${perc}`);
         }
       }
       if(ll.length) {
@@ -5070,7 +4949,7 @@ class VirtualMachine {
           const
               af = l.actual_flow[b],
               fnp = l.from_node.price;
-          if(af > VM.NEAR_ZERO && fnp.defined) {
+          if(af && fnp.defined) {
             const pp = fnp.result(b);
             if(pp > 0 && pp < VM.PLUS_INFINITY) {
               co += pp * af;
@@ -5086,14 +4965,19 @@ class VirtualMachine {
           const
               af = l.actualFlow(b),
               tnp = l.to_node.price;
-          if(af > VM.NEAR_ZERO && tnp.defined) {
+          // NOTE: Actual flow may be negative, and will be exactly 0 even
+          // when computed as near-zero.
+          if(af && tnp.defined) {
             // NOTE: Use the price at the time of the actual flow.
-            const pp = tnp.result(b);
-            if(pp > 0 && pp < VM.PLUS_INFINITY) {
-              ci += pp * af;
+            const
+                pp = tnp.result(b),
+                cf = pp * af;
+            // NOTE: Actual flows can be negative.
+            if(cf > 0 && cf < VM.PLUS_INFINITY) {
+              ci += cf;
             // ... unless the product price is negative; then cash OUT.
-            } else if(pp < 0 && pp > VM.MINUS_INFINITY) {
-              co -= pp * af;
+            } else if(cf < 0 && cf > VM.MINUS_INFINITY) {
+              co -= cf;
             }
           }
         }
@@ -5535,7 +5419,7 @@ class VirtualMachine {
     if(p >= this.chunk_offset) {
       vbl = this.chunk_variables[p - this.chunk_offset];
     } else {
-      // NOTE: variables is zero-based, hence p-1
+      // NOTE: `variables` is zero-based, hence p-1.
       vbl = this.variables[(p-1) % this.cols];
     }
     this.numeric_issue = where + ' for ' + vbl[1].name +
@@ -5547,6 +5431,7 @@ class VirtualMachine {
     if(n <= -VM.EXCEPTION || n >= -VM.ERROR) n = -n;
     const msg = ['Tableau error: ', this.numeric_issue, ' - ',
         this.errorMessage(n), ' (value = ', this.sig2Dig(n), ')'].join('');
+throw msg;
     this.logMessage(this.block_count, msg);
     UI.alert(msg);
   }
@@ -7184,6 +7069,8 @@ function VMI_push_run_result(x, args) {
       // is a dataset modifier, use the time scale of the dataset, not of the
       // model, because the dataset vector is scaled to the model time scale.
       model_dt = MODEL.timeStepDuration;
+  // For tracing purposes, keep the experiment result specifics when inferred.
+  let trc = '';
   // NOTE: Run result can now default to UNDEFINED, because the VM now handles
   // exceptional values better: no call stack dump on "undefined" etc., but
   // only on real errors.
@@ -7271,12 +7158,11 @@ function VMI_push_run_result(x, args) {
             } else if(stat === 'NZ') {
               v = rr.non_zero_tally;
             }
-            if(DEBUGGING) {
-              const trc = ['push run result: ', xp.title,
-                ', run #', rn,
+            trc = [xp.title, ', run #', rn,
                 ', variable ', rr.displayName,
-                ', ', stat, ' = ', VM.sig4Dig(v)];
-              console.log(trc.join(''));
+                ', ', stat, ' = ', v.toPrecision(4)].join('');
+            if(DEBUGGING) {
+              console.log('push run result: ' + trc);
             }
           } else {
             // No statistic => return the vector for local time step,
@@ -7290,21 +7176,29 @@ function VMI_push_run_result(x, args) {
             // the .p property whether the run result vector should be used as
             // a periodic time series.
             v = rr.valueAtModelTime(tot[0], model_dt, rrspec.m, rrspec.p);
+            trc = [xp.title,
+                ', run #', rn,
+                ', variable ', rr.displayName, tot[1], tot[2],
+                ', value = ', v.toPrecision(4)].join('');
             if(DEBUGGING) {
-              const trc = ['push run result: ', xp.title,
-                  ', run #', rn,
-                  ', variable ', rr.displayName, tot[1], tot[2],
-                  ', value = ', VM.sig4Dig(v)];
-              console.log(trc.join(''));
+              console.log('push run result: ' + trc);
             }
           }
         }
       }
     }
   }
-  // Truncate near-zero values.
-  if(v && Math.abs(v) < VM.SIG_DIF_FROM_ZERO) {
-    console.log('NOTE: Truncated experiment run result', v, 'to zero');
+  // Truncate near-zero values by 2x the on/off threshold...
+  if(v && Math.abs(v) <= 2 * VM.ON_OFF_THRESHOLD) {
+    // ... but log the cases above the threshold.
+    if(Math.abs(v) > VM.ON_OFF_THRESHOLD)
+    if(trc) {
+      trc = 'for ' + trc;
+    } else {
+      trc = v + ' to zero';
+    }
+    console.log('NOTE: Truncated experiment run result ' + trc);
+    // Always truncate.
     v = 0;
   }
   x.push(v);
@@ -8359,7 +8253,7 @@ function VMI_set_bounds(args) {
   // `args`: [var_index, number or expression, number or expression]
   const
       vi = args[0],
-      vbl = VM.variables[vi - 1][1],
+      p = VM.variables[vi - 1][1],
       k = VM.offset + vi,
       r = VM.round_letters.indexOf(VM.round_sequence[VM.current_round]),
       // When diagnosing an unbounded problem, use low value for INFINITY,
@@ -8368,7 +8262,7 @@ function VMI_set_bounds(args) {
       // NOTE: For grid processes, the bounds are always "capped" so as
       // to permit Big M constraints for the associated binary variables.
       inf_is_free = (args.length > 3 && args[3]),
-      inf_val = (vbl.grid ? VM.UNLIMITED_POWER_FLOW :
+      inf_val = (p.grid ? VM.UNLIMITED_POWER_FLOW :
           (VM.diagnose && !inf_is_free ?
               VM.DIAGNOSIS_UPPER_BOUND : VM.SOLVER_PLUS_INFINITY));
   let l,
@@ -8378,7 +8272,7 @@ function VMI_set_bounds(args) {
     // Set both bounds equal to the level set in the previous round,
     // or to 0 if this is the first round.
     if(VM.current_round) {
-      l = vbl.actualLevel(VM.t);
+      l = p.actualLevel(VM.t);
       // QUICK PATCH! Should resolve that small non-zero process levels
       // computed in prior round make problem infeasible.
       if(l < 0.0005) l = 0;
@@ -8386,7 +8280,7 @@ function VMI_set_bounds(args) {
       l = 0;
     }
     u = l;
-    fixed = ' (FIXED ' + vbl.displayName + ')';
+    fixed = ' (FIXED ' + p.displayName + ')';
   } else {
     // Set bounds as specified by the two arguments.
     l = args[1];
@@ -8410,7 +8304,7 @@ function VMI_set_bounds(args) {
   // "fixed !== '' || " before DEBUGGING below.
   if(isNaN(l) || isNaN(u) ||
       typeof l !== 'number' || typeof u !== 'number' || DEBUGGING) {
-    console.log(['set_bounds [', k, '] ', vbl.displayName, '[',
+    console.log(['set_bounds [', k, '] ', p.displayName, '[',
       VM.variables[vi - 1][0],'] t = ', VM.t, ' LB = ', VM.sig4Dig(l),
       ', UB = ', VM.sig4Dig(u), fixed].join(''), l, u, inf_val);
   } else if(u < l) {
@@ -8421,7 +8315,7 @@ function VMI_set_bounds(args) {
       if(u < 0 && u > -VM.NEAR_ZERO) u = 0;
     } else {
       // If substantial, warn that "impossible" bounds would have been set.
-      const vk = vbl.displayName;
+      const vk = p.displayName;
       if(!VM.bound_issues[vk]) VM.bound_issues[vk] = [];
       VM.bound_issues[vk].push(VM.t);
     }
@@ -8434,40 +8328,60 @@ function VMI_set_bounds(args) {
   if(l !== 0) VM.lower_bounds[k] = l;
   if(u < VM.SOLVER_PLUS_INFINITY) {
     VM.upper_bounds[k] = u;
-    // If associated node is FROM-node of a "peak increase" link, then
-    // the "peak increase" variables of this node must have the highest
-    // UB of the node (for all t in this block, hence MAX) MINUS their
-    // peak level in previous block.
-    if(vbl.peak_inc_var_index >= 0) {
-      u = Math.max(0, u - vbl.b_peak[VM.block_count - 1]);
-      const
-          cvi = VM.chunk_offset + vbl.peak_inc_var_index,
-          // Check if peak UB already set for previous t
-          piub = VM.upper_bounds[cvi];
-      // If so, use the highest value
-      if(piub) u = Math.max(piub, u);
-      VM.upper_bounds[cvi] = u;
-      VM.upper_bounds[cvi + 1] = u;
-    }
-    // For grid elements, bounds must be set on UP and DOWN variables.
-    if(vbl.grid) {
-      // When considering losses, partition range 0...UB in sections.
-      const step = (MODEL.ignore_power_losses || vbl.grid.loss_approximation < 2 ?
-          u : u / vbl.grid.loss_approximation);
-      VM.upper_bounds[VM.offset + vbl.up_1_var_index] = step;
-      VM.upper_bounds[VM.offset + vbl.down_1_var_index] = step;
-      if(vbl.grid.loss_approximation > 1) {
-        // Set UB for semi-contiuous variables Up & Down slope 2.
-        VM.upper_bounds[VM.offset + vbl.up_2_var_index] = 2 * step;
-        VM.upper_bounds[VM.offset + vbl.down_2_var_index] = 2 * step;
-        if(vbl.grid.loss_approximation > 2) {
-          // Set UB for semi-contiuous variables Up & Down slope 3.
-          VM.upper_bounds[VM.offset + vbl.up_3_var_index] = 3 * step;
-          VM.upper_bounds[VM.offset + vbl.down_3_var_index] = 3 * step;
+    // NOTE: Extra bounds should be set only when this VMI is executed
+    // for the node level variable.
+    if(p.level_var_index === vi) {
+      // (1) If associated node must be NZP-partitioned, set bounds of its
+      // partitioning variables.
+      if(p.is_zero_var_index >= 0) {
+        // Set bounds on the NZP-partitioning variables.
+        VM.upper_bounds[VM.offset + p.nep_var_index] = VM.ON_OFF_THRESHOLD;
+        VM.upper_bounds[VM.offset + p.pep_var_index] = VM.ON_OFF_THRESHOLD;
+        // NOTE: The semi-continuous partitions must have upper bound >= 0...
+        VM.upper_bounds[VM.offset + p.nsc_var_index] = Math.max(-l, 0);
+        VM.upper_bounds[VM.offset + p.psc_var_index] = Math.max(u, 0);
+        // ... and lower bound "epsilon" *unless* semi-continuous variables
+        // are not supported by the solver.
+        if(!VM.noSemiContinuous) {
+          VM.lower_bounds[VM.offset + p.nsc_var_index] = VM.ON_OFF_THRESHOLD;
+          VM.lower_bounds[VM.offset + p.psc_var_index] = VM.ON_OFF_THRESHOLD;
         }
       }
-      // NOTE: lower bounds are 0 for all variables; their semi-continuous
-      // ranges are set by VMI_add_grid_process_constraints.
+      // (2) If associated node is FROM-node of a "peak increase" link, then
+      // the "peak increase" variables of this node must have the highest
+      // UB of the node (for all t in this block, hence MAX) MINUS their
+      // peak level in previous block.
+      if(p.peak_inc_var_index >= 0) {
+        u = Math.max(0, u - p.b_peak[VM.block_count - 1]);
+        const
+            cvi = VM.chunk_offset + p.peak_inc_var_index,
+            // Check if peak UB already set for previous t
+            piub = VM.upper_bounds[cvi];
+        // If so, use the highest value
+        if(piub) u = Math.max(piub, u);
+        VM.upper_bounds[cvi] = u;
+        VM.upper_bounds[cvi + 1] = u;
+      }
+      // (3) For grid elements, bounds must be set on UP and DOWN variables.
+      if(p.grid) {
+        // When considering losses, partition range 0...UB in sections.
+        const step = (MODEL.ignore_power_losses || p.grid.loss_approximation < 2 ?
+            u : u / p.grid.loss_approximation);
+        VM.upper_bounds[VM.offset + p.up_1_var_index] = step;
+        VM.upper_bounds[VM.offset + p.down_1_var_index] = step;
+        if(p.grid.loss_approximation > 1) {
+          // Set UB for semi-continuous variables Up & Down slope 2.
+          VM.upper_bounds[VM.offset + p.up_2_var_index] = 2 * step;
+          VM.upper_bounds[VM.offset + p.down_2_var_index] = 2 * step;
+          if(p.grid.loss_approximation > 2) {
+            // Set UB for semi-continuous variables Up & Down slope 3.
+            VM.upper_bounds[VM.offset + p.up_3_var_index] = 3 * step;
+            VM.upper_bounds[VM.offset + p.down_3_var_index] = 3 * step;
+          }
+        }
+        // NOTE: lower bounds are 0 for all variables; their semi-continuous
+        // ranges are set by VMI_add_grid_process_constraints.
+      }
     }
   }
 }
@@ -8703,136 +8617,315 @@ function VMI_subtract_var_from_coefficient(args) {
 /* AUXILIARY FUNCTIONS for setting cash flow coefficients */
 
 function addCashIn(index, value) {
+  // NOTE: Negative coefficients will make that variable CI gets
+  // a higher value, so subtract `value`, rather than add it!
   if(index in VM.cash_in_coefficients) {
     // Add value to coefficient if it already exists...
-    VM.cash_in_coefficients[index] += value;
+    VM.cash_in_coefficients[index] -= value;
   } else {
     // ... and set it if it is new.
-    VM.cash_in_coefficients[index] = value;
+    VM.cash_in_coefficients[index] = -value;
   }
 }
 
 function addCashOut(index, value) {
+  // NOTE: Negative coefficients will make that variable CO gets
+  // a higher value, so subtract `value`, rather than add it!
   if(index in VM.cash_out_coefficients) {
     // Add value to coefficient if it already exists...
-    VM.cash_out_coefficients[index] += value;
+    VM.cash_out_coefficients[index] -= value;
   } else {
     // ... and set it if it is new.
-    VM.cash_out_coefficients[index] = value;
+    VM.cash_out_coefficients[index] = -value;
   }
 }
 
-function VMI_update_cash_coefficient(args) {
-  // `args`: [flow, type, level_var_index, delay, x1, x2, ...]
-  // NOTE: Flow is either CONSUME or PRODUCE; type can be ONE_C (one
-  // constant parameter x1), TWO_X (two expressions x1 and x2), THREE_X
-  // (three expressions x1, x2 and x3) or SPIN_RES or PEAK_INC (see below).
-  let d = 0;
-  const
-      flow = args[0],
-      type = args[1],
-      vi = args[2],
-      dx = args[3];
-  if(dx instanceof Expression) {
-    // When delay is an expression, `dx.object` is the delayed link.
-    d = dx.object.actualDelay(VM.t);
-    // Extra argument indicates "delay + 1" (for delta-multipliers).
-    if((type === VM.ONE_C && args.length === 6) ||
-        (type === VM.TWO_X && args.length === 7)) d++;
-  }
-  // NOTE: When delay < 0, the coefficient must be set for a matrix row
-  // that will be added to the tableau for some later VM.t.
-  // `k` is the tableau column index of the variable that affects the CF
-  let k = (type === VM.PEAK_INC ? VM.chunk_offset + vi :
-      VM.offset + vi - d*VM.cols);
-  // NOTE: Variables beyond the tableau column range (when delay < 0) can
-  // be ignored.
-  if(k > VM.chunk_offset) return;
-  // NOTE: Peak increase can generate cash only at the first time
-  // step of a block (when VM.offset = 0) and at the first time step
-  // of the look-ahead period (when VM.offset = block length).
-  if(type === VM.PEAK_INC &&
-      VM.offset > 0 && VM.offset !== MODEL.block_length) return;
-  // NOTE: Delay affects only which variable is to be used. The level of
-  // this variable is then the delayed production volume to be priced at
-  // the *current* time.
-  // First compute the result to be processed.
-  let r = 0;
-  if(type === VM.ONE_C) {
-    r = args[4];
-  } else if(type === VM.TWO_X || type === VM.PEAK_INC) {
-    // NOTE: "peak increase" always passes two expressions.
-    // The first expression determines the price.
-    r = args[4].result(VM.t) * args[5].result(VM.t);
-  } else if(type === VM.THREE_X) {
-    // NOTE: Here, too, the first expression determines the price. 
-    r = args[4].result(VM.t) * args[5].result(VM.t) * args[6].result(VM.t);
-  } else if(type === VM.SPIN_RES) {
-    // "spinning reserve" equals UB - level if level > 0, or 0.
-    // The cash flow then equals ON/OFF*UB*price*rate - level*price*rate.
-    // The ON/OFF variable index is passed as third argument, hence `plvi`
-    // (process level variable index) as first extra parameter, plus three
-    // expressions (UB, price, rate).
-    // NOTE: This type is also used to compute "available capacity".
-    const
-        // args[4] = -1 signals that the remaining capacity should be
-        // computed, which means that ON/OFF should be disregarded.
-        plvi = (args[4] < 0 ? vi : args[4]),
-        // Column of second variable will be relative to same offset.
-        plk = k + plvi - vi,
-        ub = args[5].result(VM.t),
-        price_rate = args[6].result(VM.t) * args[7].result(VM.t);
-    r = ub * price_rate;
-    // NOTE: The sign of r determines whether this spinning reserve will
-    // generate cash IN or cash OUT. The *subtracted* part (production level
-    // times price_rate) should hence be ADDED if r > 0, and SUBTRACTED
-    // if r < 0 (unlike the "primary" part r itself).
-    if(plk <= 0) {
-      // NOTE: If `plk` falls PRIOR to the start of the block being solved,
-      // update the right hand side of the cash flow constraint.
-      // Assume that the known production level is be non-negative, so its
-      // sign does not alter the flow direction.
-      const pl = knownValue(plvi, VM.t - d);
-      if(r > 0) {
-        VM.cash_in_rhs -= pl * price_rate;
-      } else {
-        VM.cash_out_rhs += pl * price_rate;      
-      }
-    } else if(r > 0) {
-      addCashIn(plk, price_rate);
-    } else if(r < 0) {
-      addCashOut(plk, -price_rate);
-    }
-  }
-  // NOTE: For spinning reserve and highest increment, flow will always
-  // be PRODUCE.
-  if(flow === VM.CONSUME) r = -r;
+function VMI_update_cash_coefficient(link) {
+  // Updates cash flow coefficients that are affected by the specified link.
+  // Simplest case: INPUT links. These must have a process as tail node.
+  const t = VM.t;
   if(DEBUGGING) {
-    const vbl = (vi <= VM.cols ? VM.variables[vi - 1] :
-        VM.chunk_variables[vi - VM.cols]);
-    //@@@ MESSAGE TO MAKE CORRECT FOR chunk vars!
-    console.log(['update_cash_coefficient [', k, ']: ',
-        vbl[1].displayName, '[' + vbl[0] + '] (t = ', VM.t, ') ',
-        VM.CF_CONSTANTS[type], ' ', VM.CF_CONSTANTS[flow], ' r = ',
-        VM.sig4Dig(r)].join(''));
+    console.log(`update_cash_coefficient: ${link.displayName} (t = ${t})`,
+        link);
   }
-  // Use look-ahead peak increase when offset > 0.
-  if(type === VM.PEAK_INC && VM.offset) k++;
-  // Then update the cash flow: cash IN if r > 0, otherwise cash OUT. 
-  if(k <= 0) {
-    // NOTE: If `k` falls PRIOR to the start of the block being solved,
-    // subtract the known prior value of the decision variable from the
-    // right hand side of the cash flow constraint.
-    if(r > 0) {
-      VM.cash_in_rhs += knownValue(vi, VM.t - d) * r;
-    } else {
-      VM.cash_out_rhs -= knownValue(vi, VM.t - d) * r;      
+  if(link.to_node instanceof Process) {
+    // Input links have no delay or special link multipliers.
+    const price_rate = link.from_node.price.result(t) *
+        link.relative_rate.result(t);
+    if(price_rate) {
+      const k = VM.offset + link.to_node.level_var_index;
+      // Negative cash OUT is cash IN.
+      if(price_rate < 0) {
+        addCashIn(k, -price_rate);
+      } else {
+        addCashOut(k, price_rate);
+      }
     }
-  } else if(r > 0) {
-    addCashIn(k, -r);
-  } else if(r < 0) {
-    // NOTE: Test for r < 0 because no action is needed if r = 0.
-    addCashOut(k, r);
+    return;
+  }
+  // Output links may have a delay.
+  const
+      proc = link.from_node,
+      lm = link.multiplier,
+      delay = link.actualDelay(t),
+      price_rate = link.to_node.price.result(t) * link.relative_rate.result(t);
+  // NOTE: Even for (statistics over) delayed flows, the rate and price
+  // at time t is used, so when rate*price = 0, no cash flow occurs.
+  if(!price_rate) return;
+  
+  // Set process level variable index.
+  const vi = proc.level_var_index;
+
+  // SUM and MEAN may require iteration over multiple time steps.
+  if(delay && lm === VM.LM_SUM || lm === VM.LM_MEAN) {
+    // For MEAN, coefficients must be divided by the number of time steps.
+    const
+        nts = Math.abs(delay) + 1,
+        m = (lm === VM.LM_MEAN ? 1 / nts : 1);
+    let dt = Math.min(delay, 0),
+        k = VM.offset + vi - dt * VM.cols;
+    for(let i = 0; i < nts; i++) {
+      // Variables beyond the tableau column range (when delay < 0) can
+      // be ignored, so then exit this loop.
+      if(k > VM.chunk_offset) break;
+      if(k <= 0) {
+        // NOTE: If `k` falls PRIOR to the start of the block being solved,
+        // calculate the (average) cash flow for the known (!) process level.
+        const cf = proc.actualLevel(t - dt) * price_rate * m;
+        if(cf > 0) {
+          // Subtract CF from the RHS of the cash IN constraint, as then
+          // the actor's CI variable must be higher.
+          VM.cash_in_rhs -=  cf;
+        } else if(cf < 0) {
+          // Add the negative CF to the RHS of the cash OUT constraint, as
+          // then the actor's CO variable must be higher.
+          VM.cash_out_rhs += cf;      
+        }
+      } else {
+        // Update coefficient of the process level in the correct constraint.
+        if(price_rate > 0) {
+          addCashIn(k, price_rate * m);
+        } else {
+          addCashOut(k, -price_rate * m);  
+        }
+      }
+      dt++;
+      k += VM.cols;
+    }
+    return;
+  }
+
+  // NOTE: Without delay, SUM and MEAN are equivalent to LEVEL.
+  // Set indices for the NZP-partitioning of the production level
+  // variable if needed.
+  let posvi = -1,
+      negvi = -1,
+      pscvi = -1,
+      nscvi = -1,
+      pepvi = -1,
+      nepvi = -1;
+  const partitioned = proc.is_zero_var_index >= 0;
+  if(partitioned) {
+    posvi = proc.plus_var_index;
+    negvi = proc.minus_var_index;
+    pscvi = proc.psc_var_index;
+    nscvi = proc.nsc_var_index;
+    pepvi = proc.pep_var_index;
+    nepvi = proc.nep_var_index;
+  }
+  // For most cases, the coefficient index will be the level.
+  let k = VM.offset + vi - delay * VM.cols;
+  // NOTE: When delay < 0, `k` may fall beyond the tableau column range.
+  // If so, any such "future" cash flow can be ignored.
+  if(k > VM.chunk_offset) return;
+  
+  if(lm === VM.LM_INCREASE) {
+    // NOTE: Here, the actual flow is X[t-delta] - X[t-delta-1], so the delay
+    // shifts the time step, but the difference is always between t and t-1.
+    const
+        k_1 = k - VM.cols,
+        dt = t - delay;
+console.log('HERE t k  k-1  dt', t, k, k_1, dt);
+    if(k < 0) {
+      // Both values have been computed for the prior block.
+      // Then if t-delay < 1, no change can have occurred, because then
+      // both X[t-delay] and X[t-delay-1] have the process' initial level. 
+      if(dt < 1) return;
+      // Otherwise, get the CF based on the known increase.
+      const cf = (proc.actualLevel(dt) - proc.actualLevel(dt - 1)) * price_rate;
+console.log('HERE cf al al_1 pr', cf, proc.actualLevel(dt), proc.actualLevel(dt - 1), price_rate);
+      if(cf > 0) {
+        VM.cash_in_rhs -=  cf;
+      } else if(cf < 0) {
+        VM.cash_out_rhs += cf;      
+      }
+    // NOTE: The increase may be positive as well as negative, and that
+    // may cause negative values for cash IN and cash OUT. This can only
+    // be resolved by introducting additional (binary) variables.
+    // As it is unlikely that priced "delta" links will be used, cash
+    // flow computation constraints will not differentiate between
+    // cash IN and cash OUT, but allocate the signed (!) difference to
+    // cash IN when price*rate > 0 and to cash OUT when price*rate < 0.
+    } else if(k_1 < 0) {
+      // Only X[t-1] has been computed for the prior block.
+      const cf_1 = proc.actualLevel(dt - 1) * price_rate;
+console.log('HERE cf_1 al_1 pr', cf_1, proc.actualLevel(dt - 1), price_rate);
+      if(price_rate > 0) {
+        VM.cash_in_rhs -= cf_1;
+        addCashIn(k, price_rate);
+      } else if(price_rate < 0) {
+        VM.cash_out_rhs += cf_1;      
+        addCashOut(k, -price_rate);
+      }
+    } else {
+      // Update coefficients of both indices.
+      if(price_rate > 0) {
+        addCashIn(k, price_rate);
+        addCashIn(k_1, -price_rate);
+      } else if(price_rate < 0) {
+        addCashOut(k, -price_rate);
+        addCashOut(k_1, price_rate);
+      }
+    }
+    return;
+  }
+  
+  // Spinning reserve and maximum ramp-up/ramp-down relate to bounds.
+  if(lm === VM.LM_SPINNING_RESERVE ||
+      lm === VM.LM_MAX_INCREASE || lm === VM.LM_MAX_DECREASE) {
+    const
+        ub = proc.upper_bound.result(t),
+        lb = proc.lower_bound.result(t);
+    // No ramping up or down when LB > UB (should not occur) or LB = UB. 
+    if(lb >= ub || Math.abs(ub - lb) < VM.NEAR_ZERO) return;
+    if(k <= 0) {
+      // NOTE: If tableau column index `k` falls PRIOR to the start of the block
+      // being solved, the actual flow (max. increase, max. decrease or spinning
+      // reserve) follows from the known production level and the relevant bound.
+      let af = 0;
+      const
+          pl = proc.actualLevel(t - delay),
+          maxinc = ub - pl,
+          maxdec = pl - lb;
+      if(lm === VM.LM_MAX_INCREASE) {
+        af = maxinc;
+      } else if(lm === VM.LM_MAX_DECREASE) {
+        af = maxdec;
+      } else if(pl > VM.ON_OFF_THRESHOLD) {
+        af = maxinc;
+      } else if(pl < -VM.ON_OFF_THRESHOLD) {
+        af = maxdec;
+      }
+      // The cash flow equals actual flow * rate * price...
+      cf = af * price_rate;
+      // ... and can be included in the cash IN if > 0, or cash OUT if < 0.
+      if(cf > VM.NEAR_ZERO) {
+        VM.cash_in_rhs -= cf;
+      } else if(cf < -VM.NEAR_ZERO) {
+        VM.cash_out_rhs += cf;
+      }
+    } else if(lm === VM.LM_SPINNING_RESERVE) {
+      // The spinning reserve follows from the NPZ-partitioned level:
+      // SR = (POS*UB - PEP - PSC) + (NEG*-LB - NEP - NSC)
+      // where the first term is relevant only when UB > 0, and the second
+      // term only when LB < 0.
+      const kdi = k - vi;
+      if(price_rate > 0) {
+        // SR generates cash IN.
+        if(ub > 0) {
+          addCashIn(kdi + posvi, ub * price_rate);
+          addCashIn(kdi + pepvi, -price_rate);
+          addCashIn(kdi + pscvi, -price_rate);
+        }
+        if(lb < 0) {
+          addCashIn(kdi + negvi, -lb * price_rate);
+          addCashIn(kdi + nepvi, -price_rate);
+          addCashIn(kdi + nscvi, -price_rate);
+        }
+      } else {
+        // SR generates cash OUT.
+        if(ub > 0) {
+          addCashOut(kdi + posvi, ub * price_rate);
+          addCashOut(kdi + pepvi, -price_rate);
+          addCashOut(kdi + pscvi, -price_rate);
+        }
+        if(lb < 0) {
+          addCashOut(kdi + negvi, -lb * price_rate);
+          addCashOut(kdi + nepvi, -price_rate);
+          addCashOut(kdi + nscvi, -price_rate);
+        }
+      }
+    } else if(lm === VM.LM_MAX_INCREASE) {
+      // The maximum increase equals UB - level.
+      if(price_rate > 0) {
+        // MaxInc generates cash IN.
+        VM.cash_in_rhs -= ub * price_rate;
+        addCashIn(vi, -price_rate);
+      } else {
+        // MaxInc generates cash OUT.
+        VM.cash_out_rhs += ub * price_rate;
+        addCashout(vi, price_rate);
+      }
+    } else {
+      // The maximum decrease equals -LB + level.
+      if(price_rate > 0) {
+        // MaxInc generates cash IN.
+        VM.cash_in_rhs += lb * price_rate;
+        addCashIn(vi, price_rate);
+      } else {
+        // MaxInc generates cash OUT.
+        VM.cash_out_rhs -= lb * price_rate;
+        addCashout(vi, -price_rate);
+      }
+    }
+    return;
+  }
+
+  if(lm === VM.LM_PEAK_INC) {
+    // NOTE: Peak increase can generate cash only at the first time
+    // step of a block (when VM.offset = 0) and at the first time step
+    // of the look-ahead period (when VM.offset = block length).
+    if(VM.offset > 0 && VM.offset !== MODEL.block_length) return;
+    k = VM.chunk_offset + proc.peak_inc_var_index;
+    // Use look-ahead peak increase when offset > 0.
+    if(VM.offset) k++;
+  } else {
+    // By default, `vi` is the process level index, and `k` the coefficient
+    // index (column number for this variable in the tableau).
+    // For "binary data links", adjust `k` so it corresponds with the correct
+    // binary variable instead of the level.
+    let bvi = vi;
+    if(lm === VM.LM_STARTUP) {
+      bvi = proc.start_up_var_index;
+    } else if(lm === VM.LM_SHUTDOWN) {
+      bvi = proc.shut_down_var_index;
+    } else if(lm === VM.LM_POSITIVE) {
+      bvi = proc.plus_var_index;
+    } else if(lm === VM.LM_ZERO) {
+      bvi = proc.is_zero_var_index;
+    } else if(lm === VM.LM_NEGATIVE) {
+      bvi = proc.minus_var_index;
+    } else if(lm === VM.LM_CYCLE) {
+      bvi = proc.cycle_var_index;
+    } else if(lm === VM.LM_FIRST_COMMIT) {
+      bvi = proc.first_commit_var_index;
+    }
+    k += bvi - vi;
+  }
+  if(k <= 0) {
+    // If `k` falls PRIOR to the start of the block being solved,
+    // use the known prior value of the decision variable to compute
+    // the cash flow.
+    const cf = knownValue(bvi, t - delay) * price_rate;
+    if(cf > 0) {
+      VM.cash_in_rhs -= cf;
+    } else if(cf < 0) {
+      VM.cash_out_rhs += cf;      
+    }
+  } else if(price_rate > 0) {
+    addCashIn(k, price_rate);
+  } else if(price_rate < 0) {
+    addCashOut(k, -price_rate);
   }
 }
 
@@ -8894,79 +8987,6 @@ function VMI_update_grid_process_cash_coefficients(p) {
         addCashIn(gpv.down[i], tp);
       }
     }
-  }
-}
-
-function VMI_add_power_flow_to_coefficients(args) {
-  // Special instruction to add power flow rates represented by process
-  // P to the coefficient vector that is being constructed to compute the
-  // level for product Q.
-  // The instruction is added once for the link P -> Q (then UP flows
-  // add to the level of Q, while DOWN flows subtract) and once for the
-  // link Q -> P (then UP flows *subtract* from the level of Q while
-  // DOWN flows *add*).
-  // The instruction expects two arguments: a grid process and an integer
-  // indicating the direction: P -> Q (1) or Q -> P (-1).
-  const
-      p = args[0],
-      up = args[1] > 0,
-      gpv = VM.gridProcessVarIndices(p, VM.offset),
-      lr = p.lossRates(VM.t);
-  for(let i = 0; i < gpv.slopes; i++) {
-    // Losses must be subtracted only from flows *into* P.
-    const
-        uv = (up ? 1 - lr[i] : -1),
-        dv = (up ? -1 : 1 - lr[i]);
-    let k = gpv.up[i];
-    if(k in VM.coefficients) {
-       VM.coefficients[k] += uv;
-     } else {
-       VM.coefficients[k] = uv;
-     }
-    k = gpv.down[i];
-    if(k in VM.coefficients) {
-       VM.coefficients[k] += dv;
-     } else {
-       VM.coefficients[k] = dv;
-     }
-  }
-}
-
-function VMI_add_throughput_to_coefficient(args) {
-  // Special instruction to deal with throughput calculation.
-  // Function: to add the contribution of variable X to the level of
-  // variable Z when Z depends (a.o.) on the throughput of variable Y, i.e.,
-  // X --(r2,d2)--> Y --(r1,d1)--> Z
-  // The correct coefficient of X is then: r1[t]*r2[t-d1]*X[t-d1-d2]
-  // `args`: [index_of_X, rate_1, delay_1, rate_2, delay_2]
-  const
-      vi = args[0],
-      d1 = args[2].object.actualDelay(VM.t),
-      d2 = (args[4] ? args[4].object.actualDelay(VM.t) : 0),
-      dsum = d1 + d2,
-      k = VM.offset + vi - dsum * VM.cols,
-      t = VM.t - dsum,
-      // Compute the value to be added to the coefficient
-      v = args[1].result(VM.t) * args[3].result(VM.t - d1);
-  if(DEBUGGING) {
-    console.log('add_throughput_to_coefficient [' + k + ']: ' +
-        args[1].variableName + ' * ' + args[3].variableName +
-        ' (t = ' + VM.t + ')');
-  }
-  // Ignore "future variables".
-  if(k > VM.chunk_offset) return;
-  if(k <= 0) {
-    const vbl = VM.variables[vi - 1];
-    if(DEBUGGING) {
-      console.log('--lookup[' + k + ']: ' + vbl[0] + ' ' + vbl[1].displayName);
-    }
-    // X has been computed in a previous block => subtract term from RHS
-    // NOTE: subtract 1 from var_index because VM.variables is a 0-based array
-    VM.rhs -= VM.priorValue(vbl, t) * v;
-  } else if(k in VM.coefficients) {
-    VM.coefficients[k] += v;
-  } else {
-    VM.coefficients[k] = v;
   }
 }
 
@@ -9052,6 +9072,82 @@ function VMI_add_constraint(ct) {
   }
 }
 
+function VMI_add_semicontinuous_constraints(p) {
+  // Add constraints that make the level variable and (if `p` needs NZP-partition
+  // also the POSL and NEGL variables) behave as semi-continuous variables.
+  const
+      l_index = p.level_var_index + VM.offset,
+      lb_index = p.semic_var_index + VM.offset,
+      posl_index = p.psc_var_index + VM.offset,
+      negl_index = p.nsc_var_index + VM.offset,
+      poslb_index = p.pscb_var_index + VM.offset,
+      neglb_index = p.nscb_var_index + VM.offset,
+      lbx = p.lower_bound,
+      ubx = (p.equal_bounds && lbx.defined ? lbx : p.upper_bound),
+      lb = lbx.result(VM.t),
+      ub = ubx.result(VM.t);
+  let row;
+  // Make level semi-continuous (processes only).
+  if(lb_index >= 0) {
+    if(lb > 0 && lb <= ub) {
+      // LB*binary - level <= 0
+      row = {};
+      row[lb_index] = lb;
+      row[l_index] = -1;
+      VM.matrix.push(row);
+      VM.right_hand_side.push(0);
+      VM.constraint_types.push(VM.LE);
+      // level - UB*binary <= 0
+      row = {};
+      row[l_index] = 1;
+      row[lb_index] = -ub;
+      VM.matrix.push(row);
+      VM.right_hand_side.push(0);
+      VM.constraint_types.push(VM.LE);
+    } else {
+      console.log('ANOMALY: Failed to set semi-continuous bounds for',
+          p.displayName, 'for t =', VM.t, 'LB =', lb, 'UB =', ub);
+    }
+  }
+  // Make NZP-partitioning variables semi-continuous.
+  // NOTE: These variables have lower bound "epsilon", and the same upper
+  // bound as the level of `p`. If UB <= 0, no constraint should be added.
+  if(poslb_index >= 0 && ub > 0) {
+    // epsilon*binary - POSL <= 0
+    row = {};
+    row[poslb_index] = VM.ON_OFF_THRESHOLD;
+    row[posl_index] = -1;
+    VM.matrix.push(row);
+    VM.right_hand_side.push(0);
+    VM.constraint_types.push(VM.LE);
+    // POSL - UB*binary <= 0
+    row = {};
+    row[posl_index] = 1;
+    row[poslb_index] = -ub;
+    VM.matrix.push(row);
+    VM.right_hand_side.push(0);
+    VM.constraint_types.push(VM.LE);
+  }
+  // NOTE: For NEGL, the LB of `p` should be negative, and then the
+  // -LB should become the UB of NEGL.
+  if(neglb_index >= 0 && lb < 0) {
+    // epsilon*binary - NEGL <= 0
+    row = {};
+    row[neglb_index] = VM.ON_OFF_THRESHOLD;
+    row[negl_index] = -1;
+    VM.matrix.push(row);
+    VM.right_hand_side.push(0);
+    VM.constraint_types.push(VM.LE);
+    // NEGL + LB*binary <= 0, because LB < 0 -- see above.
+    row = {};
+    row[negl_index] = 1;
+    row[neglb_index] = lb;
+    VM.matrix.push(row);
+    VM.right_hand_side.push(0);
+    VM.constraint_types.push(VM.LE);
+  }
+}
+
 function VMI_add_NZP_binary_constraints(p) {
   // Add constraints that set correct values for binary variables
   // associated with process or product `p`.
@@ -9074,11 +9170,12 @@ function VMI_add_NZP_binary_constraints(p) {
   }
   if(hub !== ub) {
     ub = hub;
-    this.logMessage(block,
+    VM.logMessage(block,
         `Inferred upper bound for ${p.displayName}: ${VM.sig4Dig(ub)}`);
   }
   const
-      big_M = Math.max(Math.abs(lb), Math.abs(ub)) + 1,
+      big_M = Math.min(VM.MEGA_UPPER_BOUND,
+          Math.max(Math.abs(lb), Math.abs(ub)) + 1),
       l_index = VM.offset + p.level_var_index,
       pos_index = VM.offset + p.plus_var_index,
       neg_index = VM.offset + p.minus_var_index,
@@ -9422,14 +9519,13 @@ function VMI_add_cash_constraints(args) {
 }
 
 function VMI_add_grid_process_constraints(p) {
-  // Add constraints that will ensure that power flows either UP or DOWN,
-  // and that loss slopes properties are set.  
+  // Add constraints that will ensure that loss slopes properties are set.  
   const gpv = VM.gridProcessVarIndices(p, VM.offset);
   if(!gpv) return;
   // Now the variable index lists all contain 1, 2 or 3 indices,
   // depending on the loss approximation level.
   let ub = p.upper_bound.result(VM.t);
-  if(ub >= VM.PLUS_INFINITY || MODEL.ignore_grid_capacity) {
+  if(ub >= VM.PLUS_INFINITY) {
     // When UB = +INF, this is interpreted as "unlimited", which is
     // implemented as 99999 grid power units.
     ub = VM.UNLIMITED_POWER_FLOW;
@@ -9439,12 +9535,9 @@ function VMI_add_grid_process_constraints(p) {
       // NOTE: For slope 1 use a small positive number as LB.
       lbs = [VM.ON_OFF_THRESHOLD, step, 2*step],
       ubs = [step, 2*step, 3*step],
-      l_index = VM.offset + p.level_var_index,
-      pos_index = VM.offset + p.plus_var_index,
-      neg_index = VM.offset + p.minus_var_index,
-      off_index = VM.offset + p.is_zero_var_index,
-      pep_index = VM.offset + p.pep_var_index,
-      nep_index = VM.offset + p.nep_var_index;
+      // NOTE: Grid processes also have the NPZ-partitioning variables.
+      posl_index = VM.offset + p.psc_var_index,
+      negl_index = VM.offset + p.nsc_var_index;
   for(let i = 0; i < gpv.slopes; i++) {
     // Add constraints to set the ON/OFF binary for each slope:
     VMI_clear_coefficients();
@@ -9453,6 +9546,8 @@ function VMI_add_grid_process_constraints(p) {
     VM.coefficients[gpv.up_on[i]] = -ubs[i];
     VMI_add_constraint(VM.LE);
     //   level - LB*binary >= 0
+    VMI_clear_coefficients();
+    VM.coefficients[gpv.up[i]] = 1;
     VM.coefficients[gpv.up_on[i]] = -lbs[i];
     VMI_add_constraint(VM.GE);
     // Two similar constraints for the Down slope
@@ -9460,49 +9555,33 @@ function VMI_add_grid_process_constraints(p) {
     VM.coefficients[gpv.down[i]] = 1;
     VM.coefficients[gpv.down_on[i]] = -ubs[i];
     VMI_add_constraint(VM.LE);
+    VMI_clear_coefficients();
+    VM.coefficients[gpv.down[i]] = 1;
     VM.coefficients[gpv.down_on[i]] = -lbs[i];
     VMI_add_constraint(VM.GE);
   }
-  // Set level to sum of all Up variables minus sum of all Down variables.
+  // Sum of all Up variables must be equal to POSL.
   VMI_clear_coefficients();
-  VM.coefficients[l_index] = -1;
+  VM.coefficients[posl_index] = -1;
   for(let i = 0; i < gpv.slopes; i++) {
     VM.coefficients[gpv.up[i]] = 1;
-    VM.coefficients[gpv.down[i]] = -1;
   }
-  // Also add the epsilon variables.
-  VM.coefficients[pep_index] = 1;
-  VM.coefficients[nep_index] = -1;
   VMI_add_constraint(VM.EQ);
-  // Since NEP and PEP will always have very small values (0 <= x <= epsilon),
-  // the "big M" need not be big, so we use M = 2 (arbitrarily chosen).
-  // NEP + PEP - 2*OFF <= 0  ensures that OFF=1 if |L| < epsilon)
-  VM.coefficients[pep_index] = 1;
-  VM.coefficients[nep_index] = 1;
-  VM.coefficients[off_index] = -2;
-  VMI_add_constraint(VM.LE);
-  // Set POS to equal the sum of the UP binaries.
+  // Sum of all Down variables must be equal to NEGL.
   VMI_clear_coefficients();
-  VM.coefficients[pos_index] = -1;
+  VM.coefficients[negl_index] = -1;
+  for(let i = 0; i < gpv.slopes; i++) {
+    VM.coefficients[gpv.down[i]] = 1;
+  }
+  VMI_add_constraint(VM.EQ);
+  // Sum of all slope binaries must be <= 1.
+  VMI_clear_coefficients();
   for(let i = 0; i < gpv.slopes; i++) {
     VM.coefficients[gpv.up_on[i]] = 1;
-  }
-  VMI_add_constraint(VM.EQ);
-  // Set NEG to equal the sum of the DOWN binaries.
-  VMI_clear_coefficients();
-  VM.coefficients[neg_index] = -1;
-  for(let i = 0; i < gpv.slopes; i++) {
     VM.coefficients[gpv.down_on[i]] = 1;
   }
-  VMI_add_constraint(VM.EQ);
-  // Finally, NEG + OFF + POS = 1 ensures that at most one slope can be active,
-  // and that OFF=1 when L is near-zero.
-  VMI_clear_coefficients();
-  VM.coefficients[neg_index] = 1;
-  VM.coefficients[off_index] = 1;
-  VM.coefficients[pos_index] = 1;
   VM.rhs = 1;
-  VMI_add_constraint(VM.EQ);
+  VMI_add_constraint(VM.LE);
 }
 
 function VMI_add_kirchhoff_constraints(cb) {
@@ -9525,6 +9604,84 @@ function VMI_add_kirchhoff_constraints(cb) {
       VM.coefficients[VM.offset + p.level_var_index] = x * o;
     }
     if(not_broken) VMI_add_constraint(VM.EQ);
+  }
+}
+
+function VMI_add_power_flow_to_coefficients(args) {
+  // Special instruction to add power flow rates represented by process
+  // P to the coefficient vector that is being constructed to compute the
+  // level for product Q.
+  // The instruction is added once for the link P -> Q (then UP flows
+  // add to the level of Q, while DOWN flows subtract) and once for the
+  // link Q -> P (then UP flows *subtract* from the level of Q while
+  // DOWN flows *add*).
+  // The instruction expects two arguments: a grid process and an integer
+  // indicating the direction: P -> Q (1) or Q -> P (-1).
+  const
+      p = args[0],
+      up = args[1] > 0,
+      gpv = VM.gridProcessVarIndices(p, VM.offset),
+      lr = p.lossRates(VM.t);
+  for(let i = 0; i < gpv.slopes; i++) {
+    // Losses must be subtracted only from flows *into* P.
+    const
+        uv = (up ? 1 - lr[i] : -1),
+        dv = (up ? -1 : 1 - lr[i]);
+    let k = gpv.up[i];
+    if(k in VM.coefficients) {
+      VM.coefficients[k] += uv;
+    } else {
+      VM.coefficients[k] = uv;
+    }
+    k = gpv.down[i];
+    if(k in VM.coefficients) {
+      VM.coefficients[k] += dv;
+    } else {
+      VM.coefficients[k] = dv;
+    }
+  }
+
+  // Also add the epsilon variables.
+  VM.coefficients[p.pep_var_index + VM.offset] = args[1];
+  VM.coefficients[p.nep_var_index + VM.offset] = -args[1];
+
+}
+
+function VMI_add_throughput_to_coefficient(args) {
+  // Special instruction to deal with throughput calculation.
+  // Function: to add the contribution of variable X to the level of
+  // variable Z when Z depends (a.o.) on the throughput of variable Y, i.e.,
+  // X --(r2,d2)--> Y --(r1,d1)--> Z
+  // The correct coefficient of X is then: r1[t]*r2[t-d1]*X[t-d1-d2]
+  // `args`: [index_of_X, rate_1, delay_1, rate_2, delay_2]
+  const
+      vi = args[0],
+      d1 = args[2].object.actualDelay(VM.t),
+      d2 = (args[4] ? args[4].object.actualDelay(VM.t) : 0),
+      dsum = d1 + d2,
+      k = VM.offset + vi - dsum * VM.cols,
+      t = VM.t - dsum,
+      // Compute the value to be added to the coefficient
+      v = args[1].result(VM.t) * args[3].result(VM.t - d1);
+  if(DEBUGGING) {
+    console.log('add_throughput_to_coefficient [' + k + ']: ' +
+        args[1].variableName + ' * ' + args[3].variableName +
+        ' (t = ' + VM.t + ')');
+  }
+  // Ignore "future variables".
+  if(k > VM.chunk_offset) return;
+  if(k <= 0) {
+    const vbl = VM.variables[vi - 1];
+    if(DEBUGGING) {
+      console.log('--lookup[' + k + ']: ' + vbl[0] + ' ' + vbl[1].displayName);
+    }
+    // X has been computed in a previous block => subtract term from RHS
+    // NOTE: subtract 1 from var_index because VM.variables is a 0-based array
+    VM.rhs -= VM.priorValue(vbl, t) * v;
+  } else if(k in VM.coefficients) {
+    VM.coefficients[k] += v;
+  } else {
+    VM.coefficients[k] = v;
   }
 }
 

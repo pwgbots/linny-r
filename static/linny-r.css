@@ -2164,7 +2164,7 @@ div.export {
 
 /* styles for the LINK properties dialog */
 #link-dlg {
-  width: 425px;
+  width: 427px;
   height: min-content;
 }
 
@@ -2201,9 +2201,9 @@ div.export {
 #link-multiplier {
   margin-left: 2px;
   margin-bottom: 2px;
-  font-size: 9pt;
+  font-size: 8.5pt;
   min-height: 20px;
-  max-width: 358px;
+  max-width: 380px;
 }
 
 #link-R {

@@ -1197,12 +1197,12 @@ NOTE: Products directly linked to such processes should have a proportional unit
                 &#x21A5; (maximum ramp-up: UB - X[t])
               </option>
               <option id="link-slack" value="13">
-                &#x21A7; (maximum ramp-down: -LB - X[t])
+                &#x21A7; (maximum ramp-down: -LB + X[t])
               </option>
               <option id="link-spinning" value="8">
-                &#x2934; (spinning reserve: UB - X[t] if X[t] > 0, otherwise 0)
+                &#x2934; (spinning reserve: max. ramp-up/down if X[t] &#x2277; 0, otherwise 0)
               </option>
-              <option id="link-cycle" value="15">
+              <option id="link-cycle" value="15" disabled>
                 &#x27F3; (cycle: 1 if X ends a cycle in time step t, otherwise 0)
               </option>
               <option id="link-first-commit" value="9">

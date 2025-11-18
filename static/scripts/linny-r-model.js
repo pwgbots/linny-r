@@ -3735,8 +3735,7 @@ class LinnyRModel {
           c = this.constraints[k],
           fl = c.from_node.nonZeroLevel(t),
           tl = c.to_node.nonZeroLevel(t);
-      if(c.share_of_cost &&
-          Math.abs(fl) > VM.NEAR_ZERO && Math.abs(tl) > VM.NEAR_ZERO) {
+      if(c.share_of_cost && fl && tl) {
         // Constraint can carry cost => compute the rate; the actual
         // cost to be transferred will be computed later, when CP of
         // nodes have been calculated.
@@ -4015,10 +4014,9 @@ class LinnyRModel {
               const
                   af = l.actualFlow(t),
                   rr = l.relative_rate.result(t);
-              if(Math.abs(af) > VM.NEAR_ZERO) {
-                if(Math.abs(rr) < VM.NEAR_ZERO) {
-                  cnp = (rr < 0 && cp < 0 || rr > 0 && cp > 0 ?
-                      VM.PLUS_INFINITY : VM.MINUS_INFINITY);
+              if(af) {
+                if(!rr) {
+                  cnp = (cp > 0 ? VM.PLUS_INFINITY : VM.MINUS_INFINITY);
                 } else {
                   qnp += af;
                   // NOTE: Only add the link's share of cost.
@@ -4056,7 +4054,7 @@ class LinnyRModel {
         // For stocks, the CP includes stock price on t-1.
         if(p.is_buffer) {
           const prevl = p.nonZeroLevel(t-1);
-          if(prevl > VM.NEAR_ZERO) {
+          if(prevl > 0) {
             cp = (cnp +  prevl * p.stockPrice(t-1)) / (qnp + prevl);
           }
           p.stock_price[t] = cp;
@@ -4096,7 +4094,7 @@ class LinnyRModel {
       if(count >= prev_count) {
         // Still no avail? Then set CP=0 for links relating to processes
         // having level 0.
-        for(const p of processes) if(p.nonZeroLevel(t) < VM.NEAR_ZERO) {
+        for(const p of processes) if(p.nonZeroLevel(t) < 0) {
           p.cost_price[t] = 0;
           for(let li = links.length - 1; li >= 0; li--) {
             const l = links[li];
@@ -4108,8 +4106,7 @@ class LinnyRModel {
         }
         // Then (also) look for links having AF = 0 ...
         for(let li = links.length - 1; li >= 0; li--) {
-          const af = links[li].actualFlow(t);
-          if(Math.abs(af) < VM.NEAR_ZERO) {
+          if(!links[li].actualFlow(t)) {
             // ... and set their UCP to 0.
             links[li].unit_cost_price = 0;
             links.splice(li, 1);
@@ -5040,6 +5037,9 @@ class PowerGrid {
     // 2 (quadratic, approximated with two linear tangents) or
     // 3 (quadratic, approximated with three linear tangents).
     this.loss_approximation = 0;
+    // Properties calculated after model has been solved.
+    this.total_flows = 0;
+    this.total_losses = 0;
   }
 
   get type() {
@@ -5101,6 +5101,19 @@ class PowerGrid {
     this.color = xmlDecoded(nodeContentByTag(node, 'color'));
     this.kilovolts = safeStrToFloat(nodeContentByTag(node, 'kilovolts'), 150);
     this.power_unit = nodeContentByTag(node, 'power-unit') || 'MW';
+  }
+  
+  totalFlows(t) {
+    // Return sum of flows: the sum (over all processes in this grid) of
+    // their absolute level.
+    if(!MODEL.solved) return 0;
+    let sum = 0;
+    for(const k in MODEL.processes) if(MODEL.processes.hasOwnProperty(k)) {
+      const p = MODEL.processes[k];
+      if(p.grid === this) sum += Math.abs(p.actualLevel(t));
+    }
+    if(sum > VM.UNLIMITED_POWER_FLOW) return VM.PLUS_INFINITY;
+    return sum;
   }
   
 } // END of class PowerGrid
@@ -6244,11 +6257,9 @@ class Arrow {
       let flow = 0;
       for(const l of this.links) {
         if(p0.inputs.indexOf(l) >= 0) {
-          const af = l.actualFlow(MODEL.t);
-          if(Math.abs(af) > VM.NEAR_ZERO) flow += af;
+          flow += l.actualFlow(MODEL.t);
         } else if(p0.outputs.indexOf(l) >= 0) {
-          const af = l.actualFlow(MODEL.t);
-          if(Math.abs(af) > VM.NEAR_ZERO) flow -= af;
+          flow -= l.actualFlow(MODEL.t);
         }
       }
       // For tail flow, sum of flows should equal sum[0] ...
@@ -7674,20 +7685,40 @@ class Node extends NodeBox {
   }
   
   get needsOnOffData() {
-    // Return TRUE if this node requires a binary ON/OFF variable.
+    // Return TRUE if this node requires binary variables to establish
+    // its Negative/Zero/Positive state.
     // This means that at least one output link must have the "positive",
     // "zero", "negative", "start-up", "shut-down", "spinning reserve" or
     // "first commit" multiplier.
-    // NOTE: As of version 2.0.0, power grid processes also need ON/OFF.
-    if(this.grid) return true;
     for(const l of this.outputs) {
       if(VM.LM_NEEDING_ON_OFF.indexOf(l.multiplier) >= 0) {
         return true;
       }
     }
+    if(this.type === 'Process') {
+      // As of version 3.0, processes also get NZP variables when they may
+      // have cash flows *AND* (potentially) a lower bound < 0.
+      const lbx = this.lower_bound;
+      if(lbx.defined) {
+        if(lbx.isStatic && lbx.result(0) >= 0) return false;
+        // Now LB is either dynamic or < 0, so process may have level < 0.
+        // Then NZP-partitioning is necessary only if the process can generate
+        // a cash flow.
+        for(const l of this.inputs) {
+          if(!MODEL.ignored_entities[l.identifier] && l.from_node.price.defined) {
+            return true;
+          }
+        }
+        for(const l of this.outputs) {
+          if(!MODEL.ignored_entities[l.identifier] && l.to_node.price.defined) {
+            return true;
+          }
+        }
+      }
+    }
     return false;
   }
-
+  
   get needsStartUpData() {
     // Return TRUE iff this node has an output data link for start-up
     // or first commit.
@@ -7859,8 +7890,8 @@ class Node extends NodeBox {
       if(lm === VM.LM_FIRST_COMMIT) return (this.start_ups.indexOf(t) === 0 ? 1 : 0);
       let l = (t < 0 ? this.initial_level.result(1) : this.level[t]);
       if(l === undefined) return VM.UNDEFINED;
-      if(lm === VM.LM_POSITIVE) return (l > VM.NEAR_ZERO ? 1 : 0);
-      if(lm === VM.LM_NEGATIVE) return (l < -VM.NEAR_ZERO ? 1 : 0);
+      if(lm === VM.LM_POSITIVE) return (l > 0 ? 1 : 0);
+      if(lm === VM.LM_NEGATIVE) return (l < 0 ? 1 : 0);
       if(lm === VM.LM_ZERO) return 1 - l;
     }
     if(t < 0) return this.initial_level.result(1);
@@ -8195,7 +8226,7 @@ class Process extends Node {
         ub = this.upper_bound.result(t),
         la = g.loss_approximation,
         // Prevent division by 0.
-        slope = (ub < VM.NEAR_ZERO ? 0 :
+        slope = (ub < 0 ? 0 :
             // NOTE: Index may exceed # slopes - 1 when level = UB.
             Math.min(la - 1, Math.floor(apl * la / ub)));
     return lr[slope];
@@ -8460,16 +8491,15 @@ class Product extends Node {
     // to the level of this product.
     let hcp = VM.MINUS_INFINITY;
     for(const l of this.inputs) {
-      if(l.from_node instanceof Process && l.actualFlow(t) > VM.NEAR_ZERO) {
+      if(l.from_node instanceof Process && l.actualFlow(t) > 0) {
         const ld = l.actualDelay(t);
         // NOTE: Only consider the allocated share of cost.
         let cp = l.from_node.costPrice(t - ld) * l.share_of_cost;
         // NOTE: Ignore undefined cost prices.
         if(cp <= VM.PLUS_INFINITY) {
           const rr = l.relative_rate.result(t - ld);
-          if(Math.abs(rr) < VM.NEAR_ZERO) {
-            cp = (rr < 0 && cp < 0 || rr > 0 && cp > 0 ?
-                VM.PLUS_INFINITY : VM.MINUS_INFINITY);
+          if(!rr) {
+            cp = (cp > 0 ? VM.PLUS_INFINITY : VM.MINUS_INFINITY);
           } else {
             cp = cp / rr;
           }
@@ -8925,8 +8955,8 @@ class Link {
   actualDelay(t) {
     // Scale the delay expression value of this link to a discrete number
     // of time steps on the model time scale.
-    // NOTE: For links from grid processes, delays are ignored.
-    if(this.from_node.grid) return 0;
+    // NOTE: For normal links from grid processes, delays are ignored.
+    if(this.from_node.grid && !this.to_node.is_data) return 0;
     let d = Math.floor(VM.SIG_DIF_FROM_ZERO + this.flow_delay.result(t));
     // NOTE: Negative values are permitted. This might invalidate cost
     // price calculation -- to be checked!!
@@ -9983,9 +10013,7 @@ class ChartVariable {
         if(this.absolute) v = Math.abs(v);
         v *= this.scale_factor;
       }
-      // Apply the NEAR_ZERO threshold.
-      if(Math.abs(v) < VM.NEAR_ZERO) v = 0;
-      this.vector.push(v);
+      this.vector.push(VM.noNearZero(v));
       // Do not include values for t = 0 in statistics.
       if(t > 0) {
         if(v) {
@@ -10434,6 +10462,9 @@ class Chart {
         if(dh > 0) rh -= dh;
       }
     }
+    // NOTE: Do not immediately add the SVG for the legend because the
+    // DEFS section is not closed yet.
+    const legend_svg = [];
     if(this.variables.length > 0) {
       // Count visible variables and estimate total width of their names
       // as well as the width of the longest name.
@@ -10490,20 +10521,23 @@ class Chart {
               // Add arrow indicating sort direction to name if applicable.
               const vn = v.legendName + CHART_MANAGER.sort_arrows[v.sorted];
               if(v.stacked || this.histogram || stat_bars) {
-                this.addSVG(['<rect x="', x, '" y="', y - sym_size + 2,
+                legend_svg.push('<rect x="', x, '" y="', y - sym_size + 2,
                     '" width="', sym_size, '" height="', sym_size,
                     '" fill="', v.color,'" fill-opacity="0.35" stroke="',
                     v.color, '" stroke-width="', 0.5 * v.line_width,
-                    '" pointer-events="none"></rect>']);
+                    '" pointer-events="none"></rect>');
               } else {
-                this.addSVG(['<rect x="', x,
+                legend_svg.push('<rect x="', x,
                     '" y="', y - 0.5*sym_size - v.line_width + 2,
                     '" width="', sym_size, '" height="', v.line_width * 2,
                     '" fill="', v.color,
-                    '" stroke="none" pointer-events="none"></rect>']);
+                    '" stroke="none" pointer-events="none"></rect>');
               }
-              this.addText(x + sym_size + 4, y - 0.3* font_height, vn, 'black',
-                  font_height, 'text-anchor="start"');
+              legend_svg.push('<text x="', x + sym_size + 4,
+                  '" y="', y - 0.3* font_height, '" font-size="', font_height,
+                  'px" fill="black" text-anchor="start"',
+                  ' dominant-baseline="middle" stroke="none"',
+                  ' pointer-events="none">', vn, '</text>');
               if(this.legend_position === 'right') {
                 y += 1.5* font_height;
               } else {
@@ -10683,6 +10717,8 @@ class Chart {
       this.addText(rl + rw / 2, 0.7*font_height,
           this.title + runnrs, 'black', font_height*1.2, 'font-weight="bold"');
     }
+    // Draw the legend.
+    this.addSVG(legend_svg);
     
     if(time_steps > 0) {
       let dx = 0,

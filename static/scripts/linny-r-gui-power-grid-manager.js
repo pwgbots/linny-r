@@ -506,11 +506,13 @@ class PowerGridManager {
   }
 
   inCycle(p) {
-    // Return TRUE if process `p` is an edge in some cycle in the cycle basis.
+    // If process `p` is an edge in some cycle in the cycle basis, return the
+    // sign of its orientation as '+' or '-'; otherwise return the empty string
+    // (will evaluate as FALSE).
     for(const c of this.cycle_basis) {
-      for(const e of c) if(e.process === p) return true;
+      for(const e of c) if(e.process === p) return (e.orientation > 0 ? '+' : '-');
     }
-    return false;
+    return '';
   }
   
   allCycleFlows(p) {

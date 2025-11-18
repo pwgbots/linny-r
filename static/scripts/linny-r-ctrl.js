@@ -1088,8 +1088,7 @@ class SensitivityAnalysis {
         }
       }
       // Compute the relative change.
-      let bsv = this.data[i][0];
-      if(Math.abs(bsv) < VM.NEAR_ZERO) bsv = 0;
+      let bsv = VM.noNearZero(this.data[i][0]);
       this.perc[i] = [];
       if(bsv > VM.MINUS_INFINITY && bsv < VM.PLUS_INFINITY) {
         for(let j = 1; j < this.data[i].length; j++) {
