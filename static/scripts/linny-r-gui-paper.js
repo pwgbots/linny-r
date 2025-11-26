@@ -459,7 +459,7 @@ class Paper {
     this.addGradient(defs, id, 'rgb(255,176,176)', 'rgb(176,176,255)');
     id = 'd_o_c_u_m_e_n_t_e_d__ID*';
     this.documented_filter = `filter: url(#${id})`;
-    this.addShadowFilter(defs, id, 'rgb(50,120,255)', 2);
+    this.addShadowFilter(defs, id, 'rgb(64,160,255)', 2);
     id = 't_a_r_g_e_t__ID*';
     this.target_filter = `filter: url(#${id})`;
     this.addShadowFilter(defs, id, 'rgb(250,125,0)', 8);

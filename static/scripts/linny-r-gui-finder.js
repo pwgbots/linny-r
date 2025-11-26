@@ -380,6 +380,7 @@ class Finder {
         if(e === this.selected_entity) seid += i;
         el.push(['<tr id="etr', i, '" class="dataset',
             (e === this.selected_entity ? ' sel-set' : ''),
+            (e.comments && DOCUMENTATION_MANAGER.visible ? ' blue-nimbus' : ''),
             '" onclick="FINDER.selectEntity(\'', enl[i],
             '\', event.altKey);" onmouseover="FINDER.showInfo(\'', enl[i],
             '\', event.shiftKey);"><td draggable="true" ',
@@ -454,6 +455,32 @@ class Finder {
       this.experiment_btn.classList.remove('stay-activ');
     }
     this.updateRightPane();
+  }
+
+  updateNimbus() {
+    // Add blue nimbus to "found" entities having comments. 
+    for(let ei = 0; ei < this.entities.length; ei++) {
+      const
+          e = this.entities[ei],
+          el = this.entity_table.rows[ei];
+      if(DOCUMENTATION_MANAGER.visible && e.comments) {
+        el.classList.add('blue-nimbus');
+      } else {
+        el.classList.remove('blue-nimbus');
+      }
+    }
+    for(const r of this.item_table.rows) {
+      const obj = MODEL.objectByID(r.dataset.id);
+      if(obj) {
+        if(DOCUMENTATION_MANAGER.visible && obj.comments) {
+          r.classList.add('blue-nimbus');
+        } else {
+          r.classList.remove('blue-nimbus');
+        }
+      } else {
+        console.log(`ANOMALY: Unknown identifier "${r.dataset.id}" in Finder item table`);
+      }
+    }
   }
   
   get commonAttributes() {
@@ -736,7 +763,9 @@ class Finder {
     occ.sort(compareSelectors);
     for(let i = 0; i < occ.length; i++) {
       const e = MODEL.objectByID(occ[i]);
-      el.push(['<tr id="eotr', i, '" class="dataset" onclick="FINDER.reveal(\'',
+      el.push(['<tr id="eotr', i, '" class="dataset',
+          (e.comments && DOCUMENTATION_MANAGER.visible ? ' blue-nimbus' : ''),
+          '" data-id="', occ[i], '" onclick="FINDER.reveal(\'',
           occ[i], '\');" onmouseover="FINDER.showInfo(\'',
           occ[i], '\', event.shiftKey);"><td><img class="finder" src="images/',
           e.type.toLowerCase(), '.png">', e.displayName,

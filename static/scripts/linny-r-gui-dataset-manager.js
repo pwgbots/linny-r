@@ -386,7 +386,7 @@ class GUIDatasetManager extends DatasetManager {
       pref_ids.push(pref_id);
       pref_names[pref_id] = pref;
     }
-    let sdid = 'dstr',
+    let sdid = '',
         prev_id = '',
         ind_div = '';
     for(let i = 0; i < dnl.length; i++) {
@@ -451,10 +451,11 @@ class GUIDatasetManager extends DatasetManager {
       if(d.black_box) cls += ' blackbox';
       cls = cls.trim();
       if(cls) cls = ' class="' + cls + '"';
-      if(d === sd) sdid += i;
-      dl.push(['<tr id="dstr', i, '" class="dataset',
+      if(d === sd) sdid = dnl[i];
+      dl.push(['<tr id="', dnl[i], '" class="dataset',
           (d === sd ? ' sel-set' : ''),
           (d.default_selector ? ' def-sel' : ''),
+          (DOCUMENTATION_MANAGER.visible && d.comments ? ' blue-nimbus' : ''),
           '" data-prefix="', pid,
           '" onclick="DATASET_MANAGER.selectDataset(event, \'',
           dnl[i], '\');" onmouseover="DATASET_MANAGER.showInfo(\'', dnl[i],
@@ -603,6 +604,46 @@ class GUIDatasetManager extends DatasetManager {
     // Display documentation for the dataset having identifier `id`
     const d = MODEL.datasets[id];
     if(d) DOCUMENTATION_MANAGER.update(d, shift);
+  }
+  
+  updateNimbus(entity=null) {
+    // Hide or show blue nimbus for specified entity, or for all datasets
+    // and modifiers if `entity` is NULL.
+    let dids = [],
+        mids = [];
+    if(!entity) {
+      dids = Object.keys(MODEL.datasets);
+      if(this.selected_dataset) mids = Object.keys(this.selected_dataset.modifiers);
+    } else if(entitity instanceof dataset) {
+      dids.push(entity.id);
+    } else {
+      mids.push(entity.id);
+    }
+    for(const did of dids) {
+      const e = document.getElementById(did);
+      if(e) {
+        if(DOCUMENTATION_MANAGER.visible && MODEL.datasets[did].comments) {
+          e.classList.add('blue-nimbus');
+        } else {
+          e.classList.remove('blue-nimbus');
+        }
+      } else if(did !== UI.EQUATIONS_DATASET_ID) {
+        console.log(`ANOMALY: Unknown dataset identifier "${did}"`);
+      }
+    }
+    for(const mid of mids) {
+      const e = document.getElementById(mid);
+      if(e) {
+        if(DOCUMENTATION_MANAGER.visible &&
+            this.selected_dataset.modifiers[mid].comments) {
+          e.classList.add('blue-nimbus');
+        } else {
+          e.classList.remove('blue-nimbus');
+        }
+      } else {
+        console.log(`ANOMALY: Unknown dataset modifier identifier "${mid}"`);
+      }
+    }
   }
   
   selectDataset(event, id) {

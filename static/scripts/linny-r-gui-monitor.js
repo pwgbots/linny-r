@@ -374,20 +374,21 @@ class GUIMonitor {
                 for(const k of Object.keys(jsr.defaults)) {
                   CONFIGURATION[k] = jsr.defaults[k];
                 }
-                // NOTES:
-                // (1) The blank model that is created when Linny-R is started
-                //     in a browser will not have these custom defaults, hence
-                //     this "overwrite".
-                // (2) Author names should not contain potential path delimiters.
-                MODEL.author = (CONFIGURATION.user_name || VM.user_name)
-                    .replaceAll(/\\|\//g, '');
-                MODEL.time_scale = CONFIGURATION.default_time_scale;
-                MODEL.time_unit = CONFIGURATION.default_time_unit;
-                MODEL.currency_unit = CONFIGURATION.default_currency_unit;
-                MODEL.default_unit = CONFIGURATION.default_scale_unit;
-                MODEL.decimal_comma = CONFIGURATION.decimal_comma;
-                MODEL.show_notices = CONFIGURATION.slight_slack_notices;
-             }
+                // NOTE: The blank model that is created when Linny-R is started
+                // in a browser will not have these custom defaults, hence this
+                // "overwrite" when the model has just been created (< 300 ms ago).
+                if(new Date() - MODEL.time_created < 300) {
+                  // NOTE: Author names should not contain potential path delimiters.
+                  MODEL.author = (CONFIGURATION.user_name || VM.user_name)
+                      .replaceAll(/\\|\//g, '');
+                  MODEL.time_scale = CONFIGURATION.default_time_scale;
+                  MODEL.time_unit = CONFIGURATION.default_time_unit;
+                  MODEL.currency_unit = CONFIGURATION.default_currency_unit;
+                  MODEL.default_unit = CONFIGURATION.default_scale_unit;
+                  MODEL.decimal_comma = CONFIGURATION.decimal_comma;
+                  MODEL.show_notices = CONFIGURATION.slight_slack_notices;
+                }
+              }
             } catch(err) {
               console.log(err, data);
               UI.alert('ERROR: Unexpected data from server: ' +

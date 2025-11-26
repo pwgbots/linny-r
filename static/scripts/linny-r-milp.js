@@ -574,7 +574,10 @@ module.exports = class MILPSolver {
           // First sort on variable name (assuming format Xn+).
           const vlist = Object.keys(x_dict).sort();
           // Start with column 1.
-          let col = 1;
+          let col = 1,
+              // Count near-zero variables that are truncated.
+              nz_count = 0,
+              nz_max = 0;
           for(const v of vlist) {
             // Variable names have zero-padded column numbers, e.g. "X001".
             const vnr = parseInt(v.substring(1));
@@ -585,9 +588,13 @@ module.exports = class MILPSolver {
             }
             // Return near-zero values as 0.
             let xv = x_dict[v];
-            const xfv = parseFloat(xv);
-            if(xfv && Math.abs(xfv) < this.near_zero) {
-              console.log('NOTE: Truncated ', xfv, ' to zero for variable', v);
+            const
+                xfv = parseFloat(xv),
+                ax = Math.abs(xfv);
+            if(xfv && ax < this.near_zero) {
+              // console.log('NOTE: Truncated ', xfv, ' to zero for variable', v);
+              nz_count++;
+              nz_max = Math.max(nz_max, ax);
               xv = '0';
             }
             x_values.push(xv);
@@ -597,6 +604,11 @@ module.exports = class MILPSolver {
           while(col <= result.columns) {
             x_values.push('0');
             col++;
+          }
+          if(nz_count) {
+            console.log('NOTE: Truncated ' + nz_count + 'variable' +
+                (nz_count > 1 ? 's' : '') + ' to zero; largest value: ',
+                nz_max);
           }
           // No return value; function operates on x_values.
         };

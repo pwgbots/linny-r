@@ -8799,11 +8799,13 @@ class Link {
     //   start-up:   1 if X[t-1] = 0 AND X[t] > 0, otherwise 0  (chevron up)
     //   positive:   1 if X[t] > 0, otherwise 0  (circled +)
     //   zero:       1 if X[t] = 0, otherwise 0  (circled o)
+    //   minus:      1 if X[t] < 0, otherwise 0  (circled -)
     //   shut-down:  1 if X[t-1] > 0 AND X[t] = 0, otherwise 0  (chevron down)
     //   spin-res:   "spinning reserve" if X is a process, i.e., 0 if X[t] = 0,
     //               otherwise the remaining capacity, i.e., UB[t] - X[t]
     //               (curved arrow up)
-    //   first-comm: 1 if X[t] > 0 AND X[i] = 0 for all i < t (asterisk)
+    //   first comm: 1 if X[t] > 0 AND X[i] = 0 for all i < t (asterisk)
+    //   peak inc:   highest level X in block minus highest level X in previous block  
     this.multiplier = VM.LM_LEVEL; 
     // Links have 3 input attributes: rate vector R, and single values D (delay)
     // and SOC (share of cost).
@@ -9002,6 +9004,7 @@ class Link {
 // CLASS DatasetModifier
 class DatasetModifier {
   constructor(dataset, selector) {
+    this.comments = '';
     this.dataset = dataset;
     this.selector = selector;
     this.expression = new Expression(dataset, selector, '');
@@ -9036,8 +9039,11 @@ class DatasetModifier {
     // NOTE: For some reason, selector may become empty string, so prevent
     // saving such unidentified modifiers.
     if(this.selector.trim().length === 0) return '';
-    const oe = (this.outcome_equation ? ' outcome="1"' : '');
-    return ['<modifier', oe, '><selector>', xmlEncoded(this.selector),
+    const
+        cmnts = (this.comments ?
+            `<notes>${xmlEncoded(this.comments)}</notes>` : ''),
+        oe = (this.outcome_equation ? ' outcome="1"' : '');
+    return ['<modifier', oe, '>', cmnts, '<selector>', xmlEncoded(this.selector),
       '</selector><expression>', xmlEncoded(this.expression.text),
       '</expression></modifier>'].join('');
   }
@@ -9051,6 +9057,7 @@ class DatasetModifier {
     } else {
       this.outcome_equation = nodeParameterValue(node, 'outcome') === '1';
     }
+    this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     this.expression.text = xmlDecoded(nodeContentByTag(node, 'expression'));
     if(IO_CONTEXT) {
       // Contextualize the included expression.
@@ -9939,6 +9946,9 @@ class ChartVariable {
     }
     // Compute vector and statistics only if vector is still empty.
     if(this.vector.length > 0) return;
+    const
+        is_level = (this.attribute === 'L'),
+        epsilon = 1.5 * VM.ON_OFF_THRESHOLD;
     // NOTE: Expression vectors start at t = 0 with initial values that
     // should not be included in statistics.
     let v,
@@ -10017,8 +10027,13 @@ class ChartVariable {
       // Do not include values for t = 0 in statistics.
       if(t > 0) {
         if(v) {
-          this.sum += v;
-          this.non_zero_tally++;
+          // For production levels, consider "epsilon" as zero. 
+          if(is_level && Math.abs(v) < epsilon) {
+            v = 0;
+          } else {
+            this.sum += v;
+            this.non_zero_tally++;
+          }
         }
         this.minimum = Math.min(this.minimum, v);
         this.maximum = Math.max(this.maximum, v);

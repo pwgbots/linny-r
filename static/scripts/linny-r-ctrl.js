@@ -47,11 +47,44 @@ class Controller {
         '#2e86de', '#ff9f43', '#8395a7', '#10ac84', '#f368e0', 
         '#0abde3', '#ee5253', '#222f3e', '#01a3a4', '#341f97',
         '#974b33', '#999751',
-        // Lighter shades for areas (or additional lines if > 10)
+        // Lighter shades for areas (or additional lines if > 12)
         '#54a0ff', '#feca57', '#c8d6e5', '#1dd1a1', '#ff9ff3',
         '#48dbfb', '#ff6b6b', '#576574', '#00d2d3', '#5f27cd',
         '#c86a5b', '#c2c18c'
       ];
+    // 60 more colors based on RGB palette.
+    const
+        xd = ['f', '9', 'c', '6'],
+        yd = ['f', 'b', '7', '4'],
+        combis = ['#00x0y0', '#x0y000', '#y000x0'],
+        monos = ['#xf8080', '#80xf80', '#8080xf'];
+    for(const x of xd) {
+      for(const y of yd) {
+        for(const c of combis) {
+          this.chart_colors.push(c.replace('x', x).replace('y', y));
+        }
+      }
+      for(const c of monos) {
+        this.chart_colors.push(c.replace('x', x));
+      }
+    }
+/*   
+    // Show palette in HTML tester.
+    const cp = [];
+    let n = 0,
+        r = [];
+    for(const c of this.chart_colors) {
+      n++;
+      r.push('<td style="background-color: ', c, '; padding: 4px; text-align: center">', n, '</td>');
+      if(n === 12 || n === 24 || (n > 24 && (n-24) % 15 === 0)) {
+        cp.push('<tr>' + r.join('') + '</tr>');
+        r.length = 0;
+      }
+    }
+    const ht = document.getElementById('html-tester');
+    ht.innerHTML = '<table>' + cp.join('') + '</table>';
+    ht.style.display = 'block';
+*/   
     // SVG stroke dash arrays for line types while drawing charts or arrows
     this.sda = {
       dash: '8,3',

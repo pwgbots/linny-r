@@ -173,11 +173,12 @@ class EquationManager {
           issue = (expr.compile_issue ? ' compile-issue' :
               (expr.compute_issue ? ' compute-issue' : '')),
           clk = `" onclick="EQUATION_MANAGER.selectModifier(event, '${id}'`,
-          mover = (!method ? '' :
-              `onmouseover="EQUATION_MANAGER.showInfo('${id}', event.shiftKey);"`);
+          mover = (!method ? '' : 'onmouseover="EQUATION_MANAGER.showInfo(\'' +
+              id + '\', event.shiftKey, event.ctrlKey);"');
       if(m === sm) smid += i;
       ml.push(['<tr id="eqmtr', i, '" class="dataset-modif',
           (m === sm ? ' sel-set' : ''),
+          (DOCUMENTATION_MANAGER.visible && m.comments ? ' blue-nimbus' : ''),
           '"><td class="equation-selector',
           (method ? ' method' : ''),
           // Display in gray when method cannot be applied.
@@ -201,7 +202,26 @@ class EquationManager {
       UI.disableButtons(btns);
     }
   }
-  
+
+  updateNimbus() {
+    // Hide or show blue nimbus for all equations.
+    if(!this.visible) return;
+    const
+        ed = MODEL.equations_dataset,
+        msl = ed.selectorList;
+    for(let mi = 0; mi < msl.length; mi++) {
+      const
+          id = UI.nameToID(msl[mi]),
+          m = ed.modifiers[id],
+          el = this.table.rows[mi];
+      if(DOCUMENTATION_MANAGER.visible && m.comments) {
+        el.classList.add('blue-nimbus');
+      } else {
+        el.classList.remove('blue-nimbus');
+      }
+    }
+  }
+
   showInfo(id, shift) {
     // @@TO DO: Display documentation for the equation => extra comments field?
     const d = MODEL.equations_dataset.modifiers[id];

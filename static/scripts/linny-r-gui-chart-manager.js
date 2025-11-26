@@ -892,9 +892,9 @@ class GUIChartManager extends ChartManager {
   toggleVariable(vi, event) {
     window.event.stopPropagation();
     if(vi >= 0 && this.chart_index >= 0) {
+      const v_list = MODEL.charts[this.chart_index].variables;
       if(event.altKey) {
         // Special option: deselect all variables that have NO non-zero values.
-        const v_list = MODEL.charts[this.chart_index].variables;
         for(vi = 0; vi < v_list.length; vi++) {
           if(v_list[vi].non_zero_tally === 0) {
             v_list[vi].visible = false;
@@ -904,7 +904,12 @@ class GUIChartManager extends ChartManager {
       } else {
         let from = vi,
             to = vi;
-        if(event.shiftKey && this.variable_index !== vi) {
+        // The visibility of the clicked variable determines the new value
+        // also when a range is selected.
+        const nv = !MODEL.charts[this.chart_index].variables[vi].visible;
+        // Shift-click toggles range between selected and clicked variable.
+        if(event.shiftKey &&
+            this.variable_index >= 0 && this.variable_index !== vi) {
           if(vi > this.variable_index) {
             from = this.variable_index;
           } else {
@@ -912,11 +917,8 @@ class GUIChartManager extends ChartManager {
           }
         }
         for(vi = from; vi <= to; vi++) {
-          const cv = MODEL.charts[this.chart_index].variables[vi];
-          // Toggle visibility of the selected variable.
-          cv.visible = !cv.visible;
-          // Update the check box.
-          UI.setBox('v-box-' + vi, cv.visible);
+          v_list[vi].visible = nv;
+          UI.setBox('v-box-' + vi, nv);
         }
       }
       // redraw chart and table (with one variable more or less)

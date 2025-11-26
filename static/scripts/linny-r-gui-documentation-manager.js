@@ -297,7 +297,7 @@ class DocumentationManager {
     }
   }
 
-  update(e, shift) {
+  update(e, shift, ctrl=false) {
     // Display name of entity under cursor on the infoline, and details
     // in the documentation dialog.
     if(!e) return;
@@ -313,13 +313,8 @@ class DocumentationManager {
     // entities, and then release the shift key to move to the documentation
     // dialog to edit. Moreover, the documentation dialog must be visible,
     // and the entity must have the `comments` property.
-    // NOTE: Equations constitute an exception, as DatasetModifiers do
-    // not have the `comments` property. Now that methods can be defined
-    // (since version 1.6.0), the documentation window displays the eligible
-    // prefixes when the cursor is Shift-moved over the name of a method
-    // (in the Equation Manager).
-    if(!this.editing && shift && this.visible) {
-      if(e.hasOwnProperty('comments')) {
+    if(!this.editing && this.visible) {
+      if(shift && e.hasOwnProperty('comments')) {
         this.title.innerHTML = `<em>${et}:</em>&nbsp;${edn}`;
         this.entity = e;
         this.markup = (e.comments ? e.comments : '');
@@ -335,7 +330,11 @@ class DocumentationManager {
         }
         // NOTE: Permit documentation of the model by raising the dialog.
         if(this.entity === MODEL) this.dialog.style.zIndex = 101;
-      } else if(e instanceof DatasetModifier) {
+      }
+      // NOTE: Now that methods can be defined (since version 1.6.0), the
+      // documentation window displays the eligible prefixes when the cursor
+      // is Ctrl-moved over the name of a method (in the Equation Manager).
+      if(ctrl && e instanceof DatasetModifier) {
         this.title.innerHTML = e.selector;
         this.viewer.innerHTML = 'Method <tt>' + e.selector +
             '</tt> does not apply to any entity';
@@ -446,12 +445,28 @@ class DocumentationManager {
       this.viewer.innerHTML = this.markdown;
       if(this.entity instanceof Link) {
         UI.drawLinkArrows(MODEL.focal_cluster, this.entity);
+      } else if(this.entity instanceof Product) {
+        UI.paper.drawProduct(this.entity);
+      } else if(this.entity instanceof Process) {
+        UI.paper.drawProcess(this.entity);
+      } else if(this.entity instanceof Cluster) {
+        UI.paper.drawCluster(this.entity);
       } else if(this.entity instanceof Constraint) {
         UI.paper.drawConstraint(this.entity);
-      } else if (typeof this.entity.draw === 'function') {
-        // Only draw if the entity responds to that method.
-        this.entity.draw();
+      } else if(this.entity instanceof Dataset) {
+        // NOTE: Only the Dataset manager can selectively update the
+        // nimbus for one dataset or dataset modifier.
+        DATASET_MANAGER.updateNimbus(this.entity);
+      } else if(this.entity instanceof DatasetModifier) {
+        if(this.entity.dataset === MODEL.equations_dataset) {
+          EQUATION_MANAGER.updateNimbus();
+        } else {
+          DATASET_MANAGER.updateNimbus(this.entity);
+        }
+      } else if(this.entity instanceof Experiment) {
+        EXPERIMENT_MANAGER.updateNimbus();
       }
+      FINDER.updateNimbus();
     }
     this.stopEditing();
   }
@@ -492,6 +507,16 @@ class DocumentationManager {
     this.symbols.style.display = 'block';
     this.viewer.innerHTML = this.editor.value.trim();
     this.editor.focus();
+  }
+
+  updateNimbuses() {
+    // When opening/closing the Documentation manager, entities having
+    // comments must show/hide their blue nimbuses.
+    UI.drawDiagram(MODEL);
+    DATASET_MANAGER.updateNimbus();
+    EQUATION_MANAGER.updateNimbus();
+    EXPERIMENT_MANAGER.updateNimbus();
+    FINDER.updateNimbus();
   }
 
   addMessage(msg) {

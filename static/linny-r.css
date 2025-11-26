@@ -867,6 +867,17 @@ div.box-lbl-low {
   cursor: pointer;
 }
 
+/* The tester DIV  */
+#html-tester {
+  position: absolute;
+  top: 35px;
+  left: 35px;
+  width: min-content;
+  height: min_content;
+  max-width: 0.75vw;
+  max-height: 0.75vh;
+}
+
 /* LOGON modal dialog */
 #logon-dlg {
   width: min-content;
@@ -2757,6 +2768,10 @@ div.dragger {
   right: 2px;
 }
 
+tr.blue-nimbus {
+  text-shadow: -1px 0px 3px #4af;  
+}
+
 td.it {
   font-style: italic;
 }
@@ -3052,12 +3067,12 @@ td.equation-selector {
 }
 
 td.method {
-  color: #1080e0;
+  color: #6000d0;
   font-weight: bold;
 }
 
 td.no-object {
-  color: #80a0c0;
+  color: #a080d0;
   font-weight: normal;
 }
 

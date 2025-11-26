@@ -1941,11 +1941,11 @@ class GUIController extends Controller {
       return;
     }
     // Otherwise, toggle the dialog visibility.
-    this.toggle(tde.id);
+    UI.toggle(tde.id);
     UI.buttons[dlg].classList.toggle('stay-activ');
     if(mgr) mgr.visible = was_hidden;
     let t, l;
-    if(top in tde.dataset && left in tde.dataset) {
+    if('top' in tde.dataset && 'left' in tde.dataset) {
       // Open at position after last drag (recorded in DOM data attributes).
       t = tde.dataset.top;
       l = tde.dataset.left;
@@ -1954,9 +1954,9 @@ class GUIController extends Controller {
       const cs = window.getComputedStyle(tde);
       t = ((window.innerHeight - parseFloat(cs.height)) / 2) + 'px';
       l = ((window.innerWidth - parseFloat(cs.width)) / 2) + 'px';
-      tde.style.top = t;
-      tde.style.left = l;
     }
+    tde.style.top = t;
+    tde.style.left = l;
     if(was_hidden) {
       // Add activated dialog to "showing" list, and adjust z-indices.
       this.dr_dialog_order.push(tde);
@@ -1971,7 +1971,7 @@ class GUIController extends Controller {
             mgr.edit_btn.classList.remove('enab');
             mgr.edit_btn.classList.add('disab');
           }
-          UI.drawDiagram(MODEL);
+          mgr.updateNimbuses();
         }
       }
     } else {
@@ -1983,7 +1983,7 @@ class GUIController extends Controller {
       }
       if(mgr === DOCUMENTATION_MANAGER) {
         mgr.title.innerHTML = 'Documentation';
-        UI.drawDiagram(MODEL);
+        mgr.updateNimbuses();
       }
     }
   }
@@ -1997,7 +1997,7 @@ class GUIController extends Controller {
       z += 5;
     }
   }
-  
+
   //
   // Button functionality
   //
@@ -3840,7 +3840,7 @@ class GUIController extends Controller {
       if(node.nodeName === 'from-to' || node.nodeName === 'selc') {
         const
             n = xmlDecoded(nodeParameterValue(node, 'name')),
-            an = xmlDecoded(nodeParameterValue(node, 'actor-name'));
+            an = xmlDecoded(nodeParameterValue(node, 'owner'));
         if(an && an !== UI.NO_ACTOR) {
           addDistinct(an, actor_names);
           return `${n} (${an})`;
@@ -3850,7 +3850,7 @@ class GUIController extends Controller {
       if(node.nodeName !== 'link' && node.nodeName !== 'constraint') {
         const
             n = xmlDecoded(nodeContentByTag(node, 'name')),
-            an = xmlDecoded(nodeContentByTag(node, 'actor-name'));
+            an = xmlDecoded(nodeContentByTag(node, 'owner'));
         if(an && an !== UI.NO_ACTOR) {
           addDistinct(an, actor_names);
           return `${n} (${an})`;

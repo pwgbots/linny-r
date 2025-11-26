@@ -3314,7 +3314,8 @@ class VirtualMachine {
     this.variables_dictionary = {};
     const
         vcnt = this.variables.length,
-        z = vcnt.toString().length;
+        z = vcnt.toString().length,
+        dict_z = this.columnsInBlock.toString().length;
     if(vcnt == 0) return '(no variables)';
     let l = '';
     for(let i = 0; i < vcnt; i++) {
@@ -3324,7 +3325,7 @@ class VirtualMachine {
           p = (obj instanceof Process && obj.pace > 1 ? ' 1/' + obj.pace : ''),
           v = obj.displayName  + ' [' + this.variables[i][0] + p + ']';
       l += `${x} ${v}\n`;
-      this.variables_dictionary[x] = v;
+      this.variables_dictionary['X' + (i+1).toString().padStart(dict_z, '0')] = v;
     }
     if(this.chunk_variables.length > 0) {
       const chof = this.cols * this.chunk_length + 1;
@@ -3852,6 +3853,22 @@ class VirtualMachine {
             [MODEL.processes[k].level_var_index, -1]]);
       }
     }
+    
+    // Add small penalty to use "epsilon" variables.
+    for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
+      const p = MODEL.processes[k];
+      if(p.is_zero_var_index >= 0) {
+        this.code.push([VMI_add_const_to_coefficient, [p.pep_var_index, -1]]);
+        this.code.push([VMI_add_const_to_coefficient, [p.nep_var_index, -1]]);
+      }
+    }
+    for(const k of product_keys) if(!MODEL.ignored_entities[k]) {
+      const p = MODEL.products[k];
+      if(p.is_zero_var_index >= 0) {
+        this.code.push([VMI_add_const_to_coefficient, [p.pep_var_index, -1]]);
+        this.code.push([VMI_add_const_to_coefficient, [p.nep_var_index, -1]]);
+      }
+    }
 
     // Copy the VM coefficient vector to the objective function coefficients.
     // NOTE: for the VM's current time step (VM.t)!
@@ -3880,7 +3897,7 @@ class VirtualMachine {
     }
     
     // NEXT: Add semi-continuous constraints only if not supported by solver.
-    if(!this.noSemiContinuous) {
+    if(this.noSemiContinuous) {
       for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
         this.code.push([VMI_add_semicontinuous_constraints, MODEL.processes[k]]);
       }
@@ -4544,6 +4561,11 @@ class VirtualMachine {
     for(let k in MODEL.power_grids) if(MODEL.power_grids.hasOwnProperty(k)) {
       MODEL.power_grids[k].total_flows = 0;
     }
+    // Keep track of non-zero epsilon variables.
+    this.plus_eps_count = 0;
+    this.plus_eps_sum = 0;
+    this.minus_eps_count = 0;
+    this.minus_eps_sum = 0;
     // Set production levels and start-up moments for all processes.
     for(let k in MODEL.processes) if(MODEL.processes.hasOwnProperty(k) &&
         !MODEL.ignored_entities[k]) {
@@ -4594,14 +4616,23 @@ class VirtualMachine {
               p.shut_downs.push(b);
             }
           }
+          // Keep track of near-zero levels that use epsilon.
+          if(x[p.pep_var_index + j]) {
+            this.plus_eps_count++;
+            this.plus_eps_sum += x[p.pep_var_index + j];
+          }
+          if(x[p.nep_var_index + j]) {
+            this.minus_eps_count++;
+            this.minus_eps_sum += x[p.nep_var_index + j];
+          }          
         } else {
           const apl = Math.abs(p.level[b]);
           if(apl < 0.005) {
             // Test small but not evidently near-zero values by scaling
-            // them to the process bounds.
+            // them to the process bounds (using 1000 instead of INFINITY).
             const
                 lb = p.lower_bound.result(b),
-                br = (p.equal_bounds ? 0 : p.upper_bound.result(b) - lb);
+                br = (p.equal_bounds ? 0 : Math.min(p.upper_bound.result(b), 1000) - lb);
             if(br > 1 && apl / br < VM.ON_OFF_THRESHOLD) {
               console.log('Level of', p.displayName, 'at t =', b,
                   'is virtually zero (' +  apl + ') considering bound range', br);
@@ -4645,6 +4676,15 @@ class VirtualMachine {
               p.shut_downs.push(b);
             }
           }
+          // Keep track of near-zero levels that use epsilon.
+          if(x[p.pep_var_index + j]) {
+            this.plus_eps_count++;
+            this.plus_eps_sum += x[p.pep_var_index + j];
+          }
+          if(x[p.nep_var_index + j]) {
+            this.minus_eps_count++;
+            this.minus_eps_sum += x[p.nep_var_index + j];
+          }          
         }
         j += this.cols;
         b++;
@@ -4727,6 +4767,12 @@ class VirtualMachine {
         b++;
       }
     }
+    if(this.plus_eps_count) this.logMessage(block,
+        pluralS(this.plus_eps_count, 'positive epsilon') +
+        '; sum = ' + this.plus_eps_sum.toPrecision(3));
+    if(this.minus_eps_count) this.logMessage(block,
+        pluralS(this.minus_eps_count, 'negative epsilon') +
+        '; sum = ' + this.minus_eps_sum.toPrecision(3));
   }
   
   severestIssue(list, result) {
@@ -5549,6 +5595,7 @@ throw msg;
       for(p in row) if (row.hasOwnProperty(p)) {
         c = row[p];
         if (c < VM.SOLVER_MINUS_INFINITY || c > VM.SOLVER_PLUS_INFINITY) {
+          console.log('INVALID COEFFICIENT\n', this.lines, 'row', r, 'column', p, row);
           this.setNumericIssue(c, p, 'constraint coefficient');
           break;
         }
@@ -7189,9 +7236,7 @@ function VMI_push_run_result(x, args) {
     }
   }
   // Truncate near-zero values by 2x the on/off threshold...
-  if(v && Math.abs(v) <= 2 * VM.ON_OFF_THRESHOLD) {
-    // ... but log the cases above the threshold.
-    if(Math.abs(v) > VM.ON_OFF_THRESHOLD)
+  if(v && Math.abs(v) < VM.ON_OFF_THRESHOLD) {
     if(trc) {
       trc = 'for ' + trc;
     } else {
@@ -8307,6 +8352,8 @@ function VMI_set_bounds(args) {
     console.log(['set_bounds [', k, '] ', p.displayName, '[',
       VM.variables[vi - 1][0],'] t = ', VM.t, ' LB = ', VM.sig4Dig(l),
       ', UB = ', VM.sig4Dig(u), fixed].join(''), l, u, inf_val);
+    console.log(p);
+    throw "STOP";
   } else if(u < l) {
     // Check the difference, as this may be negligible.
     if(u - l < VM.SIG_DIF_FROM_ZERO) {
@@ -9640,11 +9687,9 @@ function VMI_add_power_flow_to_coefficients(args) {
       VM.coefficients[k] = dv;
     }
   }
-
   // Also add the epsilon variables.
   VM.coefficients[p.pep_var_index + VM.offset] = args[1];
   VM.coefficients[p.nep_var_index + VM.offset] = -args[1];
-
 }
 
 function VMI_add_throughput_to_coefficient(args) {

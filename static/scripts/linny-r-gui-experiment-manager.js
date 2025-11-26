@@ -307,13 +307,16 @@ class GUIExperimentManager extends ExperimentManager {
     for(const xt of xtl) {
       const
           xi = MODEL.indexOfExperiment(xt),
-          x = (xi < 0 ? null : MODEL.experiments[xi]);
+          x = (xi < 0 ? null : MODEL.experiments[xi]),
+          cmnts = (x ? x.comments : ''),
+          ttl = (x ? x.title : '');
       xl.push(['<tr class="experiment',
           (x == sx ? ' sel-set' : ''),
+          (DOCUMENTATION_MANAGER.visible && cmnts ? ' blue-nimbus' : ''),
           '" onclick="EXPERIMENT_MANAGER.selectExperiment(\'',
           escapedSingleQuotes(xt),
           '\');" onmouseover="EXPERIMENT_MANAGER.showInfo(', xi,
-          ', event.shiftKey);"><td>', x.title, '</td></tr>'].join(''));
+          ', event.shiftKey);"><td>', ttl, '</td></tr>'].join(''));
     }
     this.experiment_table.innerHTML = xl.join('');
     const
@@ -346,6 +349,25 @@ class GUIExperimentManager extends ExperimentManager {
     this.updateViewerVariable();
     // NOTE: Finder may need updating as well.
     if(FINDER.experiment_view) FINDER.updateDialog();
+  }
+  
+  updateNimbus() {
+    // Add blue nimbus to experiments having comments. 
+    if(!this.visible) return;
+    for(const r of this.experiment_table.rows) {
+      const
+          xt = r.firstElementChild.innerText,
+          xi = MODEL.indexOfExperiment(xt);
+      if(xi >= 0) {
+        if(DOCUMENTATION_MANAGER.visible && MODEL.experiments[xi].comments) {
+          r.classList.add('blue-nimbus');
+        } else {
+          r.classList.remove('blue-nimbus');
+        }
+      } else {
+        console.log(`ANOMALY: Unknown experiment title "${xt}"`);
+      }
+    }
   }
 
   updateParameters() {
