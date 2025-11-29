@@ -464,8 +464,11 @@ class GUIDatasetManager extends DatasetManager {
     }
     this.dataset_table.innerHTML = dl.join('');
     this.hideCollapsedRows();
-    const e = document.getElementById(sdid);
-    if(e) UI.scrollIntoView(e);
+    // Scroll the selected dataset (if any) into view.
+    if(sdid) {
+      const e = document.getElementById(sdid);
+      if(e) UI.scrollIntoView(e);
+    }
     this.updatePanes();
   }
   
@@ -627,7 +630,7 @@ class GUIDatasetManager extends DatasetManager {
         } else {
           e.classList.remove('blue-nimbus');
         }
-      } else if(did !== UI.EQUATIONS_DATASET_ID) {
+      } else if(did !== UI.EQUATIONS_DATASET_ID && DATASET_MANAGER.visible) {
         console.log(`ANOMALY: Unknown dataset identifier "${did}"`);
       }
     }
@@ -844,7 +847,7 @@ class GUIDatasetManager extends DatasetManager {
       // NOTE: List of prefixed datasets contains keys, not objects.
       for(const k of this.prefixed_datasets) {
         const ds = MODEL.datasets[k];
-        if(ds !== MODEL.equations_dataset) dsl.push();
+        if(ds !== MODEL.equations_dataset) dsl.push(ds);
       }
     }
     return dsl;
@@ -858,6 +861,7 @@ class GUIDatasetManager extends DatasetManager {
       md.action = () => DATASET_MANAGER.deleteDataset(false);
       md.element('action').innerText = `delete ${dsl.length} datasets`;
       md.show();
+      return;
     }
     for(const ds of dsl) {
       MODEL.removeImport(ds);

@@ -2287,13 +2287,14 @@ class VirtualMachine {
     this.LM_MAX_DECREASE = 13; // Symbol: down-arrow with baseline
     this.LM_NEGATIVE = 14; // Symbol: - (minus sign)
     this.LM_CYCLE = 15; // Symbol: cycle arrow
+    this.LM_COSTPRICE = 16; // Symbol: cent 
 
     // List of link multipliers that require binary ON/OFF variables
-    this.LM_NEEDING_ON_OFF = [5, 6, 7, 8, 9, 10, 14];
+    this.LM_NEEDING_ON_OFF = [5, 6, 7, 8, 9, 10, 14, 16];
     this.LM_SYMBOLS = ['', '\u21C9', '\u0394', '\u03A3', '\u03BC', '\u25B2',
         '+', '0', '\u2934', '\u2732', '\u25BC', '\u2A39', '\u21A5', '\u21A7',
-        '\u2212', '\u27F3'];
-    this.LM_LETTERS = ' TISMU+0RFDP><-C';
+        '\u2212', '\u27F3', '\u00A2'];
+    this.LM_LETTERS = ' TISMU+0RFDP><-C$';
     
     // VM max. expression stack size.
     this.MAX_STACK = 200;
@@ -4001,46 +4002,11 @@ class VirtualMachine {
             // (2) The rate and delay properties of the link are ignored.
             this.code.push(
                 [VMI_add_power_flow_to_coefficients, [fn, 1]]);
-          // Then check for throughput links, as these are elaborate.
           } else if(l.multiplier === VM.LM_THROUGHPUT) {
-            // Link `l` is Y-->Z and "reads" the total inflow into Y
-            // over links Xi-->Y having rate Ri and when Y is a
-            // product potentially also delay Di.
-            if(!(fn instanceof Process)) {
-              // When read from product Y, throughput to be added to
-              // Z equals sum of inflows of FROM node Y:
-              //   Xi --(r2,d2)--> Y --(r1,d1)--> Z
-              // so instead of the level of Y (having index vi), use
-              // the level of Xi (for each input i of Y)
-              for(const ll of fn.inputs) {
-                const lfn = ll.from_node;
-                let lvi = fn.level_var_index;
-                // Here, too, use the *correct* variable index for Xi!
-                if(ll.multiplier === VM.LM_POSITIVE) {
-                  lvi = lfn.plus_var_index;
-                } else if (ll.multiplier === VM.LM_ZERO) {
-                  lvi = lfn.is_zero_var_index;
-                } else if (ll.multiplier === VM.LM_NEGATIVE) {
-                  lvi = lfn.minus_var_index;
-                } else if(ll.multiplier === VM.LM_STARTUP) {
-                  lvi = lfn.start_up_var_index;
-                } else if(ll.multiplier === VM.LM_FIRST_COMMIT) {
-                  lvi = lfn.first_commit_var_index;
-                  // NOTE: If `p` has a non-zero initial value, first commit links
-                  // are ignored.
-                  if(lvi < 0) continue;
-                } else if(ll.multiplier === VM.LM_SHUTDOWN) {
-                  lvi = lfn.shut_down_var_index;
-                }
-                // NOTE: we trade-off efficiency gain during execution
-                // against simplicity now by not checking whether rates
-                // are static; the VM instruction will be a bit slower
-                // as it calls the result(t) method for both rates
-                this.code.push([VMI_add_throughput_to_coefficient,
-                    [lvi, l.relative_rate, l.flow_delay,
-                        ll.relative_rate, ll.flow_delay]]);
-              }
-            }
+            // NOTE: New instruction style that passes pointers to
+            // model entities instead of their properties.
+            if(!(fn instanceof Process)) this.code.push(
+                [VMI_add_throughput_to_coefficients, l]);
           } else if(l.multiplier === VM.LM_PEAK_INC) {
             // SPECIAL instruction that adds flow only for first t of block.
             // NOTE: No delay on this type of link.
@@ -4132,10 +4098,11 @@ class VirtualMachine {
         }
         
         // NOTES:
-        // (1) for products with storage, set the coefficient for this product's
-        // stock IN THE PREVIOUS TIME STEP to 1
-        // (2) the VM instruction will subtract the stock level at the end of the
-        // previous block from the RHS if t=block_start, or the initial level if t=1
+        // (1) For products with storage, set the coefficient for this product's
+        //     stock IN THE PREVIOUS TIME STEP to 1
+        // (2) The VM instruction will subtract the stock level at the end of the
+        //     previous block from the RHS if t=block_start, or the initial level
+        //     if t=1
         if(p.is_buffer) {
           this.code.push([VMI_add_const_to_coefficient,
               [p.level_var_index, 1, 1]]); // delay of 1
@@ -4143,9 +4110,9 @@ class VirtualMachine {
         
         // Set the coefficient for this product's stock NOW to -1 so that
         // the EQ constraint (having RHS = 0) will effectuate that the
-        // stock variable takes on the correct value
-        // NOTE: do this only when `p` is NOT data, or `p` has links
-        // IN or OUT (meaning: 1 or more coefficients)
+        // stock variable takes on the correct value.
+        // NOTE: Do this only when `p` is NOT data, or `p` has links
+        // IN or OUT (meaning: 1 or more coefficients).
         if(!p.is_data || p.inputs.length + p.outputs.length > 0) {
           this.code.push([VMI_add_const_to_coefficient,
               [p.level_var_index, -1]]);
@@ -5477,7 +5444,6 @@ class VirtualMachine {
     if(n <= -VM.EXCEPTION || n >= -VM.ERROR) n = -n;
     const msg = ['Tableau error: ', this.numeric_issue, ' - ',
         this.errorMessage(n), ' (value = ', this.sig2Dig(n), ')'].join('');
-throw msg;
     this.logMessage(this.block_count, msg);
     UI.alert(msg);
   }
@@ -8695,33 +8661,64 @@ function VMI_update_cash_coefficient(link) {
     console.log(`update_cash_coefficient: ${link.displayName} (t = ${t})`,
         link);
   }
-  if(link.to_node instanceof Process) {
+  const
+      tn = link.to_node,
+      fn = link.from_node;
+  if(tn instanceof Process) {
+    // NOTE: Process should have a NZP level partition.
+    if(tn.is_zero_var_index < 0) {
+      VM.logMessage(VM.block_count, VM.WARNING + 'Process ' + tn.displayName +
+          ' has cash flow but no partitioned level');
+      return;
+    }
     // Input links have no delay or special link multipliers.
-    const price_rate = link.from_node.price.result(t) *
-        link.relative_rate.result(t);
-    if(price_rate) {
-      const k = VM.offset + link.to_node.level_var_index;
-      // Negative cash OUT is cash IN.
-      if(price_rate < 0) {
-        addCashIn(k, -price_rate);
+    const
+        price_rate = fn.price.result(t) * link.relative_rate.result(t),
+        abs_pr = Math.abs(price_rate);
+    if(abs_pr) {
+      const
+          nk = VM.offset + tn.nsc_var_index,
+          pk = VM.offset + tn.psc_var_index;
+      if(price_rate > 0) {
+        // Consumption is cash OUT; negative level = production => cash IN.
+        addCashOut(pk, abs_pr);
+        addCashIn(nk, abs_pr);
       } else {
-        addCashOut(k, price_rate);
+        // Consumption is cash IN; negative level = production => cash OUT.
+        addCashIn(pk, abs_pr);
+        addCashOut(nk, abs_pr);
       }
     }
     return;
   }
-  // Output links may have a delay.
+  
+  // Link is output of a process, so it may have a delay.
   const
       proc = link.from_node,
       lm = link.multiplier,
       delay = link.actualDelay(t),
       price_rate = link.to_node.price.result(t) * link.relative_rate.result(t);
+  // NOTE: Process *must* have a NZP level partition (or this VM instruction
+  // would not have been added during problem setup).
+  if(proc.is_zero_var_index < 0) {
+    VM.logMessage(VM.block_count, VM.WARNING + 'Process ' + proc.displayName +
+        ' has cash flow but no partitioned level');
+    return;
+  }
   // NOTE: Even for (statistics over) delayed flows, the rate and price
   // at time t is used, so when rate*price = 0, no cash flow occurs.
   if(!price_rate) return;
-  
-  // Set process level variable index.
-  const vi = proc.level_var_index;
+
+  // Get the indices for the NZP-partitioning of the production level
+  // variable.
+  const
+      vi = proc.level_var_index,
+      posvi = proc.plus_var_index,
+      negvi = proc.minus_var_index,
+      pscvi = proc.psc_var_index,
+      nscvi = proc.nsc_var_index,
+      pepvi = proc.pep_var_index,
+      nepvi = proc.nep_var_index;
 
   // SUM and MEAN may require iteration over multiple time steps.
   if(delay && lm === VM.LM_SUM || lm === VM.LM_MEAN) {
@@ -8730,13 +8727,14 @@ function VMI_update_cash_coefficient(link) {
         nts = Math.abs(delay) + 1,
         m = (lm === VM.LM_MEAN ? 1 / nts : 1);
     let dt = Math.min(delay, 0),
-        k = VM.offset + vi - dt * VM.cols;
+        nk = VM.offset + nscvi - dt * VM.cols,
+        pk = VM.offset + pscvi - dt * VM.cols;
     for(let i = 0; i < nts; i++) {
       // Variables beyond the tableau column range (when delay < 0) can
       // be ignored, so then exit this loop.
-      if(k > VM.chunk_offset) break;
-      if(k <= 0) {
-        // NOTE: If `k` falls PRIOR to the start of the block being solved,
+      if(nk > VM.chunk_offset) break;
+      if(nk <= 0) {
+        // NOTE: If `nk` falls PRIOR to the start of the block being solved,
         // calculate the (average) cash flow for the known (!) process level.
         const cf = proc.actualLevel(t - dt) * price_rate * m;
         if(cf > 0) {
@@ -8749,42 +8747,51 @@ function VMI_update_cash_coefficient(link) {
           VM.cash_out_rhs += cf;      
         }
       } else {
+        const abs_pr = Math.abs(price_rate) * m;
         // Update coefficient of the process level in the correct constraint.
         if(price_rate > 0) {
-          addCashIn(k, price_rate * m);
+          // Production is cash IN; negative level = consumption => cash OUT.
+          addCashIn(pk, abs_pr);
+          addCashOut(nk,abs_pr);
         } else {
-          addCashOut(k, -price_rate * m);  
+          // Production is cash OUT; negative level = consumption => cash IN.
+          addCashOut(pk, abs_pr);
+          addCashIn(nk, abs_pr);
         }
       }
       dt++;
-      k += VM.cols;
+      nk += VM.cols;
+      pk += VM.cols;
     }
     return;
   }
 
-  // NOTE: Without delay, SUM and MEAN are equivalent to LEVEL.
-  // Set indices for the NZP-partitioning of the production level
-  // variable if needed.
-  let posvi = -1,
-      negvi = -1,
-      pscvi = -1,
-      nscvi = -1,
-      pepvi = -1,
-      nepvi = -1;
-  const partitioned = proc.is_zero_var_index >= 0;
-  if(partitioned) {
-    posvi = proc.plus_var_index;
-    negvi = proc.minus_var_index;
-    pscvi = proc.psc_var_index;
-    nscvi = proc.nsc_var_index;
-    pepvi = proc.pep_var_index;
-    nepvi = proc.nep_var_index;
-  }
   // For most cases, the coefficient index will be the level.
   let k = VM.offset + vi - delay * VM.cols;
   // NOTE: When delay < 0, `k` may fall beyond the tableau column range.
   // If so, any such "future" cash flow can be ignored.
   if(k > VM.chunk_offset) return;
+
+  // NOTE: Without delay, SUM and MEAN are equivalent to LEVEL.
+  // The process level may be positive as well as negative, hence the need
+  // to differentiate between the positive and negative level variable.
+  if(lm === VM.LM_LEVEL || lm === VM.LM_SUM || lm === VM.LM_MEAN) {
+    const
+        pk = k - vi + pscvi,
+        nk = k - vi + nscvi;
+    // For output links, level > 0 is production, level < 0 is consumption.
+    const abs_pr = Math.abs(price_rate);
+    if(price_rate > 0) {
+      // Production is cash IN; negative level = consumption => cash OUT.
+      addCashIn(pk, abs_pr);
+      addCashOut(nk, abs_pr);
+    } else {
+      // Now production is cash OUT; negative level generates cash IN.
+      addCashIn(nk, abs_pr);
+      addCashOut(pk, abs_pr);
+    }
+    return;    
+  }
   
   if(lm === VM.LM_INCREASE) {
     // NOTE: Here, the actual flow is X[t-delta] - X[t-delta-1], so the delay
@@ -8792,7 +8799,6 @@ function VMI_update_cash_coefficient(link) {
     const
         k_1 = k - VM.cols,
         dt = t - delay;
-console.log('HERE t k  k-1  dt', t, k, k_1, dt);
     if(k < 0) {
       // Both values have been computed for the prior block.
       // Then if t-delay < 1, no change can have occurred, because then
@@ -8800,9 +8806,8 @@ console.log('HERE t k  k-1  dt', t, k, k_1, dt);
       if(dt < 1) return;
       // Otherwise, get the CF based on the known increase.
       const cf = (proc.actualLevel(dt) - proc.actualLevel(dt - 1)) * price_rate;
-console.log('HERE cf al al_1 pr', cf, proc.actualLevel(dt), proc.actualLevel(dt - 1), price_rate);
       if(cf > 0) {
-        VM.cash_in_rhs -=  cf;
+        VM.cash_in_rhs -= cf;
       } else if(cf < 0) {
         VM.cash_out_rhs += cf;      
       }
@@ -8816,7 +8821,6 @@ console.log('HERE cf al al_1 pr', cf, proc.actualLevel(dt), proc.actualLevel(dt 
     } else if(k_1 < 0) {
       // Only X[t-1] has been computed for the prior block.
       const cf_1 = proc.actualLevel(dt - 1) * price_rate;
-console.log('HERE cf_1 al_1 pr', cf_1, proc.actualLevel(dt - 1), price_rate);
       if(price_rate > 0) {
         VM.cash_in_rhs -= cf_1;
         addCashIn(k, price_rate);
@@ -8928,6 +8932,7 @@ console.log('HERE cf_1 al_1 pr', cf_1, proc.actualLevel(dt - 1), price_rate);
     return;
   }
 
+  let bvi = vi;
   if(lm === VM.LM_PEAK_INC) {
     // NOTE: Peak increase can generate cash only at the first time
     // step of a block (when VM.offset = 0) and at the first time step
@@ -8941,7 +8946,6 @@ console.log('HERE cf_1 al_1 pr', cf_1, proc.actualLevel(dt - 1), price_rate);
     // index (column number for this variable in the tableau).
     // For "binary data links", adjust `k` so it corresponds with the correct
     // binary variable instead of the level.
-    let bvi = vi;
     if(lm === VM.LM_STARTUP) {
       bvi = proc.start_up_var_index;
     } else if(lm === VM.LM_SHUTDOWN) {
@@ -9073,13 +9077,6 @@ function VMI_set_var_rhs(x) {
     console.log(`set_var_rhs: ${x.variableName} (t = ${VM.t}) = ` +
         VM.sig4Dig(VM.rhs));
   }
-}
-
-function VMI_add_const_to_rhs(c) {
-  if(DEBUGGING) {
-    console.log('add_const_to_rhs: ' + VM.sig4Dig(c));
-  }
-  VM.rhs += c;
 }
 
 function VMI_add_constraint(ct) {
@@ -9692,41 +9689,117 @@ function VMI_add_power_flow_to_coefficients(args) {
   VM.coefficients[p.nep_var_index + VM.offset] = -args[1];
 }
 
-function VMI_add_throughput_to_coefficient(args) {
+function VMI_add_throughput_to_coefficients(link) {
   // Special instruction to deal with throughput calculation.
-  // Function: to add the contribution of variable X to the level of
-  // variable Z when Z depends (a.o.) on the throughput of variable Y, i.e.,
-  // X --(r2,d2)--> Y --(r1,d1)--> Z
-  // The correct coefficient of X is then: r1[t]*r2[t-d1]*X[t-d1-d2]
-  // `args`: [index_of_X, rate_1, delay_1, rate_2, delay_2]
+  // Parameter `link` is the link Y -> Z from (data) product Y for which
+  // throughput is to be computed and added to Z. As Z may have other
+  // input links as well, this instruction only adds coefficients to the
+  // constraint that computes the level of Z.
+  const p = link.from_node;
+  // Double-check whether FROM node is a product.
+  if(!(p instanceof Product)) return;
+  // NOTE: The link Y -> Z has a rate and potentially a delay, so compute
+  // these first.
   const
-      vi = args[0],
-      d1 = args[2].object.actualDelay(VM.t),
-      d2 = (args[4] ? args[4].object.actualDelay(VM.t) : 0),
-      dsum = d1 + d2,
-      k = VM.offset + vi - dsum * VM.cols,
-      t = VM.t - dsum,
-      // Compute the value to be added to the coefficient
-      v = args[1].result(VM.t) * args[3].result(VM.t - d1);
+      d1 = link.actualDelay(VM.t),
+      r1 = link.relative_rate.result(VM.t);
+  if(!r1) return;
   if(DEBUGGING) {
-    console.log('add_throughput_to_coefficient [' + k + ']: ' +
-        args[1].variableName + ' * ' + args[3].variableName +
-        ' (t = ' + VM.t + ')');
+    console.log('add_throughput_to_coefficient: ' + link.displayName +
+        ` (t = ${VM.t}, rate = ${r1})`);
   }
-  // Ignore "future variables".
-  if(k > VM.chunk_offset) return;
-  if(k <= 0) {
-    const vbl = VM.variables[vi - 1];
-    if(DEBUGGING) {
-      console.log('--lookup[' + k + ']: ' + vbl[0] + ' ' + vbl[1].displayName);
+  // Throughput is defined as the total inflow into Y over links Xi-->Y
+  // having rate Ri and potentially also delay Di.
+  for(const l of p.inputs) {
+    const
+        d2 = l.actualDelay(VM.t),
+        // NOTE: Use earlier rate when throughput link has a delay. 
+        r2 = l.relative_rate.result(VM.t - d1),
+        lfn = l.from_node;
+    // Skip link when it has rate = 0.
+    if(r2 === 0) continue;
+    // By default, use the FROM node's level...
+    let vi = (lfn.is_zero_var_index < 0 ? lfn.level_var_index :
+        // ... but differentiate when this level is NZP-partitioned.
+        // Then use positive level component when rate > 0, and negative
+        // level component when rate < 0, so throughput flow is always >= 0.
+        (r2 > 0 ? lfn.psc_var_index : lfn.nsc_var_index));
+    // The link multiplier may require another variable index.
+    if(l.multiplier === VM.LM_POSITIVE) {
+      vi = lfn.plus_var_index;
+    } else if (l.multiplier === VM.LM_ZERO) {
+      vi = lfn.is_zero_var_index;
+    } else if (l.multiplier === VM.LM_NEGATIVE) {
+      vi = lfn.minus_var_index;
+    } else if(l.multiplier === VM.LM_STARTUP) {
+      vi = lfn.start_up_var_index;
+    } else if(l.multiplier === VM.LM_FIRST_COMMIT) {
+      vi = lfn.first_commit_var_index;
+      // NOTE: If `p` has a non-zero initial value, first commit links
+      // are ignored.
+      if(vi < 0) continue;
+    } else if(l.multiplier === VM.LM_SHUTDOWN) {
+      vi = lfn.shut_down_var_index;
     }
-    // X has been computed in a previous block => subtract term from RHS
-    // NOTE: subtract 1 from var_index because VM.variables is a 0-based array
-    VM.rhs -= VM.priorValue(vbl, t) * v;
-  } else if(k in VM.coefficients) {
-    VM.coefficients[k] += v;
-  } else {
-    VM.coefficients[k] = v;
+    // When X affects the level of Z because Z "reads" the throughput of Y,
+    // so X --(r2,d2)--> Y --(r1,d1)--> Z, the correct coefficient of X is
+    // r1[t] * r2[t-d1] * X[t-d1-d2]
+    const
+        dsum = d1 + d2,
+        k = VM.offset + vi - dsum * VM.cols,
+        t = VM.t - dsum;
+    // Ignore "future variables".
+    if(k > VM.chunk_offset) continue;
+    if(k <= 0) {
+      // NOTE: subtract 1 from var_index because VM.variables is a 0-based array.
+      const vbl = VM.variables[vi - 1];
+      if(DEBUGGING) {
+        console.log('--lookup[' + k + ']: ' + vbl[0] + ' ' + vbl[1].displayName);
+      }
+      // X has been computed in a previous block => subtract term from RHS.
+      // NOTE: Only when X * r2 >= 0.
+      VM.rhs -= Math.max(0, VM.priorValue(vbl, t) * r2) * r1;
+    } else if(k in VM.coefficients) {
+      VM.coefficients[k] += r1 * r2;
+    } else {
+      VM.coefficients[k] = r1 * r2;
+    }
+  }
+  // NOTE: Processes Y -> Xi typically consume Y, but *may* create an inflow into Y
+  // when they have level < 0. Hence also iterate over links Y -> Xi.
+  // NOTE: Such links cannot have a delay.
+  for(const l of p.outputs) {
+    const ltn = l.to_node;
+    // NOTE: Skip links to products, as these will always be data links.
+    if(ltn instanceof Product) continue;
+    // NOTE: The throughput link may still have a delay. 
+    const r2 = l.relative_rate.result(VM.t - d1);
+    // Skip link when it has rate = 0.
+    if(r2 === 0) continue;
+    // Also skip when level is not NZP-partitioned, as then an output-link
+    // cannot contribute to the *inflow* of the process being "read".
+    if(ltn.is_zero_var_index < 0) continue;
+    // Now use the negative level component when rate > 0, and positive
+    // level component when rate < 0, so throughput flow is always >= 0.
+    const
+        vi = (r2 > 0 ? ltn.nsc_var_index : ltn.psc_var_index),
+        k = VM.offset + vi - d1 * VM.cols,
+        t = VM.t - d1;
+    // Ignore "future variables".
+    if(k > VM.chunk_offset) continue;
+    if(k <= 0) {
+      // NOTE: subtract 1 from var_index because VM.variables is a 0-based array.
+      const vbl = VM.variables[vi - 1];
+      if(DEBUGGING) {
+        console.log('--lookup[' + k + ']: ' + vbl[0] + ' ' + vbl[1].displayName);
+      }
+      // X has been computed in a previous block => subtract term from RHS.
+      VM.rhs -= Math.max(0, VM.priorValue(vbl, t) * r2) * r1;
+    } else if(k in VM.coefficients) {
+      VM.coefficients[k] += r1 * r2;
+    } else {
+      VM.coefficients[k] = r1 * r2;
+    }
   }
 }
 

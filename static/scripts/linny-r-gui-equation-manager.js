@@ -172,19 +172,20 @@ class EquationManager {
           multi = (this.multi_line ? '-multi' : ''),
           issue = (expr.compile_issue ? ' compile-issue' :
               (expr.compute_issue ? ' compute-issue' : '')),
-          clk = `" onclick="EQUATION_MANAGER.selectModifier(event, '${id}'`,
-          mover = (!method ? '' : 'onmouseover="EQUATION_MANAGER.showInfo(\'' +
-              id + '\', event.shiftKey, event.ctrlKey);"');
+          clk = `" onclick="EQUATION_MANAGER.selectModifier(event, '${id}'`;
       if(m === sm) smid += i;
       ml.push(['<tr id="eqmtr', i, '" class="dataset-modif',
           (m === sm ? ' sel-set' : ''),
           (DOCUMENTATION_MANAGER.visible && m.comments ? ' blue-nimbus' : ''),
-          '"><td class="equation-selector',
+          '" onmouseover="EQUATION_MANAGER.showInfo(\'', id,
+          // NOTE: Only methods respond to Ctrl-mouseover.
+          '\', event.shiftKey, ', (method ? 'event.ctrlKey' : 'false'),
+          ');"><td class="equation-selector',
           (method ? ' method' : ''),
-          // Display in gray when method cannot be applied.
+          // Display in grayish purple when method cannot be applied.
           (expr.noMethodObject ? ' no-object' : ''),
           (expr.isStatic ? '' : ' it'), issue,
-          (wild ? ' wildcard' : ''), clk, ', false);"', mover, '>',
+          (wild ? ' wildcard' : ''), clk, ', false);"', '>',
           (m.outcome_equation ? '<span class="outcome"></span>' : ''),
           (wild ? wildcardFormat(sel) : sel),
           '</td><td class="equation-expression', multi, issue,
@@ -222,10 +223,10 @@ class EquationManager {
     }
   }
 
-  showInfo(id, shift) {
-    // @@TO DO: Display documentation for the equation => extra comments field?
-    const d = MODEL.equations_dataset.modifiers[id];
-    if(d) DOCUMENTATION_MANAGER.update(d, shift);
+  showInfo(id, shift, ctrl=false) {
+    // Display documentation for the equation.
+    const m = MODEL.equations_dataset.modifiers[id];
+    if(m) DOCUMENTATION_MANAGER.update(m, shift, ctrl);
   }
   
   selectModifier(event, id, x=true) {

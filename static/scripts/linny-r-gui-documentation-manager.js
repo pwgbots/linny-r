@@ -621,20 +621,40 @@ class DocumentationManager {
     const
         html = [],
         sl = MODEL.listOfAllComments;
+    let category = '';
     for(let i = 0; i < sl.length; i++) {
       if(sl[i].startsWith('_____')) {
         // 5-underscore leader indicates: start of new category.
-        html.push('<h2>', sl[i].substring(5), '</h2>');
+        category = sl[i].substring(5);
+        html.push('<h2>', category, '</h2>');
       } else {
         // Expect model element name.
         // NOTE: A trailing arrow indicates: element is a dataset modifier.
         if(sl[i].endsWith('&rarr;')) {
+          // If so, indent the line, preserving the arrow...
           html.push('<p><tt>&nbsp;&nbsp;', sl[i], '&nbsp;<small>');
+          // ... and see the next item as an expression (no comments).
           i++;
           html.push(sl[i], '</small></tt></p>');
+        } else if(category === 'Equations' || category === 'Methods') {
+          // First add the equation name in monospaced font.
+          html.push('<p><tt>', sl[i], '<br><small>');
+          // See the next item as an expression (small monospaced font)...
+          i++;
+          html.push(sl[i], '</small></tt><br><small>');
+          // ... followed by its associated marked-up comments.
+          i++;
+          this.markup = sl[i];
+          // Methods have an additional marked-up item: their eligible entities.
+          if(category === 'Methods') {
+            i++;
+            this.markup += sl[i];
+          }
+          // Only now terminate the paragraph for this model element.
+          html.push(this.markdown, '</small></p>');
         } else {
           html.push('<p><tt>', sl[i], '</tt><br><small>');
-          // ... immediately followed by its associated marked-up comments.
+          // For other categories, the next item will be associated marked-up comments.
           i++;
           this.markup = sl[i];
           html.push(this.markdown, '</small></p>');

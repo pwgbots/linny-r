@@ -4457,9 +4457,10 @@ console.log('HERE name conflicts', name_conflicts, mapping);
         md = this.modals.process,
         p = this.edited_object;
     // Rename object if name and/or actor have changed
-    let pn = md.element('name').value.trim(),
-        an = md.element('actor').value.trim(),
-        n = p.rename(pn, an);
+    const
+        pn = md.element('name').value.trim(),
+        an = md.element('actor').value.trim();
+    let n = p.rename(pn, an);
     // NOTE: When rename returns FALSE, a warning is already shown.
     if(n !== true && n !== false) {
       this.warningEntityExists(n);

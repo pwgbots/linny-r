@@ -2872,6 +2872,26 @@ class LinnyRModel {
     if(sa_cnt > 0) SENSITIVITY_ANALYSIS.updateDialog();
     return n;
   }
+  
+  updateEligiblePrefixes() {
+    // Recompile all expressions having eligible prefixes.
+    // NOTE: First make a list of such expressions, then clear their eligible
+    // prefixes, and only then recompile.
+    const xtc = [];
+    for(const x of this.allExpressions) {
+      if(!x.compiled || !isEmpty(x.eligible_prefixes)) {
+        x.eligible_expressions = {};
+        // Clear code to force recompilation.
+        x.code = null;
+        xtc.push(x);
+      }
+    }
+    for(const x of xtc) {
+      x.compile();
+    }
+    // Update controller dialogs that display expressions.
+    UI.updateControllerDialogs('DEFI');
+  }
 
   //
   // Methods for loading and saving the model
@@ -3508,7 +3528,7 @@ class LinnyRModel {
           for(const k of keys) {
             const m = ds.modifiers[k];
             // NOTE: The trailing arrow signals the Documentation manager that
-            // this (name, documentation) pair is a dataset modifier.
+            // this (name, documentation) pair is a (name, expression) pair.
             sl.push(`${m.selector}&nbsp;&rarr;` , m.expression.text);
           }
         }
@@ -3518,23 +3538,29 @@ class LinnyRModel {
     sl.push('_____Equations');
     for(const k of keys) {
       const m = this.equations_dataset.modifiers[k];
+      // Ignore methods.
       if(!m.selector.startsWith(':')) {
-        sl.push(m.displayName, '`' + m.expression.text + '`\n');
+        // NOTE: For this category, the Documentation manager will expect
+        // three list items.
+        sl.push(m.displayName, m.expression.text, m.comments);
       }
     }
     sl.push('_____Methods');
     for(const k of keys) {
       const m = this.equations_dataset.modifiers[k];
+      // Now only process methods.
       if(m.selector.startsWith(':')) {
         let markup = '\n\nDoes not apply to any entity.';
         if(m.expression.eligible_prefixes) {
           const el = Object.keys(m.expression.eligible_prefixes)
               .sort(compareSelectors);
-          if(el.length > 0) markup = '\n\nApplies to ' +
+          if(el.length > 0) markup = '\n\nThis method applies to ' +
               pluralS(el.length, 'prefixed entity group') +
               ':\n- ' + el.join('\n- ');
         }
-        sl.push(m.displayName, '`' + m.expression.text + '`' + markup);
+        // NOTE: For this category, the Documentation manager will expect
+        // four list items.
+        sl.push(m.displayName, m.expression.text, m.comments, markup);
       }
     }
     sl.push('_____Charts');
@@ -5294,6 +5320,11 @@ class NoteField {
     this.prefix = p;
   }
   
+  get displayName() {
+    // Return string "[[<field tag>]] in <note name>" for this note.
+    return `[[${this.field}]] in note ${this.note.displayName}`;
+  }
+  
   get value() {
     // Return the numeric value of this note field as a numeric string
     // followed by its unit (unless this is 1).
@@ -5387,12 +5418,32 @@ class Note extends ObjectWithXYWH {
     return this.cluster.numberContext;
   }
   
-  get methodPrefix() {
-    // Return the most likely candidate prefix to be used for method fields.
+  methodPrefix(ep) {
+    // Return the most likely candidate prefix to be used for a method
+    // field, given the eligible prefix lookup index `ep`.
     const n = this.nearbyNode;
-    if(n instanceof Cluster) return n.name;
-    if(this.cluster === MODEL.top_cluster) return '';
-    return this.cluster.name;
+    // When nearby node is a cluster, consider its full name.
+    if(n instanceof Cluster) {
+      const lcn = n.name.toLowerCase();
+      if(ep[lcn]) return n.name;
+    }
+    // Then consider the cluster containing the note.
+    if(this.cluster !== MODEL.top_cluster) {
+      const lcn = this.cluster.name.toLowerCase();
+      if(ep[lcn]) return this.cluster.name;
+    }
+    if(n) {
+      // Then test prefixes of nearby node.
+      const pfl = UI.prefixesAndName(n.name);
+      let pf = pfl.shift();
+      // NOTE: Length will be 0 when name has no prefixes.
+      while(pfl.length) {
+        if(ep[pf.toLowerCase()]) return pf;
+        pf += UI.PREFIXER + pfl.shift();
+      }
+    }
+    // Fall-through: return empty string.
+    return '';
   }
   
   get nearbyNode() {
@@ -5486,6 +5537,7 @@ class Note extends ObjectWithXYWH {
     const tags = this.tagList;
     if(tags) for(const tag of tags) {
       const
+          note_name = `${this.displayName}: `,
           inner = tag.slice(2, tag.length - 2).trim(),
           bar = inner.lastIndexOf('|'),
           arrow = inner.lastIndexOf('->');
@@ -5511,7 +5563,7 @@ class Note extends ObjectWithXYWH {
         to_unit = ena[1].trim();
         ena = ena[0].split('|');
         if(!MODEL.scale_units.hasOwnProperty(to_unit)) {
-          UI.warn(`Unknown scale unit "${to_unit}"`);
+          UI.warn(`${note_name}Unknown scale unit "${to_unit}"`);
           to_unit = '1';
         }
       } else {
@@ -5544,22 +5596,20 @@ class Note extends ObjectWithXYWH {
           if(obj) wildcard = numcon;
         }
       }
+      // NOTE: To avoid repetitive warnings, do not warn while this note is
+      // being dragged. 
       if(!obj) {
         const m = MODEL.equations_dataset.modifiers[UI.nameToID(ena[0])];
         if(m) {
-          const mp = this.methodPrefix;
+          const mp = this.methodPrefix(m.expression.eligible_prefixes);
           if(mp) {
-            if(m.expression.isEligible(mp)) {
-              this.fields.push(new NoteField(this, tag, m.expression, to_unit,
-                  multiplier, false, mp));
-            } else {
-              UI.warn(`Prefix "${mp}" is not eligible for method "${m.selector}"`);
-            }
-          } else {
-            UI.warn('Methods cannot be evaluated without prefix');
+            this.fields.push(new NoteField(this, tag, m.expression, to_unit,
+                multiplier, false, mp));
+          } else if(this !== UI.dragged_node) {
+            UI.warn(`${note_name}No eligible prefix for method "${m.selector}"`);
           }
-        } else {
-          UI.warn(`Unknown model entity "${en}"`);
+        } else if(this !== UI.dragged_node) {
+          UI.warn(`${note_name}Unknown model entity "${en}"`);
         }
       } else if(obj instanceof DatasetModifier) {
         // NOTE: Equations are (for now) dimensionless => unit '1'.
@@ -5615,8 +5665,8 @@ class Note extends ObjectWithXYWH {
             const nr = matchingNumber(attr, val.attribute);
             if(nr) {
               wildcard = nr;
-            } else {
-              UI.warn(`Attribute "${attr}" does not provide a number`);
+            } else if(this !== UI.dragged_node) {
+              UI.warn(`${note_name}Attribute "${attr}" does not provide a number`);
               continue;
             }
           }
@@ -5635,7 +5685,7 @@ class Note extends ObjectWithXYWH {
           this.fields.push(new NoteField(this, tag, val, to_unit,
               multiplier, wildcard));
         } else {
-          UI.warn(`Unknown ${obj.type.toLowerCase()} attribute "${attr}"`);
+          UI.warn(`${note_name}Unknown ${obj.type.toLowerCase()} attribute "${attr}"`);
         }
       }
     }
@@ -5939,7 +5989,13 @@ class NodeBox extends ObjectWithXYWH {
     if(n && n !== this) return n;
     // Otherwise, if IDs differ, add this object under its new key, and
     // remove its old entry.
+    let changed_prefix = false;
     if(old_id != new_id) {
+      const
+          op = UI.completePrefix(old_id, true),
+          np = UI.completePrefix(new_id, true);
+      changed_prefix = (op !== np);
+console.log('HERE op np changed', op, np, changed_prefix);
       if(this instanceof Process) {
         MODEL.processes[new_id] = this;
         delete MODEL.processes[old_id];
@@ -5969,8 +6025,13 @@ class NodeBox extends ObjectWithXYWH {
     }
     // Update actor list in case some actor name is no longer used.
     MODEL.cleanUpActors();
+    // Update expression texts.
     MODEL.replaceEntityInExpressions(old_name, this.displayName);
+    // NOTE: Renaming changes identifier that is used as index in
+    // the model's entity lists. 
     MODEL.inferIgnoredEntities();
+    // NOTE: When new name has other prefixes, check all methods.
+    if(changed_prefix) MODEL.updateEligiblePrefixes();
     // NOTE: Renaming may affect the node's display size.
     if(this.resize()) UI.drawSelection(MODEL);
     // NOTE: Only TRUE indicates a successful (cosmetic) name change.
@@ -7684,6 +7745,16 @@ class Node extends NodeBox {
     return tbc;
   }
   
+  get needsThroughput() {
+    // Return TRUE if this node is a product and has a "throughput" output link.
+    if(this instanceof Product) {
+      for(const l of this.outputs) {
+        if(l.multiplier === VM.LM_THROUGHPUT) return true;
+      }
+    }
+    return false;
+  }
+  
   get needsOnOffData() {
     // Return TRUE if this node requires binary variables to establish
     // its Negative/Zero/Positive state.
@@ -7695,7 +7766,7 @@ class Node extends NodeBox {
         return true;
       }
     }
-    if(this.type === 'Process') {
+    if(this instanceof Process) {
       // As of version 3.0, processes also get NZP variables when they may
       // have cash flows *AND* (potentially) a lower bound < 0.
       const lbx = this.lower_bound;
@@ -7703,15 +7774,18 @@ class Node extends NodeBox {
         if(lbx.isStatic && lbx.result(0) >= 0) return false;
         // Now LB is either dynamic or < 0, so process may have level < 0.
         // Then NZP-partitioning is necessary only if the process can generate
-        // a cash flow.
+        // a cash flow, or when it affects the level of a product that has
+        // a "throughput" output link.
         for(const l of this.inputs) {
-          if(!MODEL.ignored_entities[l.identifier] && l.from_node.price.defined) {
-            return true;
+          if(!MODEL.ignored_entities[l.identifier]) {
+            const fn = l.from_node;
+            if(fn.price.defined || fn.needsThroughput) return true;
           }
         }
         for(const l of this.outputs) {
-          if(!MODEL.ignored_entities[l.identifier] && l.to_node.price.defined) {
-            return true;
+          if(!MODEL.ignored_entities[l.identifier]) {
+            const tn = l.to_node;
+            if(tn.price.defined || tn.needsThroughput) return true;
           }
         }
       }

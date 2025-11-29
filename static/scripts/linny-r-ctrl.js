@@ -203,18 +203,18 @@ class Controller {
   }
   
   pointInViewport(rx, ry) {
-    // Returns paper coordinates of the cursor position if the cursor were
+    // Return paper coordinates of the cursor position if the cursor were
     // located at relative position (rx * window width, ry * window height)
-    // in the browser window
+    // in the browser window.
     if(this.paper) return this.paper.cursorPosition(
           window.innerWidth *rx, window.innerHeight *ry);
-    // If no graphics return values for a 100x100 pixel viewport
+    // If no graphics, return values for a 100x100 pixel viewport.
     return [100 * rx, 100 * ry];
   }
   
   textSize(string, fsize=8, fweight=400) {
-    // Returns width and height (in px) of (multi-line) string
-    // If paper, use its method, which is more accurate
+    // Return width and height (in px) of (multi-line) string.
+    // If paper, use its method, which is more accurate.
     if(this.paper) return this.paper.textSize(string, fsize, fweight);
     // If no paper, assume 144 px/inch, so 1 pt = 2 px
     const
@@ -281,7 +281,7 @@ class Controller {
   }
 
   sizeInBytes(n) {
-    // Returns `n` as string scaled to the most appropriate unit of bytes
+    // Return `n` as string scaled to the most appropriate unit of bytes.
     n = Math.round(n);
     if(n < 1024) return n + ' B';
     let m = -1;
@@ -293,7 +293,7 @@ class Controller {
   }
   
   sizeInKBytesAsHTML(n) {
-    // Returns `n` as scaled to kilobytes, with thinspaces as thousands separator.
+    // Return `n` as scaled to kilobytes, with thinspaces as thousands separator.
     if(n < 512) return '> 1 KB';
     const
         digits = Math.round(n / 1024).toString().split(''),
@@ -368,7 +368,8 @@ class Controller {
   }
   
   prefixesAndName(name, key=false) {
-    // Returns name split exclusively at '[non-space]: [non-space]'
+    // Return name split exclusively at '[non-space]: [non-space]'.
+    // NOTE: When `key` is TRUE, treat name as identifier.
     let sep = this.PREFIXER,
         space = ' ';
     if(key) {
@@ -389,19 +390,19 @@ class Controller {
     return pan;
   }
   
-  completePrefix(name) {
+  completePrefix(name, key=false) {
     // Return the prefix part (including the final colon plus space),
     // or the empty string if none.
-    const p = UI.prefixesAndName(name);
+    const p = UI.prefixesAndName(name, key);
     p[p.length - 1] = '';
     return p.join(UI.PREFIXER);
   }
   
-  sharedPrefix(n1, n2) {
+  sharedPrefix(n1, n2, key=false) {
     // Return the longest series of prefixes that `n1` and `n2` have in common.
     const
-        pan1 = this.prefixesAndName(n1),
-        pan2 = this.prefixesAndName(n2),
+        pan1 = this.prefixesAndName(n1, key),
+        pan2 = this.prefixesAndName(n2, key),
         l = Math.min(pan1.length - 1, pan2.length - 1),
         shared = [];
     let i = 0;
@@ -571,15 +572,15 @@ class Controller {
   }
   
   htmlEquationName(n) {
-    // Replaces the equations dataset name (system constant) by equation symbol
-    // (square root of x) in white on purple
+    // Replace the equations dataset name (system constant) by equation symbol
+    // (square root of x) in white on purple.
     return n.replace(this.EQUATIONS_DATASET_NAME + '|',
         '<span class="eq">\u221Ax</span>');
   }
   
   nameAsConstantString(n) {
-    // Returns name with single quotes if it equals an Linny-R constant
-    // or operator, or when it contains symbol separator characters or ']'
+    // Return name with single quotes if it equals an Linny-R constant
+    // or operator, or when it contains symbol separator characters or ']'.
     let quoted = CONSTANT_SYMBOLS.indexOf(n) >= 0 ||
         MONADIC_OPERATORS.indexOf(n) >= 0 || n.indexOf(']') >= 0;
     if(!quoted) SEPARATOR_CHARS.split('').forEach(
@@ -588,20 +589,20 @@ class Controller {
   }
 
   replaceEntity(str, en1, en2) {
-    // Returns `en2` if `str` matches entity name `en1`; otherwise FALSE
+    // Return `en2` if `str` matches entity name `en1`; otherwise FALSE.
     const n = str.trim().replace(/\s+/g, ' ').toLowerCase();
     if(n === en1) return en2;
-    // Link variables contain TWO entity names, one of which can match with `en1`
+    // Link variables contain TWO entity names, one of which can match with `en1`.
     if(n.indexOf(this.LINK_ARROW) >= 0) {
       const
           ln = n.split(this.LINK_ARROW),
           tn0 = ln[0].trim();
-      // Replace name of FROM node if it matches
+      // Replace name of FROM node if it matches.
       if(tn0 === en1) return en2 + this.LINK_ARROW + ln[1].trim();
-      // Otherwise, replace name of TO node if it matches
+      // Otherwise, replace name of TO node if it matches.
       if(ln[1].trim() === en1) return tn0 + this.LINK_ARROW + en2;
     }
-    // Return FALSE to indicate "no replacement made"
+    // Return FALSE to indicate "no replacement made".
     return false;
   }
 
