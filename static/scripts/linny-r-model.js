@@ -5995,7 +5995,6 @@ class NodeBox extends ObjectWithXYWH {
           op = UI.completePrefix(old_id, true),
           np = UI.completePrefix(new_id, true);
       changed_prefix = (op !== np);
-console.log('HERE op np changed', op, np, changed_prefix);
       if(this instanceof Process) {
         MODEL.processes[new_id] = this;
         delete MODEL.processes[old_id];

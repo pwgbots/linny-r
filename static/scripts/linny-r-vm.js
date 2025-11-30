@@ -4307,7 +4307,7 @@ class VirtualMachine {
                 y.level_var_index, y.lower_bound, y.upper_bound, bl]]);
       }
     }
-    
+
     MODEL.set_up = true;
     this.logMessage(1,
       `Problem formulation took ${this.elapsedTime} seconds.`);
@@ -4486,8 +4486,6 @@ class VirtualMachine {
         xbl = Math.floor(xratio);
     if(xbl < xratio) console.log('ANOMALY: solution vector length', x.length,
         ncv_msg + ' is not a multiple of # columns', this.cols);
-    // Assume no warnings or errors.
-    this.error_count = 0;
     // Set cash flows for all actors.
     // NOTE: All cash IN and cash OUT values should normally be non-negative,
     // but since Linny-R permits negative lower bounds on processes, and also
@@ -4594,7 +4592,7 @@ class VirtualMachine {
           }          
         } else {
           const apl = Math.abs(p.level[b]);
-          if(apl < 0.005) {
+          if(apl && apl < 0.005) {
             // Test small but not evidently near-zero values by scaling
             // them to the process bounds (using 1000 instead of INFINITY).
             const
@@ -5219,6 +5217,8 @@ class VirtualMachine {
     } else {
       this.show_progress = false;
     }
+    // Assume no warnings or errors for this block.
+    this.error_count = 0;
     setTimeout((n) => VM.initializeTableau(n), 0, abl);
   }
   
@@ -8665,16 +8665,41 @@ function VMI_update_cash_coefficient(link) {
       tn = link.to_node,
       fn = link.from_node;
   if(tn instanceof Process) {
-    // NOTE: Process should have a NZP level partition.
+    // Input links have no delay or special link multipliers.
+    const
+        price = fn.price.result(t),
+        rate = link.relative_rate.result(t),
+        price_rate = price * rate,
+        abs_pr = Math.abs(price_rate),
+        reversible = tn.lower_bound.result(t) < 0;
+    if(!reversible) {
+      // When process has non-negative lower bound, this simplifies things.
+      if(!abs_pr) return;
+      const k = VM.offset + tn.level_var_index;
+      if(rate > 0) {
+        // Process consumes.
+        if(price > 0) {
+          addCashOut(k, abs_pr);
+        } else {
+          addCashIn(k, abs_pr);
+        }
+      } else if(price_rate < 0) {
+        // Process produces.
+        if(price > 0) {
+          addCashIn(k, abs_pr);
+        } else {
+          addCashOut(k, abs_pr);
+        }
+      }
+      return;
+    }
+    // When process is reversible, it should have NZP-partitioning.
     if(tn.is_zero_var_index < 0) {
       VM.logMessage(VM.block_count, VM.WARNING + 'Process ' + tn.displayName +
           ' has cash flow but no partitioned level');
       return;
     }
     // Input links have no delay or special link multipliers.
-    const
-        price_rate = fn.price.result(t) * link.relative_rate.result(t),
-        abs_pr = Math.abs(price_rate);
     if(abs_pr) {
       const
           nk = VM.offset + tn.nsc_var_index,
@@ -8691,34 +8716,42 @@ function VMI_update_cash_coefficient(link) {
     }
     return;
   }
-  
+
   // Link is output of a process, so it may have a delay.
   const
-      proc = link.from_node,
       lm = link.multiplier,
       delay = link.actualDelay(t),
-      price_rate = link.to_node.price.result(t) * link.relative_rate.result(t);
-  // NOTE: Process *must* have a NZP level partition (or this VM instruction
-  // would not have been added during problem setup).
-  if(proc.is_zero_var_index < 0) {
-    VM.logMessage(VM.block_count, VM.WARNING + 'Process ' + proc.displayName +
+      // NOTE: For cash flows, use t without delay, as this is when the
+      // actual product flow occurs...
+      price = tn.price.result(t),
+      rate = link.relative_rate.result(t),
+      price_rate = price * rate,
+      abs_pr = Math.abs(price_rate),
+      // ... but check the lower process bound at t-delay!
+      reversible = tn.lower_bound.result(t - delay) < 0;
+
+  // NOTE: Even for (statistics over) delayed flows, the rate and price
+  // at time t is used, so when rate*price = 0, no cash flow occurs.
+  if(!abs_pr) return;
+
+  // NOTE: When reversible, process *must* have a NZP level partition.
+  if(reversible && fn.is_zero_var_index < 0) {
+    VM.logMessage(VM.block_count, VM.WARNING + 'Process ' + fn.displayName +
         ' has cash flow but no partitioned level');
     return;
   }
-  // NOTE: Even for (statistics over) delayed flows, the rate and price
-  // at time t is used, so when rate*price = 0, no cash flow occurs.
-  if(!price_rate) return;
 
   // Get the indices for the NZP-partitioning of the production level
   // variable.
   const
-      vi = proc.level_var_index,
-      posvi = proc.plus_var_index,
-      negvi = proc.minus_var_index,
-      pscvi = proc.psc_var_index,
-      nscvi = proc.nsc_var_index,
-      pepvi = proc.pep_var_index,
-      nepvi = proc.nep_var_index;
+      vi = fn.level_var_index,
+      posvi = fn.plus_var_index,
+      negvi = fn.minus_var_index,
+      // NOTE: When not reversible, use the level index as "positive".
+      pscvi = (reversible ? fn.psc_var_index : vi),
+      nscvi = (reversible ? fn.nsc_var_index : vi),
+      pepvi = fn.pep_var_index,
+      nepvi = fn.nep_var_index;
 
   // SUM and MEAN may require iteration over multiple time steps.
   if(delay && lm === VM.LM_SUM || lm === VM.LM_MEAN) {
@@ -8732,11 +8765,11 @@ function VMI_update_cash_coefficient(link) {
     for(let i = 0; i < nts; i++) {
       // Variables beyond the tableau column range (when delay < 0) can
       // be ignored, so then exit this loop.
-      if(nk > VM.chunk_offset) break;
-      if(nk <= 0) {
-        // NOTE: If `nk` falls PRIOR to the start of the block being solved,
+      if(pk > VM.chunk_offset) break;
+      if(pk <= 0) {
+        // NOTE: If `pk` falls PRIOR to the start of the block being solved,
         // calculate the (average) cash flow for the known (!) process level.
-        const cf = proc.actualLevel(t - dt) * price_rate * m;
+        const cf = fn.actualLevel(t - dt) * price_rate * m;
         if(cf > 0) {
           // Subtract CF from the RHS of the cash IN constraint, as then
           // the actor's CI variable must be higher.
@@ -8747,16 +8780,19 @@ function VMI_update_cash_coefficient(link) {
           VM.cash_out_rhs += cf;      
         }
       } else {
+        // NOTE: Adjust `abs_pr` when averaging.
         const abs_pr = Math.abs(price_rate) * m;
         // Update coefficient of the process level in the correct constraint.
         if(price_rate > 0) {
-          // Production is cash IN; negative level = consumption => cash OUT.
+          // Production is cash IN.
           addCashIn(pk, abs_pr);
-          addCashOut(nk,abs_pr);
+          // Negative level (if possible) = consumption => cash OUT
+          if(reversible) addCashOut(nk, abs_pr);
         } else {
-          // Production is cash OUT; negative level = consumption => cash IN.
+          // Production is cash OUT..
           addCashOut(pk, abs_pr);
-          addCashIn(nk, abs_pr);
+          // Negative level (if possible) = consumption => cash IN
+          if(reversible) addCashIn(nk, abs_pr);
         }
       }
       dt++;
@@ -8777,18 +8813,18 @@ function VMI_update_cash_coefficient(link) {
   // to differentiate between the positive and negative level variable.
   if(lm === VM.LM_LEVEL || lm === VM.LM_SUM || lm === VM.LM_MEAN) {
     const
-        pk = k - vi + pscvi,
-        nk = k - vi + nscvi;
+        pk = (reversible ? k - vi + pscvi : k),
+        nk = (reversible ? k - vi + nscvi : k);
     // For output links, level > 0 is production, level < 0 is consumption.
     const abs_pr = Math.abs(price_rate);
     if(price_rate > 0) {
       // Production is cash IN; negative level = consumption => cash OUT.
       addCashIn(pk, abs_pr);
-      addCashOut(nk, abs_pr);
+      if(reversible) addCashOut(nk, abs_pr);
     } else {
       // Now production is cash OUT; negative level generates cash IN.
-      addCashIn(nk, abs_pr);
       addCashOut(pk, abs_pr);
+      if(reversible) addCashIn(nk, abs_pr);
     }
     return;    
   }
@@ -8805,7 +8841,7 @@ function VMI_update_cash_coefficient(link) {
       // both X[t-delay] and X[t-delay-1] have the process' initial level. 
       if(dt < 1) return;
       // Otherwise, get the CF based on the known increase.
-      const cf = (proc.actualLevel(dt) - proc.actualLevel(dt - 1)) * price_rate;
+      const cf = (fn.actualLevel(dt) - fn.actualLevel(dt - 1)) * price_rate;
       if(cf > 0) {
         VM.cash_in_rhs -= cf;
       } else if(cf < 0) {
@@ -8820,7 +8856,7 @@ function VMI_update_cash_coefficient(link) {
     // cash IN when price*rate > 0 and to cash OUT when price*rate < 0.
     } else if(k_1 < 0) {
       // Only X[t-1] has been computed for the prior block.
-      const cf_1 = proc.actualLevel(dt - 1) * price_rate;
+      const cf_1 = fn.actualLevel(dt - 1) * price_rate;
       if(price_rate > 0) {
         VM.cash_in_rhs -= cf_1;
         addCashIn(k, price_rate);
@@ -8845,8 +8881,8 @@ function VMI_update_cash_coefficient(link) {
   if(lm === VM.LM_SPINNING_RESERVE ||
       lm === VM.LM_MAX_INCREASE || lm === VM.LM_MAX_DECREASE) {
     const
-        ub = proc.upper_bound.result(t),
-        lb = proc.lower_bound.result(t);
+        ub = fn.upper_bound.result(t),
+        lb = fn.lower_bound.result(t);
     // No ramping up or down when LB > UB (should not occur) or LB = UB. 
     if(lb >= ub || Math.abs(ub - lb) < VM.NEAR_ZERO) return;
     if(k <= 0) {
@@ -8855,7 +8891,7 @@ function VMI_update_cash_coefficient(link) {
       // reserve) follows from the known production level and the relevant bound.
       let af = 0;
       const
-          pl = proc.actualLevel(t - delay),
+          pl = fn.actualLevel(t - delay),
           maxinc = ub - pl,
           maxdec = pl - lb;
       if(lm === VM.LM_MAX_INCREASE) {
@@ -8938,7 +8974,7 @@ function VMI_update_cash_coefficient(link) {
     // step of a block (when VM.offset = 0) and at the first time step
     // of the look-ahead period (when VM.offset = block length).
     if(VM.offset > 0 && VM.offset !== MODEL.block_length) return;
-    k = VM.chunk_offset + proc.peak_inc_var_index;
+    k = VM.chunk_offset + fn.peak_inc_var_index;
     // Use look-ahead peak increase when offset > 0.
     if(VM.offset) k++;
   } else {
@@ -8947,19 +8983,19 @@ function VMI_update_cash_coefficient(link) {
     // For "binary data links", adjust `k` so it corresponds with the correct
     // binary variable instead of the level.
     if(lm === VM.LM_STARTUP) {
-      bvi = proc.start_up_var_index;
+      bvi = fn.start_up_var_index;
     } else if(lm === VM.LM_SHUTDOWN) {
-      bvi = proc.shut_down_var_index;
+      bvi = fn.shut_down_var_index;
     } else if(lm === VM.LM_POSITIVE) {
-      bvi = proc.plus_var_index;
+      bvi = fn.plus_var_index;
     } else if(lm === VM.LM_ZERO) {
-      bvi = proc.is_zero_var_index;
+      bvi = fn.is_zero_var_index;
     } else if(lm === VM.LM_NEGATIVE) {
-      bvi = proc.minus_var_index;
+      bvi = fn.minus_var_index;
     } else if(lm === VM.LM_CYCLE) {
-      bvi = proc.cycle_var_index;
+      bvi = fn.cycle_var_index;
     } else if(lm === VM.LM_FIRST_COMMIT) {
-      bvi = proc.first_commit_var_index;
+      bvi = fn.first_commit_var_index;
     }
     k += bvi - vi;
   }
@@ -10135,6 +10171,7 @@ function VMI_add_spinning_reserve(link) {
     }
   }
 }
+
 
 // NOTE: the global constants below are not defined in linny-r-globals.js
 // because some comprise the identifiers of functions for VM instructions
