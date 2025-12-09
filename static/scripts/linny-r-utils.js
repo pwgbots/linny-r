@@ -265,6 +265,13 @@ function safeStrToInt(str, val=0) {
   return (isNaN(n) ? val : n);
 }
 
+function safeToPrecision(n, digits) {
+  // Return number `n` as string with specified precision.
+  // If `n` is not a number, return whatever it is between double quotes.
+  if(typeof n === 'number') return n.toPrecision(digits);
+  return `"${n}"`;
+}
+
 function rangeToList(str, max=0) {
   // Parse ranges "n-m/i" into a list of integers.
   // Return FALSE if range is not valid according to the convention below:
@@ -1352,6 +1359,7 @@ if(NODE) module.exports = {
   pluralS: pluralS,
   safeStrToFloat: safeStrToFloat,
   safeStrToInt: safeStrToInt,
+  safeToPrecision: safeToPrecision,
   rangeToList: rangeToList,
   listToRange: listToRange,
   dateToString: dateToString,

@@ -63,7 +63,6 @@ var
   SENSITIVITY_ANALYSIS = null,
   CONSTRAINT_EDITOR = null,
   DOCUMENTATION_MANAGER = null,
-  TEX_MANAGER = null,
   RECEIVER = null,
   // Stack for undo/redo operations
   UNDO_STACK = null,

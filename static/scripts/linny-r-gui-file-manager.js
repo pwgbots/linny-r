@@ -53,6 +53,7 @@ class GUIFileManager {
     this.model_sa = md.element('model-scroll-area');
     this.system_btn = md.element('system-btn');
     this.delete_btn = md.element('delete-btn');
+    this.new_window_btn = md.element('new-window-btn');
     this.name_header = md.element('name-header');
     this.time_header = md.element('time-header');
     this.size_header = md.element('size-header');
@@ -76,6 +77,13 @@ class GUIFileManager {
     // Model file name sort criterion and direction.
     this.sort_key = 'name';
     this.sort_direction = 'asc';
+    this.sort_sign = 1;
+    // Comparison functions for each sorting criterion.
+    this.sort_functions = {
+        name: (a, b) => FILE_MANAGER.sort_sign * ciCompare(a.name, b.name),
+        time: (a, b) => FILE_MANAGER.sort_sign * a.time.localeCompare(b.time),
+        size: (a, b) => FILE_MANAGER.sort_sign * (a.size - b.size),
+      };
     // File name (without '.lnr') from which XML data has been read.
     this.model_file_name = '';
     // List of included models (inferred from clusters in current model).
@@ -102,6 +110,8 @@ class GUIFileManager {
             md.element('action').innerText = 'delete model';
             md.show();
           });
+    this.new_window_btn.addEventListener('click',
+        () => FILE_MANAGER.openModelInNewWindow());
     md.element('autosave-btn').addEventListener('click',
         () => FILE_MANAGER.showAutoSaveDialog());
     
@@ -201,7 +211,7 @@ class GUIFileManager {
         'click', () => FILE_MANAGER.updateAutoSaveSettings());
     this.autosave_modal.cancel.addEventListener(
         'click', () => FILE_MANAGER.autosave_modal.hide());
-    
+
     // Get path and sub-directories of each root location.
     this.getRootData();
     // Keep track of time-out interval of auto-saving feature.
@@ -247,20 +257,14 @@ class GUIFileManager {
     // Only toggle between ascending and descending when already sorting
     // on `key`; when changing key, start by sorting in ascending order. 
     this.sort_direction = (old_key !== key ? 'asc' : new_direction);
+    this.sort_sign = (this.sort_direction === 'asc' ? 1 : -1);
     old_div.classList.remove('sort-' + old_direction);
     new_div.classList.add('sort-' + this.sort_direction);
     if(this.selected_dir && this.m_count > 0) {
       const
           m_list = this.selected_dir.models,
           smi = this.model_index - this.sd_count,
-          smn = (smi < 0 ? '' : m_list[smi].name),
-          sort_sign = (this.sort_direction === 'asc' ? 1 : -1),
-          sort = {
-              name: (a, b) => sort_sign * ciCompare(a.name, b.name),
-              time: (a, b) => sort_sign * a.time.localeCompare(b.time),
-              size: (a, b) => sort_sign * (a.size - b.size),
-          };
-      m_list.sort(sort[key]);
+          smn = (smi < 0 ? '' : m_list[smi].name);
       if(smn) {
         for(let mi = 0; mi < m_list.length; mi++) {
           if(m_list[mi].name === smn) {
@@ -281,6 +285,8 @@ class GUIFileManager {
         path_div = this.modal.element('path');
     let path = '',
         png = 'home';
+    // Assume that no model file is selected.
+    this.new_window_btn.title = 'Open new Linny-R tab in browser';
     if(this.selected_dir) {
       // Update the root icon.
       png = this.selected_dir.root;
@@ -312,6 +318,8 @@ class GUIFileManager {
           path += sd.subdirs[mi].name;
         } else {
           path += sd.models[mi - sd.sdcount].name + '.lnr';
+          this.new_window_btn.title =
+              'Open selected model in new Linny-R tab in browser';
         }
       }
     } else {
@@ -461,6 +469,7 @@ class GUIFileManager {
       const
           sdl = this.selected_dir.subdirs,
           ml = this.selected_dir.models;
+      ml.sort(this.sort_functions[this.sort_key]);
       let index = 0;
       for(const sd of sdl) {
         const sel = (index === this.model_index ? ' sel-set' : '');
@@ -805,8 +814,9 @@ class GUIFileManager {
     // NOTE: Permit functional use of directory separator unless `no_sep`
     // is FALSE.
     const sanitize = (str) => str.trim()
-        // Condense whitespace into a single dash.
-        .replace(/[\s\-]+/g, '-')
+        // Consider dashes, commas and (semi)colons as whitespace, and
+        // condense all such "whitespace" into a single dash.
+        .replace(/[\s\-\,\;\:]+/g, '-')
         // Condense special characters into a single underscore.
         .replace(/[^A-Za-z0-9_\-]+/g, '_')
         // No leading or trailing dashes or underscores.
@@ -1111,27 +1121,39 @@ class GUIFileManager {
     }
   }
 
-  getModelFromServer() {
-    // Load Linny-R model from selected location (if any).
-    // NOTE: Do not proceed when a sub-directory is selected.
-    if(!this.selected_dir || this.model_index < this.sd_count) return;
-    const mdl = this.selected_dir.models[this.model_index - this.sd_count];
-    if(!mdl) return;
-    // Record location of file so it can be displayed on the information line
-    // after loading.
-    this.model_file_name = mdl.name;
-    if(this.action === 'load') {
-      // When loading new model, the stay-on-top dialogs must be reset
-      // (GUI only; for the Linny-R console this is a "dummy" method).
-      UI.hideStayOnTopDialogs();
-    }
-    // Get the model entry.
-    const pd = {
+  getModelFromServer(rpm='') {
+    // Load Linny-R model from root|path|model (if specified).
+    let pd = {};
+    rpm = rpm.split('|');
+    if(rpm.length === 3) {
+      // Get the model entry.
+      pd = {
+          action: 'load',
+          root: rpm[0],
+          path: rpm[1],
+          model: rpm[2]
+        };
+    } else {
+      // NOTE: Do not proceed when a sub-directory is selected.
+      if(!this.selected_dir || this.model_index < this.sd_count) return;
+      const mdl = this.selected_dir.models[this.model_index - this.sd_count];
+      if(!mdl) return;
+      // Record location of file so it can be displayed on the information line
+      // after loading.
+      this.model_file_name = mdl.name;
+      if(this.action === 'load') {
+        // When loading new model, the stay-on-top dialogs must be reset
+        // (GUI only; for the Linny-R console this is a "dummy" method).
+        UI.hideStayOnTopDialogs();
+      }
+      // Get the model entry.
+      pd = {
           action: 'load',
           root: this.selected_dir.root,
           path: this.selected_dir.path,
           model: mdl.name
         };
+    }
     // NOTE: Add hash code to request only when loading from GitHub.
     if(pd.root === 'github') pd.sha = mdl.sha;
     fetch('browse/', postData(pd))
@@ -1215,6 +1237,38 @@ class GUIFileManager {
         this.promptForInclusion(xml);
       }
     }
+  }
+  
+  openModelInNewWindow() {
+    // Open a new browser window running Linny-R.
+    // When model is selected, log this in the browser local storage,
+    // so it will be loaded by the bootstrap script.
+    const
+        url = window.location.href,
+        local_host = url.match(/^http[s]?:\/\/127.0.0.1:(\d+)/);
+    if(local_host) {
+      const
+          mi = this.model_index,
+          sd = this.selected_dir;
+      if(mi >= sd.sdcount) {
+        const mdl = sd.models[mi - this.sd_count];
+        if(mdl) {
+          window.localStorage.setItem('linny-r-model-file',
+              `${sd.root}|${sd.path}|${mdl.name}`);
+        }
+      }
+      window.open(local_host[0], '_blank');
+    } else {
+      window.open(url, '_blank');
+    }
+  }
+
+  loadInitialModel() {  
+    // Load file specified in browser storage item (if any). 
+    const mf = window.localStorage.getItem('linny-r-model-file');
+    // Always clear it immediately.
+    window.localStorage.setItem('linny-r-model-file', '');
+    if(mf) this.getModelFromServer(mf);
   }
   
   //
@@ -1957,17 +2011,18 @@ class GUIFileManager {
     }
   }
   
-  pushOutSVG(svg) {
+  pushOutSVG(svg, chart_name='') {
     // Output SVG to browser as SVG image file download.
-    const blob = new Blob([svg], {'type': 'image/svg+xml'});
-    const e = document.getElementById('svg-saver');
-    e.download = this.asFilePath(MODEL.diagramName) + '.svg';
+    const
+        blob = new Blob([svg], {'type': 'image/svg+xml'}),
+        e = document.getElementById('svg-saver');
+    e.download = this.asFilePath(chart_name || MODEL.diagramName) + '.svg';
     e.type = 'image/svg+xml';
     e.href = (window.URL || webkitURL).createObjectURL(blob);
     e.click();
   }  
 
-  pushOutPNG(svg) {
+  pushOutPNG(svg, chart_name='') {
     // Output SVG to browser as PNG image file download.
     const
         bytes = new TextEncoder().encode(svg),
@@ -1986,7 +2041,8 @@ class GUIFileManager {
             const
                 e = document.getElementById('svg-saver'),
                 url = (window.URL || webkitURL).createObjectURL(blob);
-            e.download = FILE_MANAGER.asFilePath(MODEL.diagramName) + '.png';
+            e.download = FILE_MANAGER
+                .asFilePath(chart_name || MODEL.diagramName) + '.png';
             e.type = 'image/png';
             e.href = url;
             e.click();

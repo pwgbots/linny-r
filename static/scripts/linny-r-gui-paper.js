@@ -2648,8 +2648,7 @@ class Paper {
         // Write the cost price at bottom-right in a light-yellow, slightly
         // rounded box. NOTE: for products with storage, display the STOCK price
         // rather than the cost price
-        const cp = (prod.is_buffer ? prod.stockPrice(MODEL.t) :
-            prod.costPrice(MODEL.t));
+        const cp = prod.costPrice(MODEL.t);
         s = VM.sig4Dig(cp);
         if(prod.noInflows(MODEL.t) && !(prod.is_buffer && (l > 0))) {
           // Display cost price less prominently if the product is not produced

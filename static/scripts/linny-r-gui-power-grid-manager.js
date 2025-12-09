@@ -500,7 +500,7 @@ class PowerGridManager {
       sum += edge.orientation * x * l;
     }
     html.push('<tr><td colspan="4"><strong>Sum  &Sigma;<em>x</em>P</strong> ' +
-        `<em>(should be zero)</em></td><td>${sum.toPrecision(2)}</td></tr>`);
+        `<em>(should be zero)</em></td><td>${safeToPrecision(sum, 2)}</td></tr>`);
     html.push('</table><br>');
     return html.join('\n');
   }

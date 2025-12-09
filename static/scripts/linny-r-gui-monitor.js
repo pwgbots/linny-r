@@ -331,6 +331,8 @@ class GUIMonitor {
               VM.max_tableau_size = 0;
             }
             UI.notify('Logged on to ' + jsr.server + utl);
+            // Load model if one is specified in browser local storage.
+            FILE_MANAGER.loadInitialModel();
           } else {
             UI.warn('Authentication failed -- NOT logged on to server -- ' +
                 'Click <a href="solver/?action=password">' +
@@ -387,6 +389,8 @@ class GUIMonitor {
                   MODEL.default_unit = CONFIGURATION.default_scale_unit;
                   MODEL.decimal_comma = CONFIGURATION.decimal_comma;
                   MODEL.show_notices = CONFIGURATION.slight_slack_notices;
+                  // Load model if one is specified in browser local storage.
+                  FILE_MANAGER.loadInitialModel();
                 }
               }
             } catch(err) {

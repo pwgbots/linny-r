@@ -135,14 +135,14 @@ class LinnyRModel {
     this.running_experiment = null;
     
     // Diagram editor related properties
-    // t is the time step shown (t = 1 corresponds to start_period)
+    // t is the time step shown (t = 1 corresponds to start_period).
     this.t = 1; 
     this.selection = [];
     this.selection_related_arrows = [];
     // Set the indicator that the model has not been solved yet.
     this.set_up = false;
     this.solved = false;
-    // Reset counts of effects of a rename operation
+    // Reset counts of effects of a rename operation.
     this.variable_count = 0;
     this.expression_count = 0;
     // Translation time is used to calibrate speed when dragging a node
@@ -3714,459 +3714,291 @@ class LinnyRModel {
   }
   
   /* SPECIAL MODEL CALCULATIONS */
-  
-  calculateCostPrices(t) {
-    // Calculate cost prices of products and processes for time step t.
-    let products = [],
-        processes = [],
-        links = [],
-        constraints = [],
-        can_calculate = true;
-    const
-        // NOTE: Define local functions as constants.
-        costAffectingConstraints = (p) => {
-            // Return number of relevant contraints (see below) that
-            // can affect the cost price of product or process `p`.
-            let n = 0;
-            for(const c of constraints) {
-              if(!MODEL.ignored_entities[c.identifier] &&
-                  ((c.to_node === p && c.soc_direction === VM.SOC_X_Y) ||
-                  (c.from_node === p && c.soc_direction === VM.SOC_Y_X))) n++;
-            }
-            return n;
-          },
-        inputsFromProcesses = (p, t) => {
-            // Return a tuple {n, nosoc, nz} where n is the number of input
-            // links from processes, nosoc the number of these that carry
-            // no cost, and nz the number of links having actual flow > 0.
-            let tuple = {n: 0, nosoc: 0, nz: 0};
-            for(const l of p.inputs) {
-              // NOTE: Only process --> product links can carry cost.
-              if(!MODEL.ignored_entities[l.identifier] &&
-                  l.from_node instanceof Process) {
-                tuple.n++;
-                if(l.share_of_cost === 0) tuple.nosoc++;
-                const d = l.actualDelay(t);
-                if(l.actualFlow(t + d) > VM.NEAR_ZERO) tuple.nz++;
-              }
-            }
-            return tuple;
-          };
 
-    // First scan constraints X --> Y: these must have SoC > 0 and moreover
-    // the level of both X and Y must be non-zero, or they transfer no cost.
+  calculateCostPrices(t) {
+    // This new way of inferring cost prices (after optimization) uses a
+    // list of cost flows per node, a lookup list of nodes (all processes and
+    // products having their cost price calculated) and a "to do" lookup
+    // list of nodes having still uncalculated cost flows.
+    const
+        nids = [],
+        nodes = {},
+        // NOTE: Added cost flows FROM -> TO are "real" for time t, taking
+        // into account reversed processes and delays. Cost can be < 0!
+        addFlow = (fn, tn, f, c=null) => {
+            const
+                fnid = fn.identifier,
+                tnid = tn.identifier,
+                node = nodes[tnid],
+                cf = {from: fnid, to: tnid, flow: f, cost: c};
+            // When cost is known because TO or FROM product has a price,
+            // the flow is not added to the "flows to be calculated" list.
+            if(c) {
+              node.flow_sum += f;
+              node.cost_sum += f * c;
+            } else {
+              node.to_do.push(cf);
+            }
+            // Always count inflows.
+            node.flow_count++;
+          },
+        productPrice = (p, t) => (p.price.defined ?
+            p.price.result(t) : null),
+        setCostPrice = (n) => {
+            const p = n.node;
+            if(p instanceof Product) {
+              if(p.is_buffer) {
+                // Cost price = cost of inflows + cost of stock at t-1
+                // divided by sum of both costs.
+                const
+                    pl = p.actualLevel(t - 1),
+                    pcp = p.costPrice(t - 1);
+                n.cost_price = (n.cost_sum + pl * pcp) / (n.flow_sum + pl);
+              } else {
+                n.cost_price = n.cost_sum / n.flow_sum;
+              }
+            } else {
+              // Process CP is total cost divided by production level.
+              n.cost_price = n.cost_sum / p.actualLevel(t);
+            }
+          };
+    // First make list of all not-ignored nodes.
+    for(let k in this.processes)  if(this.processes.hasOwnProperty(k) &&
+        !MODEL.ignored_entities[k]) nids.push(k);
+    for(let k in this.products)  if(this.products.hasOwnProperty(k) &&
+        !MODEL.ignored_entities[k]) nids.push(k);
+    for(const k of nids) nodes[k] = {
+          node: this.objectByID(k),
+          flow_count: 0,
+          flow_sum: 0,
+          cost_sum: 0,
+          cost_price: VM.UNDEFINED,
+          to_do: []
+        };
+    // Then infer all cost flows from the solved model. Constraints X --> Y
+    // create a cost flow when they have SoC > 0 and the level of both X and Y
+    // are non-zero.
     for(let k in this.constraints) if(this.constraints.hasOwnProperty(k) &&
         !MODEL.ignored_entities[k]) {
       const
           c = this.constraints[k],
-          fl = c.from_node.nonZeroLevel(t),
-          tl = c.to_node.nonZeroLevel(t);
+          fn = c.from_node,
+          tn = c.to_node,
+          fl = fn.nonZeroLevel(t),
+          tl = tn.nonZeroLevel(t);
       if(c.share_of_cost && fl && tl) {
-        // Constraint can carry cost => compute the rate; the actual
-        // cost to be transferred will be computed later, when CP of
-        // nodes have been calculated.
+        // Constraints can carry cost => compute the "flow".
         if(c.soc_direction === VM.SOC_X_Y) {
-          c.transfer_rate = c.share_of_cost * fl / tl;
+          addFlow(fn, tn, c.share_of_cost * fl);
         } else {
-          c.transfer_rate = c.share_of_cost * tl / fl;
+          addFlow(tn, fn, c.share_of_cost * tl);
         }
-        constraints.push(c);
       }
     }
-    // Then scan the processes.
-    for(let k in this.processes) if(this.processes.hasOwnProperty(k) &&
-        !MODEL.ignored_entities[k]) {
-      const
-          p = this.processes[k],
-          pl = p.nonZeroLevel(t);
-      if(pl < 0) {
-        // Negative levels invalidate the cost price calculation.
-        p.cost_price[t] = VM.UNDEFINED;
-        can_calculate = false;
-        break;
-      }
-      // Count constraints that affect CP of this process.
-      let n = costAffectingConstraints(p);
-      if(n || p.inputs.length) {
-        // All inputs can affect the CP of a process.
-        p.cost_price[t] = VM.UNDEFINED;
-        processes.push(p);
-      } else {
-        // No inputs or cost-transferring constraints, then CP = 0
-        // unless output products have price < 0.
-        let negpr = 0;
-        for(const l of p.outputs) {
-          const
-              // NOTE: *add* delay to consider *future* price & rate!
-              dt = t + l.actualDelay(t),
-              px = l.to_node.price,
-              pr = (px.defined ? px.result(dt) : 0);
-          if(pr < 0) negpr -= pr * l.relative_rate.result(dt);
-        }
-        p.cost_price[t] = negpr;
-        // Done, so not add to `processes` list.
-      }
-    }
-    // Then scan the products.
-    for(let k in this.products) if(this.products.hasOwnProperty(k) &&
-        !MODEL.ignored_entities[k]) {
-      const p = this.products[k];
-      let ifp = inputsFromProcesses(p, t),
-          nc = costAffectingConstraints(p);
-      if(p.is_buffer && !ifp.nz) {
-        // Stocks for which all INput links have flow = 0 have the same
-        // stock price as in t-1.
-        // NOTE: It is not good to check for zero stock, as that may be
-        // the net result of in/outflows.
-        p.cost_price[t] = p.stockPrice(t - 1);
-        p.stock_price[t] = p.cost_price[t];
-      } else if(!nc && (ifp.n === ifp.nosoc || (!ifp.nz && ifp.n > ifp.nosoc + 1))) {
-        // For products having only input links that carry no cost,
-        // CP = 0 but coded as NO_COST so that this can propagate.
-        // Furthermore, for products having no storage and *multiple*
-        // cost-carrying input links that all are zero-flow, the cost
-        // price cannot be inferred unambiguously => set to 0.
-        p.cost_price[t] = (ifp.n && ifp.n === ifp.nosoc ? VM.NO_COST : 0);
-      } else {
-        // Cost price must be calculated.
-        p.cost_price[t] = VM.UNDEFINED;
-        products.push(p);
-      }
-      p.cost_price[t] = p.cost_price[t];
-    }
-    // Finally, scan all links, and retain only those for which the CP
-    // can not already be inferred from their FROM node.
-    // NOTE: Record all products having input links with a delay < 0, as
-    // their cost prices depend on future time steps and hece will have
-    // to be recomputed.
+    // Links X --> Y create a cost flow when either X or Y is a process.
     for(let k in this.links) if(this.links.hasOwnProperty(k) &&
         !MODEL.ignored_entities[k]) {
       const
           l = this.links[k],
-          ld = l.actualDelay(t),
           fn = l.from_node,
-          fncp = fn.costPrice(t - ld),
           tn = l.to_node;
-      if(fn instanceof Product && fn.price.defined) {
-        // Links from products having a market price have this price
-        // multiplied by their relative rate as unit CP.
-        l.unit_cost_price = fn.price.result(t) * l.relative_rate.result(t);
-      } else if((fn instanceof Process && l.share_of_cost === 0) ||
-         (fn instanceof Product && tn instanceof Product)) {
-        // Process output links that do not carry cost and product-to-
-        // product links have unit CP = 0.
-        l.unit_cost_price = 0;
-      } else if(fncp !== VM.UNDEFINED && fncp !== VM.NOT_COMPUTED) {
-        // Links that are output of a node having CP defined have UCP = CP.
-        l.unit_cost_price = fncp * l.relative_rate.result(t);
+      // Skip Q --> Q data flows.
+      if(!(fn instanceof Process || tn instanceof Process)) continue;
+      // NOTE: actualFlow already considers delays!
+      const af = l.actualFlow(t);
+      // Flows already take into account negative levels and rates, and
+      // are also correct for data links having special multipliers.
+      // For now, ignore zero-flows. Cost price of inactive processes is
+      // inferred later.
+      if(!af) continue;
+      if(af > 0) {
+        if(fn instanceof Product) {
+          // Standard consumptive flow Q --> P. If Q has a defined price,
+          // (possibly < 0) then the cost flow is known.
+          addFlow(fn, tn, af, productPrice(fn, t));
+        } else {
+          // For P --> Q links, cost flows to P when price of Q < 0.
+          const cost = productPrice(tn, t);
+          if(cost && cost < 0) {
+            // Reverse flow *and* specify unit cost (as positive number).
+            // NOTE: These costs are allocated to the process, so SoC
+            // plays no role.
+            addFlow(tn, fn, af, -cost);
+          } else if(l.share_of_cost > 0) {
+            // Add share of P --> Q flow when SoC > 0.
+            // NOTE: SoC must be multiplied by level (not flow), so here
+            // delay matters. Fortunately, future levels are known, so
+            // delays < 0 can be dealt with.
+            // NOTE: Small risk that delay is dynamic, and that actual delay
+            // at time t is different from the delay that determined the flow.
+            const d = l.actualDelay(t);
+            addFlow(fn, tn, fn.actualLevel(t - d) * l.share_of_cost);
+          }
+        }
       } else {
-        l.unit_cost_price = VM.UNDEFINED;
-        // Do not push links related to processes having level < 0.
-        if(!(fn instanceof Process && fn.actualLevel(t - ld) < 0) &&
-            !(tn instanceof Process && tn.actualLevel(t) < 0)) {
-          links.push(l);
-        }
-        // Record TO node for time step t if link has negative delay.
-        if(ld < 0) {
-          const list = MODEL.products_with_negative_delays[t];
-          if(list) {
-            list.push(l.to_node);
+        // Reversed flow => switch FROM and TO, and negate flow
+        // (as cost flows are ALWAYS >= 0).
+        if(tn instanceof Product) {
+          // Reverse consumptive flow P <-- Q. If Q has a defined price,
+          // (possibly < 0) then the cost flow is known.
+          addFlow(tn, fn, -af, productPrice(tn, t));
+        } else {
+          // NOTE: Ignore delays and SoC because these can be defined only
+          // for P --> Q links.
+          // For reversed flows Q <-- P, cost flows from Q to P only if price
+          // of Q is known and < 0.
+          const cost = productPrice(fn, t);
+          if(cost && cost < 0) {
+            // Reverse flow *and* specify unit cost (as positive number).
+            addFlow(fn, tn, -af, -cost);
           } else {
-            MODEL.products_with_negative_delays[t] = [l.to_node];
+            // Cost flows to product Q (the FROM node).
+            // NOTE: SoC is assumed to be proportional to the link rates,
+            // and should add up to 100%.
+            let rate_sum = 0;
+            for(const l of tn.inputs) {
+              // Ignore negative rates, as these denote output flows.
+              rate_sum += Math.max(0, l.relative_rate.result(t));
+            }
+            // Divide actual flow by rate sum to get proportion.
+            if(rate_sum) addFlow(tn, fn, -af / rate_sum);
           }
         }
       }
     }
-    // Count entities that still need processing.
-    let count = processes.length + products.length + links.length +
-            constraints.length,
-        prev_count = VM.PLUS_INFINITY;
-    // Iterate until no more new CP have been calculated.
-    while(count < prev_count) {
-      // (1) Update the constraints.
-      for(const c of constraints) {
-        const
-            // NOTE: Constraints in list have levels greater than near-zero.
-            fl = c.from_node.actualLevel(t),
-            tl = c.to_node.actualLevel(t);
-        let tcp;
-        if(c.soc_direction === VM.SOC_X_Y) {
-          c.transfer_rate = c.share_of_cost * fl / tl;
-          tcp = c.from_node.cost_price[t];
-        } else {
-          c.transfer_rate = c.share_of_cost * tl / fl;
-          tcp = c.to_node.cost_price[t];
+    // Iterate to set CP where possible.
+    for(const k of nids) {
+      const
+          n = nodes[k],
+          p = n.node;
+      if(n.flow_count) {
+        // If inflows, calculate CP if all inflows are accounted for.
+        if(!n.to_do.length) setCostPrice(n);
+      } else if(p instanceof Process) {
+        // If no flows, then set CP = 0 if no input links.
+        if(!p.inputs.length) {
+          n.cost_price = 0;
         }
-        // Compute transferable cost price only when CP of X is known.
-        if(tcp < VM.PLUS_INFINITY) {
-          c.transfer_cp = c.transfer_rate * tcp;
-        } else {
-          c.transfer_cp = VM.UNDEFINED;
-        }
+      } else if(p.actualLevel(t) < 0) {
+        // For active sources, the cost price is the product price
+        // or 0 if the product has no price.
+        n.cost_price = productPrice(p, t) || 0;
+      } else if(p.carriesNoCost) {
+        // If none of the input links of product `p` carry cost,
+        // set its cost price to NO_COST.
+        n.cost_price = VM.NO_COST;
       }
-      
-      // (2) Set CP of processes if unit CP of all their inputs is known.
-      // NOTE: Iterate from last to first so that processes can be
-      // removed from the list.
-      for(let i = processes.length - 1; i >= 0; i--) {
-        const p = processes[i];
-        let cp = 0;
-        for(const l of p.inputs) {
-          if(!MODEL.ignored_entities[l.identifier]) {
-            const ucp = l.unit_cost_price;
-            if(ucp === VM.UNDEFINED) {
-              cp = VM.UNDEFINED;
-              break;
-            } else {
-              cp += ucp;
-            }
+    }
+    // Iterate again to process "to do" flows.
+    let added, left_to_do, set_cp;
+    do {
+      added = 0;
+      set_cp = 0;
+      left_to_do = 0;
+      for(const k of nids) {
+        const n = nodes[k];
+        // Skip nodes with known CP.
+        if(n.cost_price !== VM.UNDEFINED) continue;
+        for(let fi = n.to_do.length - 1; fi >= 0; fi--) {
+          const
+              cf = n.to_do[fi],
+              cp = nodes[cf.from].cost_price;
+          if(cp !== VM.UNDEFINED) {
+            n.flow_sum += cf.flow;
+            // Treat special value NO_COST as zero.
+            if(cp !== VM.NO_COST) n.cost_sum += cf.flow * cp;
+            n.to_do.splice(fi, 1);
+            added++;
           }
         }
-        // NOTE: Also check constraints that transfer cost to `p`.
-        for(const c of constraints) {
-          if(c.to_node === p && c.soc_direction === VM.SOC_X_Y ||
-             (c.from_node === p && c.soc_direction === VM.SOC_Y_X)) {
-            if(c.transfer_cp === VM.UNDEFINED) {
-              cp = VM.UNDEFINED;
-              break;
-            } else {
-              cp += c.transfer_cp;
-            }
+        if(n.flow_count) {
+          if(n.to_do.length) {
+            left_to_do += n.to_do.length;
+          } else {
+            setCostPrice(n);
+            set_cp++;
           }
-        }
-        if(cp !== VM.UNDEFINED) {
-          // Also consider negative prices of outputs.
-          // NOTE: ignore SoC, as this affects the CP of the product, but
-          // NOT the CP of the process producing it.
-          for(const l of p.outputs) {
-            if(!MODEL.ignored_entities[l.identifier]) {
+        } else {
+          // No flows => inactive part of the system.
+          const p = n.node;
+          if(p instanceof Process) {
+            // Process cost price can be inferred if all "regular" inputs
+            // are known. The CP = weighted sum of rate*CP of inputs.
+            let wsum = 0,
+                count = 0;
+            for(const l of p.inputs) {
               const
-                  // NOTE: For output links always use current price.
-                  px = l.to_node.price,
-                  pr = (px.defined ? px.result(t) : 0),
-                  // For levels, consider delay: earlier if delay > 0.
-                  dt = t - l.actualDelay(t);
-              if(pr < 0) {
-                // Only consider negative prices.
-                if(l.multiplier === VM.LM_LEVEL) {
-                  // Treat links with level multiplier similar to input links,
-                  // as this computes CP even when actual level = 0.
-                  // NOTE: Subtract (!) so as to ADD the cost.
-                  cp -= pr * l.relative_rate.result(dt);
-                } else {
-                  // For other types, multiply price by actual flow / level
-                  // NOTE: actualFlow already considers delay => use t, not dt.
-                  const af = l.actualFlow(t);
-                  if(af > VM.NEAR_ZERO) {
-                    // Prevent division by zero.
-                    // NOTE: Level can be zero even if actual flow > 0!
-                    let al = p.nonZeroLevel(dt, l.multiplier);
-                    // NOTE: Scale to level only when level > 1, or fixed
-                    // costs for start-up or first commit will be amplified.
-                    if(al > VM.NEAR_ZERO) cp -= pr * af / Math.max(al, 1);
-                  }
-                }
-              }
-            }
-          }
-          // Set CP of process, and remove it from list.
-          p.cost_price[t] = cp;
-          processes.splice(i, 1);
-          // Set the CP of constraints that transfer cost of `p`, while
-          // removing the constraints that have contributed to its CP.
-          for(let ci = constraints.length - 1; ci >= 0; ci--) {
-            const c = constraints[ci];
-            if(c.from_node === p) {
-              if(c.soc_direction === VM.SOC_X_Y) {
-                c.transfer_cp = c.transfer_rate * cp;
-              } else {
-                constraints.splice(ci, 1);
-              }
-            } else if(c.to_node === p) {
-              if(c.soc_direction === VM.SOC_Y_X) {
-                c.transfer_cp = c.transfer_rate * cp;
-              } else {
-                constraints.splice(ci, 1);
-              }
-            }
-          }
-          // Also set unit CP of outgoing links of `p` if still on the list...
-          for(const l of p.outputs) {
-            const li = links.indexOf(l);
-            if(li >= 0) {
-              // NOTE: If delay > 0, use earlier CP.
-              const ld = l.actualDelay(t);
-              l.unit_cost_price = l.share_of_cost *
-                  p.costPrice(t - ld) *
-                  l.relative_rate.result(t - ld);
-              // ... and remove these links from the list.
-              links.splice(li, 1);
-            }
-          }
-        }
-      }
-
-      // (3) Set CP of products if CP of all *cost-carrying* inputs from
-      // processes (!) and constraints is known.
-      // NOTE: Iterate from last to first so that products can be
-      // removed from the list.
-      for(let pi = products.length - 1; pi >= 0; pi--) {
-        const p = products[pi];
-        let cp = 0,
-            cnp = 0, // cost of newly produced product
-            qnp = 0, // quantity of newly produced product
-            // NOTE: Treat products having only one cost-carrying
-            // input link as a special case, as this allows to compute
-            // their CP also when there is no actual flow over this
-            // link. `cp_sccp` (CP of single cost-carrying process)
-            // is used to track whether this condition applies.
-            cp_sccp = VM.COMPUTING;
-        for(const l of p.inputs) {
-          if(!MODEL.ignored_entities[l.identifier] &&
-              l.from_node instanceof Process) {
-            cp = l.from_node.costPrice(t - l.actualDelay(t));
-            if(cp === VM.UNDEFINED && l.share_of_cost > 0) {
-              // Contributing CP still unknown => break from FOR loop.
-              break;
-            } else {
-              if(cp_sccp === VM.COMPUTING) {
-                // First CC process having a defined CP => use this CP.
-                cp_sccp = cp * l.share_of_cost;
-              } else {
-                // Multiple CC processes => set CP to 0.
-                cp_sccp = 0;
-              }
-              // NOTE: actualFlow already considers delay => use t, not dt.
-              const
-                  af = l.actualFlow(t),
+                  pr = nodes[l.from_node.identifier].cost_price,
                   rr = l.relative_rate.result(t);
-              if(af) {
-                if(!rr) {
-                  cnp = (cp > 0 ? VM.PLUS_INFINITY : VM.MINUS_INFINITY);
-                } else {
-                  qnp += af;
-                  // NOTE: Only add the link's share of cost.
-                  cnp += af * cp / rr * l.share_of_cost;
+              if(pr !== VM.UNDEFINED) {
+                if(pr !== VM.NO_COST) wsum += rr * pr;
+                count++;
+              } else if(rr) {
+                break;
+              }
+            }
+            // All potential inflows known => CP proxy can be calculated.
+            if(count === p.inputs.length) {
+              // Also consider output links to products having price < 0.
+              for(const l of p.outputs) {
+                // NOTE: Here, a delay may apply.
+                const
+                    d = l.actualDelay(t),
+                    pr = l.to_node.price.result(t + d);
+                if(pr !== VM.UNDEFINED && pr < 0) {
+                  wsum += l.relative_rate.result(t) * pr;
+                }
+              }
+              n.cost_price = wsum;
+              set_cp++;
+            }
+          } else if(p.is_buffer) {
+            // If product is a stock, use CP of previous time step.
+            const
+                pl = p.actualLevel(t),
+                pr = (pl > 0 ? p.cost_price[t - 1] : 0);
+            n.cost_price = (pr === VM.UNDEFINED ? VM.NO_COST : pr);
+            set_cp++;
+          } else {
+            // Proxy cost price is *lowest* cost price of input processes.
+            let cp = VM.PLUS_INFINITY,
+                count = 0;
+            for(const l of p.inputs) {
+              if(!l.share_of_cost) {
+                // No share of cost => near-zero NO_COST constant.
+                cp = Math.min(cp, VM.NO_COST);
+                count++;
+              } else {
+                let pr = nodes[l.from_node.identifier].cost_price;
+                const d = l.actualDelay(t);
+                // NOTE: For proxy CP, ignore negative delays.
+                if(d > 0 && t - d > 0) pr = l.from_node.cost_price[t - d]; 
+                // Ignore processes for which CP is (yet) unknown.
+                if(pr !== VM.UNDEFINED) {
+                  // Scale to SoC unless NO COST.
+                  if(pr !== VM.NO_COST) pr *= l.share_of_cost;
+                  cp = Math.min(cp, pr);
+                  count++;
                 }
               }
             }
-          }
-        }
-        // CP unknown => proceed with next product.
-        if(cp === VM.UNDEFINED) continue;
-        // CP of product is 0 if no new production UNLESS it has only
-        // one cost-carrying production input, as then its CP equals
-        // the CP of the producing process times the link SoC.
-        // If new production > 0 then CP = cost / quantity.
-        if(cp_sccp !== VM.COMPUTING) {
-          cp = (qnp > 0 ? cnp / qnp : cp_sccp);
-        }
-        // NOTE: Now also check constraints that transfer cost to `p`.
-        for(const c of constraints) {
-          if(c.to_node === p && c.soc_direction === VM.SOC_X_Y ||
-             (c.from_node === p && c.soc_direction === VM.SOC_Y_X)) {
-            if(c.transfer_cp === VM.UNDEFINED) {
-              cp = VM.UNDEFINED;
-              break;
-            } else {
-              cp += c.transfer_cp;
-            }
-          }
-        }
-        // CP unknown => proceed with next product.
-        if(cp === VM.UNDEFINED) continue;
-        // Otherwise, set the cost price.
-        p.cost_price[t] = cp;
-        // For stocks, the CP includes stock price on t-1.
-        if(p.is_buffer) {
-          const prevl = p.nonZeroLevel(t-1);
-          if(prevl > 0) {
-            cp = (cnp +  prevl * p.stockPrice(t-1)) / (qnp + prevl);
-          }
-          p.stock_price[t] = cp;
-        }
-        // Set CP for outgoing links, and remove them from list.
-        for(const l of p.outputs) {
-          const li = links.indexOf(l);
-          if(li >= 0) {
-            l.unit_cost_price = cp * l.relative_rate.result(t);
-            links.splice(li, 1);
-          }
-        }
-        products.splice(pi, 1);
-        // Set the CP of constraints that transfer cost of `p`, while
-        // removing the constraints that have contributed to its CP.
-        for(let ci = constraints.length - 1; ci >= 0; ci--) {
-          const c = constraints[ci];
-          if(c.from_node === p) {
-            if(c.soc_direction === VM.SOC_X_Y) {
-              c.transfer_cp = c.transfer_rate * cp;
-            } else {
-              constraints.splice(ci, 1);
-            }
-          } else if(c.to_node === p) {
-            if(c.soc_direction === VM.SOC_Y_X) {
-              c.transfer_cp = c.transfer_rate * cp;
-            } else {
-              constraints.splice(ci, 1);
+            // Only set price when *all* potential input flows have been quantified. 
+            if(count === p.inputs.length && cp !== VM.PLUS_INFINITY) {
+              n.cost_price = cp;
+              set_cp++;
             }
           }
         }
       }
-      // Count remaining entities without calculated CP.
-      prev_count = count;
-      count = processes.length + products.length + links.length + constraints.length;
-      // No new CPs found? Then try some other things before exiting the loop.
-      if(count >= prev_count) {
-        // Still no avail? Then set CP=0 for links relating to processes
-        // having level 0.
-        for(const p of processes) if(p.nonZeroLevel(t) < 0) {
-          p.cost_price[t] = 0;
-          for(let li = links.length - 1; li >= 0; li--) {
-            const l = links[li];
-            if(l.from_node === p || l.to_node === p) {
-              l.unit_cost_price = 0;
-              links.splice(li, 1);
-            }
-          }
-        }
-        // Then (also) look for links having AF = 0 ...
-        for(let li = links.length - 1; li >= 0; li--) {
-          if(!links[li].actualFlow(t)) {
-            // ... and set their UCP to 0.
-            links[li].unit_cost_price = 0;
-            links.splice(li, 1);
-            // And break, as this may be enough to calculate more "regular" CPs.
-            break;
-          }
-        }
-        count = processes.length + products.length + links.length + constraints.length;
-        if(count >= prev_count) {
-          // No avail? Then look for links from stocks ...
-          for(let li = links.length - 1; li >= 0; li--) {
-            const
-                l = links[li],
-                p = l.from_node;
-            if(p.is_buffer) {
-              // ... and set their UCP to the previous stock price.
-              l.unit_cost_price = (p.nonZeroLevel(t-1) > 0 ? p.stockPrice(t-1) : 0);
-              links.splice(li, 1);
-              // And break, as this may be enough to calculate more "regular" CPs.
-              break;
-            }
-          }
-          count = processes.length + products.length + links.length + constraints.length;
-        }
+      // Iterate until no more new information.
+    } while(added + set_cp);
+    for(const k of nids) {
+      if(nodes[k].cost_price === VM.UNDEFINED) {
+        console.log('NOTE: Undefined cost price for',
+            nodes[k].node.displayName, 'for t =', t);
       }
+      nodes[k].node.cost_price[t] = nodes[k].cost_price;
     }
-    // For all products, calculate highest cost price, i.e., the unit cost
-    // price of the most expensive process that provides input to this product
-    // in time step t.
-    for(let k in this.products) if(this.products.hasOwnProperty(k) &&
-        !MODEL.ignored_entities[k]) {
-      this.products[k].calculateHighestCostPrice(t);
-    }
-    return can_calculate;
   }
   
   flowBalance(cu, t) {
@@ -7754,6 +7586,15 @@ class Node extends NodeBox {
     return false;
   }
   
+  get reversible() {
+    // Return TRUE if this node is a process that may potentially have
+    // level < 0.
+    if(this instanceof Product) return false;
+    const lbx = this.lower_bound;
+    if(!lbx.defined || (lbx.isStatic && lbx.result(0) >= 0)) return false;
+    return true;
+  }
+  
   get needsOnOffData() {
     // Return TRUE if this node requires binary variables to establish
     // its Negative/Zero/Positive state.
@@ -7765,27 +7606,22 @@ class Node extends NodeBox {
         return true;
       }
     }
-    if(this instanceof Process) {
-      // As of version 3.0, processes also get NZP variables when they may
-      // have cash flows *AND* (potentially) a lower bound < 0.
-      const lbx = this.lower_bound;
-      if(lbx.defined) {
-        if(lbx.isStatic && lbx.result(0) >= 0) return false;
-        // Now LB is either dynamic or < 0, so process may have level < 0.
-        // Then NZP-partitioning is necessary only if the process can generate
-        // a cash flow, or when it affects the level of a product that has
-        // a "throughput" output link.
-        for(const l of this.inputs) {
-          if(!MODEL.ignored_entities[l.identifier]) {
-            const fn = l.from_node;
-            if(fn.price.defined || fn.needsThroughput) return true;
-          }
+    // As of version 3.0, processes may also get NZP variables when they
+    // are potentially reversible.
+    if(this.reversible) {
+      // NZP-partitioning is necessary only if the process can generate
+      // a cash flow, or when it affects the level of a product that has
+      // a "throughput" output link.
+      for(const l of this.inputs) {
+        if(!MODEL.ignored_entities[l.identifier]) {
+          const fn = l.from_node;
+          if(fn.price.defined || fn.needsThroughput) return true;
         }
-        for(const l of this.outputs) {
-          if(!MODEL.ignored_entities[l.identifier]) {
-            const tn = l.to_node;
-            if(tn.price.defined || tn.needsThroughput) return true;
-          }
+      }
+      for(const l of this.outputs) {
+        if(!MODEL.ignored_entities[l.identifier]) {
+          const tn = l.to_node;
+          if(tn.price.defined || tn.needsThroughput) return true;
         }
       }
     }
@@ -8491,6 +8327,12 @@ class Product extends Node {
         (this.equal_bounds && this.lower_bound.defined));
   }
   
+  get carriesNoCost() {
+    // Return TRUE if this project has no cost-carrying input links.
+    for(const l of this.inputs) if(l.share_of_cost) return false;
+    return true;
+  }
+  
   highestUpperBound(visited) {
     // Infer the upper bound for this product from its own UB, or from
     // its ingoing links (type, rate, and UB of their from nodes).
@@ -8550,14 +8392,6 @@ class Product extends Node {
     return true;
   }
   
-  stockPrice(t) {
-    // Return the stock price if this product has storage capacity.
-    if(this.is_buffer && t >= 0 && t < this.stock_price.length) {
-      return (t ? this.stock_price[t] : 0);
-    }
-    return VM.UNDEFINED;
-  }
-  
   calculateHighestCostPrice(t) {
     // Set the highest cost price (HCP) for this product to be the cost
     // price of the most expensive process that in time step t contributes
@@ -8569,7 +8403,7 @@ class Product extends Node {
         // NOTE: Only consider the allocated share of cost.
         let cp = l.from_node.costPrice(t - ld) * l.share_of_cost;
         // NOTE: Ignore undefined cost prices.
-        if(cp <= VM.PLUS_INFINITY) {
+        if(cp <= VM.NEAR_PLUS_INFINITY) {
           const rr = l.relative_rate.result(t - ld);
           if(!rr) {
             cp = (cp > 0 ? VM.PLUS_INFINITY : VM.MINUS_INFINITY);
@@ -8889,8 +8723,6 @@ class Link {
     this.share_of_cost = 0;
     // Links have 1 result attribute: F (computed as relative rate * multiplier).
     this.actual_flow = [];
-    // NOTE: Unit cost price is used only temporarily during cost price calculation.
-    this.unit_cost_price = 0;
     // Other properties are used for drawing, editing, etc.
     this.from_x = 0;
     this.from_y = 0;
@@ -9033,8 +8865,6 @@ class Link {
     // NOTE: For normal links from grid processes, delays are ignored.
     if(this.from_node.grid && !this.to_node.is_data) return 0;
     let d = Math.floor(VM.SIG_DIF_FROM_ZERO + this.flow_delay.result(t));
-    // NOTE: Negative values are permitted. This might invalidate cost
-    // price calculation -- to be checked!!
     return d;
   }
   

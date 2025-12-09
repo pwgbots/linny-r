@@ -4702,7 +4702,7 @@ class VirtualMachine {
               } else if(MODEL.show_notices) {
                 this.logMessage(block, '---- Notice: (t=' + b + round + ') ' +
                    v[1].displayName + ' ' + v[0] + ' slack = ' +
-                   slack.toPrecision(1));
+                   safeToPrecision(slack, 1));
               }
             }
           }
@@ -4734,10 +4734,10 @@ class VirtualMachine {
     }
     if(this.plus_eps_count) this.logMessage(block,
         pluralS(this.plus_eps_count, 'positive epsilon') +
-        '; sum = ' + this.plus_eps_sum.toPrecision(3));
+        '; sum = ' + safeToPrecision(this.plus_eps_sum, 3));
     if(this.minus_eps_count) this.logMessage(block,
         pluralS(this.minus_eps_count, 'negative epsilon') +
-        '; sum = ' + this.minus_eps_sum.toPrecision(3));
+        '; sum = ' + safeToPrecision(this.minus_eps_sum, 3));
   }
   
   severestIssue(list, result) {
@@ -5016,119 +5016,9 @@ class VirtualMachine {
     // at a time because of delays, and also because expressions may refer
     // to values for earlier time steps.
     if(MODEL.infer_cost_prices) {
-      // Keep track of products for which CP will not be computed correctly
-      // due to negative delays.
-      MODEL.products_with_negative_delays = {};
       for(let i = 0; i < cbl; i++) {
         const b = bb + i;
-        if(b <= this.nr_of_time_steps && !MODEL.calculateCostPrices(b)) {
-        // NOTE: Issues with cost price calculation beyond simulation
-        // period need not be reported unless model is set to ignore this.
-          if(!MODEL.ignore_negative_flows) this.logMessage(block,
-              `${this.WARNING}(t=${b}) Invalid cost prices due to negative flow(s)`);
-        }
-      }
-      // NOTE: Links with negative delays will not have correct cost
-      // prices as these occur in the future. Having calculated (insofar
-      // as possibe) cost prices of nodes, those on links with negative
-      // delays can now be set to these "future" cost prices.
-      let ts = Object.keys(MODEL.products_with_negative_delays);
-      // Make a separate list of stocks, as these require post-processing.
-      const stocks = [];
-      // NOTE: Proceed backwards in time, using CP = 0 when time step
-      // falls beyond block length + look-ahead.
-      for(let i = ts.length - 1; i >= 0; i--) {
-        const
-            t = parseInt(ts[i]),
-            pwnd = MODEL.products_with_negative_delays[t];
-        // @@TO DO: Sort products in order of precedence to avoid that
-        // when Q1 --> Q2 the CP of Q2 is computed first, and remains
-        // "undefined" while the CP of Q1 can be known.
-        for(const p of pwnd) {
-          if(p.is_buffer) addDistinct(p, stocks);
-          // Compute total cost price as sum of inflow * unit cost price.
-          let tcp = 0,
-              taf = 0;
-          for(const l of p.inputs) {
-            const
-                d = l.actualDelay(t),
-                td = t - d;
-            // Only compute if t lies within the optimization period.
-            if(td < bb + cbl) {
-              const
-                  // NOTE: actualFlow already considers delays.
-                  af = l.actualFlow(t),
-                  // Get the cost price for the delayed time step.
-                  qcp = l.from_node.costPrice(td);
-              if(qcp > VM.EXCEPTION) {
-                tcp = VM.UNDEFINED;
-                break;
-              }
-              if(af > VM.NEAR_ZERO) {
-                tcp += af * qcp * l.share_of_cost;
-                taf += af;
-              }
-            }
-          }
-          //  CP beyond time horizon
-          if(tcp >= VM.EXCEPTION) {
-            p.cost_price[t] = VM.UNDEFINED;
-          } else if(taf > 0) {
-            // Product cost price is "per unit".
-            p.cost_price[t] = tcp / taf;
-          } else if(p.inputs.length === 1) {
-            // If product has only one input, its cost price can be
-            // inferred from this input even if there is no inflow.
-            const
-                l = p.inputs[0],
-                d = l.actualDelay(t),
-                rr = l.relative_rate.result[t - d];
-            // When t - d is outside period, `rr` is undefined => CP = 0.
-            p.cost_price[t] = (rr ? l.from_node.costPrice(t - d) *
-                rr * l.share_of_cost : 0);
-          } else {
-            p.cost_price[t] = 0;
-          }
-        }
-      }
-      // NOTE: Stocks require special treatment due to working backwards
-      // in time.
-      for(const p of stocks) {
-        // Get previous stock level and stock price (prior to block start).
-        let sl = p.actualLevel(bb - 1),
-            psp = p.stock_price[bb - 1] || 0;
-        for(let t = bb; t < bb + cbl; t++) {
-          // Subtract outflows from stock level.
-          for(const l of p.outputs) {
-            const af = l.actualFlow(t);
-            if(af > VM.NEAR_ZERO) sl -= af;
-          }
-          // Start with total CP = remaining old stock times old price.
-          let tcp = sl * psp;
-          // Add inflows to both level and total CP.
-          for(const l of p.inputs) {
-            const
-                af = l.actualFlow(t),
-                d = l.actualDelay(t);
-            if(af > VM.NEAR_ZERO) {
-              const cp = l.from_node.costPrice(t - d);
-              if(cp >= VM.EXCEPTION) {
-                tcp = VM.UNDEFINED;
-                break;
-              }
-              sl += af;
-              tcp += af * cp;
-            }
-          }
-          if(tcp >= VM.EXCEPTION) {
-            psp = VM.UNDEFINED;
-          } else if(sl > VM.NEAR_ZERO) {
-            psp = tcp / sl;
-          } else {
-            psp = 0;
-          }
-          p.stock_price[t] = psp;
-        }
+        MODEL.calculateCostPrices(b);
       }
     }
 
@@ -8286,7 +8176,7 @@ function VMI_set_bounds(args) {
       l = p.actualLevel(VM.t);
       // QUICK PATCH! Should resolve that small non-zero process levels
       // computed in prior round make problem infeasible.
-      if(l < 0.0005) l = 0;
+      if(l < VM.ON_OFF_THRESHOLD) l = 0;
     } else {
       l = 0;
     }
