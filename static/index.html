@@ -2878,8 +2878,8 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
     </div>
   </div>
 
-  <!-- The "clusters to ignore" dialog displays a scrollable list of clusters
-       set to be ignored for specified selectors.
+  <!-- The "clusters to ignore" dialog displays a scrollable list of *name patterns*
+       for clusters set to be ignored for specified selectors.
        NOTE: Changes to this list are discarded if CANCEL is clicked.
     -->
   <div id="xp-clusters-modal" class="modal">
@@ -2889,26 +2889,48 @@ When modeling power grids, -c indicates &ldquo;disregard grid capacity&rdquo;,
         <img class="cancel-btn" src="images/cancel.png">
         <img class="ok-btn" src="images/ok.png">
       </div>
-      <select id="xp-clusters-select"></select>
-      <img id="xp-clusters-add-btn" src="images/add.png" class="btn enab"
-           title="Add cluster to list">
       <div id="xp-clusters-no-list">
         No clusters set to be ignored
       </div>
       <div id="xp-clusters-list">      
         <div id="xp-clusters-scroll-hdr">
-          <div id="xp-clusters-name-hdr">Cluster</div>
+          <div id="xp-clusters-name-hdr">Cluster name pattern</div>
           <div id="xp-clusters-selectors-hdr">Selector(s)</div>
         </div>
         <div id="xp-clusters-scroll">
           <table id="xp-clusters-table" width="100%"></table>
         </div>
-        <div id="xp-clusters-selectors-div">
-          Selector(s):
-          <input id="xp-clusters-selectors" type="text" autocomplete="off">
-          <img id="xp-clusters-delete-btn" src="images/remove.png"
-               class="btn enab" title="Delete cluster from list">
-        </div>
+      </div>
+      <div id="xp-clusters-buttons">
+        <img id="xp-clusters-new-btn" class="btn enab" src="images/new.png"
+             title="New cluster selection pattern">
+        <img id="xp-clusters-edit-btn" class="btn disab" src="images/edit.png"
+             title="Edit selected pattern">
+        <img id="xp-clusters-delete-btn" class="btn disab" src="images/delete.png"
+             title="Delete selected pattern">
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal to appear when the New button or Edit button of the
+       "clusters to ignore" dialog is clicked.
+    -->
+  <div id="xp-pattern-modal" class="modal">
+    <div id="xp-pattern-dlg" class="inp-dlg">
+      <div class="dlg-title">
+        <span id="xp-pattern-action">Add</span> cluster selection
+        <img class="cancel-btn" src="images/cancel.png">
+        <img class="ok-btn" src="images/ok.png">
+      </div>
+      <div id="xp-pattern-filter">
+        <label>Filter:</label>
+        <input id="xp-pattern-pattern" type="text">
+        <div id="xp-pattern-matches">(no matches)</div>
+      </div>
+      <div id="xp-pattern-selectors-div">
+        <label>Selector(s):</label>
+        <input id="xp-pattern-selectors" type="text" autocomplete="off">
+        <div id="xp-pattern-dimensions">(no dimensions)</div>
       </div>
     </div>
   </div>
@@ -3136,7 +3158,7 @@ where X can be one or several of these letters: ABCDELPQ">
       </div>
       <div id="check-update-msg"></div>
       <div id="check-update-buttons">
-        <img class="ok-btn" src="images/ok.png">
+        <img id="check-update-ok-btn" class="ok-btn" src="images/ok.png">
         Shut down server to install new version
         <img class="cancel-btn" src="images/cancel.png">
         Continue using current version

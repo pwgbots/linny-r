@@ -13,7 +13,7 @@ the Linny-R software is available.
 */
 
 /*
-Copyright (c) 2017-2025 Delft University of Technology
+Copyright (c) 2017-2026 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -176,11 +176,11 @@ function checkForUpdates() {
                   'This is a <em>major</em> version change, so automatic ',
                   'updating is <strong>not</strong> possible.<br>',
                   'Please read <a href="', GITHUB_REPOSITORY,
-                  '/linny-r#updating-to-the-latest-version-of-linny-r" ',
+                  '#updating-to-the-latest-version-of-linny-r" ',
                   'target="_blank"> this information on GitHub</a> ',
                   ' on how to manually upgrade Linny-R.'].join('');
               // ... so shutdown instead of update...
-              UI.removeListeners(UI.check_update_modal.ok)
+              UI.removeListeners('check-update-ok-btn')
                   .addEventListener('click', () => UI.shutDownServer());
               // ... and show blinking notification in dialog header.
               blinker.style.display = 'inline-block';
@@ -217,7 +217,7 @@ function initializeLinnyR() {
   X_EDIT = new ExpressionEditor();
   ACTOR_MANAGER = new ActorManager();
   SCALE_UNIT_MANAGER = new ScaleUnitManager();
-  POWER_GRID_MANAGER = new PowerGridManager();
+  POWER_GRID_MANAGER = new GUIPowerGridManager();
   EQUATION_MANAGER = new EquationManager();
   FINDER = new Finder();
   CONSTRAINT_EDITOR = new ConstraintEditor();  

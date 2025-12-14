@@ -4243,7 +4243,8 @@ td.sa-not-run {
   width: 20px;
 }
 
-#xp-delete-btn {
+#xp-delete-btn,
+#xp-clusters-delete-btn {
   position: absolute;
   right: 2px;
 }
@@ -4950,15 +4951,15 @@ span.sd-clear {
   font-family: monospace;
 }
 
+/* the CLUSTERS TO INGNORE dialog */
 #xp-clusters-dlg {
   width: 408px;
   height: min-content;  
 }
 
-#xp-clusters-select {
-  width: 380px;
-  font-size: 12px;
-  margin: 2px;
+#xp-clusters-buttons > img.btn {
+  height: 20px;
+  width: 20px;
 }
 
 #xp-clusters-add-btn {
@@ -4986,12 +4987,12 @@ span.sd-clear {
 }
 
 #xp-clusters-name-hdr {
-  width: 300px;
+  width: 250px;
   display: inline-block;
 }
 
 #xp-clusters-selectors-hdr {
-  width: 100px;
+  width: 150px;
   display: inline-block;
 }
 
@@ -5003,29 +5004,61 @@ span.sd-clear {
   border-top: 1px solid Silver;
 }
 
-#xp-clusters-table > tbody > tr > td:last-child {
-  width: 100px;
-  max-width: 100px;
+td.c-pat {
+  border-right: none !important;
 }
 
-#xp-clusters-selectors-div {
+td.c-match {
+  width: 5%;
+  color: Gray;
+  border-left: none !important;
+  font-style: italic;
+  text-align: right;
+  padding-right: 2px;
+}
+
+td.c-sels {
+  width: 150px;
+  max-width: 150px;
+}
+
+/* the CLUSTER PATTERN dialog */
+#xp-pattern-dlg {
+  width: 370px;
+  height: min-content;  
+}
+
+#xp-pattern-filter {
+  margin: 1px 0 0 2px;
+}
+
+#xp-pattern-pattern {
+  width: 220px;
+  font-size: 12px;
   margin: 2px;
+}
+
+#xp-pattern-matches,
+#xp-pattern-dimensions {
+  display: inline-block;
+  font-style: italic;
+  color: Gray;
+  width: 90px;
+  margin: 2px;
+}
+
+#xp-pattern-selectors-div {
+  margin: 2px;
+  margin-bottom: 3px;
   width: calc(100% - 4px);
 }
 
-#xp-clusters-selectors {
-  width: 318px;
-  height: 16px !important;
+#xp-pattern-selectors {
+  width: 193px;
   font-size: 12px;
+  margin: 0 2px;
 }
 
-#xp-clusters-delete-btn {
-  position: absolute;
-  bottom: 2px;
-  right: 2px;
-  height: 18px;
-  width: 18px;
-}
 
 /* The BROWSER DIALOG is a resizable modal dialog for the File manager */
 #browser-dlg {

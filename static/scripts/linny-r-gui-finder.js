@@ -424,7 +424,7 @@ class Finder {
         this.copy_btn.style.display = 'inline-block';
         if(CHART_MANAGER.visible && CHART_MANAGER.chart_index >= 0) {
           const ca = this.commonAttributes;
-          if(ca.length) {
+          if(ca.length || this.filtered_types.length === 1) {
             this.chart_btn.title = 'Add ' + pluralS(n, 'variable') +
                 ' to selected chart';
             this.chart_btn.style.display = 'inline-block';
@@ -552,11 +552,17 @@ class Finder {
         a = md.element('attribute').value,
         abs = UI.boxChecked('confirm-add-chart-variables-absolute'),
         stack = UI.boxChecked('confirm-add-chart-variables-stacked'),
+        equations = this.entities[0] instanceof DatasetModifier,
         enl = [];
-    for(const e of this.entities) enl.push(e.name);
+    for(const e of this.entities) enl.push(equations ? e.selector : e.name);
     enl.sort((a, b) => UI.compareFullNames(a, b, true));
     for(const en of enl) {
-      const vi = c.addVariable(en, a);
+      let vi = null;
+      if(equations) {
+        vi = c.addVariable(UI.EQUATIONS_DATASET_NAME, en);
+      } else {
+        vi = c.addVariable(en, a);
+      }
       if(vi !== null) {
         c.variables[vi].absolute = abs;
         c.variables[vi].stacked = stack;
@@ -905,7 +911,7 @@ class Finder {
         const sel = [];
         for(const ed of data_list) {
           // NOTE: Dataset modifier lines start with a tab.
-          const lines = ed.D.split('\n\t');
+          const lines = ed.V.split('\n\t');
           // Store default value in entity data object for second iteration.
           ed.dv = VM.sig4Dig(safeStrToFloat(lines[0].trim(), 0));
           for(let i = 1; i < lines.length; i++) {
@@ -1028,7 +1034,17 @@ class Finder {
     // Look up entity, select it in the left pane, and update the right
     // pane. Open the "edit properties" modal dialog on double-click
     // and Alt-click if the entity is editable.
-    const obj = MODEL.objectByID(id);
+    const
+        obj = MODEL.objectByID(id),
+        selectDataset = (ds) => {
+            DATASET_MANAGER.expandToShow(ds.name);
+            DATASET_MANAGER.selected_dataset = ds;
+            DATASET_MANAGER.updateDialog();
+          },
+        selectEquation = (eq) => {
+            EQUATION_MANAGER.selected_modifier = eq;
+            EQUATION_MANAGER.updateDialog();
+        };
     this.selected_entity = obj;
     this.updateDialog();
     if(!obj) return;
@@ -1048,16 +1064,17 @@ class Finder {
       } else if(obj instanceof Dataset) {
         if(UI.hidden('dataset-dlg')) {
           UI.buttons.dataset.dispatchEvent(new Event('click'));
+          setTimeout(selectDataset, 350, obj);
+        } else {
+          selectDataset(obj);
         }
-        DATASET_MANAGER.expandToShow(obj.name);
-        DATASET_MANAGER.selected_dataset = obj;
-        DATASET_MANAGER.updateDialog();
       } else if(obj instanceof DatasetModifier) {
         if(UI.hidden('equation-dlg')) {
           UI.buttons.equation.dispatchEvent(new Event('click'));
+          setTimeout(selectEquation, 350, obj);
+        } else {
+          selectEquation(obj);
         }
-        EQUATION_MANAGER.selected_modifier = obj;
-        EQUATION_MANAGER.updateDialog();
       }
     }
   }

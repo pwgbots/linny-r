@@ -11,7 +11,7 @@ for the Linny-R Experiment Manager dialog.
 */
 
 /*
-Copyright (c) 2017-2025 Delft University of Technology
+Copyright (c) 2017-2026 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -227,29 +227,30 @@ class GUIExperimentManager extends ExperimentManager {
         'click', () => EXPERIMENT_MANAGER.modifyActorSelector());
     this.actor_selector_modal.cancel.addEventListener(
         'click', () => EXPERIMENT_MANAGER.actor_selector_modal.hide());
-
+    // Dialog for clusters-to-ignore.
     this.clusters_modal = new ModalDialog('xp-clusters');
     this.clusters_modal.ok.addEventListener(
         'click', () => EXPERIMENT_MANAGER.modifyClustersToIgnore());
     this.clusters_modal.cancel.addEventListener(
         'click', () => EXPERIMENT_MANAGER.clusters_modal.hide());
-    this.clusters_modal.element('add-btn').addEventListener(
-        'click', () => EXPERIMENT_MANAGER.addClusterToIgnoreList());
-    const sinp = this.clusters_modal.element('selectors');
-    sinp.addEventListener(
-        'focus', () => EXPERIMENT_MANAGER.editIgnoreSelectors());
-    sinp.addEventListener(
-        'keyup', (event) => {
-            if (event.key === 'Enter') {
-              event.stopPropagation();
-              event.target.blur();
-            }
-          });
-    sinp.addEventListener(
-        'blur', () => EXPERIMENT_MANAGER.setIgnoreSelectors());
+    this.clusters_modal.element('new-btn').addEventListener(
+        'click', () => EXPERIMENT_MANAGER.showPatternModal('Add'));
+    this.clusters_modal.element('edit-btn').addEventListener(
+        'click', () => EXPERIMENT_MANAGER.showPatternModal('Edit'));
     this.clusters_modal.element('delete-btn').addEventListener(
-        'click', () => EXPERIMENT_MANAGER.deleteClusterFromIgnoreList());
-
+        'click', () => EXPERIMENT_MANAGER.deletePatternFromIgnoreList());
+    // Dialog for cluster selection patterns and associated dataset
+    // modifier selectors
+    this.pattern_modal = new ModalDialog('xp-pattern');
+    this.pattern_modal.ok.addEventListener(
+        'click', () => EXPERIMENT_MANAGER.savePattern());
+    this.pattern_modal.cancel.addEventListener(
+        'click', () => EXPERIMENT_MANAGER.pattern_modal.hide());
+    this.pattern_modal.element('pattern').addEventListener(
+        'input', () => EXPERIMENT_MANAGER.showMatchingClusters());
+    this.pattern_modal.element('selectors').addEventListener(
+        'input', () => EXPERIMENT_MANAGER.updateIgnoreSelectors());
+    // Dialog for downloading results as CSV file.
     this.download_modal = new ModalDialog('xp-download');
     this.download_modal.ok.addEventListener(
         'click', () => EXPERIMENT_MANAGER.downloadDataAsCSV());
@@ -326,12 +327,15 @@ class GUIExperimentManager extends ExperimentManager {
     icnt.title = '';
     if(sx) {
       UI.enableButtons(btns);
-      const nc = sx.clusters_to_ignore.length;
       if(Object.keys(MODEL.clusters).length <= 1) {
         // Disable ignore button if model comprises only the top cluster
         UI.disableButtons('xp-ignore');
-      } else if(nc > 0) {
-        icnt.innerHTML = nc;
+      } else if(sx.clusters_to_ignore.length) {
+        let nc = 0;
+        for(const cti of sx.clusters_to_ignore) {
+          nc += MODEL.clustersByPattern(cti.pattern).length;
+        }
+        icnt.innerText = nc;
         icnt.title = pluralS(nc, 'cluster') + ' set to be ignored';
       }
     } else {
@@ -1742,31 +1746,27 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     this.editActorDimension();
   }
   
+  matchingClusterNames(pattern) {
+    // Return list of cluster names that match `pattern`.
+    const
+        names = [],
+        clist = MODEL.clustersByPattern(pattern);
+    for(const c of clist) names.push(c.displayName);
+    return names.sort();
+  }
+  
   showClustersToIgnore() {
-    // Opens the "clusters to ignore" dialog
+    // Open the "clusters to ignore" dialog.
     const x = this.selected_experiment;
     if(!x) return;
-    const
-        md = this.clusters_modal,
-        clist = [],
-        csel = md.element('select'),
-        sinp = md.element('selectors');
+    const md = this.clusters_modal;
     // NOTE: Copy experiment property to modal dialog property, so that changes
     // are made only when OK is clicked
     md.clusters = [];
     for(const cs of x.clusters_to_ignore) {
-      md.clusters.push({cluster: cs.cluster, selectors: cs.selectors});
+      md.clusters.push({pattern: cs.pattern, selectors: cs.selectors});
     }
     md.cluster_index = -1;
-    for(let k in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(k)) {
-      const c = MODEL.clusters[k];
-      // Do not add top cluster, nor clusters already on the list.
-      if(c !== MODEL.top_cluster && !c.ignore && !x.mayBeIgnored(c)) {
-        clist.push(`<option value="${k}">${c.displayName}</option>`);
-      }
-    }
-    csel.innerHTML = clist.join('');
-    sinp.style.backgroundColor = 'inherit';
     this.updateClusterList();
     md.show();
   }
@@ -1777,18 +1777,24 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
         clst = md.element('list'),
         nlst = md.element('no-list'),
         ctbl = md.element('table'),
-        sinp = md.element('selectors'),
-        sdiv = md.element('selectors-div'),
+        edit_btn = md.element('edit-btn'),
+        del_btn = md.element('delete-btn'),
         cl = md.clusters.length;
     if(cl > 0) {
       // Show cluster+selectors list.
       const ol = [];
       for(let i = 0; i < cl; i++) {
-        const cti = md.clusters[i];
+        const
+            cti = md.clusters[i],
+            names = this.matchingClusterNames(cti.pattern),
+            ttl = names.join('\n');
         ol.push('<tr class="variable',
           (i === md.cluster_index ? ' sel-set' : ''),
-          '" onclick="EXPERIMENT_MANAGER.selectCluster(', i, ');"><td>',
-          cti.cluster.displayName, '</td><td>', cti.selectors, '</td></tr>');
+          '" onclick="EXPERIMENT_MANAGER.selectCluster(', i, ');">',
+          '<td class="c-pat">', cti.pattern,
+          '</td><td class="c-match" title="', ttl, '">',
+          pluralS(names.length, 'cluster'), '</td><td class="c-sels">',
+          cti.selectors, '</td></tr>');
       }
       ctbl.innerHTML = ol.join('');
       clst.style.display = 'block';
@@ -1799,14 +1805,16 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
       nlst.style.display = 'block';
     }
     if(md.cluster_index < 0) {
-      // Hide selectors and delete button
-      sdiv.style.display = 'none';
+      edit_btn.classList.remove('enab');
+      edit_btn.classList.add('disab');
+      del_btn.classList.remove('enab');
+      del_btn.classList.add('disab');
     } else {
-      // Show selectors and enable input and delete button
-      sinp.value = md.clusters[md.cluster_index].selectors;
-      sdiv.style.display = 'block';
+      edit_btn.classList.remove('disab');
+      edit_btn.classList.add('enab');
+      del_btn.classList.remove('disab');
+      del_btn.classList.add('enab');
     }
-    sinp.style.backgroundColor = 'inherit';
   }
 
   selectCluster(n) {
@@ -1814,38 +1822,90 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
     this.clusters_modal.cluster_index = n;
     this.updateClusterList();
   }
+  
+  showPatternModal(action) {
+    const
+        cmd = this.clusters_modal,
+        ci = cmd.cluster_index,
+        pmd = this.pattern_modal,
+        pattern = pmd.element('pattern'),
+        selectors = pmd.element('selectors');
+    pmd.element('action').innerText = action;
+    if(action === 'Edit') {
+      if(ci >= 0) {
+        pattern.value = cmd.clusters[ci].pattern;
+        selectors.value = cmd.clusters[ci].selectors;
+      }
+    } else {
+      pattern.value = '';
+      selectors.value = '';
+    }
+    pmd.show('pattern');
+  }
 
-  addClusterToIgnoreList() {
+  showMatchingClusters() {
+    // Infer list of clusters that match the input pattern, and then display
+    // the number of matches, and set their name list as title for the element.
     const
-      md = this.clusters_modal,
-      sel = md.element('select'),
-      c = MODEL.objectByID(sel.value);
-    if(c) {
-      md.clusters.push({cluster: c, selectors: ''});
-      md.cluster_index = md.clusters.length - 1;
-      // Remove cluster from select so it cannot be added again.
-      sel.remove(sel.selectedIndex);
-      this.updateClusterList();
+        md = this.pattern_modal,
+        cmatch = md.element('matches'),
+        cnames = this.matchingClusterNames(md.element('pattern').value.trim());
+    cmatch.innerText = `(${pluralS(cnames.length, 'match', 'matches').toLowerCase()})`;
+    cmatch.title = cnames.join('\n');
+    if(cnames.length) {
+      md.ok.classList.add('enab');
+      md.ok.classList.remove('disab');
+    } else {
+      md.ok.classList.add('disab');
+      md.ok.classList.remove('enab');
     }
   }
   
-  editIgnoreSelectors() {
-    this.clusters_modal.element('selectors').style.backgroundColor = 'white';
-  }
-  
-  setIgnoreSelectors() {
+  savePattern() {
+    // Save the added/edited pattern + selectors.
+    this.updateIgnoreSelectors(true);
     const
-        md = this.clusters_modal,
-        sinp = md.element('selectors'),
-        s = sinp.value.replace(/[\;\,]/g, ' ').trim().replace(
-          /[^a-zA-Z0-9\+\-\%\_\s]/g, '').split(/\s+/).join(' ');
-    if(md.cluster_index >= 0) {
-      md.clusters[md.cluster_index].selectors = s;
+        cmd = this.clusters_modal,
+        pmd = this.pattern_modal,
+        act = pmd.element('action').innerText,
+        pat = pmd.element('pattern').value.trim(),
+        sel = pmd.element('selectors').value.trim();
+    let ci = cmd.cluster_index,
+        cti = null;
+    if(ci >= 0 && act === 'Edit') {
+      cti = cmd.clusters[ci];
+    } else if(pat) {
+      cti = {pattern: pat, selectors: sel};
+      cmd.clusters.push(cti);
+      cmd.cluster_index = cmd.clusters.length - 1;
     }
+    if(cti) {
+      cti.pattern = pat;
+      cti.selectors = sel;
+    }
+    pmd.hide();
     this.updateClusterList();
   }
   
-  deleteClusterFromIgnoreList() {
+  updateIgnoreSelectors(save=false) {
+    const
+        x = this.selected_experiment,
+        md = this.pattern_modal,
+        dims = md.element('dimensions'),
+        sinp = md.element('selectors'),
+        sels = sinp.value.replace(/[\;\,]/g, ' ').trim()
+            .replace(/[^a-zA-Z0-9\+\-\%\_\s]/g, '').split(/\s+/).join(' ');
+    let n = 0;
+    if(x) {
+      // Infer # dimensions having selectors in common.
+      const sl = sels.split(' ');
+      for(const d of x.dimensions) if(intersection(d, sl).length) n++;
+    }
+    dims.innerText = `(${pluralS(n, 'dimension').toLowerCase()})`;
+    if(save) sinp.value = sels;
+  }
+  
+  deletePatternFromIgnoreList() {
     // Delete selected cluster+selectors from list.
     const md = this.clusters_modal;
     if(md.cluster_index >= 0) {

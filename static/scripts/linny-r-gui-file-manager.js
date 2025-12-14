@@ -375,6 +375,7 @@ class GUIFileManager {
     // Show file browser dialog, configured for the specified action.
     this.action = action;
     this.focal_table = this.dir_table;
+    // Always open on the home root directory.
     this.selected_dir = this.root_dirs.home || null;
     this.model_index = -1;
     if(this.action === 'load') {
@@ -1280,10 +1281,17 @@ class GUIFileManager {
     IO_CONTEXT = new IOContext(this.model_file_name, node);
     const md = this.include_modal;
     md.element('name').innerHTML = IO_CONTEXT.file_name;
-    md.element('prefix').value = '';
-    md.element('actor').value = '';
+    // When File manager is opened for inclusion, the "Add cluster"
+    // dialog may already contain the cluster name, and this is then
+    // passed via the `cluster_prefix` property.
+    md.element('prefix').value = (md.cluster_prefix || '');
+    md.element('actor').value = (md.cluster_actor || '');
+    // Always clear this cluster prefix and actor properties.
+    md.cluster_prefix = '';
+    md.cluster_actor = '';
     md.element('scroll-area').innerHTML = IO_CONTEXT.parameterTable;
     md.show('prefix');
+    this.suggestBindings();
   }
   
   suggestBindings() {
@@ -1296,9 +1304,18 @@ class GUIFileManager {
         sels = sa.querySelectorAll('select');
     for(const sel of sels) {
       const
-          oid = UI.nameToID(prefix) + ':_' + sel.id,
-          ids = [...sel.options].map(o => o.value);
-      if(ids.indexOf(oid) >= 0) sel.value = oid;
+          ids = [...sel.options].map(o => o.value),
+          oid = UI.nameToID(prefix) + ':_' + sel.id;
+      if(ids.indexOf(oid) >= 0) {
+        sel.value = oid;
+      // If no prefixed match, check for exact match. 
+      } else if(ids.indexOf(sel.id) >= 0) {
+        sel.value = sel.id;
+      // If no exact match, check for suffixed match. 
+      } else {
+        const soid = sel.id + ':_' + UI.nameToID(prefix);
+        if(ids.indexOf(soid) >= 0) sel.value = soid;
+      }
     }
   }
     

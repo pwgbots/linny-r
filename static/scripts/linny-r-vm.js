@@ -1028,6 +1028,7 @@ class ExpressionParser {
             if(MODEL.running_experiment) {
               // Log message only for block 1.
               VM.logMessage(1, VM.WARNING + notice);
+              console.log(`No variable ${name} in expression for:`, this.ownerName);
             }
           }
         }
@@ -3487,7 +3488,7 @@ class VirtualMachine {
       this.logMessage(1, 'POWER FLOW: ' +
           pluralS(Object.keys(MODEL.power_grids).length, 'grid'));
       if(MODEL.ignore_grid_capacity) this.logMessage(1,
-          'NOTE: Assuming infinite grid line cacity');
+          'NOTE: Assuming infinite grid line capacity');
       if(MODEL.ignore_KVL) this.logMessage(1,
           'NOTE: Disregarding Kirchhoff\'s Voltage Law');
       if(MODEL.ignore_power_losses) this.logMessage(1,
@@ -8207,7 +8208,7 @@ function VMI_set_bounds(args) {
       typeof l !== 'number' || typeof u !== 'number' || DEBUGGING) {
     console.log(['set_bounds [', k, '] ', p.displayName, '[',
       VM.variables[vi - 1][0],'] t = ', VM.t, ' LB = ', VM.sig4Dig(l),
-      ', UB = ', VM.sig4Dig(u), fixed].join(''), l, u, inf_val);
+      ', UB = ', VM.sig4Dig(u), fixed].join(''), l, u, inf_val, 'args:', args);
     console.log(p);
     throw "STOP";
   } else if(u < l) {

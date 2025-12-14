@@ -16,7 +16,7 @@ NOTE: For browser-based Linny-R, this file should NOT be loaded, as it
 */
 
 /*
-Copyright (c) 2017-2024 Delft University of Technology
+Copyright (c) 2017-2026 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -117,19 +117,17 @@ Possible options are:
                         (FUTURE OPTION)
   check                 will report whether current version is up-to-date
   data-dir=[path]       will look for series data files in [path] instead of
-                        (main)/user/data
+                        (Linny-R)/user/data
   model=[path]          will load model file specified by [path]
-  module=[name@repo]    will load model [name] from repository [repo]
-                        (if @repo is blank, repository "local host" is used)
-                        (FUTURE OPTION)
+                        (relative paths are searched for in (Linny-R)/user/models)
   report=[name]         will write run results to [name]-series.txt and
                         [name]-stats.txt in (workspace)/reports
   run                   will run the loaded model
   solver=[name]         will select solver [name], or warn if not found
-                        (name choices: Gurobi, CPLEX, SCIP or LP_solve)
+                        (name choices: Gurobi, CPLEX, MOSEK, SCIP or LP_solve)
   user=[identifier]     user ID will be used to log onto remote servers
   verbose               will output solver messages to the console
-  workspace=[path]      will create workspace in [path] instead of (main)/user
+  workspace=[path]      will create workspace in [path] instead of (Linny-R)/user
   xrun=[title#list]     will perform experiment runs in given range
                         (list is comma-separated sequence of run numbers)
 `;
@@ -262,60 +260,6 @@ class ConsoleMonitor {
 } // END of class ConsoleMonitor
 
 
-// NOTE: This implementation is very incomplete, still!
-class ConsoleRepositoryBrowser {
-  constructor() {
-    this.repositories = [];
-    this.repository_index = -1; 
-    this.module_index = -1;
-    // Get the repository list from the modules.
-    this.getRepositories();
-    this.reset();
-  }
-  
-  reset() {
-    this.visible = false;
-  }
-
-  get isLocalHost() {
-    // Return TRUE if first repository on the list is 'local host'.
-    return this.repositories.length > 0 &&
-      this.repositories[0].name === 'local host';
-  }
-
-  getRepositories() {
-    // Gets the list of repository names from the server.
-    this.repositories.length = 0;
-    // @@TO DO!!
-  }
-  
-  repositoryByName(n) {
-    // Return the repository having name `n` if already known, otherwise NULL.
-    for(let i = 0; i < this.repositories.length; i++) {
-      if(this.repositories[i].name === n) {
-        return this.repositories[i];
-      }
-    }
-    return null;
-  }
-  
-  asFileName(s) {
-    // NOTE: asFileName is implemented as function (see below) to permit
-    // its use prior to instantiation of the RepositoryBrowser.
-    return stringToFileName(s);
-  }
-  
-}
-
-function stringToFileName(s) {
-  // Return string `s` with whitespace converted to a single dash, and
-  // special characters converted to underscores.
-  return s.normalize('NFKD').trim()
-      .replace(/[\s\-]+/g, '-')
-      .replace(/[^A-Za-z0-9_\-]/g, '_')
-      .replace(/^[\-\_]+|[\-\_]+$/g, '');
-}
-
 // CLASS ConsoleFileManager allows loading and saving models and diagrams, and
 // handles the interaction with the MILP solver via `exec` calls and files
 // stored on the modeler's computer
@@ -337,6 +281,31 @@ class ConsoleFileManager {
     return path.join(...parts);
   }
   
+  asFilePath(s, no_sep=false) {
+    // Return string `s` with whitespace converted to a single dash, and
+    // special characters (also periods!) converted to underscores.
+    // NOTE: Permit functional use of directory separator unless `no_sep`
+    // is FALSE.
+    const sanitize = (str) => str.trim()
+        // Consider dashes, commas and (semi)colons as whitespace, and
+        // condense all such "whitespace" into a single dash.
+        .replace(/[\s\-\,\;\:]+/g, '-')
+        // Condense special characters into a single underscore.
+        .replace(/[^A-Za-z0-9_\-]+/g, '_')
+        // No leading or trailing dashes or underscores.
+        .replace(/^[\-\_]+|[\-\_]+$/g, '');
+    s = s.trim().normalize('NFKD');
+    if(no_sep) return sanitize(s);
+    // When path is acceptable, split at both '/' and '\', because
+    // names may be constructed on different OS platforms.
+    return s.trim().split(/\/|\\/)
+        .map((p) => sanitize(p))
+        // Remove empty strings.
+        .filter((p) => p)
+        // Use the OS platform separator to reconstruct the path.
+        .join(path.sep);
+  }
+
   getRemoteData(dataset, url) {
     // Gets data from a URL, or from a file on the local host 
     if(url === '') return;
@@ -849,7 +818,14 @@ function commandLineSettings() {
           if(mp.ext !== '.lnr') {
             console.log('WARNING: Model file should have extension .lnr');
           }
-          fs.accessSync(av[1], fs.constants.R_OK);
+          try {
+            fs.accessSync(av[1], fs.constants.R_OK);
+          } catch(err) {
+            if(!mp.root && !mp.dir.startsWith('.')) {
+              av[1] = path.join(settings.user_dir, 'models', av[1]);
+            }
+            fs.accessSync(av[1], fs.constants.R_OK);
+          }
           settings.model_path = av[1];
         } catch(err) {
           console.log(`ERROR: File "${av[1]}" not found`);
@@ -873,18 +849,15 @@ function commandLineSettings() {
           console.log('ERROR: Failed to create data directory:', dp);
         }
       } else if(av[0] === 'report') {
-        // Set report file name (if valid)
-        const rfn = stringToFileName(av[1]);
+        // Set report file name (if valid).
+        // NOTE: No sub-directories for report files, so path separators
+        // are ignored.
+        const rfn = FILE_MANAGER.asFilePath(av[1], true);
         if(/^[A-Za-z0-9]+/.test(rfn)) {
           settings.report = path.join(settings.user_dir, 'reports', rfn);
         } else {
           console.log(`WARNING: Invalid report file name "{$rfn}"`);
         }
-      } else if(av[0] === 'module') {
-        // Add default repository is none specified
-        if(av[1].indexOf('@') < 0) av[1] += '@local host';
-        // Check is repository exists, etc.
-        // @@@TO DO!
       } else if(av[0] === 'xrun') {
         if(!av[1].trim()) {
           // NOTE: `x_title` = TRUE indicates: list available experiments.
@@ -1037,10 +1010,10 @@ PROMPTER.questionPrompt = (str) => {
 //PROMPTER.stdoutMuted = true;
 */
 
-// Initialize the Linny-R console components as global variables
+// Initialize the Linny-R console components as global variables.
 global.UI = new Controller();
 global.VM = new VirtualMachine();
-global.REPOSITORY_BROWSER = new ConsoleRepositoryBrowser();
+global.POWER_GRID_MANAGER = new PowerGridManager();
 global.FILE_MANAGER = new ConsoleFileManager();
 global.DATASET_MANAGER = new DatasetManager();
 global.CHART_MANAGER = new ChartManager();
@@ -1050,10 +1023,8 @@ global.MONITOR = new ConsoleMonitor();
 global.RECEIVER = new ConsoleReceiver();
 global.IO_CONTEXT = null;
 global.MODEL = new LinnyRModel();
-
 // Connect the virtual machine (may prompt for password).
 MONITOR.connectToServer();
-
 // Load the model if specified.
 if(SETTINGS.model_path) {
   FILE_MANAGER.loadModel(SETTINGS.model_path, (model) => {

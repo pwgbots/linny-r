@@ -1098,9 +1098,9 @@ function childNodeByTag(node, tag) {
   // Return the XML child node of `node` having node name `tag`, or NULL if
   // no such child node exists.
   let cn = null;
-  for (let i = 0; i < node.childNodes.length; i++) {
-    if(node.childNodes[i].tagName === tag) {
-      cn = node.childNodes[i];
+  for (let ci = 0; ci < node.childNodes.length; ci++) {
+    if(node.childNodes[ci].tagName === tag) {
+      cn = node.childNodes[ci];
       break;
     }
   }
@@ -1418,6 +1418,8 @@ if(NODE) module.exports = {
   nameToLines: nameToLines,
   hexToFloat: hexToFloat,
   stringToFloatArray: stringToFloatArray,
+  unpackFloat: unpackFloat,
+  unpackVector: unpackVector,
   hexToBytes: hexToBytes,
   bytesToHex: bytesToHex,
   arrayBufferToBase64: arrayBufferToBase64,

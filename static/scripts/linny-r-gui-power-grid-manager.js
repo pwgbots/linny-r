@@ -11,7 +11,7 @@ functionality for the Linny-R Power Grid Manager dialog.
 */
 
 /*
-Copyright (c) 2017-2025 Delft University of Technology
+Copyright (c) 2017-2026 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -32,21 +32,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// CLASS PowerGridManager (modal dialog!)
-class PowerGridManager {
+// CLASS GUIPowerGridManager (modal dialog!)
+class GUIPowerGridManager extends PowerGridManager {
   constructor() {
-    // Add the power grids modal
+    super();
+    // Add the power grids modal.
     this.dialog = new ModalDialog('power-grids');
     this.dialog.close.addEventListener('click',
         () => POWER_GRID_MANAGER.closeDialog());
-    // Make the add, edit and delete buttons of this modal responsive
+    // Make the add, edit and delete buttons of this modal responsive.
     this.dialog.element('new-btn').addEventListener('click',
         () => POWER_GRID_MANAGER.promptForPowerGrid());
     this.dialog.element('edit-btn').addEventListener('click',
         () => POWER_GRID_MANAGER.editPowerGrid());
     this.dialog.element('delete-btn').addEventListener('click',
         () => POWER_GRID_MANAGER.deletePowerGrid());
-    // Add the power grid definition modal
+    // Add the power grid definition modal.
     this.new_power_grid_modal = new ModalDialog('new-power-grid');
     this.new_power_grid_modal.ok.addEventListener(
         'click', () => POWER_GRID_MANAGER.addNewPowerGrid());
@@ -54,33 +55,6 @@ class PowerGridManager {
         'click', () => POWER_GRID_MANAGER.new_power_grid_modal.hide());
     this.scroll_area = this.dialog.element('scroll-area');
     this.table = this.dialog.element('table');
-    // Properties used to infer the cyle basis used by the Virtual Machine
-    // to add constraints that enforce Kirchhoff's voltage law.
-    this.nodes = {};
-    this.edges = {};
-    this.spanning_tree = [];
-    this.tree_incidence = {};
-    this.cycle_edges = [];
-    this.cycle_basis = [];
-    this.min_length = 0;
-    this.max_length = 0;
-    this.total_length = 0;
-    this.messages = [];
-  }
-  
-  get sortedGridIDs() {
-    // Return list of grid Ids that sort grids by (1) voltage and (2) name.
-    function kVnSort(a, b) {
-      const
-          pga = MODEL.power_grids[a],
-          pgb = MODEL.power_grids[b];
-      // NOTE: Highest voltage comes first.
-      if(pga.kilovolts > pgb.kilovolts) return -1;
-      if(pga.kilovolts < pgb.kilovolts) return 1;
-      // Names are sorted alphabetically.
-      return pga.name.localeCompare(pgb.name);
-    }
-    return Object.keys(MODEL.power_grids).sort(kVnSort);
   }
   
   updateGridMenu(modal) {
@@ -277,208 +251,6 @@ class PowerGridManager {
     }
   }
   
-  checkLengths() {
-    // Calculate length statistics for all grid processes.
-    this.min_length = 1e+10;
-    this.max_length = 0;
-    this.total_length = 0;
-    for(let k in MODEL.processes) if(MODEL.processes.hasOwnProperty(k)) {
-      const p = MODEL.processes[k];
-      // NOTE: Do not include processes in clusters that should be ignored.
-      if(p.grid && !MODEL.ignored_entities[p.identifier]) {
-        this.min_length = Math.min(p.length_in_km, this.min_length);
-        this.max_length = Math.max(p.length_in_km, this.max_length);
-        this.total_length += p.length_in_km;
-      }
-    }
-  }
-  
-  inferNodesAndEdges() {
-    // Infer graph structure of combined power grids for which losses
-    // and/or Kirchhoff's voltage law must be enforced.
-    this.nodes = {};
-    this.edges = {};
-    this.messages.length = 0;
-    // NOTE: Recalculate length statistics now only for "real" grid edges.
-    this.min_length = 1e+10;
-    this.max_length = 0;
-    this.total_length = 0;
-    let link_delays = 0;
-    for(let k in MODEL.processes) if(MODEL.processes.hasOwnProperty(k)) {
-      const p = MODEL.processes[k];
-      // NOTE: Do not include processes in clusters that should be ignored.
-      if(p.grid && !MODEL.ignored_entities[p.identifier]) {
-        const mlmsg = [];
-        let fn = null,
-            tn = null;
-        for(const l of p.inputs) {
-          if(l.multiplier === VM.LM_LEVEL &&
-              !MODEL.ignored_entities[l.identifier]) {
-            if(fn) {
-              mlmsg.push('more than 1 input');
-            } else {
-              fn = l.from_node;
-            }
-          }
-        }
-        if(!fn) mlmsg.push('no inputs');
-        for(const l of p.outputs) {
-          if(l.multiplier === VM.LM_LEVEL &&
-              !MODEL.ignored_entities[l.identifier]) {
-            if(tn) {
-              mlmsg.push('more than 1 output');
-            } else {
-              tn = l.to_node;
-            }
-          }
-        }
-        if(!tn) mlmsg.push('no outputs');
-        if(mlmsg.length) {
-          // Process is not linked as a grid element.
-          this.messages.push(VM.WARNING + ' Grid process "' +
-              p.displayName + '" has ' + mlmsg.join(' and '));
-        } else {
-          // Check whether the output link has a delay; this will be ignored.
-          const delay = p.outputs[0].flow_delay;
-          if(delay.defined && delay.text !== '0') link_delays++;
-          // Add FROM node and TO node to graph.
-          const
-              fnid = fn.identifier,
-              tnid = tn.identifier,
-              edge = {process: p, from_node: fnid, to_node: tnid};
-          // NOTE: Key uniqueness ensures that nodes are unique.
-          this.nodes[fnid] = fn;
-          this.nodes[tnid] = tn;
-          // Add edge to graph, identified by its process ID.
-          this.edges[p.identifier] = edge;
-          this.min_length = Math.min(p.length_in_km, this.min_length);
-          this.max_length = Math.max(p.length_in_km, this.max_length);
-          this.total_length += p.length_in_km;
-        }
-      }
-    }
-    if(link_delays > 0) this.messages.push(
-        `${VM.WARNING} ${pluralS(link_delays, 'link delay')} will be ignored`);
-    var ecnt = Object.keys(this.edges).length,
-        grid = [pluralS(Object.keys(this.nodes).length, 'node'),
-            pluralS(ecnt, 'edge'), `total length: ${this.total_length} km`];
-    if(!ecnt) {
-      this.min_length = 0;
-    } else if(ecnt > 1) {
-      grid.push(`range: ${this.min_length} - ${this.max_length} km`);
-    }
-    this.messages.push('Overall power grid comprises ' +
-        grid.join(', ').toLowerCase());
-  }
-  
-  inferSpanningTree() {
-    // Use Kruksal's algorithm to build spanning tree.
-    // NOTE: Tree needs not be minimal, so edges are not sorted.
-    this.spanning_tree.length = 0;
-    this.cycle_edges.length = 0;
-    this.tree_incidence = {};
-    const node_set = {};
-    for(let k in this.edges) if(this.edges.hasOwnProperty(k)) {
-      const
-          edge = this.edges[k],
-          efn = edge.from_node,
-          etn = edge.to_node,
-          kvl = edge.process.grid.kirchhoff,
-          fn_in_tree = node_set.hasOwnProperty(efn),
-          tn_in_tree = node_set.hasOwnProperty(etn);
-      // Only add edges of grids for which Kirchhoff's voltage law
-      // has to be enforced.
-      if(kvl) {
-        if(fn_in_tree && tn_in_tree) {
-          // Edge forms a cycle, so add it to the cycle edge list.
-          this.cycle_edges.push(edge);
-        } else {
-          // Edge is not incident with *two* nodes already in the tree, so
-          // add it to the tree.
-          this.spanning_tree.push(edge);
-          node_set[efn] = true;
-          node_set[etn] = true;
-        }
-        const ti = this.tree_incidence;
-        // Always record that both its nodes are incident with it.
-        if(ti.hasOwnProperty(efn)) {
-          ti[efn].push(edge);
-        } else {
-          ti[efn] = [edge];
-        }
-        if(ti.hasOwnProperty(etn)) {
-          ti[etn].push(edge);
-        } else {
-          ti[etn] = [edge];
-        }
-      }
-    }
-  }
-  
-  pathInSpanningTree(fn, tn, path) {
-    // Recursively constructs `path` as the list of edges forming the path
-    // from `fn` to `tn` in the spanning tree of this grid.
-    // If edge connects path with TO node, `path` is complete.
-    if(fn === tn) return true;
-    for(const e of this.tree_incidence[fn]) {
-      // Ignore edges already in the path.
-      if(path.indexOf(e) < 0) {
-        // NOTE: Edges are directed, but should not be considered as such.
-        const nn = (e.from_node === fn ? e.to_node : e.from_node);
-        path.push(e);
-        if(this.pathInSpanningTree(nn, tn, path)) return true;
-        path.pop();
-      }
-    }
-    return false;
-  }
-  
-  inferCycleBasis() {
-    // Construct the list of fundamental cycles in the network.
-    this.cycle_basis.length = 0;
-    if(!(MODEL.with_power_flow && MODEL.powerGridsWithKVL.length)) return;
-    this.inferNodesAndEdges();
-    this.inferSpanningTree();
-    for(const edge of this.cycle_edges) {
-      const path = [];
-      if(this.pathInSpanningTree(edge.from_node, edge.to_node, path)) {
-        // Add flags that indicate whether the edge on the path is reversed.
-        // The closing edge determines the orientation.
-        const cycle = [{process: edge.process, orientation: 1}];
-        let node = edge.to_node;
-        for(let i = path.length - 1; i >= 0; i--) {
-          const
-              pe = path[i],
-              ce = {process: pe.process};
-          if(pe.from_node === node) {
-            ce.orientation = 1;
-            node = pe.to_node;
-          } else {
-            ce.orientation = -1;
-            node = pe.from_node;
-          }
-          cycle.push(ce);
-        }
-        this.cycle_basis.push(cycle);
-      }
-    }
-  }
-  
-  get cycleBasisAsString() {
-    // Return description of cycle basis.
-    const ll = [pluralS(this.cycle_basis.length, 'fundamental cycle') + ':'];
-    for(let i = 0; i < this.cycle_basis.length; i++) {
-      const
-          c = this.cycle_basis[i],
-          l = [];
-      for(const e of c) {
-        l.push(`${e.process.displayName} [${e.orientation > 0 ? '+' : '-'}]`);
-      }
-      ll.push(`(${i + 1}) ${l.join(', ')}`);
-    }
-    return ll.join('\n');
-  }
-
   cycleFlowTable(c) {
     // Return flows through cycle `c` as an HTML table.
     if(!MODEL.solved) return '';
@@ -505,16 +277,6 @@ class PowerGridManager {
     return html.join('\n');
   }
 
-  inCycle(p) {
-    // If process `p` is an edge in some cycle in the cycle basis, return the
-    // sign of its orientation as '+' or '-'; otherwise return the empty string
-    // (will evaluate as FALSE).
-    for(const c of this.cycle_basis) {
-      for(const e of c) if(e.process === p) return (e.orientation > 0 ? '+' : '-');
-    }
-    return '';
-  }
-  
   allCycleFlows(p) {
     // Return power flows for each cycle that `p` is part of as an HTML
     // table (so it can be displayed in the documentation dialog).
@@ -531,4 +293,4 @@ class PowerGridManager {
     return flows.join('\n');
   }
   
-} // END of class PowerGridManager
+} // END of class GUIPowerGridManager

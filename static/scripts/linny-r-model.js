@@ -553,6 +553,26 @@ class LinnyRModel {
     return this.namedObjectByID(UI.nameToID(name));
   }
   
+  clustersByPattern(pat) {
+    // Return list of clusters having a name that matches the pattern.
+    // NOTE: Remove entity type selector, assuming that first ? denotes
+    // such a prefix.
+    const clist = [];
+    let cpat = pat.split('?');
+    if(cpat.length > 1) cpat.shift();
+    // Assume that other question marks are part of the pattern.
+    cpat = cpat.join('?');
+    const patl = patternList(cpat);
+    for(let k in MODEL.clusters) if(MODEL.clusters.hasOwnProperty(k)) {
+      const c = MODEL.clusters[k];
+      // Ignore "black-boxed" clusters.
+      if(!k.startsWith(UI.BLACK_BOX) && patternMatch(c.displayName, patl)) {
+        clist.push(c);
+      }
+    }
+    return clist;
+  }
+  
   setEntityAttributeValue(e, a, v) {
     // Set attribute `a` of entity `e` to numeric value `v`.
     // Return TRUE if successful; otherwise an error message (string). 
@@ -1245,11 +1265,13 @@ class LinnyRModel {
     // clusters-to-ignore list and its selectors in this list overlap with the
     // current combination.
     if(!this.running_experiment) return false;
-    const cti = this.running_experiment.clusters_to_ignore;
     // NOTE: Use FALSE, as empty selectors string denotes "any selector".
     let sels = false;
-    for(let i = 0; i < cti.length && sels === false; i++) {
-      if(cti[i].cluster === c) sels = cti[i].selectors;
+    for(const cti of this.running_experiment.clusters_to_ignore) {
+      if(patternMatch(c.displayName, patternList(cti.pattern))) {
+        sels = cti.selectors;
+        break;
+      }
     }
     if(sels === false) return false;
     // Return TRUE if selectors and actual dimensions have common elements.
@@ -2997,115 +3019,144 @@ class LinnyRModel {
         fn,
         tn,
         n = childNodeByTag(node, 'scaleunits');
+
+    // NOTE: Unlike DOM parsers in modern browsers, the XML parser
+    // does not support for ... of loops. Hence recoding with "classic"
+    // for loops.
+    
     // Scale units are not "entities", and can be included "as is".
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'scaleunit') {
-        this.addScaleUnit(xmlDecoded(nodeContentByTag(c, 'name')),
-            nodeContentByTag(c, 'scalar'),
-            xmlDecoded(nodeContentByTag(c, 'base-unit')));
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'scaleunit') {
+          this.addScaleUnit(xmlDecoded(nodeContentByTag(c, 'name')),
+              nodeContentByTag(c, 'scalar'),
+              xmlDecoded(nodeContentByTag(c, 'base-unit')));
+        }
       }
     }
     // Power grids are not "entities", and can be included "as is".
     n = childNodeByTag(node, 'powergrids');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'grid') {
-        this.addPowerGrid(nodeContentByTag(c, 'id'), c);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'grid') {
+          this.addPowerGrid(nodeContentByTag(c, 'id'), c);
+        }
       }
     }
     // When including a model, actors may be bound to an existing actor.
     n = childNodeByTag(node, 'actors');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'actor') {
-        name = xmlDecoded(nodeContentByTag(c, 'name'));
-        if(IO_CONTEXT) name = IO_CONTEXT.actualName(name);
-        this.addActor(name, c);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'actor') {
+          name = xmlDecoded(nodeContentByTag(c, 'name'));
+          if(IO_CONTEXT) name = IO_CONTEXT.actualName(name);
+          this.addActor(name, c);
+        }
       }
     }
     // When including a model, processes MUST be prefixed.
     n = childNodeByTag(node, 'processes');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'process') {
-        name = xmlDecoded(nodeContentByTag(c, 'name'));
-        actor = xmlDecoded(nodeContentByTag(c, 'owner'));
-        if(IO_CONTEXT) {
-          actor = IO_CONTEXT.actualName(actor);
-          name = IO_CONTEXT.actualName(name, actor);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'process') {
+          name = xmlDecoded(nodeContentByTag(c, 'name'));
+          actor = xmlDecoded(nodeContentByTag(c, 'owner'));
+          if(IO_CONTEXT) {
+            actor = IO_CONTEXT.actualName(actor);
+            name = IO_CONTEXT.actualName(name, actor);
+          }
+          this.addProcess(name, actor, c);
         }
-        this.addProcess(name, actor, c);
       }
     }
     // When including a model, products may be bound to an existing product.
     n = childNodeByTag(node, 'products');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'product') {
-        name = xmlDecoded(nodeContentByTag(c, 'name'));
-        if(IO_CONTEXT) name = IO_CONTEXT.actualName(name);
-        this.addProduct(name, c);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'product') {
+          name = xmlDecoded(nodeContentByTag(c, 'name'));
+          if(IO_CONTEXT) name = IO_CONTEXT.actualName(name);
+          this.addProduct(name, c);
+        }
       }
     }
     // When including a model, link nodes may be bound to existing nodes.
     n = childNodeByTag(node, 'links');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'link') {
-        name = xmlDecoded(nodeContentByTag(c, 'from-name'));
-        actor = xmlDecoded(nodeContentByTag(c, 'from-owner'));
-        if(IO_CONTEXT) {
-          actor = IO_CONTEXT.actualName(actor);
-          name = IO_CONTEXT.actualName(name, actor);
-        }
-        if(actor != UI.NO_ACTOR) name += ` (${actor})`;
-        fn = this.nodeBoxByID(UI.nameToID(name));
-        if(fn) {
-          name = xmlDecoded(nodeContentByTag(c, 'to-name'));
-          actor = xmlDecoded(nodeContentByTag(c, 'to-owner'));
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'link') {
+          name = xmlDecoded(nodeContentByTag(c, 'from-name'));
+          actor = xmlDecoded(nodeContentByTag(c, 'from-owner'));
           if(IO_CONTEXT) {
             actor = IO_CONTEXT.actualName(actor);
             name = IO_CONTEXT.actualName(name, actor);
           }
           if(actor != UI.NO_ACTOR) name += ` (${actor})`;
-          tn = this.nodeBoxByID(UI.nameToID(name));
-          if(tn) this.addLink(fn, tn, c);
+          fn = this.nodeBoxByID(UI.nameToID(name));
+          if(fn) {
+            name = xmlDecoded(nodeContentByTag(c, 'to-name'));
+            actor = xmlDecoded(nodeContentByTag(c, 'to-owner'));
+            if(IO_CONTEXT) {
+              actor = IO_CONTEXT.actualName(actor);
+              name = IO_CONTEXT.actualName(name, actor);
+            }
+            if(actor != UI.NO_ACTOR) name += ` (${actor})`;
+            tn = this.nodeBoxByID(UI.nameToID(name));
+            if(tn) this.addLink(fn, tn, c);
+          }
         }
       }
     }
     // When including a model, constraint nodes may be bound to existing nodes.
     n = childNodeByTag(node, 'constraints');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'constraint') {
-        name = xmlDecoded(nodeContentByTag(c, 'from-name'));
-        actor = xmlDecoded(nodeContentByTag(c, 'from-owner'));
-        if(IO_CONTEXT) {
-          actor = IO_CONTEXT.actualName(actor);
-          name = IO_CONTEXT.actualName(name, actor);
-        }
-        if(actor != UI.NO_ACTOR) name += ` (${actor})`;
-        fn = this.nodeBoxByID(UI.nameToID(name));
-        if(fn) {
-          name = xmlDecoded(nodeContentByTag(c, 'to-name'));
-          actor = xmlDecoded(nodeContentByTag(c, 'to-owner'));
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'constraint') {
+          name = xmlDecoded(nodeContentByTag(c, 'from-name'));
+          actor = xmlDecoded(nodeContentByTag(c, 'from-owner'));
           if(IO_CONTEXT) {
             actor = IO_CONTEXT.actualName(actor);
             name = IO_CONTEXT.actualName(name, actor);
           }
           if(actor != UI.NO_ACTOR) name += ` (${actor})`;
-          tn = this.nodeBoxByID(UI.nameToID(name));
-          if(tn) this.addConstraint(fn, tn, c);
+          fn = this.nodeBoxByID(UI.nameToID(name));
+          if(fn) {
+            name = xmlDecoded(nodeContentByTag(c, 'to-name'));
+            actor = xmlDecoded(nodeContentByTag(c, 'to-owner'));
+            if(IO_CONTEXT) {
+              actor = IO_CONTEXT.actualName(actor);
+              name = IO_CONTEXT.actualName(name, actor);
+            }
+            if(actor != UI.NO_ACTOR) name += ` (${actor})`;
+            tn = this.nodeBoxByID(UI.nameToID(name));
+            if(tn) this.addConstraint(fn, tn, c);
+          }
         }
       }
     }
     n = childNodeByTag(node, 'clusters');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'cluster') {
-        name = xmlDecoded(nodeContentByTag(c, 'name'));
-        actor = xmlDecoded(nodeContentByTag(c, 'owner'));
-        // When including a model, clusters MUST be prefixed
-        if(IO_CONTEXT) {
-          actor = IO_CONTEXT.actualName(actor);
-          // NOTE: actualName will rename the top cluster of an included
-          // model to just the prefix
-          name = IO_CONTEXT.actualName(name, actor);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'cluster') {
+          name = xmlDecoded(nodeContentByTag(c, 'name'));
+          actor = xmlDecoded(nodeContentByTag(c, 'owner'));
+          // When including a model, clusters MUST be prefixed
+          if(IO_CONTEXT) {
+            actor = IO_CONTEXT.actualName(actor);
+            // NOTE: actualName will rename the top cluster of an included
+            // model to just the prefix
+            name = IO_CONTEXT.actualName(name, actor);
+          }
+          this.addCluster(name, actor, c);
         }
-        this.addCluster(name, actor, c);
       }
     }
     // Clear the default (empty) equations dataset, or it will block adding it
@@ -3118,29 +3169,35 @@ class LinnyRModel {
     this.max_time_to_load = 0;
     n = childNodeByTag(node, 'datasets');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'dataset') {
-        name = xmlDecoded(nodeContentByTag(c, 'name'));
-        // NOTE: when including a module, dataset parameters may be bound to
-        // existing datasets, but the equations dataset is a special case:
-        // a model has only ONE equations dataset, so for imported equations 
-        // the *modifiers* must be prefixed. This is implemented by passing
-        // the IO context as third argument to the addModifier method, which
-        // will then add the module prefix to the selector
-        if(IO_CONTEXT) {
-          if(name === UI.EQUATIONS_DATASET_NAME) {
-            const mn = childNodeByTag(c, 'modifiers');
-            if(mn) {
-              for(const cc of mn.childNodes) if(cc.nodeName === 'modifier') {
-                this.equations_dataset.addModifier(
-                    xmlDecoded(nodeContentByTag(cc, 'selector')),
-                    cc, IO_CONTEXT);
-              }
-            }              
-          } else {
-            name = IO_CONTEXT.actualName(name);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'dataset') {
+          name = xmlDecoded(nodeContentByTag(c, 'name'));
+          // NOTE: when including a module, dataset parameters may be bound to
+          // existing datasets, but the equations dataset is a special case:
+          // a model has only ONE equations dataset, so for imported equations 
+          // the *modifiers* must be prefixed. This is implemented by passing
+          // the IO context as third argument to the addModifier method, which
+          // will then add the module prefix to the selector
+          if(IO_CONTEXT) {
+            if(name === UI.EQUATIONS_DATASET_NAME) {
+              const mn = childNodeByTag(c, 'modifiers');
+              if(mn) {
+                for(let cci = 0; cci < mn.childNodes.length; cci++) {
+                  const cc = mn.childNodes.item(cci);
+                  if(cc.nodeName === 'modifier') {
+                    this.equations_dataset.addModifier(
+                        xmlDecoded(nodeContentByTag(cc, 'selector')),
+                        cc, IO_CONTEXT);
+                  }
+                }
+              }              
+            } else {
+              name = IO_CONTEXT.actualName(name);
+            }
           }
+          this.addDataset(name, c);
         }
-        this.addDataset(name, c);
       }
     }
     // Create equations dataset if not defined yet (legacy models < 0.9x50)
@@ -3151,17 +3208,20 @@ class LinnyRModel {
     // NOTE: When including a model, charts MUST be prefixed.
     n = childNodeByTag(node, 'charts');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'chart') {
-        name = xmlDecoded(nodeContentByTag(c, 'title'));
-        if(IO_CONTEXT) {
-          // NOTE: Only include charts with one or more variables.
-          const vn = childNodeByTag(c, 'variables');
-          if(vn && vn.childNodes && vn.childNodes.length > 0) {
-            name = IO_CONTEXT.actualName(name);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'chart') {
+          name = xmlDecoded(nodeContentByTag(c, 'title'));
+          if(IO_CONTEXT) {
+            // NOTE: Only include charts with one or more variables.
+            const vn = childNodeByTag(c, 'variables');
+            if(vn && vn.childNodes && vn.childNodes.length > 0) {
+              name = IO_CONTEXT.actualName(name);
+              this.addChart(name, c);
+            }
+          } else {
             this.addChart(name, c);
           }
-        } else {
-          this.addChart(name, c);
         }
       }
     }
@@ -3179,14 +3239,20 @@ class LinnyRModel {
           nodeContentByTag(node, 'base-case-selectors'));
       n = childNodeByTag(node, 'sensitivity-parameters');
       if(n) {
-        for(const c of n.childNodes) if(c.nodeName === 'sa-parameter') {
-          this.sensitivity_parameters.push(xmlDecoded(nodeContent(c)));
+        for(let ci = 0; ci < n.childNodes.length; ci++) {
+          const c = n.childNodes.item(ci);
+          if(c.nodeName === 'sa-parameter') {
+            this.sensitivity_parameters.push(xmlDecoded(nodeContent(c)));
+          }
         }
       }
       n = childNodeByTag(node, 'sensitivity-outcomes');
       if(n) {
-        for(const c of n.childNodes) if(c.nodeName === 'sa-outcome') {
-          this.sensitivity_outcomes.push(xmlDecoded(nodeContent(c)));
+        for(let ci = 0; ci < n.childNodes.length; ci++) {
+          const c = n.childNodes.item(ci);
+          if(c.nodeName === 'sa-outcome') {
+            this.sensitivity_outcomes.push(xmlDecoded(nodeContent(c)));
+          }
         }
       }
       this.sensitivity_delta = safeStrToFloat(
@@ -3196,26 +3262,38 @@ class LinnyRModel {
         // NOTE: Use a "dummy experiment object" as parent for SA runs.
         const dummy = {title: SENSITIVITY_ANALYSIS.experiment_title};
         let r = 0;
-        for(const c of n.childNodes) if(c.nodeName === 'experiment-run') {
-          const xr = new ExperimentRun(dummy, r);
-          xr.initFromXML(c);
-          this.sensitivity_runs.push(xr);
-          r++;
+        for(let ci = 0; ci < n.childNodes.length; ci++) {
+          const c = n.childNodes.item(ci);
+          if(c.nodeName === 'experiment-run') {
+            const xr = new ExperimentRun(dummy, r);
+            xr.initFromXML(c);
+            this.sensitivity_runs.push(xr);
+            r++;
+          }
         }
       }
       n = childNodeByTag(node, 'experiments');
       if(n) {
-        for(const c of n.childNodes) if(c.nodeName === 'experiment') {
-          this.addExperiment(xmlDecoded(nodeContentByTag(c, 'title')), c);
+        for(let ci = 0; ci < n.childNodes.length; ci++) {
+          const c = n.childNodes.item(ci);
+          if(c.nodeName === 'experiment') {
+            this.addExperiment(xmlDecoded(nodeContentByTag(c, 'title')), c);
+          }
         }
       }
       n = childNodeByTag(node, 'imports');
       if(n) {
-        for(const c of n.childNodes) if(c.nodeName === 'import') this.addImport(c);
+        for(let ci = 0; ci < n.childNodes.length; ci++) {
+          const c = n.childNodes.item(ci);
+          if(c.nodeName === 'import') this.addImport(c);
+        }
       }
       n = childNodeByTag(node, 'exports');
       if(n) {
-        for(const c of n.childNodes) if(c.nodeName === 'export') this.addExport(c);
+        for(let ci = 0; ci < n.childNodes.length; ci++) {
+          const c = n.childNodes.item(ci);
+          if(c.nodeName === 'export') this.addExport(c);
+        }
       }
       // Add the default chart (will add it only if absent).
       this.addChart(CHART_MANAGER.new_chart_title);
@@ -3487,54 +3565,59 @@ class LinnyRModel {
     sl.push('_____MODEL: ' + this.name);
     sl.push('<strong>Author:</strong> ' + this.author);
     sl.push(this.comments);
-    let obj;
     sl.push('_____Actors');
-    for(obj in this.actors) {
-      if(this.actors.hasOwnProperty(obj)) {
-        sl.push(this.actors[obj].displayName, this.actors[obj].comments);
-      }
+    let keys = Object.keys(this.actors).sort();
+    for(const k of keys) {
+      sl.push(this.actors[k].displayName, this.actors[k].comments);
     }
     sl.push('_____Processes');
-    for(obj in this.processes) {
-      if(this.processes.hasOwnProperty(obj) && !obj.startsWith(UI.BLACK_BOX)) {
-        sl.push(this.processes[obj].displayName, this.processes[obj].comments);
-      }
+    keys = Object.keys(this.processes).sort();
+    for(const k of keys) if(!k.startsWith(UI.BLACK_BOX)) {
+      sl.push(this.processes[k].displayName, this.processes[k].comments);
     }
     sl.push('_____Products');
-    for(obj in this.products) {
-      if(this.products.hasOwnProperty(obj) && !obj.startsWith(UI.BLACK_BOX)) {
-        sl.push(this.products[obj].displayName, this.products[obj].comments);
-      }
+    keys = Object.keys(this.products).sort();
+    for(const k of keys) if(!k.startsWith(UI.BLACK_BOX)) {
+      sl.push(this.products[k].displayName, this.products[k].comments);
     }
     sl.push('_____Links');
-    for(obj in this.links) {
-      if(this.links.hasOwnProperty(obj)) {
-        sl.push(this.links[obj].displayName, this.links[obj].comments);
+    keys = Object.keys(this.links).sort((a, b) => ciCompare(
+        MODEL.links[a].displayName, MODEL.links[b].displayName));
+    for(const k of keys) {
+      const l = this.links[k];
+      // Skip links "within" black-boxed clusters.
+      if(!(l.from_node.displayName.startsWith(UI.BLACK_BOX) &&
+          l.to_node.displayName.startsWith(UI.BLACK_BOX))) {
+        sl.push(l.displayName, l.comments);
       }
     }
     sl.push('_____Constraints');
-    for(obj in this.constraints) {
-      if(this.constraints.hasOwnProperty(obj)) {
-        sl.push(this.constraints[obj].displayName, this.constraints[obj].comments);
+    keys = Object.keys(this.constraints).sort((a, b) => ciCompare(
+        MODEL.constraints[a].displayName, MODEL.constraints[b].displayName));
+    for(const k of keys) {
+      const c = this.constraints[k];
+      // Skip constraints "within" black-boxed clusters.
+      if(!(c.from_node.displayName.startsWith(UI.BLACK_BOX) &&
+          c.to_node.displayName.startsWith(UI.BLACK_BOX))) {
+        sl.push(c.displayName, c.comments);
       }
     }
     sl.push('_____Datasets');
-    for(const k of Object.keys(this.datasets)) {
+    keys = Object.keys(this.datasets);
+    for(const k of keys) {
       if(!k.startsWith(UI.BLACK_BOX) && k !== UI.EQUATIONS_DATASET_ID) {
         const ds = this.datasets[k]; 
         sl.push(ds.displayName, ds.comments);
-        const keys = Object.keys(ds.modifiers).sort(compareSelectors);
-        if(keys.length) {
-          for(const k of keys) {
-            const m = ds.modifiers[k];
-            // NOTE: The trailing arrow signals the Documentation manager that
-            // this (name, documentation) pair is a (name, expression) pair.
-            sl.push(`${m.selector}&nbsp;&rarr;` , m.expression.text);
-          }
+        const mkeys = Object.keys(ds.modifiers).sort(compareSelectors);
+        for(const mk of mkeys) {
+          const m = ds.modifiers[mk];
+          // NOTE: The trailing arrow signals the Documentation manager that
+          // this (name, documentation) pair is a (name, expression) pair.
+          sl.push(`${m.selector}&nbsp;&rarr;` , m.expression.text);
         }
       }
     }
-    const keys = Object.keys(this.equations_dataset.modifiers).sort(); 
+    keys = Object.keys(this.equations_dataset.modifiers).sort(); 
     sl.push('_____Equations');
     for(const k of keys) {
       const m = this.equations_dataset.modifiers[k];
@@ -4494,20 +4577,26 @@ class IOContext {
     this.file_name = fname;
     let n = childNodeByTag(node, 'imports');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'import') {
-        // NOTE: IO type 1 indicates import.
-        this.addBinding(1, xmlDecoded(nodeContentByTag(c, 'type')),
-            nodeContentByTag(c, 'is-data') === '1',
-            xmlDecoded(nodeContentByTag(c, 'name')));
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'import') {
+          // NOTE: IO type 1 indicates import.
+          this.addBinding(1, xmlDecoded(nodeContentByTag(c, 'type')),
+              nodeContentByTag(c, 'is-data') === '1',
+              xmlDecoded(nodeContentByTag(c, 'name')));
+        }
       }
     }
     n = childNodeByTag(node, 'exports');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'export') {
-        // NOTE: IO type 2 indicates export.
-        this.addBinding(2, xmlDecoded(nodeContentByTag(c, 'type')),
-            nodeContentByTag(c, 'is-data') === '1',
-            xmlDecoded(nodeContentByTag(c, 'name')));
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'export') {
+          // NOTE: IO type 2 indicates export.
+          this.addBinding(2, xmlDecoded(nodeContentByTag(c, 'type')),
+              nodeContentByTag(c, 'is-data') === '1',
+              xmlDecoded(nodeContentByTag(c, 'name')));
+        }
       }
     }
   }
@@ -6038,7 +6127,7 @@ class Arrow {
         total = 0,
         sum = [0, 0],
         out = [0, 0];
-    for(const l of this.links) {
+    for(const l of this.links) if(!MODEL.ignored_entities[l.identifier]) {
       const af = l.actualFlow(MODEL.t);
       total += af;
       if(l.from_node instanceof Product) {
@@ -6147,7 +6236,7 @@ class Arrow {
       // Links of this arrow will be either INputs our OUTputs of p[0],
       // so calculate the balance of INflows and OUTflows
       let flow = 0;
-      for(const l of this.links) {
+      for(const l of this.links) if(!MODEL.ignored_entities[l.identifier]) {
         if(p0.inputs.indexOf(l) >= 0) {
           flow += l.actualFlow(MODEL.t);
         } else if(p0.outputs.indexOf(l) >= 0) {
@@ -6389,15 +6478,18 @@ class Cluster extends NodeBox {
           name: xmlDecoded(nodeParameterValue(n, 'name')),
           bindings: {}
         };
-      for(const c of n.childNodes) if(c.nodeName === 'iob') {
-        const
-            iot = parseInt(nodeParameterValue(c, 'type')),
-            et = capitalized(VM.entity_names[nodeParameterValue(c, 'entity')]),
-            iob = new IOBinding(iot, et,
-                nodeParameterValue(c, 'data') === '1',
-                xmlDecoded(nodeParameterValue(c, 'name')));
-        iob.actual_name = nodeContent(c);
-        this.module.bindings[iob.id] = iob;
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'iob') {
+          const
+              iot = parseInt(nodeParameterValue(c, 'type')),
+              et = capitalized(VM.entity_names[nodeParameterValue(c, 'entity')]),
+              iob = new IOBinding(iot, et,
+                  nodeParameterValue(c, 'data') === '1',
+                  xmlDecoded(nodeParameterValue(c, 'name')));
+          iob.actual_name = nodeContent(c);
+          this.module.bindings[iob.id] = iob;
+        }
       }
     }
     n = childNodeByTag(node, 'process-set');
@@ -6409,63 +6501,75 @@ class Cluster extends NodeBox {
         hidden_notes = childNodeByTag(n, 'notes');
     // If they exist, these nodes will be used a bit further down.
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'process-name') {
-        name = xmlDecoded(nodeContent(c));
-        if(IO_CONTEXT) {
-          const an = name.split(' (');
-          if(an.length > 1) {
-            const
-                a = an.pop().slice(0, -1),
-                p = an.join(' ('),
-                aan = IO_CONTEXT.actualName(a),
-                aaid = UI.nameToID(aan);
-            // Check that actor exists, as (...) may just be part of the name.
-            if(MODEL.actorByID(aaid)) { 
-              name = IO_CONTEXT.actualName(p, a) + ` (${aan})`;
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'process-name') {
+          name = xmlDecoded(nodeContent(c));
+          if(IO_CONTEXT) {
+            const an = name.split(' (');
+            if(an.length > 1) {
+              const
+                  a = an.pop().slice(0, -1),
+                  p = an.join(' ('),
+                  aan = IO_CONTEXT.actualName(a),
+                  aaid = UI.nameToID(aan);
+              // Check that actor exists, as (...) may just be part of the name.
+              if(MODEL.actorByID(aaid)) { 
+                name = IO_CONTEXT.actualName(p, a) + ` (${aan})`;
+              } else {
+                name = IO_CONTEXT.actualName(name);
+              }
             } else {
               name = IO_CONTEXT.actualName(name);
             }
-          } else {
-            name = IO_CONTEXT.actualName(name);
           }
+          const p = MODEL.nodeBoxByID(UI.nameToID(name));
+          if(p) p.setCluster(this);
         }
-        const p = MODEL.nodeBoxByID(UI.nameToID(name));
-        if(p) p.setCluster(this);
       }
     }
     n = childNodeByTag(node, 'sub-clusters');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'cluster') {
-        // Refocus on this cluster because addCluster may change focus if it
-        // contains subclusters.
-        MODEL.focal_cluster = this;
-        // NOTE: addCluster will then cause recursion by calling the method
-        // `initFromXML` again.
-        name = xmlDecoded(nodeContentByTag(c, 'name'));
-        actor = xmlDecoded(nodeContentByTag(c, 'owner'));
-        if(IO_CONTEXT) {
-          actor = IO_CONTEXT.actualName(actor);
-          name = IO_CONTEXT.actualName(name);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'cluster') {
+          // Refocus on this cluster because addCluster may change focus if it
+          // contains subclusters.
+          MODEL.focal_cluster = this;
+          // NOTE: addCluster will then cause recursion by calling the method
+          // `initFromXML` again.
+          name = xmlDecoded(nodeContentByTag(c, 'name'));
+          actor = xmlDecoded(nodeContentByTag(c, 'owner'));
+          if(IO_CONTEXT) {
+            actor = IO_CONTEXT.actualName(actor);
+            name = IO_CONTEXT.actualName(name);
+          }
+          MODEL.addCluster(name, actor, c);
         }
-        MODEL.addCluster(name, actor, c);
       }
     }
     // NOTE: The part " || hidden_pp" is to compensate for a bug -- see earlier note.
     n = childNodeByTag(node, 'product-positions') || hidden_pp;
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'product-position') {
-        name = xmlDecoded(nodeContentByTag(c, 'product-name'));
-        if(IO_CONTEXT) name = IO_CONTEXT.actualName(name);
-        const p = MODEL.nodeBoxByID(UI.nameToID(name));
-        if(p) this.addProductPosition(p).initFromXML(c);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'product-position') {
+          name = xmlDecoded(nodeContentByTag(c, 'product-name'));
+          if(IO_CONTEXT) name = IO_CONTEXT.actualName(name);
+          const p = MODEL.nodeBoxByID(UI.nameToID(name));
+          if(p) this.addProductPosition(p).initFromXML(c);
+        }
       }
     }
     n = childNodeByTag(node, 'notes') || hidden_notes;
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'note') {
-        const note = new Note(this);
-        note.initFromXML(c);
-        this.notes.push(note);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'note') {
+          const note = new Note(this);
+          note.initFromXML(c);
+          this.notes.push(note);
+        }
       }
     }
   }
@@ -9489,8 +9593,11 @@ class Dataset {
     }
     const n = childNodeByTag(node, 'modifiers');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'modifier') {
-        this.addModifier(xmlDecoded(nodeContentByTag(c, 'selector')), c);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'modifier') {
+          this.addModifier(xmlDecoded(nodeContentByTag(c, 'selector')), c);
+        }
       }
     }
     const ds = xmlDecoded(nodeContentByTag(node, 'default-selector'));
@@ -10130,10 +10237,13 @@ class Chart {
     this.variables.length = 0;
     const n = childNodeByTag(node, 'variables');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'chart-variable') {
-        const v = new ChartVariable(this);
-        // NOTE: Variable may refer to deleted entity => do not add.
-        if(v.initFromXML(c)) this.variables.push(v);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'chart-variable') {
+          const v = new ChartVariable(this);
+          // NOTE: Variable may refer to deleted entity => do not add.
+          if(v.initFromXML(c)) this.variables.push(v);
+        }
       }
     }
   }
@@ -11532,14 +11642,20 @@ class ExperimentRun {
     this.time_step_duration = safeStrToFloat(nodeContentByTag(node, 'delta-t'));
     let n = childNodeByTag(node, 'results');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'run-result') {
-        this.results.push(new ExperimentRunResult(this, c));
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'run-result') {
+          this.results.push(new ExperimentRunResult(this, c));
+        }
       }
     }
     n = childNodeByTag(node, 'messages');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'block-msg') {
-        this.block_messages.push(new BlockMessages(c));
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'block-msg') {
+          this.block_messages.push(new BlockMessages(c));
+        }
       }
     }
     for(const bm of this.block_messages) {
@@ -11934,7 +12050,7 @@ class Experiment {
     for(const s of this.actor_selectors) as += s.asXML;
     let cti = '';
     for(const cs of this.clusters_to_ignore) {
-      cti += '<cluster-to-ignore><cluster>' + xmlEncoded(cs.cluster.displayName) +
+      cti += '<cluster-to-ignore><cluster>' + xmlEncoded(cs.pattern) +
           '</cluster><selectors>' + xmlEncoded(cs.selectors) +
           '</selectors></cluster-to-ignore>';
     }
@@ -11995,8 +12111,11 @@ class Experiment {
     this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     let n = childNodeByTag(node, 'dimensions');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'dim') {
-        this.dimensions.push(xmlDecoded(nodeContent(c)).split(','));
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'dim') {
+          this.dimensions.push(xmlDecoded(nodeContent(c)).split(','));
+        }
       }
     }
     n = nodeContentByTag(node, 'plot-dimensions');
@@ -12009,68 +12128,93 @@ class Experiment {
     }
     n = childNodeByTag(node, 'chart-titles');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'chart-title') {
-        const ci = MODEL.indexOfChart(xmlDecoded(nodeContent(c)));
-        // Double-check: only add existing charts.
-        if(ci >= 0) this.charts.push(MODEL.charts[ci]);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'chart-title') {
+          const ci = MODEL.indexOfChart(xmlDecoded(nodeContent(c)));
+          // Double-check: only add existing charts.
+          if(ci >= 0) this.charts.push(MODEL.charts[ci]);
+        }
       }
     }
     n = childNodeByTag(node, 'settings-selectors');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'ssel') {
-        this.settings_selectors.push(xmlDecoded(nodeContent(c)));
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'ssel') {
+          this.settings_selectors.push(xmlDecoded(nodeContent(c)));
+        }
       }
     }
     n = childNodeByTag(node, 'settings-dimensions');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'sdim') {
-        this.settings_dimensions.push(xmlDecoded(nodeContent(c)).split(','));
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'sdim') {
+          this.settings_dimensions.push(xmlDecoded(nodeContent(c)).split(','));
+        }
       }
     }
     n = childNodeByTag(node, 'combination-selectors');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'csel') {
-        this.combination_selectors.push(xmlDecoded(nodeContent(c)));
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'csel') {
+          this.combination_selectors.push(xmlDecoded(nodeContent(c)));
+        }
       }
     }
     n = childNodeByTag(node, 'combination-dimensions');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'cdim') {
-        this.combination_dimensions.push(xmlDecoded(nodeContent(c)).split(','));
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'cdim') {
+          this.combination_dimensions.push(xmlDecoded(nodeContent(c)).split(','));
+        }
       }
     }
     n = childNodeByTag(node, 'actor-selectors');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'asel') {
-        const as = new ActorSelector();
-        as.initFromXML(c);
-        this.actor_selectors.push(as);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'asel') {
+          const as = new ActorSelector();
+          as.initFromXML(c);
+          this.actor_selectors.push(as);
+        }
       }
     }
     this.excluded_selectors = xmlDecoded(nodeContentByTag(node, 'excluded-selectors'));
     n = childNodeByTag(node, 'clusters-to-ignore');
     if(n) {
-      for(const c of n.childNodes) if(c.nodeName === 'cluster-to-ignore') {
-        const
-          cdn = xmlDecoded(nodeContentByTag(c, 'cluster')),
-          cl = MODEL.objectByName(cdn);
-        if(cl) {
-          this.clusters_to_ignore.push({cluster: cl,
-              selectors: xmlDecoded(nodeContentByTag(c, 'selectors'))
-            });
-        } else {
-          UI.warn(`Unknown cluster set to ignore: "${cdn}"`);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'cluster-to-ignore') {
+          const
+              // NOTE: Cluster now is not a name but a pattern.
+              pat = xmlDecoded(nodeContentByTag(c, 'cluster')),
+              clist = MODEL.clustersByPattern(pat);
+          if(clist.length) {
+            this.clusters_to_ignore.push({pattern: pat,
+                selectors: xmlDecoded(nodeContentByTag(c, 'selectors'))
+              });
+          } else {
+            UI.warn(`No matches for clusters-to-ignore pattern "${pat}"`);
+          }
         }
       }
     }
     n = childNodeByTag(node, 'runs');
     if(n) {
       let r = 0;
-      for(const c of n.childNodes) if(c.nodeName === 'experiment-run') {
-        const xr = new ExperimentRun(this, r);
-        xr.initFromXML(c);
-        this.runs.push(xr);
-        r++;
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'experiment-run') {
+          const xr = new ExperimentRun(this, r);
+          xr.initFromXML(c);
+          this.runs.push(xr);
+          r++;
+        }
       }
     }
   }
@@ -12319,7 +12463,9 @@ class Experiment {
 
   mayBeIgnored(c) {
     // Return TRUE iff cluster `c` is on the list to be ignored.
-    for(const cti of this.clusters_to_ignore) if(cti.cluster === c) return true;
+    for(const cti of this.clusters_to_ignore) {
+      if(patternMatch(c.displayName, patternList(cti.pattern))) return true;
+    }
     return false;
   }
 
@@ -12818,12 +12964,15 @@ class BoundLine {
     if(n.length) {
       // NOTE: Only overwrite default selector if XML specifies selectors.
       this.selectors.length = 0;
-      for(const c of n.childNodes) if(c.nodeName === 'boundline-selector') {
-        const
-            s = xmlDecoded(nodeContentByTag(c, 'selector')),
-            bls = new BoundlineSelector(this, s);
-        bls.initFromXML(c);
-        this.selectors.push(bls);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'boundline-selector') {
+          const
+              s = xmlDecoded(nodeContentByTag(c, 'selector')),
+              bls = new BoundlineSelector(this, s);
+          bls.initFromXML(c);
+          this.selectors.push(bls);
+        }
       }
     }
   }
@@ -13125,10 +13274,13 @@ class Constraint {
     if(n) {
       // NOTE: only overwrite default lines if XML specifies bound lines
       this.bound_lines.length = 0;
-      for(const c of n.childNodes) if(c.nodeName === 'bound-line') {
-        const bl = new BoundLine(this);
-        bl.initFromXML(c);
-        this.bound_lines.push(bl);
+      for(let ci = 0; ci < n.childNodes.length; ci++) {
+        const c = n.childNodes.item(ci);
+        if(c.nodeName === 'bound-line') {
+          const bl = new BoundLine(this);
+          bl.initFromXML(c);
+          this.bound_lines.push(bl);
+        }
       }
     }
     this.share_of_cost = safeStrToFloat(

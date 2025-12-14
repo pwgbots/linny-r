@@ -58,7 +58,7 @@ class GUIChartManager extends ChartManager {
     this.runstat_btn.addEventListener(
         'click', () => CHART_MANAGER.toggleRunStat());
     document.getElementById('chart-delete-btn').addEventListener(
-        'click', () => CHART_MANAGER.deleteChart());
+        'click', (event) => CHART_MANAGER.deleteChart(event.altKey));
     this.control_panel = document.getElementById('chart-control-panel');
     this.chart_selector = document.getElementById('chart-selector');
     this.chart_selector.addEventListener(
@@ -665,9 +665,24 @@ class GUIChartManager extends ChartManager {
     this.updateDialog();
   }
   
-  deleteChart() {
-    // Delete the shown chart (if any).
-    if(this.chart_index >= 0) {
+  deleteChart(clear_empty=false) {
+    // Delete the shown chart (if any), or (when Alt-key was pressed) all
+    // charts having no variables. This may be useful when large parts of
+    // the model have been deleted.
+    if(clear_empty) {
+      let cc = 0;
+      for(let ci = MODEL.charts.length - 1; ci > 0; ci--) {
+        const c = MODEL.charts[ci];
+        if(!c.variables.length && c.title !== this.new_chart_title) {
+          MODEL.deleteChart(ci);
+          cc++;
+        }
+      }
+      let msg = 'No charts without variables';
+      if(cc) msg = pluralS(cc, 'chart') + 'having no variables have been deleted';
+      UI.notify(msg);
+      UI.updateControllerDialogs('CFX');
+    } else if(this.chart_index >= 0) {
       MODEL.deleteChart(this.chart_index);
       // Also update the experiment viewer, because this chart may be
       // one of the output charts of the selected experiment.

@@ -878,8 +878,10 @@ class GUIController extends Controller {
     return this.paper.palette;
   }
   
-  removeListeners(el) {
-    // Remove all event listeners from DOM element `el`.
+  removeListeners(id) {
+    // Remove all event listeners from DOM element with specified identifier.
+    const el = document.getElementById(id);
+    if(!el) return null;
     const clone = el.cloneNode(true);
     el.parentNode.replaceChild(clone, el);
     return clone;
@@ -1124,6 +1126,11 @@ class GUIController extends Controller {
         () => UI.modals.cluster.hide());
     this.modals.cluster.element('include-btn').addEventListener('click',
         () => {
+            // Pass entered cluster name on to the inclusion modal.
+            FILE_MANAGER.include_modal.cluster_prefix = UI.modals
+                .cluster.element('name').value.trim();
+            FILE_MANAGER.include_modal.cluster_actor = UI.modals
+                .cluster.element('actor').value.trim();
             UI.modals.cluster.hide();
             FILE_MANAGER.showDialog('include');
           });

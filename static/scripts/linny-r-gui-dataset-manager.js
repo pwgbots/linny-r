@@ -552,18 +552,19 @@ class GUIDatasetManager extends DatasetManager {
         ml = [],
         msl = sd.selectorList,
         sm = this.selected_modifier;
-    let smid = 'dsmtr';
-    for(let i = 0; i < msl.length; i++) {
+    let smid = 'tr-';
+    for(const mn of msl) {
       const
-          m = sd.modifiers[UI.nameToID(msl[i])],
+          mid = UI.nameToID(mn),
+          m = sd.modifiers[mid],
+          msel = m.selector,
           wild = m.hasWildcards,
           defsel = (m.selector === sd.default_selector),
           issue = (m.expression.compile_issue ? ' compile-issue' :
               (m.expression.compute_issue ? ' compute-issue' : '')),
-          clk = '" onclick="DATASET_MANAGER.selectModifier(event, \'' +
-              m.selector + '\'';
-      if(m === sm) smid += i;
-      ml.push(['<tr id="dsmtr', i, '" class="dataset-modif',
+          clk = `" onclick="DATASET_MANAGER.selectModifier(event, '${msel}'`;
+      if(m === sm) smid += mid;
+      ml.push(['<tr id="tr-', mid, '" class="dataset-modif',
           (m === sm ? ' sel-set' : ''),
           '"><td class="dataset-selector', issue,
           (wild ? ' wildcard' : ''),
@@ -572,7 +573,7 @@ class GUIDatasetManager extends DatasetManager {
           clk, ', false);">',
           (defsel ? '<img src="images/solve.png" style="height: 14px;' +
               ' width: 14px; margin: 0 1px -3px -1px;">' : ''),
-          (wild ? wildcardFormat(m.selector, true) : m.selector),
+          (wild ? wildcardFormat(msel, true) : msel),
           '</td><td class="dataset-expression', issue,
           (issue ? '"title="' +
               safeDoubleQuotes(m.expression.compile_issue ||
@@ -635,7 +636,7 @@ class GUIDatasetManager extends DatasetManager {
       }
     }
     for(const mid of mids) {
-      const e = document.getElementById(mid);
+      const e = document.getElementById('tr-' + mid);
       if(e) {
         if(DOCUMENTATION_MANAGER.visible &&
             this.selected_dataset.modifiers[mid].comments) {
@@ -643,7 +644,7 @@ class GUIDatasetManager extends DatasetManager {
         } else {
           e.classList.remove('blue-nimbus');
         }
-      } else {
+      } else if(DATASET_MANAGER.visible) {
         console.log(`ANOMALY: Unknown dataset modifier identifier "${mid}"`);
       }
     }
