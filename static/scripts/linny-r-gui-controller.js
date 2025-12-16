@@ -2195,12 +2195,15 @@ class GUIController extends Controller {
         }
       }
     }
+    // NOTE: Clear for all links the "on arrow head" flag.
+    for(const k in MODEL.links) if(MODEL.links.hasOwnProperty(k)) {
+      MODEL.links[k].on_arrow_head = false;
+    }
     for(const arr of fc.arrows) {
       if(arr) {
         this.on_arrow = arr;
-        // NOTE: Arrow may represent multiple links, and `containsPoint`
-        // returns the link if this can be established unambiguously, or
-        // NULL otherwise.
+        // NOTE: Arrow may represent multiple links. `containsPoint` returns
+        // the link if this can be established unambiguously, otherwise NULL.
         const l = arr.containsPoint(this.mouse_x, this.mouse_y);
         if(l) {
           this.on_link = l;
@@ -4742,6 +4745,9 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     md.group = group;
     md.element('from-name').innerHTML = l.from_node.displayName;
     md.element('to-name').innerHTML = l.to_node.displayName;
+    if(l.on_arrow_head) {
+      console.log('HERE on arrow head');
+    }
     md.show(attr, l);
     // NOTE: counter-intuitive, but "level" must always be the "from-unit", as
     // it is the "per" unit
@@ -4947,13 +4953,15 @@ console.log('HERE name conflicts', name_conflicts, mapping);
               break;
             }
           }
-          if(no_rel) options.push('<option text="', po.displayName, '">',
-              po.displayName, '</option>');
+          if(no_rel) options.push(po.displayName);
         }
       }
       const md = this.modals.replace;
       if(options.length > 0) {
-        md.element('by-name').innerHTML = options.join('');
+        options.sort();
+        const ol = [];
+        for(const o of options) ol.push(`<option text="${o}">${o}</option>`);
+        md.element('by-name').innerHTML = ol.join('');
         const pne = md.element('product-name');
         pne.innerHTML = p.displayName;
         // Show that product is data by a dashed underline

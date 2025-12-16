@@ -1606,6 +1606,7 @@ class LinnyRModel {
       if(nb instanceof Process) {
         if(IO_CONTEXT) {
           // NOTE: This should NEVER occur because processes are always prefixed.
+          console.log('ANOMALY: Superseding a process:', nb.displayName);
           IO_CONTEXT.supersede(nb);
         }
         return nb;
@@ -1637,11 +1638,9 @@ class LinnyRModel {
     if(nb !== null) {
       // Preserve name uniqueness.
       if(nb instanceof Product) {
-        if(IO_CONTEXT) {
-          if(IO_CONTEXT.isBound(name) === 2) {
-            nb.initFromXML(node);
-            IO_CONTEXT.supersede(nb);
-          }
+        if(IO_CONTEXT && IO_CONTEXT.isBound(name) === 2) {
+          nb.initFromXML(node);
+          IO_CONTEXT.supersede(nb);
         }
         return nb;
       }
@@ -1669,6 +1668,7 @@ class LinnyRModel {
     // NOTE: A link ID has THREE underscores between its node IDs.
     let l = this.linkByID(from.code + '___' + to.code);
     if(l !== null) {
+      // NOTE: Links *always* supersede existing links.
       if(IO_CONTEXT) IO_CONTEXT.supersede(l);
       if(node) l.initFromXML(node);
       return l;
@@ -1698,6 +1698,7 @@ class LinnyRModel {
     // NOTE: Constraint ID has FOUR underscores between its node codes.
     let c = this.constraintByID(from.code + '____' + to.code);
     if(c !== null) {
+      // NOTE: Constraints *always* supersede existing constraints.
       if(IO_CONTEXT) IO_CONTEXT.supersede(c);
       if(node) c.initFromXML(node);
       return c;
@@ -1722,13 +1723,16 @@ class LinnyRModel {
     const id = UI.nameToID(name);
     let d = this.namedObjectByID(id);
     if(d && d !== this.equations_dataset) {
-      if(IO_CONTEXT) {
-        IO_CONTEXT.supersede(d);
-      } else {
-        // Preserve name uniqueness.
-        UI.warningEntityExists(d);
-        return null;
+      // Preserve name uniqueness.
+      if(d instanceof Dataset) {
+        if(IO_CONTEXT && IO_CONTEXT.isBound(name) === 2) {
+          d.initFromXML(node);
+          IO_CONTEXT.supersede(d);
+        }
+        return d;
       }
+      UI.warningEntityExists(d);
+      return null;
     }
     d = new Dataset(name);
     let eqds = null;
@@ -6264,26 +6268,30 @@ class Arrow {
   }
   
   containsPoint(mpx, mpy) {
-    // Returns the LINK under the cursor point, or NULL
+    // Return the LINK under the cursor point, or NULL.
     let dx = this.to_x - this.from_x;
-    // Avoid division by 0
+    // Avoid division by 0.
     if(dx === 0) dx = 0.1;
     const dy = this.to_y - this.from_y,
           l2 = dx*dx + dy*dy,
           mu = ((mpy - this.from_y)*dx - (mpx - this.from_x)*dy) / l2,
           lambda = (mpx + mu*dy - this.from_x) / dx;
-    // NOTE: lambda is the relative distance that the cursor is up the shaft
-    // use about 2.5 (= sqrt(8)) pixels margin to consider the cursor "on" the shaft
+    // NOTE: lambda is the relative distance that the cursor is up the shaft.
+    // Use about 2.5 (= sqrt(8)) pixels margin to consider the cursor "on" the shaft.
     if(lambda < 0 || lambda > 1 || mu*mu*(dx*dx + dy*dy) > 8) {
       return null;
     }
-    // If single-link arrow, return the link
+    // If single-link arrow, return the link.
     if(this.links.length === 1) {
+      // Record whether cursor is very near to the TO node.
+      // This is used when editing the link properties.
+      const pix_from_head = Math.sqrt(l2) * (1 - lambda);
+      this.links[0].on_arrow_head = pix_from_head < 9;
       return this.links[0];
     }
     // If more links, display them in Documentation dialog (GUI only) ...
     if(DOCUMENTATION_MANAGER) DOCUMENTATION_MANAGER.showArrowLinks(this);
-    // ... and do not allow selection of a specific link
+    // ... and do not allow selection of a specific link.
     return null;
   }
 

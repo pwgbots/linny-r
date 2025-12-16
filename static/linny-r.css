@@ -2160,6 +2160,7 @@ div.export {
 #replace-div {
   min-width: 200px;
   margin: 3px 0 3px 2px;
+  white-space: nowrap;
 }
 
 #replace-by-name {

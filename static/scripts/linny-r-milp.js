@@ -595,18 +595,18 @@ module.exports = class MILPSolver {
               // console.log('NOTE: Truncated ', xfv, ' to zero for variable', v);
               nz_count++;
               nz_max = Math.max(nz_max, ax);
-              xv = '0';
+              xv = 0;
             }
             x_values.push(xv);
             col++;
           }
           // Add zeros to vector for remaining columns.
           while(col <= result.columns) {
-            x_values.push('0');
+            x_values.push(0);
             col++;
           }
           if(nz_count) {
-            console.log('NOTE: Truncated ' + nz_count + 'variable' +
+            console.log('NOTE: Truncated ' + nz_count + ' variable' +
                 (nz_count > 1 ? 's' : '') + ' to zero; largest value: ',
                 nz_max);
           }
