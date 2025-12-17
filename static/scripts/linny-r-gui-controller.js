@@ -2297,7 +2297,10 @@ class GUIController extends Controller {
       if((this.active_button === this.buttons.link && this.linking_node) ||
           (this.active_button === this.buttons.constraint && this.constraining_node)) {
         // Cannot link to clusters or notes.
-        cr = (this.on_cluster || this.on_note ? 'not-allowed' : 'crosshair');                      
+        cr = (this.on_cluster || this.on_note ? 'not-allowed' : 'crosshair');
+      } else if(e.altKey && this.on_link &&
+          this.on_link.on_arrow_head && this.on_link.canFlip) {
+        cr = 'ew-resize';
       } else if(!this.on_note && !this.on_constraint && !this.on_link &&
           !this.on_cluster_edge) {
         cr = 'default';
@@ -2474,7 +2477,11 @@ class GUIController extends Controller {
       } else if(this.on_cluster) {
         this.showClusterPropertiesDialog(this.on_cluster);
       } else if(this.on_link) {
-        this.showLinkPropertiesDialog(this.on_link);
+        if(this.on_link.on_arrow_head && this.on_link.canFlip) {
+          MODEL.flipLink(this.on_link);
+        } else {
+          this.showLinkPropertiesDialog(this.on_link);
+        }
       }
     // NOTE: First check constraints -- see mouseMove() for motivation.
     } else if(this.on_constraint) {
@@ -4745,9 +4752,6 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     md.group = group;
     md.element('from-name').innerHTML = l.from_node.displayName;
     md.element('to-name').innerHTML = l.to_node.displayName;
-    if(l.on_arrow_head) {
-      console.log('HERE on arrow head');
-    }
     md.show(attr, l);
     // NOTE: counter-intuitive, but "level" must always be the "from-unit", as
     // it is the "per" unit

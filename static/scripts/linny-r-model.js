@@ -2745,6 +2745,20 @@ class LinnyRModel {
       }
     }
   }
+  
+  flipLink(l) {
+    // Swap FROM and TO node of link `l` unless it is a data link.
+    if(!l.canFlip) {
+      UI.notify('Data links cannot be reversed unless regular output');
+      return;
+    }
+    // Replace link by its mirrored version.
+    const nl = this.addLink(l.to_node, l.from_node);
+    nl.relative_rate.text = l.relative_rate.text;
+    // NOTE: Do not copy delay or SoC.
+    this.deleteLink(l);
+    UI.drawDiagram(this);
+  }
 
   get datasetVariables() {
     // Return list with all ChartVariable objects in this model that
@@ -8876,7 +8890,17 @@ class Link {
   
   get dataOnly() {
     // A link is data-only if multiplier is "special", or TO node is data.
-    return (this.multiplier != VM.LM_LEVEL || this.to_node.is_data);
+    return (this.multiplier !== VM.LM_LEVEL || this.to_node.is_data);
+  }
+  
+  get canFlip() {
+    // Return TRUE if this link can swap its FROM and TO nodes.
+    // NOTE: Do not permit flipping (semi) black-boxed links.
+    if(this.displayName.indexOf(UI.BLACK_BOX) >= 0) return false;
+    // Data links cannot be flipped unless they denote "regular" output of
+    // a process.
+    return !(this.to_node.is_data &&
+        (this.from_node instanceof Product || this.multiplier !== VM.LM_LEVEL));
   }
   
   get numberContext() {

@@ -4409,6 +4409,10 @@ class VirtualMachine {
         // NOTE: Do not scale the coefficient of the cash variable.
         if(cv && !cv[0].startsWith('C')) cc[ci] *= m;
       }
+      // NOTE: The RHS of the CF constraint may be non-zero due to special
+      // multipliers such as spinning reserve, and therefore also should be
+      // scaled!
+      this.right_hand_side[k] *= m;
     }
     // In case the model contains data products that represent an actor
     // cash flow, the coefficients of the constraint that equates the
@@ -4812,7 +4816,8 @@ class VirtualMachine {
         // (typically values below the non-zero tolerance of the solver).
         let pl = p.nonZeroLevel(bt);
         if(l.multiplier === VM.LM_SPINNING_RESERVE) {
-          pl = (pl > 0 ? p.upper_bound.result(bt) - pl : 0);
+          pl = (pl > 0 ? p.upper_bound.result(bt) - pl :
+              (pl < 0 ? pl - p.lower_bound.result(bt) : 0));
         } else if(l.multiplier === VM.LM_POSITIVE) {
           pl = (pl > 0 ? 1 : 0);
         } else if(l.multiplier === VM.LM_ZERO) {
@@ -4939,6 +4944,12 @@ class VirtualMachine {
     }
 
     // THEN: Calculate cash flows one step at a time because of delays.
+    // NOTE: To check consistency with the cash flows per actor as computed
+    // by the solver, the cash flows per process are summed per owner.
+    const actor_cf = {};
+    for(const k in MODEL.actors) if(MODEL.actors.hasOwnProperty(k)) {
+      actor_cf[k] = {sum_in: 0, sum_out: 0};
+    }
     for(let i = 0; i < cbl; i++) {
       const b = bb + i;
       // Initialize cumulative cash flows for clusters.
@@ -4948,6 +4959,11 @@ class VirtualMachine {
         c.cash_in[b] = 0;
         c.cash_out[b] = 0;
         c.cash_flow[b] = 0;
+      }
+      // Reset cumulative CF per actor. 
+      for(const a in actor_cf) if(actor_cf.hasOwnProperty(a)) {
+        actor_cf[a].sum_in = 0;
+        actor_cf[a].sum_out = 0;
       }
       // NOTE: Cash flows ONLY result from processes.
       for(let k in MODEL.processes) if(MODEL.processes.hasOwnProperty(k) &&
@@ -5009,6 +5025,27 @@ class VirtualMachine {
           c.cash_out[b] += co;
           c.cash_flow[b] += cf;
           c = c.cluster;
+        }
+        // Sum cash flows per process owner.
+        const acf = actor_cf[p.actor.identifier];
+        if(acf) {
+          acf.sum_in += ci;
+          acf.sum_out += co;
+        } else {
+          console.log('ANOMALY: Cash flow for unknown process ower:',
+              p.displayName, ci, co, `(t = ${b})`);
+        }
+      }
+      // Computed cash flows should be equal to solver results.
+      for(const k in actor_cf) if(actor_cf.hasOwnProperty(k)) {
+        const a = MODEL.actors[k];
+        if(Math.abs(a.cash_in[b] - actor_cf[k].sum_in) > VM.SIG_DIF_FROM_ZERO) {
+          console.log('ANOMALY: Inconsistent cash IN for', a.displayName,
+              a.cash_in[b], actor_cf[k].sum_in,  `(t = ${b})`);
+        }
+        if(Math.abs(a.cash_out[b] - actor_cf[k].sum_out) > VM.SIG_DIF_FROM_ZERO) {
+          console.log('ANOMALY: Inconsistent cash OUT for', a.displayName,
+              a.cash_out[b], actor_cf[k].sum_out,  `(t = ${b})`);
         }
       }
     }
@@ -8619,7 +8656,7 @@ function VMI_update_cash_coefficient(link) {
       price_rate = price * rate,
       abs_pr = Math.abs(price_rate),
       // ... but check the lower process bound at t-delay!
-      reversible = tn.lower_bound.result(t - delay) < 0;
+      reversible = fn.lower_bound.result(t - delay) < 0;
 
   // NOTE: Even for (statistics over) delayed flows, the rate and price
   // at time t is used, so when rate*price = 0, no cash flow occurs.
@@ -8631,7 +8668,6 @@ function VMI_update_cash_coefficient(link) {
         ' has cash flow but no partitioned level');
     return;
   }
-
   // Get the indices for the NZP-partitioning of the production level
   // variable.
   const
@@ -8837,22 +8873,22 @@ function VMI_update_cash_coefficient(link) {
       // The maximum increase equals UB - level.
       if(price_rate > 0) {
         // MaxInc generates cash IN.
-        VM.cash_in_rhs -= ub * price_rate;
+        VM.cash_in_rhs += ub * price_rate;
         addCashIn(vi, -price_rate);
       } else {
         // MaxInc generates cash OUT.
-        VM.cash_out_rhs += ub * price_rate;
+        VM.cash_out_rhs -= ub * price_rate;
         addCashout(vi, price_rate);
       }
     } else {
       // The maximum decrease equals -LB + level.
       if(price_rate > 0) {
         // MaxInc generates cash IN.
-        VM.cash_in_rhs += lb * price_rate;
+        VM.cash_in_rhs -= lb * price_rate;
         addCashIn(vi, price_rate);
       } else {
         // MaxInc generates cash OUT.
-        VM.cash_out_rhs -= lb * price_rate;
+        VM.cash_out_rhs += lb * price_rate;
         addCashout(vi, -price_rate);
       }
     }
