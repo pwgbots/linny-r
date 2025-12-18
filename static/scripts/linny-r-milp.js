@@ -214,6 +214,7 @@ module.exports = class MILPSolver {
           'intFeasTol=5e-7',
           'MIPGap=1e-4',
           'NumericFocus=0',
+          'IntegralityFocus=1',
           'JSONSolDetail=1',
           `LogFile=${s.log}`,
           `ResultFile=${s.solution}`,

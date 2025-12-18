@@ -2256,8 +2256,6 @@ class VirtualMachine {
       SO: true,
       FC: true,
       SB: true,
-      NSCB: true,
-      PSCB: true,
       UO1: true,
       DO1: true,
       UO2: true,
@@ -3075,8 +3073,7 @@ class VirtualMachine {
     // NOTE: `index` is 1-based, so when looking up a variable in the
     // VM variables list, the variable looked for is variables[index - 1]. 
     const index = this.variables.push([type, obj]);
-    if(((type === 'PL' || type === 'PiL') && obj.level_to_zero) ||
-       (type === 'NSC' || type === 'PSC')) {
+    if(((type === 'PL' || type === 'PiL') && obj.level_to_zero)) {
       this.sec_var_indices[index] = true;
     }
     if(type === 'I' || type === 'PiL') {
@@ -3152,12 +3149,8 @@ class VirtualMachine {
     p.pep_var_index = -1;
     p.nep_var_index = -1;
     // Two semi-continuous for "ON" levels.
-    p.psc_var_index = -1;
-    p.nsc_var_index = -1;
-    // Two binaries used only when solver does not support
-    // semi-continuous variables.
-    p.pscb_var_index = -1;
-    p.nscb_var_index = -1;
+    p.posl_var_index = -1;
+    p.negl_var_index = -1;
     // More variables to compute special link multipliers.
     p.start_up_var_index = -1;
     p.shut_down_var_index = -1;
@@ -3212,12 +3205,8 @@ class VirtualMachine {
       // ... and also add the level partitioning variables.
       p.pep_var_index = this.addVariable('PEP', p);
       p.nep_var_index = this.addVariable('NEP', p);
-      p.psc_var_index = this.addVariable('PSC', p);
-      p.nsc_var_index = this.addVariable('NSC', p);
-      if(this.noSemiContinuous) {
-        p.pscb_var_index = this.addVariable('PSCB', p);
-        p.nscb_var_index = this.addVariable('NSCB', p);
-      }
+      p.posl_var_index = this.addVariable('PSL', p);
+      p.negl_var_index = this.addVariable('NGL', p);
       // To detect startup, one more variable is needed
       if(p.needsStartUpData) {
         p.start_up_var_index = this.addVariable('SU', p);
@@ -3727,7 +3716,7 @@ class VirtualMachine {
     //     contributing the weighted difference + WaCin - WaCout.
     // (3) As of version 3.0, for processes that may have LB < 0, the level
     //     is partitioned, and coefficients are added to/subtracted from the
-    //     (always non-negative) variables PEP, NEP, PSC and NSC.
+    //     (always non-negative) variables PEP, NEP, POSL and NEGL.
     // (4) The VM has a coefficients vector, and VM instructions operate on
     //     this vector. If expressions for process properties are static, more
     //     efficient VM instructions are used.
@@ -3857,18 +3846,23 @@ class VirtualMachine {
     }
     
     // Add small penalty to use "epsilon" variables.
+    const small_coefficient = -1 / VM.BASE_PENALTY;
     for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
       const p = MODEL.processes[k];
       if(p.is_zero_var_index >= 0) {
-        this.code.push([VMI_add_const_to_coefficient, [p.pep_var_index, -1]]);
-        this.code.push([VMI_add_const_to_coefficient, [p.nep_var_index, -1]]);
+        this.code.push([VMI_add_const_to_coefficient,
+            [p.pep_var_index, small_coefficient]]);
+        this.code.push([VMI_add_const_to_coefficient,
+            [p.nep_var_index, small_coefficient]]);
       }
     }
     for(const k of product_keys) if(!MODEL.ignored_entities[k]) {
       const p = MODEL.products[k];
       if(p.is_zero_var_index >= 0) {
-        this.code.push([VMI_add_const_to_coefficient, [p.pep_var_index, -1]]);
-        this.code.push([VMI_add_const_to_coefficient, [p.nep_var_index, -1]]);
+        this.code.push([VMI_add_const_to_coefficient,
+            [p.pep_var_index, small_coefficient]]);
+        this.code.push([VMI_add_const_to_coefficient,
+            [p.nep_var_index, small_coefficient]]);
       }
     }
 
@@ -4159,6 +4153,22 @@ class VirtualMachine {
 
        HOWEVER: this is not guaranteed because when L=0, the solver may pick
        POS=0 NEG=1 OO=1 IZ=0. Hence this more elaborate solution:
+       
+       NZP (negative - zero -positive) partitioning makes the solver distinguish
+       between negative (L <= -epsilon), near-zero, i.e. -epsilon < L < epsilon)
+       and positive (L >= epsilon). This is achieved by "remodeling" L using 4
+       non-negative variables: NEGL, NEP, PEP and POSL where their composition
+       -NEGL - NEP + PEP + POSL equals L. By imposing on these four variables
+       a SOS1 constraint (only one may be non-zero, i.e. > 0) the solver will
+       consistently map L as follows:
+       
+       L       NEGL  NEP  PEP  POSL
+       -3       3     0    0    0
+       -eps    (solver may choose either NEGL = eps or NEP = eps)
+       -eps/2   0   eps/2  0    0
+        0       0     0    0    0 (as any > 0 would require a matching other)
+        eps    (solver may choose either PEP = eps or POSL = eps)
+        3       0     0    0    3
 
        EXTRA VARIABLES: To separate POS, NEG and (near) zero, two semi-continuous
        variables POSL and NEGL are added having a near-zero lower bound "epsilon"
@@ -4510,17 +4520,6 @@ class VirtualMachine {
         a.cash_out[b] = this.checkForInfinity(
             x[a.cash_out_var_index + j] * this.cash_scalar);
         a.cash_flow[b] = this.noNearZero(a.cash_in[b] - a.cash_out[b]);
-        if(!MODEL.ignore_negative_flows) {
-          // Count occurrences of a negative cash flow (threshold -0.5 cent).
-          if(b <= this.nr_of_time_steps && a.cash_in[b] < -0.005) {
-            this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
-                a.displayName + ' cash IN = ' + a.cash_in[b].toPrecision(2));
-          }
-          if(b <= this.nr_of_time_steps && a.cash_out[b] < -0.005) {
-            this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
-                a.displayName + ' cash OUT = ' + a.cash_out[b].toPrecision(2));
-          }
-        }
         // Advance column offset in tableau by the # cols per time step.
         j += this.cols;
         // Advance to the next time step in this block.
@@ -5038,14 +5037,21 @@ class VirtualMachine {
       }
       // Computed cash flows should be equal to solver results.
       for(const k in actor_cf) if(actor_cf.hasOwnProperty(k)) {
-        const a = MODEL.actors[k];
-        if(Math.abs(a.cash_in[b] - actor_cf[k].sum_in) > VM.SIG_DIF_FROM_ZERO) {
-          console.log('ANOMALY: Inconsistent cash IN for', a.displayName,
-              a.cash_in[b], actor_cf[k].sum_in,  `(t = ${b})`);
+        const
+            a = MODEL.actors[k],
+            dif_in = a.cash_in[b] - actor_cf[k].sum_in,
+            dif_out = a.cash_out[b] - actor_cf[k].sum_out,
+            imbalance = (Math.abs(dif_in - dif_out) > 0.001);
+        if(imbalance) {
+          console.log('ANOMALY: Inconsistent cash flow for', a.displayName,
+              `(t = ${b})`);
         }
-        if(Math.abs(a.cash_out[b] - actor_cf[k].sum_out) > VM.SIG_DIF_FROM_ZERO) {
-          console.log('ANOMALY: Inconsistent cash OUT for', a.displayName,
-              a.cash_out[b], actor_cf[k].sum_out,  `(t = ${b})`);
+        if(Math.abs(dif_in) + Math.abs(dif_out) > 0.001) {
+          if(!imbalance) console.log('NOTICE: Cash flow differences for',
+              a.displayName, `(t = ${b})`);
+          console.log('- cash IN solver:' , a.cash_in[b], 'inferred:',
+              actor_cf[k].sum_in, '\n- cash OUT solver:', a.cash_out[b],
+              'inferred:', actor_cf[k].sum_out);
         }
       }
     }
@@ -8276,16 +8282,30 @@ function VMI_set_bounds(args) {
       // partitioning variables.
       if(p.is_zero_var_index >= 0) {
         // Set bounds on the NZP-partitioning variables.
-        VM.upper_bounds[VM.offset + p.nep_var_index] = VM.ON_OFF_THRESHOLD;
-        VM.upper_bounds[VM.offset + p.pep_var_index] = VM.ON_OFF_THRESHOLD;
-        // NOTE: The semi-continuous partitions must have upper bound >= 0...
-        VM.upper_bounds[VM.offset + p.nsc_var_index] = Math.max(-l, 0);
-        VM.upper_bounds[VM.offset + p.psc_var_index] = Math.max(u, 0);
-        // ... and lower bound "epsilon" *unless* semi-continuous variables
-        // are not supported by the solver.
-        if(!VM.noSemiContinuous) {
-          VM.lower_bounds[VM.offset + p.nsc_var_index] = VM.ON_OFF_THRESHOLD;
-          VM.lower_bounds[VM.offset + p.psc_var_index] = VM.ON_OFF_THRESHOLD;
+        // NOTE: To set bounds as tightly as possible, consider various cases.
+        if(u > 0) {
+          // If UB > 0, the positive components must also have UB > 0.
+          VM.upper_bounds[VM.offset + p.pep_var_index] = VM.ON_OFF_THRESHOLD;
+          VM.upper_bounds[VM.offset + p.posl_var_index] = u;
+          VM.upper_bounds[VM.offset + p.plus_var_index] = 1;
+        } else {
+          // Otherwise, they must be 0, so their UB = 0.
+          VM.upper_bounds[VM.offset + p.pep_var_index] = 0;
+          VM.upper_bounds[VM.offset + p.posl_var_index] = 0;
+          VM.upper_bounds[VM.offset + p.plus_var_index] = 0;
+        }
+        // NOTE: When LB >= 0, NEG, NEP and NEGL all must be 0.
+        if(l >= 0) {
+          // When lower bound is non-negative, the negative components
+          // all must have UB = 0.
+          VM.upper_bounds[VM.offset + p.nep_var_index] = 0;
+          VM.upper_bounds[VM.offset + p.negl_var_index] = 0;
+          VM.upper_bounds[VM.offset + p.minus_var_index] = 0;
+        } else {
+          // When LB < 0, the negative components must have UB > 0.
+          VM.upper_bounds[VM.offset + p.nep_var_index] = VM.ON_OFF_THRESHOLD;      
+          VM.upper_bounds[VM.offset + p.negl_var_index] = -l;
+          VM.upper_bounds[VM.offset + p.minus_var_index] = 1;
         }
       }
       // (2) If associated node is FROM-node of a "peak increase" link, then
@@ -8630,8 +8650,8 @@ function VMI_update_cash_coefficient(link) {
     // Input links have no delay or special link multipliers.
     if(abs_pr) {
       const
-          nk = VM.offset + tn.nsc_var_index,
-          pk = VM.offset + tn.psc_var_index;
+          nk = VM.offset + tn.negl_var_index,
+          pk = VM.offset + tn.posl_var_index;
       if(price_rate > 0) {
         // Consumption is cash OUT; negative level = production => cash IN.
         addCashOut(pk, abs_pr);
@@ -8675,8 +8695,8 @@ function VMI_update_cash_coefficient(link) {
       posvi = fn.plus_var_index,
       negvi = fn.minus_var_index,
       // NOTE: When not reversible, use the level index as "positive".
-      pscvi = (reversible ? fn.psc_var_index : vi),
-      nscvi = (reversible ? fn.nsc_var_index : vi),
+      poslvi = (reversible ? fn.posl_var_index : vi),
+      neglvi = (reversible ? fn.negl_var_index : vi),
       pepvi = fn.pep_var_index,
       nepvi = fn.nep_var_index;
 
@@ -8687,8 +8707,8 @@ function VMI_update_cash_coefficient(link) {
         nts = Math.abs(delay) + 1,
         m = (lm === VM.LM_MEAN ? 1 / nts : 1);
     let dt = Math.min(delay, 0),
-        nk = VM.offset + nscvi - dt * VM.cols,
-        pk = VM.offset + pscvi - dt * VM.cols;
+        nk = VM.offset + neglvi - dt * VM.cols,
+        pk = VM.offset + poslvi - dt * VM.cols;
     for(let i = 0; i < nts; i++) {
       // Variables beyond the tableau column range (when delay < 0) can
       // be ignored, so then exit this loop.
@@ -8740,8 +8760,8 @@ function VMI_update_cash_coefficient(link) {
   // to differentiate between the positive and negative level variable.
   if(lm === VM.LM_LEVEL || lm === VM.LM_SUM || lm === VM.LM_MEAN) {
     const
-        pk = (reversible ? k - vi + pscvi : k),
-        nk = (reversible ? k - vi + nscvi : k);
+        pk = (reversible ? k - vi + poslvi : k),
+        nk = (reversible ? k - vi + neglvi : k);
     // For output links, level > 0 is production, level < 0 is consumption.
     const abs_pr = Math.abs(price_rate);
     if(price_rate > 0) {
@@ -8840,7 +8860,7 @@ function VMI_update_cash_coefficient(link) {
       }
     } else if(lm === VM.LM_SPINNING_RESERVE) {
       // The spinning reserve follows from the NPZ-partitioned level:
-      // SR = (POS*UB - PEP - PSC) + (NEG*-LB - NEP - NSC)
+      // SR = (POS*UB - PEP - POSL) + (NEG*-LB - NEP - NEGL)
       // where the first term is relevant only when UB > 0, and the second
       // term only when LB < 0.
       const kdi = k - vi;
@@ -8849,24 +8869,24 @@ function VMI_update_cash_coefficient(link) {
         if(ub > 0) {
           addCashIn(kdi + posvi, ub * price_rate);
           addCashIn(kdi + pepvi, -price_rate);
-          addCashIn(kdi + pscvi, -price_rate);
+          addCashIn(kdi + poslvi, -price_rate);
         }
         if(lb < 0) {
           addCashIn(kdi + negvi, -lb * price_rate);
           addCashIn(kdi + nepvi, -price_rate);
-          addCashIn(kdi + nscvi, -price_rate);
+          addCashIn(kdi + neglvi, -price_rate);
         }
       } else {
         // SR generates cash OUT.
         if(ub > 0) {
           addCashOut(kdi + posvi, ub * price_rate);
           addCashOut(kdi + pepvi, -price_rate);
-          addCashOut(kdi + pscvi, -price_rate);
+          addCashOut(kdi + poslvi, -price_rate);
         }
         if(lb < 0) {
           addCashOut(kdi + negvi, -lb * price_rate);
           addCashOut(kdi + nepvi, -price_rate);
-          addCashOut(kdi + nscvi, -price_rate);
+          addCashOut(kdi + neglvi, -price_rate);
         }
       }
     } else if(lm === VM.LM_MAX_INCREASE) {
@@ -9085,10 +9105,6 @@ function VMI_add_semicontinuous_constraints(p) {
   const
       l_index = p.level_var_index + VM.offset,
       lb_index = p.semic_var_index + VM.offset,
-      posl_index = p.psc_var_index + VM.offset,
-      negl_index = p.nsc_var_index + VM.offset,
-      poslb_index = p.pscb_var_index + VM.offset,
-      neglb_index = p.nscb_var_index + VM.offset,
       lbx = p.lower_bound,
       ubx = (p.equal_bounds && lbx.defined ? lbx : p.upper_bound),
       lb = lbx.result(VM.t),
@@ -9115,43 +9131,6 @@ function VMI_add_semicontinuous_constraints(p) {
       console.log('ANOMALY: Failed to set semi-continuous bounds for',
           p.displayName, 'for t =', VM.t, 'LB =', lb, 'UB =', ub);
     }
-  }
-  // Make NZP-partitioning variables semi-continuous.
-  // NOTE: These variables have lower bound "epsilon", and the same upper
-  // bound as the level of `p`. If UB <= 0, no constraint should be added.
-  if(poslb_index >= 0 && ub > 0) {
-    // epsilon*binary - POSL <= 0
-    row = {};
-    row[poslb_index] = VM.ON_OFF_THRESHOLD;
-    row[posl_index] = -1;
-    VM.matrix.push(row);
-    VM.right_hand_side.push(0);
-    VM.constraint_types.push(VM.LE);
-    // POSL - UB*binary <= 0
-    row = {};
-    row[posl_index] = 1;
-    row[poslb_index] = -ub;
-    VM.matrix.push(row);
-    VM.right_hand_side.push(0);
-    VM.constraint_types.push(VM.LE);
-  }
-  // NOTE: For NEGL, the LB of `p` should be negative, and then the
-  // -LB should become the UB of NEGL.
-  if(neglb_index >= 0 && lb < 0) {
-    // epsilon*binary - NEGL <= 0
-    row = {};
-    row[neglb_index] = VM.ON_OFF_THRESHOLD;
-    row[negl_index] = -1;
-    VM.matrix.push(row);
-    VM.right_hand_side.push(0);
-    VM.constraint_types.push(VM.LE);
-    // NEGL + LB*binary <= 0, because LB < 0 -- see above.
-    row = {};
-    row[negl_index] = 1;
-    row[neglb_index] = lb;
-    VM.matrix.push(row);
-    VM.right_hand_side.push(0);
-    VM.constraint_types.push(VM.LE);
   }
 }
 
@@ -9189,8 +9168,8 @@ function VMI_add_NZP_binary_constraints(p) {
       off_index = VM.offset + p.is_zero_var_index,
       pep_index = VM.offset + p.pep_var_index,
       nep_index = VM.offset + p.nep_var_index,
-      posl_index = VM.offset + p.psc_var_index,
-      negl_index = VM.offset + p.nsc_var_index;
+      posl_index = VM.offset + p.posl_var_index,
+      negl_index = VM.offset + p.negl_var_index;
   if(DEBUGGING) {
     console.log(p.type, p.displayName, 'big M =', VM.sig4Dig(big_M));
   }
@@ -9245,12 +9224,12 @@ function VMI_add_NZP_binary_constraints(p) {
   VM.right_hand_side.push(1);
   VM.constraint_types.push(VM.LE);
   // Since NEP and PEP will always have very small values (0 <= x <= epsilon),
-  // the "big M" need not be big, so we use M = 2 (arbitrarily chosen).
-  // (e) NEP + PEP - 2*OFF <= 0  ensures that OFF=1 if |L| < epsilon)
+  // the "big M" can be quite small, so we use M = 3*epsilon (1 epsilon more than needed).
+  // (e) NEP + PEP - 3*epsilon*OFF <= 0  ensures that OFF=1 if |L| < epsilon)
   row = {};
   row[nep_index] = 1;
   row[pep_index] = 1;
-  row[off_index] = -2;
+  row[off_index] = -3 * VM.ON_OFF_THRESHOLD;
   VM.matrix.push(row);
   VM.right_hand_side.push(0);
   VM.constraint_types.push(VM.LE);
@@ -9543,8 +9522,8 @@ function VMI_add_grid_process_constraints(p) {
       lbs = [VM.ON_OFF_THRESHOLD, step, 2*step],
       ubs = [step, 2*step, 3*step],
       // NOTE: Grid processes also have the NPZ-partitioning variables.
-      posl_index = VM.offset + p.psc_var_index,
-      negl_index = VM.offset + p.nsc_var_index;
+      posl_index = VM.offset + p.posl_var_index,
+      negl_index = VM.offset + p.negl_var_index;
   for(let i = 0; i < gpv.slopes; i++) {
     // Add constraints to set the ON/OFF binary for each slope:
     VMI_clear_coefficients();
@@ -9686,7 +9665,7 @@ function VMI_add_throughput_to_coefficients(link) {
         // ... but differentiate when this level is NZP-partitioned.
         // Then use positive level component when rate > 0, and negative
         // level component when rate < 0, so throughput flow is always >= 0.
-        (r2 > 0 ? lfn.psc_var_index : lfn.nsc_var_index));
+        (r2 > 0 ? lfn.posl_var_index : lfn.negl_var_index));
     // The link multiplier may require another variable index.
     if(l.multiplier === VM.LM_POSITIVE) {
       vi = lfn.plus_var_index;
@@ -9745,7 +9724,7 @@ function VMI_add_throughput_to_coefficients(link) {
     // Now use the negative level component when rate > 0, and positive
     // level component when rate < 0, so throughput flow is always >= 0.
     const
-        vi = (r2 > 0 ? ltn.nsc_var_index : ltn.psc_var_index),
+        vi = (r2 > 0 ? ltn.negl_var_index : ltn.posl_var_index),
         k = VM.offset + vi - d1 * VM.cols,
         t = VM.t - d1;
     // Ignore "future variables".
@@ -10073,9 +10052,9 @@ function VMI_add_spinning_reserve(link) {
     // NOTE: Use *both* the (mutually exclusive) POS and NEG levels.
     const
       posk = VM.offset + fn.plus_var_index - d * VM.cols,
-      poslk = VM.offset + fn.psc_var_index - d * VM.cols,
+      poslk = VM.offset + fn.posl_var_index - d * VM.cols,
       negk = VM.offset + fn.minus_var_index - d * VM.cols,
-      neglk = VM.offset + fn.nsc_var_index - d * VM.cols;    
+      neglk = VM.offset + fn.negl_var_index - d * VM.cols;    
     if(posk in VM.coefficients) {
       VM.coefficients[posk] += u * r;
     } else {

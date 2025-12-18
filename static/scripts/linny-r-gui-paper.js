@@ -2023,10 +2023,10 @@ class Paper {
         bar_ratio = 1;
         font_color = 'white';
         stroke_width = 2;
-      } else if(Math.abs(l) < VM.SIG_DIF_FROM_ZERO) {
+      } else if(Math.abs(l) < VM.ON_OFF_THRESHOLD) {
         font_color = this.palette.node_rim;
       } else if(l < 0) {
-        // Negative level => more reddish stroke and font
+        // Negative level => more reddish stroke and font.
         font_color = this.palette.compound_flow;
         stroke_color = font_color;
         if(proc.grid) {
@@ -2041,7 +2041,7 @@ class Paper {
         if(ub > VM.NEAR_ZERO) bar_ratio = l / ub;
         stroke_width = 1.25;
       }
-      // For options, set longer-dashed rim if committed at time <= t
+      // For options, set longer-dashed rim if committed at time <= t.
       const fcn = (is_fc_option ? proc : fc_option_node);
       // NOTE: When initial level =/= 0, option is already committed at t=0.
       if(fcn && (!fcn.actualLevel(0) ||
@@ -2059,7 +2059,7 @@ class Paper {
       bar_color = this.palette.src_snk;
       l = il;
     }
-    // Being selected overrules special border properties except SDA
+    // Being selected overrules special border properties except SDA.
     if(proc.selected) {
       stroke_color = this.palette.select;
       stroke_width = 2;
@@ -2075,9 +2075,9 @@ class Paper {
     proc.shape.addRect(x, y, 2 * hw, 2 * hh,
         {fill: fill_color, stroke: stroke_color, 'stroke-width': stroke_width,
             'stroke-dasharray': sda, 'stroke-linecap': 'round'});
-    // Draw level indicator: 8-pixel wide vertical bar on the right
+    // Draw level indicator: 8-pixel wide vertical bar on the right.
     if(bar_ratio > VM.NEAR_ZERO) {
-      // Calculate half the bar's height (bar rectangle is centered)
+      // Calculate half the bar's height (bar rectangle is centered).
       const
           hsw = stroke_width / 2,
           hbl = hh * bar_ratio - hsw;
@@ -2089,13 +2089,13 @@ class Paper {
             {fill: 'none', stroke: proc.grid.color,
                 'stroke-width': hh * bar_ratio * bar_ratio});
       } else {
-        // NOTE: when level < 0, bar drops down from top
+        // NOTE: When level < 0, bar drops down from top.
         proc.shape.addRect(x + hw - 4 - hsw,
             (l < 0 ? y - hh + hbl + hsw : y + hh - hbl - hsw),
             8, 2 * hbl, {fill: bar_color, stroke: 'none'});
       }
     }
-    // If semi-continuous, add a double rim 2 px above the bottom line
+    // If semi-continuous, add a double rim 2px above the bottom line.
     if(proc.level_to_zero) {
       const bly = y + hh - 2;
       proc.shape.addPath(['M', x - hw, ',', bly, 'L', x + hw, ',', bly],
@@ -2139,22 +2139,28 @@ class Paper {
     }
     if(!proc.collapsed) {
       // If model has been computed or initial level is non-zero, draw
-      // production level in upper right corner
+      // production level in upper right corner.
       const il = proc.initial_level.result(1);
       if(MODEL.solved || il) {
         if(!MODEL.solved) {
           l = il;
           font_color = 'black';
+        } else if(bar_ratio !== 1) {
+          if(l > 0) {
+            font_color = this.palette.active_process;          
+          } else if(l < 0) {
+            font_color = this.palette.compound_flow;   
+          }
         }
         s = VM.sig4Dig(Math.abs(l));
-        // Oversize level box width by 4px and height by 1px
+        // Oversize level box width by 4px and height by 1px.
         const
             bb = this.numberSize(s, 9),
             bw = bb.width + 2,
             bh = bb.height;
         // Upper right corner =>
         //   (x + width/2 - number width/2, y - height/2 + number height/2)
-        // NOTE: add 0.5 margin to stay clear from the edges
+        // NOTE: Add 0.5 margin to stay clear from the edges.
         const
             cx = x + hw - bw / 2 - 0.5,
             cy = y - hh + bh / 2 + 0.5; 
@@ -2177,17 +2183,17 @@ class Paper {
           }
         }
       }
-      // Draw boundaries in upper left corner
-      // NOTE: their expressions should have been computed
+      // Draw boundaries in upper left corner.
+      // NOTE: Their expressions should have been computed.
       s = VM.sig4Dig(lb);
-      // Calculate width of lower bound because it may have to be underlined
+      // Calculate width of lower bound because it may have to be underlined.
       let lbw = this.numberSize(s).width;
-      // Default offset for lower bound undercore (if drawn)
+      // Default offset for lower bound undercore (if drawn).
       let lbo = 1.5;
       if(ub === lb) {
-        // If bounds are equal, show bound preceded by equal sign
+        // If bounds are equal, show bound preceded by equal sign.
         s = '=' + s;
-        // Add text width of equal sign to offset
+        // Add text width of equal sign to offset.
         lbo += 5;
       } else {
         const ubs = (ub >= VM.PLUS_INFINITY && !proc.upper_bound.defined ?
@@ -2234,7 +2240,7 @@ class Paper {
               su = proc.start_ups.indexOf(MODEL.t),
               sd = proc.shut_downs.indexOf(MODEL.t);
           if(Math.abs(l) > VM.ON_OFF_THRESHOLD) {
-            // Process is ON
+            // Process is ON.
             if(Math.abs(pl) < VM.ON_OFF_THRESHOLD && su >= 0) {
               font_color = this.palette.switch_on_off;
               // Start-up arrow or first-commit asterisk.
@@ -2275,11 +2281,11 @@ class Paper {
         }
       }
       if(MODEL.infer_cost_prices && MODEL.solved) {
-        // Draw costprice data in lower left corner
+        // Draw costprice data in lower left corner.
         const cp = proc.costPrice(MODEL.t);
         s = VM.sig4Dig(cp);
         if(l === 0) {
-          // No "real" cost price when process level = 0
+          // No "real" cost price when process level = 0.
           font_color = 'silver';
           fill_color = this.palette.virtual_cost_price;
         } else {
@@ -2295,7 +2301,7 @@ class Paper {
         proc.shape.addNumber(x - hw + cpbw/2 + 0.5, y + hh - cpbh/2 - 0.5, s,
             {fill: font_color});
       }
-      // Draw pace in lower right corner if it is not equal to 1
+      // Draw pace in lower right corner if it is not equal to 1.
       if(proc.pace !== 1) {
         const
             pbb = this.numberSize(proc.pace, 7),
@@ -2308,7 +2314,7 @@ class Paper {
         proc.shape.addText(x + hw - pbw/2 - 2, y + hh - hpbh - 1.25,
             proc.pace, {'font-size': 7, fill: '#603060'});
       }
-      // Always draw process name plus actor name (if any)
+      // Always draw process name plus actor name (if any).
       const
           th = proc.name_lines.split('\n').length * this.font_heights[10] / 2,
           cy = (proc.hasActor ? y - 8 : y - 2);
@@ -2321,7 +2327,7 @@ class Paper {
         proc.shape.addText(x, cy + th + 6, proc.actor.name, format);
       }
       // Integer level is denoted by enclosing name in large [ and ]
-      // to denote "floor" as well as "ceiling"
+      // to denote "floor" as well as "ceiling".
       if(proc.integer_level) {
         const
             htw = 0.5 * proc.bbox.width + 5, 
@@ -2336,13 +2342,13 @@ class Paper {
       }
     } // end IF not collapsed
     if(MODEL.show_block_arrows && !ignored) {
-      // Add block arrows for hidden input and output links (no IO for processes)
+      // Add block arrows for hidden input and output links (no IO for processes).
       proc.shape.addBlockArrow(x - hw + 3, y - hh + 17, UI.BLOCK_IN,
           proc.hidden_inputs.length);
       proc.shape.addBlockArrow(x + hw - 4, y - hh + 17, UI.BLOCK_OUT,
           proc.hidden_outputs.length);
     }
-    // Highlight shape if it has comments
+    // Highlight shape if it has comments.
     proc.shape.element.firstChild.setAttribute('style',
         (DOCUMENTATION_MANAGER.visible && proc.comments.length > 0 ?
             this.documented_filter : ''));

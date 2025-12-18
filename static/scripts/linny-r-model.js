@@ -107,7 +107,6 @@ class LinnyRModel {
     this.ignore_KVL = false;
     this.ignore_power_losses = false;
     this.infer_cost_prices = false;
-    this.ignore_negative_flows = false;
     this.report_results = false;
     this.show_block_arrows = true;
     this.prompt_to_encrypt = false;
@@ -2987,7 +2986,6 @@ class LinnyRModel {
       this.ignore_KVL = nodeParameterValue(node, 'ignore-KVL') === '1';
       this.ignore_power_losses = nodeParameterValue(node, 'ignore-power-losses') === '1';
       this.infer_cost_prices = nodeParameterValue(node, 'cost-prices') === '1';
-      this.ignore_negative_flows = nodeParameterValue(node, 'negative-flows') === '1';
       this.report_results = nodeParameterValue(node, 'report-results') === '1';
       this.show_block_arrows = nodeParameterValue(node, 'block-arrows') === '1';
       // NOTE: Diagnosis option should default to TRUE unless *set* to FALSE.
@@ -3368,7 +3366,6 @@ class LinnyRModel {
     if(this.ignore_KVL) p += ' ignore-KVL="1"';
     if(this.ignore_power_losses) p += ' ignore-power-losses="1"';
     if(this.infer_cost_prices) p += ' cost-prices="1"';
-    if(this.ignore_negative_flows) p += ' negative-flows="1"';
     if(this.report_results) p += ' report-results="1"';
     if(this.show_block_arrows) p += ' block-arrows="1"';
     if(this.show_notices) p += ' show-notices="1"';
