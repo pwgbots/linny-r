@@ -12,7 +12,7 @@ executed by the VM, construct the Simplex tableau that can be sent to the
 MILP solver.
 */
 /*
-Copyright (c) 2017-2025 Delft University of Technology
+Copyright (c) 2017-2026 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -2478,7 +2478,7 @@ class VirtualMachine {
     // Return TRUE if the selected solver does NOT support semi-continuous
     // variables (used to implement "shut down when lower bound constraints"
     // for processes).
-    return this.solver_id === 'mosek';
+    return this.solver_id === 'mosek' || MODEL.no_semi_continuous;
   }
 
   get noSupportForSOS() {
@@ -3895,7 +3895,8 @@ class VirtualMachine {
     // NEXT: Add semi-continuous constraints only if not supported by solver.
     if(this.noSemiContinuous) {
       for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
-        this.code.push([VMI_add_semicontinuous_constraints, MODEL.processes[k]]);
+        const p = MODEL.processes[k];
+        if(p.level_to_zero) this.code.push([VMI_add_semicontinuous_constraints, p]);
       }
     }
     
@@ -4535,6 +4536,7 @@ class VirtualMachine {
     this.plus_eps_sum = 0;
     this.minus_eps_count = 0;
     this.minus_eps_sum = 0;
+    let ghost_su_count = 0;
     // Set production levels and start-up moments for all processes.
     for(let k in MODEL.processes) if(MODEL.processes.hasOwnProperty(k) &&
         !MODEL.ignored_entities[k]) {
@@ -4578,6 +4580,11 @@ class VirtualMachine {
           if(has_SU) {
             if(x[p.start_up_var_index + j] > 0.999) {
               p.start_ups.push(b);
+              if(!p.level[b]) {
+                this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
+                    'Ghost start-up for process ' + p.displayName);
+                ghost_su_count++;
+              }
             }
           }
           if(has_SD) {
@@ -4637,6 +4644,11 @@ class VirtualMachine {
           if(has_SU) {
             if(x[p.start_up_var_index + j] > 0.999) {
               p.start_ups.push(b);
+              if(!p.level[b]) {
+                this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
+                    'Ghost start-up for product ' + p.displayName);
+                ghost_su_count++;
+              }
             }
           }
           // Same for shut-down variable.
@@ -4659,6 +4671,9 @@ class VirtualMachine {
         b++;
       }
     }
+    if(ghost_su_count) this.logMessage(block,
+        '\nGhost start-ups may be suppressed via Model settings > Solver preferences' +
+        '\nby checking the option "Do not use semi-continuous variables".\n');
     // Get values of peak increase variables from solution vector.
     // NOTE: Computed offset takes into account that chunk variable list
     // is zero-based!

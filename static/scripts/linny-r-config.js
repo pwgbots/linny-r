@@ -11,7 +11,7 @@ warning or information messages are displayed.
 */
 
 /*
-Copyright (c) 2017-2025 Delft University of Technology
+Copyright (c) 2017-2026 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -51,6 +51,10 @@ const CONFIGURATION = {
     // will be written with decimal comma instead of decimal point.
     // NOTE: May be overruled by model settings.
     decimal_comma: false,
+    // By default, the VM will use semi-continuous variables to implement the
+    // "Shut down when lower bound constrains" option of processes.
+    // When disabled, sem-continuity is modeled using binary indicator variables.
+    no_semi_continuous: false,
     // By default, the monitor will notify where and when small amounts of slack
     // (< 1e-6) are used. Set to FALSE to suppress such notices).
     slight_slack_notices: true,

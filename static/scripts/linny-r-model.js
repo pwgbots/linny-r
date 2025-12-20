@@ -10,7 +10,7 @@ the Linny-R project.
 */
 
 /*
-Copyright (c) 2017-2025 Delft University of Technology
+Copyright (c) 2017-2026 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -54,11 +54,14 @@ class LinnyRModel {
     // determine whether the last undo/redo occurred *after* the last save.
     this.last_modified = d;
     this.version = LINNY_R_VERSION;
+    // Initial defaults are defined in the configuration script, but can be
+    // superseded by defaults read from the user workspace by the server.
     this.time_scale = CONFIGURATION.default_time_scale;
     this.time_unit = CONFIGURATION.default_time_unit;
     this.currency_unit = CONFIGURATION.default_currency_unit;
     this.default_unit = CONFIGURATION.default_scale_unit;
     this.decimal_comma = CONFIGURATION.decimal_comma;
+    this.no_semi_continuous = CONFIGURATION.no_semi_continuous;
     // NOTE: Default scale unit list comprises only the primitive base unit.
     this.scale_units = {'1': new ScaleUnit('1', '1', '1')};
     this.power_grids = {};
@@ -2990,6 +2993,7 @@ class LinnyRModel {
       this.show_block_arrows = nodeParameterValue(node, 'block-arrows') === '1';
       // NOTE: Diagnosis option should default to TRUE unless *set* to FALSE.
       this.always_diagnose = nodeParameterValue(node, 'diagnose') !== '0';
+      this.no_semi_continuous = nodeParameterValue(node, 'no-semi-continuous') === '1';
       this.show_notices = nodeParameterValue(node, 'show-notices') === '1';
       this.name = xmlDecoded(nodeContentByTag(node, 'name'));
       this.author = xmlDecoded(nodeContentByTag(node, 'author'));
@@ -3368,6 +3372,7 @@ class LinnyRModel {
     if(this.infer_cost_prices) p += ' cost-prices="1"';
     if(this.report_results) p += ' report-results="1"';
     if(this.show_block_arrows) p += ' block-arrows="1"';
+    if(this.no_semi_continuous) p += ' no-semi-continuous="1"';
     if(this.show_notices) p += ' show-notices="1"';
     let xml = this.xml_header + ['<model', p, '><name>',  xmlEncoded(this.name),
         '</name><author>', xmlEncoded(this.author),

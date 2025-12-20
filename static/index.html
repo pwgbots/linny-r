@@ -31,7 +31,7 @@ will be made available via GitHub in due time.
 -->
 
 <!--
-Copyright (c) 2017-2025 Delft University of Technology
+Copyright (c) 2017-2026 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -324,6 +324,12 @@ will be written with decimal comma instead of decimal point.">
           <td>
             <div id="defaults-comma" class="box clear"></div>
             <div class="box-lbl">Use decimal <u>comma</u> when copying data</div>
+          </td>
+        </tr>
+        <tr title="Disabling semi-continuous variables may resolve &ldquo;ghost&rdquo; start-ups">
+          <td>
+            <div id="defaults-no-semi-continuous" class="box clear"></div>
+            <div class="box-lbl">Do not use semi-continuous variables</div>
           </td>
         </tr>
         <tr title="When checked, small slack uses are reported in monitor">
@@ -813,6 +819,12 @@ NOTE: Products directly linked to such processes should have a proportional unit
             <label>Relative MIP gap:</label>
             <input id="solver-mip-gap"
                    placeholder="1e-4" type="text" autocomplete="off">
+          </td>
+        </tr>
+        <tr title="Disabling semi-continuous variables may resolve &ldquo;ghost&rdquo; start-ups">
+          <td>
+            <div id="solver-no-semi-continuous" class="box clear"></div>
+            <div class="box-lbl">Do not use semi-continuous variables</div>
           </td>
         </tr>
         <tr title="When checked, small slack uses are reported in monitor">

@@ -10,7 +10,7 @@ file that implements the graphical user interface for Linny-R.
 */
 
 /*
-Copyright (c) 2017-2025 Delft University of Technology
+Copyright (c) 2017-2026 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1198,8 +1198,6 @@ table.power-flow th:not(:first-child) {
 #settings-power,
 #settings-cost-prices,
 #settings-negative-flows,
-#defaults-comma,
-#defaults-show-notices,
 #settings-decimal-comma,
 #settings-report-results,
 #settings-encrypt {
@@ -1230,7 +1228,7 @@ table.power-flow th:not(:first-child) {
 }
 
 #solver-dlg {
-  width: 225px;
+  width: 230px;
   height: min-content;
 }
 
@@ -1239,6 +1237,7 @@ table.power-flow th:not(:first-child) {
   width: 65px;
 }
 
+#solver-no-semi-continuous,
 #solver-show-notices {
   margin: 0;
 }
@@ -1532,6 +1531,12 @@ div.export {
 
 #defaults-tbl {
   margin: 1px;
+}
+
+#defaults-comma,
+#defaults-no-semi-continuous,
+#defaults-show-notices {
+  margin: 0;
 }
 
 /* Styles for the MODEL and SAVE dialogs. */

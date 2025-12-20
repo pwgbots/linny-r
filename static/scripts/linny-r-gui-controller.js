@@ -13,7 +13,7 @@ handler functions.
 */
 
 /*
-Copyright (c) 2017-2025 Delft University of Technology
+Copyright (c) 2017-2026 Delft University of Technology
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1426,6 +1426,7 @@ class GUIController extends Controller {
     md.element('time-unit').value = CONFIGURATION.default_time_unit;
     md.element('scale-unit').value = CONFIGURATION.default_scale_unit;
     this.setBox('defaults-comma', CONFIGURATION.decimal_comma);
+    this.setBox('defaults-no-semi-continuous', CONFIGURATION.no_semi_continuous);
     this.setBox('defaults-show-notices', CONFIGURATION.slight_slack_notices);
     md.show('author');
   }
@@ -1450,6 +1451,7 @@ class GUIController extends Controller {
         default_time_unit: md.element('time-unit').value,
         default_scale_unit: md.element('scale-unit').value.trim() || '1',
         decimal_comma: this.boxChecked('defaults-comma'),
+        no_semi_continuous: this.boxChecked('defaults-no-semi-continuous'),
         slight_slack_notices: this.boxChecked('defaults-show-notices')
       };
     this.updateDefaults(JSON.stringify(d));
@@ -4331,6 +4333,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     md.element('preference').innerHTML = html.join('');
     md.element('int-feasibility').value = MODEL.integer_tolerance;
     md.element('mip-gap').value = MODEL.MIP_gap;
+    this.setBox('solver-no-semi-continuous', MODEL.no_semi_continuous);
     this.setBox('solver-show-notices', MODEL.show_notices);
     md.show();
   }
@@ -4360,6 +4363,7 @@ console.log('HERE name conflicts', name_conflicts, mapping);
     }
     MODEL.integer_tolerance = Math.max(1e-9, Math.min(0.1, itol));
     MODEL.MIP_gap = Math.max(0, Math.min(0.5, mgap));
+    MODEL.no_semi_continuous = this.boxChecked('solver-no-semi-continuous');
     MODEL.show_notices = this.boxChecked('solver-show-notices');
     // Close the dialog.
     md.hide();
