@@ -23,7 +23,7 @@ These <a href="https://sysmod.tbm.tudelft.nl/linny-r/docs/?68"
 an idea of what Linny-R can do.
 
 User documentation for Linny-R is still scant. A book "Modelling and
-simulation with Linny-R" will be published by TU Delft OPEN by the end of 2025.
+simulation with Linny-R" will be published by TU Delft OPEN in 2026.
 Meanwhile, you can consult the official user documentation site
 <a href="https://linny-r.info" target="_blank">https://linny-r.info</a>.
 Technical documentation will be developed in due time on GitHub:
