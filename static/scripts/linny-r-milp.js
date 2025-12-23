@@ -44,9 +44,9 @@ const
 function safeTextToLines(s) {
   // Return array of lines when `s` is split at the most likely EOL.
   if(s.indexOf('\r\n') >= 0) {
-    return s.split('\r\n');
+    return s.trim().split('\r\n');
   } else {
-    return s.split('\n');
+    return s.trim().split('\n');
   }
 }
 
