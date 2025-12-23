@@ -2238,7 +2238,7 @@ class VirtualMachine {
     // NOTE: For smaller values than 5e-6, Gurobi will not compute ON/OFF
     // binaries correctly, as it then accepts this low value as a violation
     // constraint.
-    this.ON_OFF_THRESHOLD = 5e-6;
+    this.ON_OFF_THRESHOLD = 1e-5;
     // Limit for upper bounds beyond which binaries cannot be computed
     // correctly. Modeler is warned when this occurs (typically when
     // ON/OFF variables are needed for a process having infinite bounds.
@@ -4580,7 +4580,7 @@ class VirtualMachine {
           if(has_SU) {
             if(x[p.start_up_var_index + j] > 0.999) {
               p.start_ups.push(b);
-              if(!p.level[b]) {
+              if(p.level[b] <= this.ON_OFF_THRESHOLD) {
                 this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
                     'Ghost start-up for process ' + p.displayName);
                 ghost_su_count++;
@@ -4644,7 +4644,7 @@ class VirtualMachine {
           if(has_SU) {
             if(x[p.start_up_var_index + j] > 0.999) {
               p.start_ups.push(b);
-              if(!p.level[b]) {
+              if(p.level[b] <= this.ON_OFF_THRESHOLD) {
                 this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
                     'Ghost start-up for product ' + p.displayName);
                 ghost_su_count++;

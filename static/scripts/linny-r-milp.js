@@ -41,6 +41,15 @@ const
     os = require('os'),
     path = require('path');
 
+function safeTextToLines(s) {
+  // Return array of lines when `s` is split at the most likely EOL.
+  if(s.indexOf('\r\n') >= 0) {
+    return s.split('\r\n');
+  } else {
+    return s.split('\n');
+  }
+}
+
 // Class MILPSolver implements the connection with the solver.
 module.exports = class MILPSolver {
   constructor(name, workspace) {
@@ -262,7 +271,7 @@ module.exports = class MILPSolver {
           `-out "${s.solver_model}"`,
           `-d MSK_DPAR_MIO_MAX_TIME %T%`,
           `-d MSK_DPAR_MIO_TOL_ABS_RELAX_INT %I%`,
-          '-d MSK_DPAR_MIO_REL_GAP_CONST %M%',
+          '-d MSK_DPAR_MIO_TOL_REL_GAP %M%',
           `"${s.user_model}"`
         ];
       s.solve_cmd = `mosek ${s.args.join(' ')} >${s.log}`;
@@ -624,7 +633,7 @@ module.exports = class MILPSolver {
     // Solver output has different formats, hence separate routines.
     if(this.id === 'gurobi') {
       // `messages` must be an array of strings.
-      result.messages = log.split(os.EOL);
+      result.messages = safeTextToLines(log);
       if(result.status === 1 ||
           (result.status !== 0 && log.indexOf('license') < 0)) {
         // Exit code typically indicates expired license, but also
@@ -670,7 +679,7 @@ module.exports = class MILPSolver {
       let solved = false,
           output = [];
       // `messages` must be an array of strings.
-      result.messages = log.split(os.EOL);
+      result.messages = safeTextToLines(log);
       // NOTE: MOSEK may also write solution to 'user_model.bas', so
       // try that as well before reporting failure.
       try {
@@ -687,7 +696,7 @@ module.exports = class MILPSolver {
         console.log('No MOSEK solution file');
       } else if(output.indexOf('SOLUTION STATUS') >= 0) {
         solved = true;
-        output = output.split(os.EOL);
+        output = safeTextToLines(output);
       }
       if(solved) {
         // MOSEK saves solution in a proprietary format, so just extract
@@ -702,7 +711,10 @@ module.exports = class MILPSolver {
           }
           i++;
         }
-        if(result.status.indexOf('OPTIMAL') >= 0) {
+        if(result.status === undefined) {
+          result.error = 'No status found in MOSEK solution file';
+          solved = false;
+        } else if(result.status.indexOf('OPTIMAL') >= 0) {
           result.status = 0;
           result.error = '';
         } else if(result.status.indexOf('DUAL_INFEASIBLE') >= 0) {
@@ -747,7 +759,7 @@ module.exports = class MILPSolver {
           mst = log.match(/Solution time \=\s+(\d+\.\d+) sec/);
       if(mst && mst.length > 1) result.seconds = parseFloat(mst[1]);
       // `messages` must be an array of strings.
-      result.messages = log.split(os.EOL);
+      result.messages = safeTextToLines(log);
       let solved = false,
           output = [];
       if(no_license) {
@@ -771,7 +783,7 @@ module.exports = class MILPSolver {
           output = fs.readFileSync(s.solution, 'utf8').trim();
           if(output.indexOf('CPLEXSolution') >= 0) {
             solved = true;
-            output = output.split(os.EOL);
+            output = safeTextToLines(output);
           }
         } catch(err) {
           console.log('No CPLEX solution file');
@@ -813,7 +825,7 @@ module.exports = class MILPSolver {
     } else if(this.id === 'scip') {
       result.seconds = 0;
       // `messages` must be an array of strings.
-      result.messages = log.split(os.EOL);
+      result.messages = safeTextToLines(log);
       let solved = false,
           output = [];
       if(result.status !== 0) {
@@ -821,8 +833,8 @@ module.exports = class MILPSolver {
         result.error = 'SCIP solver terminated with error';
       } else {
         try {
-          output = fs.readFileSync(
-              s.solution, 'utf8').trim().split(os.EOL);
+          output = safeTextToLines(
+              fs.readFileSync(s.solution, 'utf8').trim());
         } catch(err) {
           console.log('No SCIP solution file');
         }
@@ -877,7 +889,7 @@ module.exports = class MILPSolver {
       const
           // NOTE: LP_solve both messages and solution console, hence
           // the log file is processed in two "stages".
-          output = log.trim().split(os.EOL),
+          output = safeTextToLines(log),
           // NOTE: Linny-R client expects log messages as list of strings.
           msgs = [];
       result.seconds = 0;
