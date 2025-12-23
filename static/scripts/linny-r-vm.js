@@ -4580,7 +4580,7 @@ class VirtualMachine {
           if(has_SU) {
             if(x[p.start_up_var_index + j] > 0.999) {
               p.start_ups.push(b);
-              if(p.level[b] <= this.ON_OFF_THRESHOLD) {
+              if(Math.abs(p.level[b]) <= this.ON_OFF_THRESHOLD) {
                 this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
                     'Ghost start-up for process ' + p.displayName);
                 ghost_su_count++;
@@ -4644,7 +4644,7 @@ class VirtualMachine {
           if(has_SU) {
             if(x[p.start_up_var_index + j] > 0.999) {
               p.start_ups.push(b);
-              if(p.level[b] <= this.ON_OFF_THRESHOLD) {
+              if(Math.abs(p.level[b]) <= this.ON_OFF_THRESHOLD) {
                 this.logMessage(block, `${this.WARNING}(t=${b}${round}) ` +
                     'Ghost start-up for product ' + p.displayName);
                 ghost_su_count++;
