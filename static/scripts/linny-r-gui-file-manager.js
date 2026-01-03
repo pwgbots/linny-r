@@ -172,7 +172,7 @@ class GUIFileManager {
 
     this.include_modal = new ModalDialog('include');
     this.include_modal.ok.addEventListener(
-        'click', () => FILE_MANAGER.performInclusion());
+        'click', () => FILE_MANAGER.scheduleInclusion());
     this.include_modal.cancel.addEventListener(
         'click', () => FILE_MANAGER.cancelInclusion());
     this.include_modal.element('prefix').addEventListener(
@@ -804,6 +804,18 @@ class GUIFileManager {
     this.updateButtons();
     this.updatePath();
   }
+  
+  setLoadingStyle(set=true) {
+    // (Re)set the bold-faced blinking style of the double-clicked table row.
+    const row = document.getElementById(this.clicked_row);
+    if(row) {
+      if(set) {
+        row.classList.add('loading', 'blink');
+      } else {
+        row.classList.remove('loading', 'blink');
+      }
+    }
+  }
 
   //
   // Methods for storing/loading/deleting a model file.
@@ -1142,6 +1154,7 @@ class GUIFileManager {
       // Record location of file so it can be displayed on the information line
       // after loading.
       this.model_file_name = mdl.name;
+      if(mdl.size > 1e5) this.setLoadingStyle(true);
       if(this.action === 'load') {
         // When loading new model, the stay-on-top dialogs must be reset
         // (GUI only; for the Linny-R console this is a "dummy" method).
@@ -1238,6 +1251,7 @@ class GUIFileManager {
         this.promptForInclusion(xml);
       }
     }
+    this.setLoadingStyle(false);
   }
   
   openModelInNewWindow() {
@@ -1279,8 +1293,11 @@ class GUIFileManager {
   promptForInclusion(node) {
     // Add entities defined in the parsed XML tree with root `node`.
     IO_CONTEXT = new IOContext(this.model_file_name, node);
-    const md = this.include_modal;
-    md.element('name').innerHTML = IO_CONTEXT.file_name;
+    const
+        md = this.include_modal,
+        mname = md.element('name');
+    mname.innerHTML = IO_CONTEXT.file_name;
+    mname.title = IO_CONTEXT.file_name;
     // When File manager is opened for inclusion, the "Add cluster"
     // dialog may already contain the cluster name, and this is then
     // passed via the `cluster_prefix` property.
@@ -1354,11 +1371,20 @@ class GUIFileManager {
     return sel;
   }
   
+  scheduleInclusion() {
+    // Provide visual feedback in case inclusion takes a lot of time.
+    document.getElementById('include-name').classList.add('blink', 'including');
+    setTimeout(() => FILE_MANAGER.performInclusion(), 0);
+  }
+  
   performInclusion() {
     // Include the selected model as "module" cluster in the model.
     // This is effectuated by "re-initializing" the current model using
     // the XML of the model-to-be-included with the contextualization as
     // indicated by the modeler.
+    // NOTE: Removing the "blink" class will show only after inclusion,
+    // or immediately in case of errors.
+    document.getElementById('include-name').classList.remove('blink', 'including');
     if(!IO_CONTEXT) {
       UI.alert('Cannot include module without context');
       return;

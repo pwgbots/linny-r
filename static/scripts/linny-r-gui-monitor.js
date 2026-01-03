@@ -415,7 +415,6 @@ class GUIMonitor {
       UI.notify('Solver time limit for this server is ' +
           VM.max_solver_time + ' seconds');
     }
-UI.logHeapSize(`BEFORE creating post data`);
     const
         bwr = VM.blockWithRound,
         pd = postData({
@@ -432,10 +431,8 @@ UI.logHeapSize(`BEFORE creating post data`);
             inttol: MODEL.integer_tolerance,
             mipgap: MODEL.MIP_gap
           });
-UI.logHeapSize(`AFTER creating post data`);
     // Immediately free the memory taken up by VM.lines.
     VM.lines = '';
-    UI.logHeapSize(`BEFORE submitting block #${bwr} to solver`);
     fetch('solver/', pd)
       .then((response) => {
           if(!response.ok) {
@@ -448,7 +445,6 @@ UI.logHeapSize(`AFTER creating post data`);
       .then((data) => {
           try {
             VM.processServerResponse(JSON.parse(data));
-            UI.logHeapSize('After processing results for block #' + this.block_count);
             // If no errors, solve next block (if any).
             // NOTE: Use setTimeout so that this calling function returns,
             // and browser can update its DOM to display progress.
@@ -474,10 +470,8 @@ UI.logHeapSize(`AFTER creating post data`);
           VM.stopSolving();
         });
     pd.body = '';
-UI.logHeapSize(`after calling FETCH and clearing POST data body`);
     VM.logMessage(VM.block_count,
         `POSTing block #${bwr} took ${VM.elapsedTime} seconds.`);
-    UI.logHeapSize(`AFTER posting block #${bwr} to solver`);
   }
   
 } // END of class GUIMonitor

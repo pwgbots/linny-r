@@ -1196,10 +1196,10 @@ class ExpressionParser {
             VM.level_based_attr.indexOf(attr) >= 0 &&
                 anchor1 === 't' && offset1 === 0 &&
                 anchor2 === 't' && offset2 === 0;
-        args = [stat, list, anchor1, offset1, anchor2, offset2];
+        args = [stat, patstr, list, anchor1, offset1, anchor2, offset2];
         if(Object.keys(wdict).length > 0) args.push(wdict);
         if(this.TRACE) console.log('TRACE: Variable is a statistic:', args);
-        // NOTE: Compiler will recognize 6- or 7-element list as a
+        // NOTE: Compiler will recognize 7- or 8-element list as a
         // sign to use the VMI_push_statistic instruction.
         return args;
       }
@@ -1880,10 +1880,10 @@ class ExpressionParser {
   }
 
   codeOperation(op) {
-    // Adds operation (which is an array [function, [arguments]]) to the
-    // code, and "pops" the operand stack only if the operator is dyadic
-    // NOTE: since version 1.0.14, IF-THEN-ELSE operators are a special
-    // case as they no longer are "pure" stack automaton operations
+    // Add operation (which is an array [function, [arguments]]) to the
+    // code, and "pops" the operand stack only if the operator is dyadic.
+    // NOTE: Since version 1.0.14, IF-THEN-ELSE operators are a special
+    // case as they no longer are "pure" stack automaton operations.
     if(op === VMI_if_then) {
       if(this.if_stack.length < 1) {
         this.error = 'Unexpected ?';
@@ -2059,8 +2059,8 @@ class ExpressionParser {
         } else if(Array.isArray(this.sym)) {
           // Either a statistic, a dataset (array-type or with modifier),
           // an experiment run result, or a variable.
-          if(this.sym.length >= 6) {
-            // 6 or 7 arguments indicates a statistic.
+          if(this.sym.length >= 7) {
+            // 7 or 8 arguments indicates a statistic.
             this.code.push([VMI_push_statistic, this.sym]);
           } else if(this.sym[0].hasOwnProperty('d')) {
             this.code.push([VMI_push_dataset_modifier, this.sym]);
@@ -5056,17 +5056,23 @@ class VirtualMachine {
             a = MODEL.actors[k],
             dif_in = a.cash_in[b] - actor_cf[k].sum_in,
             dif_out = a.cash_out[b] - actor_cf[k].sum_out,
-            imbalance = (Math.abs(dif_in - dif_out) > 0.001);
+            imbalance = (Math.abs(dif_in - dif_out) > 0.01);
         if(imbalance) {
           console.log('ANOMALY: Inconsistent cash flow for', a.displayName,
               `(t = ${b})`);
         }
-        if(Math.abs(dif_in) + Math.abs(dif_out) > 0.001) {
-          if(!imbalance) console.log('NOTICE: Cash flow differences for',
-              a.displayName, `(t = ${b})`);
-          console.log('- cash IN solver:' , a.cash_in[b], 'inferred:',
-              actor_cf[k].sum_in, '\n- cash OUT solver:', a.cash_out[b],
-              'inferred:', actor_cf[k].sum_out);
+        if(Math.abs(dif_in) + Math.abs(dif_out) > 0.01) {
+          const
+              rel_dif_in = dif_in / Math.max(1, a.cash_in[b]),
+              rel_dif_out = dif_out / Math.max(1, a.cash_out[b]),
+              relevant = Math.abs(rel_dif_in) + Math.abs(rel_dif_out) > 0.001;
+          if(relevant) {
+            if(!imbalance) console.log('NOTICE: Cash flow differences for',
+                a.displayName, `(t = ${b})`);
+            console.log('- cash IN solver:' , a.cash_in[b], 'inferred:',
+                actor_cf[k].sum_in, '\n- cash OUT solver:', a.cash_out[b],
+                'inferred:', actor_cf[k].sum_out);
+          }
         }
       }
     }
@@ -5120,7 +5126,7 @@ class VirtualMachine {
       // Display 1 more segment progress so that the bar reaches 100%
       UI.setProgressNeedle((next_start + this.tsl) / abl);
     }
-    setTimeout((t, n) => { VM.addTableauSegment(t, n); }, 0, next_start, abl);
+    setTimeout((t, n) => VM.addTableauSegment(t, n), 0, next_start, abl);
   }
 
   hideSetUpOrWriteProgress() {
@@ -5158,7 +5164,7 @@ class VirtualMachine {
     // updates of the progress needle. The default progress needle interval
     // is calibrated for 1000 VMI instructions.
     this.tsl = Math.ceil(CONFIGURATION.progress_needle_interval *
-        1000 / this.code.length);
+        100 / this.code.length);
     if(abl > this.tsl * 5) {
       UI.setMessage('Constructing the Simplex tableau');
       UI.setProgressNeedle(0);
@@ -6066,7 +6072,6 @@ Solver status = ${json.status}`);
     this.logMessage(this.block_count, ['\nSetting up block #', bwr,
         ' (t=', fromt, '-', fromt + abl - 1, '; ',
         pluralS(abl, 'time step'), ')'].join(''));
-    UI.logHeapSize('Before set-up of block #' + bwr);
     this.setupBlock();
   }
   
@@ -6190,12 +6195,9 @@ Solver status = ${json.status}`);
   
   solve() {
     // Compile model to VM code; then start sequence of solving blocks.
-    UI.logHeapSize('Before model reset');
     this.reset();
-    UI.logHeapSize('After model reset');
     this.startTimer();
     this.setupProblem();
-    UI.logHeapSize('After problem set-up');
     if(this.max_tableau_size) {
       if(this.nr_of_blocks * MODEL.block_length > this.max_tableau_size) {
         UI.warn('Simulation will exceed resource limits set for this server ' +
@@ -6220,6 +6222,7 @@ Solver status = ${json.status}`);
     if(!(Object.keys(MODEL.processes).length ||
         Object.keys(MODEL.products).length)) {
       UI.notify('Nothing to solve');
+      UI.stopSolving();
       return;
     }
     // Diagnosis (by adding slack variables and finite bounds on processes)
@@ -6262,10 +6265,11 @@ Solver status = ${json.status}`);
       }
     }
     if(MONITOR.connectToServer()) {
-      UI.startSolving();
       if(RECEIVER.active) RECEIVER.solving = true;
       VM.reset();
       VM.solve();
+    } else {
+      UI.stopSolving();
     }
   }
   
@@ -7165,15 +7169,18 @@ function VMI_push_run_result(x, args) {
 }
 
 function VMI_push_statistic(x, args) {
-  // Pushes the value of the statistic over the list of variables specified by
-  // `args`, being the list [stat, list, anchor, offset] where `stat` can be one
-  // of MAX, MEAN, MIN, N, SD, SUM, and VAR, and `list` is a list of vectors
-  // NOTE: each statistic may also be "suffixed" by NZ to denote that only
-  // non-zero numbers should be considered
+  // Push the value of the statistic over the list of variables specified by
+  // `args`, being the list [stat, pat, list, anchor1, offset1, anchor2, offset2]
+  // where `stat` can be one of MAX, MEAN, MIN, N, SD, SUM, and VAR,
+  // `pat` is the Finder pattern that determined the elements of `list`, being
+  // a list of vectors, expressions and/or numbers.
+  // NOTE: Each statistic may also be "suffixed" by NZ to denote that only
+  // non-zero numbers should be considered.
   let stat = args[0],
-      list = args[1];
+      list = args[2],
+      cache_key = '';
   if(!list) {
-    // Special case: null or empty list => push zero
+    // Special case: null or empty list => push zero.
     if(DEBUGGING) {
       console.log('push statistic: 0 (no variable list)');
     }
@@ -7181,11 +7188,16 @@ function VMI_push_statistic(x, args) {
     return;
   }
   const
-      anchor1 = args[2],
-      offset1 = args[3],
-      anchor2 = args[4],
-      offset2 = args[5],
-      wdict = args[6] || false;
+      pat = args[1],
+      anchor1 = args[3],
+      offset1 = args[4],
+      anchor2 = args[5],
+      offset2 = args[6],
+      wdict = args[7] || false,
+      // Statistics with absolute anchors are invariant, so their
+      // computed value for t=1 can be used for all other time steps,
+      // provided that the model has been solved.
+      invariant = '|ff|fl|lf|ll|'.indexOf(anchor1 + anchor2) > 0;
   // If defined, the wildcard dictionary provides subsets of `list`
   // to be used when the wildcard number of the expression is set.
   if(wdict && x.wildcard_vector_index !== false) {
@@ -7194,7 +7206,7 @@ function VMI_push_statistic(x, args) {
   // If no list specified, the result is undefined.
   if(!Array.isArray(list) || list.length === 0) {
     x.push(VM.UNDEFINED);
-    return;          
+    return;
   }
   // Get the "local" time step range for expression `x`.
   let t = x.step[x.step.length - 1],
@@ -7225,6 +7237,15 @@ function VMI_push_statistic(x, args) {
         ao1, ao2, ' (t = ', t1, '-', t2, ')'];
     console.log(trc.join(''));
   }
+  if(invariant) {
+    // Check whether value has ben cached.
+    cache_key = `push_statistic_${stat}_${pat}_${args.slice(3, 7).join('_')}`;
+    const cv = x.cache[cache_key];
+    if(cv !== undefined) {
+      x.push(cv);
+      return;
+    }
+  }
   // Establish whether statistic pertains to non-zero values only.
   const nz = stat.endsWith('NZ');
   // If so, trim the 'NZ'.
@@ -7254,24 +7275,28 @@ function VMI_push_statistic(x, args) {
   }
   const
       n = vlist.length,
-      // NOTE: count is the number of values used in the statistic.
-      count = (nz ? n : list.length * (t2 - t1 + 1));
+      // NOTE: `count` is the number of values used in the statistic.
+      count = (nz ? n : list.length * (t2 - t1 + 1)),
+      pushStat = (s) => {
+          x.push(s);
+          if(cache_key) x.cache[cache_key] = s;
+        };
   if(stat === 'N') {
-    x.push(count);
+    pushStat(count);
     return;
   }
   // If no non-zero values remain, all statistics are zero (as ALL values were zero).
   if(n === 0) {
-    x.push(0);
+    pushStat(0);
     return;          
   }
   // Check which statistic, starting with the most likely to be used.
   if(stat === 'MIN') {
-    x.push(Math.min(...vlist));
+    pushStat(Math.min(...vlist));
     return;
   }
   if(stat === 'MAX') {
-    x.push(Math.max(...vlist));
+    pushStat(Math.max(...vlist));
     return;
   }
   // For all remaining statistics, the sum must be calculated.
@@ -7280,14 +7305,14 @@ function VMI_push_statistic(x, args) {
     sum += vlist[i];
   }
   if(stat === 'SUM') {
-    x.push(sum);
+    pushStat(sum);
     return;
   }
   // Now statistic must be either MEAN, SD or VAR, so start with the mean
   // NOTE: no more need to check for division by zero
   const mean = sum / count;
   if(stat === 'MEAN') {
-    x.push(mean);
+    pushStat(mean);
     return;
   }
   // Now calculate the variance
@@ -7296,15 +7321,15 @@ function VMI_push_statistic(x, args) {
     sumsq += Math.pow(vlist[i] - mean, 2);
   }
   if(stat === 'VAR') {
-    x.push(sumsq / count);
+    pushStat(sumsq / count);
     return;
   }
   if(stat === 'SD') {
-    x.push(Math.sqrt(sumsq / count));
+    pushStat(Math.sqrt(sumsq / count));
     return;
   }
   // Fall-through: unknown statistic
-  x.push(VM.UNDEFINED);
+  pushStat(VM.UNDEFINED);
 }
 
 function VMI_replace_undefined(x) {
@@ -7901,7 +7926,7 @@ function VMI_mpp(x) {
       if(DEBUGGING) console.log('MPP (' + d.join(', ') + ') = ' + mpp);
       x.retop(mpp);
     } else {
-      if(DEBUGGING) console.log('MPP: invalid parameter(s) ' + d);
+      if(DEBUGGING) console.log('MPP: invalid parameter(s)', d);
       x.retop(VM.PARAMS);
     }
   }
@@ -7921,12 +7946,18 @@ function VMI_npv(x) {
   if(d !== false) {
     if(d instanceof Array && d.length > 2) {
       if(DEBUGGING) console.log('NPV (' + d.join(', ') + ')');
+      // Sanity check: R must be > -1.
+      if(d[0] <= -1) {
+        x.retop(VM.PARAMS);
+        return;
+      }
       let npv,
           df = 1;
       const discounting_factor = 1/(1 + d[0]);
       if(d.length === 3) {
-        const n = d[1],
-              c = d[2];
+        const
+            n = d[1],
+            c = d[2];
         npv = c;
         for(let i = 1; i < n; i++) {
           df *= discounting_factor;
@@ -7944,6 +7975,58 @@ function VMI_npv(x) {
     } else {
       if(DEBUGGING) console.log('NPV = 0 (fewer than 3 parameters)');
       x.retop(0);
+    }
+  }  
+}
+
+function VMI_dpp(x) {
+  // Replace the top list (!) A of the stack by the discounted payback period
+  // (DPP) of the arguments in A. A[0] is the interest rate r, A[1] is the
+  // capital investment CI, and A[2] is the constant periodic cash flow CF
+  // that must be discounted by 1/(1+R)^n when cumulating over time.
+  const d = x.top();
+  if(d !== false) {
+    if(d instanceof Array && d.length === 3) {
+      if(DEBUGGING) console.log('DPP (' + d.join(', ') + ')');
+      // Sanity check: R must be > -1.
+      if(d[0] <= -1) {
+        x.retop(VM.PARAMS);
+        return;
+      }
+      const
+          r = d[0],
+          ci = d[1],
+          discounting_factor = 1/(1 + r);
+      let dpp = 1,
+          cf = d[2],
+          dcf = cf * discounting_factor,
+          cdcf = dcf;
+      // Test whether CF suffices to pay back within 100 periods.
+      // Algebra gives MPP = PV * r / (1 - (1+r)^-n).
+      const mpp = ci * r / (1 - Math.pow(1 + r, -100));
+      if(cf < mpp) {
+        // Insufficient cash flow => infinite payback period.
+        dpp = VM.PLUS_INFINITY;
+      } else {
+        // Stop adding discounted cash flows when cumulative dcf >= ci, or
+        // when a maximum of 100 iterations has been reached.
+        while(cdcf < ci && dpp < 100) {
+          dpp++;
+          dcf *= discounting_factor;
+          cdcf += dcf;
+        }
+      }
+      // 100 iterations indicates "no feasible payback period".
+      if(dpp < 100) {
+        // `dcf` is the last added discounted cash flow.
+        dpp = dpp - 1 + (ci - (cdcf - dcf)) / dcf;
+      } else {
+        dpp = VM.PLUS_INFINITY;
+      }
+      x.retop(dpp);
+    } else {
+      if(DEBUGGING) console.log('DPP with invalid parameters:', d);
+      x.retop(VM.PARAMS);
     }
   }  
 }
@@ -10124,12 +10207,12 @@ const
       '~', 'not', 'abs', 'sin', 'cos', 'atan', 'ln',
       'exp', 'sqrt', 'round', 'int', 'fract', 'min', 'max',
       'binomial', 'exponential', 'normal', 'poisson', 'triangular',
-      'weibull', 'mpp', 'npv'],
+      'weibull', 'mpp', 'npv', 'dpp'],
   MONADIC_CODES = [
       VMI_negate, VMI_not, VMI_abs, VMI_sin, VMI_cos, VMI_atan, VMI_ln,
       VMI_exp, VMI_sqrt, VMI_round, VMI_int, VMI_fract, VMI_min, VMI_max,
       VMI_binomial, VMI_exponential, VMI_normal, VMI_poisson, VMI_triangular,
-      VMI_weibull, VMI_mpp, VMI_npv],
+      VMI_weibull, VMI_mpp, VMI_npv, VMI_dpp],
   DYADIC_OPERATORS = [
       ';', '?', ':', 'or', 'and',
       '=', '<>', '!=', '>', '<', '>=', '<=',
@@ -10147,7 +10230,7 @@ const
   
   // Compiler checks for reducing codes to unset its "concatenating" flag
   REDUCING_CODES = [VMI_at, VMI_min, VMI_max, VMI_binomial, VMI_normal,
-      VMI_triangular, VMI_weibull, VMI_mpp, VMI_npv],
+      VMI_triangular, VMI_weibull, VMI_mpp, VMI_npv, VMI_dpp],
   
   // Custom operators may make an expression level-based
   LEVEL_BASED_CODES = [],
@@ -10233,7 +10316,7 @@ function VMI_profitable_units(x) {
     }
     if(DEBUGGING) console.log('*Profitable Units for '+ mup.displayName);
     // The marginal revenue R[i] of the i-th unit equals the sum (over t) of
-    //   min(uc; max(0, l[t] - i*uc)) * (mp[t] – mc)
+    //   min(uc; max(0, l[t] - i*uc)) * (mp[t] - mc)
     // The i-th unit is considered to be profitable if R[i] > pt
     // The number of profitable units then equals max({i: R[i] > pt})
     

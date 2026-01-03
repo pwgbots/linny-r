@@ -278,7 +278,8 @@ console.log('HERE attributes', jsr.attributes);
                 // action each time the model has been solved.
                 if(RECEIVER.experiment) {
                   RECEIVER.log('Starting experiment: ' + RECEIVER.experiment);
-                  EXPERIMENT_MANAGER.startExperiment();
+                  // Pass FALSE to indicate that the experiment was not paused.
+                  EXPERIMENT_MANAGER.startExperiment(false);
                 } else {
                   VM.solveModel();
                 }                

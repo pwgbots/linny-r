@@ -35,8 +35,8 @@ Linny-R is developed as a JavaScript package, and requires that **Node.js**
 is installed on your computer. This software can be downloaded from
 <a href="https://nodejs.org" target="_blank">https://nodejs.org</a>. 
 Make sure that you choose the correct installer for your computer.
-Linny-R is developed using the _current_ release. Presently (October 2025)
-this is 24.9.0. 
+Linny-R is developed using the _current_ release. Presently (January 2026)
+this is 25.2.1. 
 
 Run the installer and accept the default settings.
 There is <u>**no**</u> need to install the optional _Tools for Native Modules_.
@@ -47,7 +47,7 @@ Verify the installation by typing:
 
 ``node --version``
 
-The response should be the version number of Node.js, for example: v24.9.0.
+The response should be the version number of Node.js, for example: v25.2.1.
 
 ## Installing Linny-R
 It is advisable to install Linny-R in a directory on your computer, **not**
@@ -77,50 +77,6 @@ and then type at the command line prompt:
 
 > [!IMPORTANT]
 > The spacing around the dot is essential. Type the command in lower case.
-
-After installation has completed, `Linny-R` should have this directory tree
-structure:
-
-<pre>
-Linny-R
- |
- +-node_modules
-    |
-    +-@xmldom
-    |
-    +-linny-r
-       |
-       +-static
-          |
-          +-fonts
-          |
-          +-images
-          |
-          +-scripts
-          |
-          +-sounds
-</pre>
-
-`Linny-R` should contain two JSON files `package.json` and `package-lock.json`
-that should **not** be removed, or you will have to re-install Linny-R.
-It should also contain the launch script.  On a macOS machine, this will be
-the shell script `linny-r.command`, on a Windows machine the batch script
-`linny-r.bat`.
-
-All other software is contained in the `node_modules` directory. It comprises
-two Node.js packages: `@xlmdom` and `linny-r`. 
-
-The `linny-r` package directory should contain this file `README.md`, the files
-`server.js` and `console.js` that will be run by Node.js, and the sub-directory
-`static`. This `static` directory should contain two HTML files: 
-
-* `index.html` (the browser-based GUI) 
-* `show-diff.html` (to display differences between two Linny-R models)
-
-It should also contain the style sheet `linny-r.css` required by the GUI.
-
-The sub-directories of `static` contain files that are served to the browser
-by the script `server.js` when it is running in Node.js.
 
 > [!IMPORTANT]
 > Unless you _really_ know what you are doing, do **not** move or rename
@@ -432,6 +388,52 @@ ways.
 > [!NOTE]
 > The console-only version is still in development, and does not provide
 > all functions yet.
+
+## Checking your Linny-R configuration
+
+After installation has completed, `Linny-R` should have this directory tree
+structure:
+
+<pre>
+Linny-R
+ |
+ +-node_modules
+    |
+    +-@xmldom
+    |
+    +-linny-r
+       |
+       +-static
+          |
+          +-fonts
+          |
+          +-images
+          |
+          +-scripts
+          |
+          +-sounds
+</pre>
+
+`Linny-R` should contain two JSON files `package.json` and `package-lock.json`
+that should **not** be removed, or you will have to re-install Linny-R.
+It should also contain the launch script.  On a macOS machine, this will be
+the shell script `linny-r.command`, on a Windows machine the batch script
+`linny-r.bat`.
+
+All other software is contained in the `node_modules` directory. It comprises
+two Node.js packages: `@xlmdom` and `linny-r`. 
+
+The `linny-r` package directory should contain this file `README.md`, the files
+`server.js` and `console.js` that will be run by Node.js, and the sub-directory
+`static`. This `static` directory should contain two HTML files: 
+
+* `index.html` (the browser-based GUI) 
+* `show-diff.html` (to display differences between two Linny-R models)
+
+It should also contain the style sheet `linny-r.css` required by the GUI.
+
+The sub-directories of `static` contain files that are served to the browser
+by the script `server.js` when it is running in Node.js.
 
 ## Troubleshooting problems
 

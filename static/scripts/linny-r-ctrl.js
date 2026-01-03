@@ -37,17 +37,17 @@ class Controller {
   constructor() {
     this.console = true;
     this.browser_name = '';
-    // Initialize *graphical* controller elements as non-existent 
+    // Initialize *graphical* controller elements as non-existent.
     this.paper = null;
     this.buttons = {};
     this.modals = {};
     this.dialogs = {};
-    // Default chart colors (12 line colors + 12 matching lighter shades)
+    // Default chart colors (12 line colors + 12 matching lighter shades).
     this.chart_colors = [
         '#2e86de', '#ff9f43', '#8395a7', '#10ac84', '#f368e0', 
         '#0abde3', '#ee5253', '#222f3e', '#01a3a4', '#341f97',
         '#974b33', '#999751',
-        // Lighter shades for areas (or additional lines if > 12)
+        // Lighter shades for areas (or additional lines if > 12).
         '#54a0ff', '#feca57', '#c8d6e5', '#1dd1a1', '#ff9ff3',
         '#48dbfb', '#ff6b6b', '#576574', '#00d2d3', '#5f27cd',
         '#c86a5b', '#c2c18c'
@@ -85,7 +85,7 @@ class Controller {
     ht.innerHTML = '<table>' + cp.join('') + '</table>';
     ht.style.display = 'block';
 */   
-    // SVG stroke dash arrays for line types while drawing charts or arrows
+    // SVG stroke dash arrays for line types while drawing charts or arrows.
     this.sda = {
       dash: '8,3',
       dot: '2,3',
@@ -98,7 +98,7 @@ class Controller {
       even_dash: '6,5',
       dot_dot: '2,3,2,6'
     };
-    // Error messages
+    // Frequently used error messages.
     this.ERROR = {
         CREATE_FAILED: 'ERROR: failed to create a new SVG element',
         APPEND_FAILED: 'ERROR: failed to append SVG element to DOM',
@@ -116,29 +116,31 @@ class Controller {
         WORK_IN_PROGRESS: 'Planned feature -- work in progress!',
         NO_CHARTS: 'While an experiment is running, charts cannot be viewed'
       };
-    // Strings used to identify special entities
+    // Strings used to identify special entities.
     this.TOP_CLUSTER_NAME = '(top cluster)';
-    // In earlier versions, this name was different => automatic conversion
+    // In earlier versions, this name was different => automatic conversion.
     this.FORMER_TOP_CLUSTER_NAME = '___TOP_CLUSTER___';
-    // In legacy Linny-R, this name was again different
+    // In legacy Linny-R, this name was again different.
     this.LEGACY_TOP_CLUSTER_NAME = '* TOP CLUSTER *';
-    // Likewise, the "no actor" actor has a standard name
+    this.TOP_CLUSTER_ID = '(top_cluster)';
+    // Likewise, the "no actor" actor has a standard name.
     this.NO_ACTOR = '(no actor)';
+    this.NO_ACTOR_ID = '(no_actor)';
     // As of version 0.9x50, equations are implemented as modifiers of a special
-    // dataset, that therefore must have a system name
+    // dataset, that therefore must have a system name.
     this.EQUATIONS_DATASET_NAME = '___EQUATIONS___';
     this.EQUATIONS_DATASET_ID = this.EQUATIONS_DATASET_NAME.toLowerCase();
-    // Use colon with space to separate prefixes and names of clones
+    // Use colon with space to separate prefixes and names of clones.
     this.PREFIXER = ': ';
-    // FROM->TO represented by solid right-pointing arrow with triangular head
+    // FROM->TO represented by solid right-pointing arrow with triangular head.
     this.LINK_ARROW = '\u279D';
-    // Right arrow with wave-curved shaft
+    // Right arrow with wave-curved shaft.
     this.CONSTRAINT_ARROW = '\u219D';
-    // Prefix for "black boxed" entities: solid black square
+    // Prefix for "black boxed" entities: solid black square.
     this.BLACK_BOX = '\u25FC';
     this.BLACK_BOX_PREFIX = this.BLACK_BOX + ' ';
     this.MC = {
-      // Difference types used in model comparison
+      // Difference types used in model comparison.
       ADDED: 1,
       DELETED: 2,
       MODIFIED: 3,
@@ -1026,7 +1028,8 @@ class SensitivityAnalysis {
     // Add run to the sensitivity analysis.
     MODEL.sensitivity_runs.push(x.runs[aci]);
     this.showProgress('Run #' + aci);
-    // See if more runs should be done.
+    // See if more runs should be done. Assume NOT.
+    let more_runs = false;
     const n = x.combinations.length;
     if(!VM.halted && aci < n - 1) {
       if(this.must_pause) {
@@ -1036,7 +1039,7 @@ class SensitivityAnalysis {
         // NOTE: Use aci because run #0 is the base case w/o active parameter.
         MODEL.active_sensitivity_parameter = this.parameters[aci];
         x.active_combination_index++;
-        setTimeout(() => EXPERIMENT_MANAGER.runModel(), 5);
+        more_runs = true;
       }
     } else {
       x.time_stopped = new Date().getTime();
@@ -1067,8 +1070,12 @@ class SensitivityAnalysis {
     // Reset the model, as results of last run will be showing still.
     UI.resetModel();
     CHART_MANAGER.resetChartVectors();
-    // NOTE: Clear chart only when done (charts do not update during experiment).
-    if(!MODEL.running_experiment) CHART_MANAGER.updateDialog();
+    if(more_runs) {
+      EXPERIMENT_MANAGER.runModel();
+    } else {
+      // NOTE: Clear chart only when done (charts do not update during experiment).
+      CHART_MANAGER.updateDialog();
+    }
   }
 
   stop() {
@@ -1264,7 +1271,7 @@ class ExperimentManager {
     }    
   }
 
-  startExperiment(n=-1) {
+  startExperiment(paused, n=-1) {
     // Recompile expressions, as these may have been changed by the modeler.
     MODEL.compileExpressions();
     // Start sequence of solving model parametrizations.
@@ -1281,8 +1288,6 @@ class ExperimentManager {
         UI.buttons.chart.dispatchEvent(new Event('click'));
         UI.notify(UI.NOTICE.NO_CHARTS);
       }
-      // Change the buttons -- will return TRUE if experiment was paused.
-      const paused = this.resumeButtons();
       if(x.completed && n >= 0) {
         x.single_run = n; 
         x.active_combination_index = n;
@@ -1339,7 +1344,7 @@ class ExperimentManager {
       VM.callback = this.callback;
       // NOTE: Asynchronous call. All follow-up actions must be performed
       // by the callback function.
-      VM.solveModel();
+      setTimeout(() => VM.solveModel(), 0);
     }
   }
   
@@ -1373,6 +1378,8 @@ class ExperimentManager {
         single = (aci == x.single_run);
     // Always add solver messages.
     x.runs[aci].addMessages();
+    // Assume that NO more runs are needed.
+    let more_runs = false;
     const n = x.combinations.length;
     if(!VM.halted && aci < n - 1 && !single) {
       // Continue with the next run.
@@ -1382,14 +1389,7 @@ class ExperimentManager {
         UI.setMessage('');
       } else {
         x.active_combination_index++;
-        let delay = 5;
-        // NOTE: When executing a remote command, wait for 1 second to
-        // allow enough time for report writing.
-        if(RECEIVER.active && RECEIVER.experiment) {
-          UI.setMessage('Reporting run #' + aci);
-          delay = 1000;
-        }
-        setTimeout(() => EXPERIMENT_MANAGER.runModel(), delay);
+        more_runs = true;
       }
     } else {
       // Stop the run sequence.
@@ -1422,13 +1422,31 @@ class ExperimentManager {
       this.readyButtons();
     }
     this.drawTable();
+    UI.setMessage(`Resetting ${single ? '' : 'model and'} charts`);
+    setTimeout((r, rm, more) => EXPERIMENT_MANAGER.resetModel(r, rm, more),
+        0, aci, !single, more_runs);
+  }
+  
+  resetModel(rnr, reset, more) {
     // Reset the model, as results of last run will be showing still.
     // NOTE: Do NOT do this after a single run.
-    if(!single) UI.resetModel();
+    if(reset) UI.resetModel();
     CHART_MANAGER.resetChartVectors();
-    // NOTE: Clear chart only when done; charts do not update when an
-    // experiment is running.
-    if(!MODEL.running_experiment) CHART_MANAGER.updateDialog();
+    if(more) {
+      // NOTE: When executing a remote command, wait for 1 second to
+      // allow enough time for report writing.
+      if(RECEIVER.active && RECEIVER.experiment) {
+        UI.setMessage('Reporting run #' + rnr);
+        setTimeout(() => EXPERIMENT_MANAGER.runModel(), 1000);
+      } else {
+        EXPERIMENT_MANAGER.runModel();
+      }
+    } else {
+      // NOTE: Clear chart only when done; charts do not update when an
+      // experiment is running.
+      UI.setMessage('Done');
+      CHART_MANAGER.updateDialog();
+    }
   }
 
   stopExperiment() {

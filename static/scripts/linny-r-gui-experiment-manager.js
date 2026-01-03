@@ -76,8 +76,11 @@ class GUIExperimentManager extends ExperimentManager {
         'mousemove', (event) => EXPERIMENT_MANAGER.showInfo(-1, event.shiftKey));
     this.viewer_progress = document.getElementById('viewer-progress');
     this.start_btn = document.getElementById('xv-start-btn');
-    this.start_btn.addEventListener(
-        'click', () => EXPERIMENT_MANAGER.startExperiment());
+    this.start_btn.addEventListener('click',
+        () => {
+            const paused = EXPERIMENT_MANAGER.resumeButtons();
+            setTimeout((p) => EXPERIMENT_MANAGER.startExperiment(p), 0, paused);
+          });
     this.pause_btn = document.getElementById('xv-pause-btn');
     this.pause_btn.addEventListener(
         'click', () => EXPERIMENT_MANAGER.pauseExperiment());
@@ -815,7 +818,8 @@ class GUIExperimentManager extends ExperimentManager {
     }
     const x = this.selected_experiment;
     if(x && alt && n >= 0) {
-      this.startExperiment(n);
+      // Pass FALSE to indicate that the experiment was not paused.
+      this.startExperiment(false, n);
       return;
     }
     if(x && n < x.combinations.length) {
@@ -2128,7 +2132,6 @@ N = ${rr.N}, vector length = ${rr.vector.length}` : '')].join('');
               'If it does not download, select fewer runs');
         }
         el.click();
-        UI.normalCursor();
       } else {
         UI.notify('No data');
       }

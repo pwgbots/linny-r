@@ -121,9 +121,11 @@ NOTE: When omitted, the third parameter c defaults to (a+b)/2">triangular</code>
   <code title="mpp(R;N;PV) evaluates as the minimum periodic payment (annuity)
 to obtain a present value PV in N periods with an interest rate R.">mpp</code>,
   <code title="npv(R;N;CF) evaluates as the net present value of a constant cash flow of CF
-for a period of N time steps with a discount rate R, i.e., &Sigma; CF/(1+r)\u2071 for i=0, &hellip;, N-1.
+for N periods with a discount rate R, i.e., &Sigma; CF/(1+r)\u2071 for i=0, &hellip;, N-1.
 NOTE: When the grouping contains more than 3 arguments, npv(R;X0;&hellip;;Xn)
-considers X0, &hellip;, Xn as a variable cash flow time series.">npv</code><br>
+considers X0, &hellip;, Xn as a variable cash flow time series.">npv</code>,
+  <code title="dpp(R;CI;CF) evaluates as the discounted payback period of a capital investment CI,
+given a discount rate R and a constant cash flow CF.">dpp</code><br>
 
   <em>Arithmetic:</em>
   <code title="X + Y = sum of X and Y">+</code>,
@@ -158,7 +160,7 @@ considers X0, &hellip;, Xn as a variable cash flow time series.">npv</code><br>
   <em>Grouping:</em>
   <code title="X ; Y evaluates as a group or &ldquo;tuple&rdquo; (X, Y)
 NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates as (1;2;3;4;5)">X ; Y</code>
-  (use only in combination with <code>max</code>, <code>min</code>, <code>npv</code>
+  (use only in combination with <code>max</code>, <code>min</code>, <code>npv</code>, <code>dpp</code>
   and probabilistic operators)<br>
 </p>
 <p>

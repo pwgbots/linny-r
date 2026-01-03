@@ -146,6 +146,10 @@ blockquote {
   border-left: solid 3px #bfc0e2;
 }
 
+span.normal {
+  font-style: normal;
+}
+
 header,
 footer {
   flex: none;
@@ -300,13 +304,10 @@ img.off {
   }
 }
 
-span.normal {
-  font-style: normal;
-}
-
+tr.blink,
 div.blink,
-span.blink,
-img.blink {
+img.blink,
+span.blink {
   animation: blink 1s step-start 0s infinite;
 }
 
@@ -417,6 +418,16 @@ input[type="text"]:disabled {
   color: Gray;
   background-color: #f4f0f2;
   border-color: #c0c0c080 !important;
+}
+
+input[type="radio"] {
+  height: 15px;
+  vertical-align: bottom;
+}
+
+input[type="checkbox"] {
+  vertical-align: middle;
+  margin-top: 0px;
 }
 
 div.lbl-disab {
@@ -4906,6 +4917,10 @@ span.sd-clear {
   padding-left: 0px;  
 }
 
+#xp-download-data > div {
+  margin: 3px 2px;
+}
+
 #xp-download-format {
   position: absolute;
   top: 84px;
@@ -5242,7 +5257,11 @@ td.date-time {
   text-overflow: ellipsis;
 }
 
- /* These modals must be top of the BROWSER modal. */
+tr.loading {
+  background-color: #d0c8f0;
+}
+
+ /* These modals must be on top of the BROWSER modal. */
 #update-modal,
 #include-modal,
 #autosave-modal,
@@ -5265,6 +5284,10 @@ td.date-time {
   overflow: clip;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+span.including {
+  color: #a05090;
 }
 
 #include-prefix {

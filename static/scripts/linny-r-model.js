@@ -2853,7 +2853,13 @@ class LinnyRModel {
           pluralS(ioc.expression_count, 'expression');
       if(notify) UI.notify('Renamed ' + replace_msg);
     }
-    // Also rename entities in parameters and outcomes of sensitivity analysis.
+    // Clear display name cache of potentially affected chart variables.
+    for(const c of this.charts) {
+      for(const v of c.variables) {
+        if(v.display_name.indexOf(en1) >= 0) v.display_name = '';
+      }
+    }    
+    // Rename entities in parameters and outcomes of sensitivity analysis.
     for(let i = 0; i < this.sensitivity_parameters.length; i++) {
       const sp = this.sensitivity_parameters[i].split('|');
       if(sp[0].toLowerCase() === en1) {
@@ -2941,20 +2947,16 @@ class LinnyRModel {
   
   parseXML(data) {
     // Parse data string into XML tree
-//    try {
+    try {
       const xml = parseXML(data);
       // NOTE: loading, not including => make sure that IO context is NULL
       IO_CONTEXT = null;
       this.initFromXML(xml);
       return true;
-/*
     } catch(err) {
-      // Cursor is set to WAITING when loading starts
-      UI.normalCursor();
       UI.alert('Error while parsing model: ' + err);
       return false;
     }
-*/
   }
 
   initFromXML(node) {
@@ -4667,18 +4669,19 @@ class IOContext {
   }
 
   actualName(n, an='') {
-    // Return the actual name for a parameter with formal name `n`
-    // (and for processes and clusters: with actor name `an` if specified and
-    // not "(no actor)").
-    // NOTE: Do not modify (no actor), nor the "dataset dot".
-    if(n === UI.NO_ACTOR || n === '.') return n;
+    // Return the actual name for a parameter having formal name or identifier
+    // `n` (and for processes and clusters: with actor name or identifier `an`
+    // if specified and not "no actor").
+    // NOTE: Do not modify "(no actor)", nor the "dataset dot".
+    if(n === UI.NO_ACTOR || n === UI.NO_ACTOR_ID || n === '.') return n;
     // NOTE: Do not modify "prefix-relative" variables.
     if(n.startsWith(':')) return n;
     // NOTE: The top cluster of the included model has the prefix as its name.
-    if(n === UI.TOP_CLUSTER_NAME || n === UI.FORMER_TOP_CLUSTER_NAME) {
+    if(n === UI.TOP_CLUSTER_NAME ||
+        n === UI.TOP_CLUSTER_ID || n === UI.FORMER_TOP_CLUSTER_NAME) {
       return this.prefix;
     }
-    if(an && an !== UI.NO_ACTOR) {
+    if(an && an !== UI.NO_ACTOR && an !== UI.NO_ACTOR_ID) {
       an = ` (${this.actualName(an)})`; // Recursion, but max. depth = 1
     } else {
       an = '';
@@ -9726,6 +9729,8 @@ class ChartVariable {
   constructor(c) {
     this.chart = c;
     this.vector = [];
+    // Store display name to speed up saving run results.
+    this.display_name = '';
     this.N = 0;
     this.sum = 0;
     this.mean = 0;
@@ -9768,6 +9773,8 @@ class ChartVariable {
     // Returns the display name for this variable. This is the name of
     // the Linny-R entity and its attribute, followed by its scale factor
     // unless it equals 1 (no scaling).
+    if(this.display_name) return this.display_name;
+    let base_name;
     const
         bar = (this.absolute ? '\u2503' : ''),
         sf = (this.scale_factor === 1 ? '' :
@@ -9775,35 +9782,33 @@ class ChartVariable {
             ` (x${VM.sig4Dig(this.scale_factor, true)})`);
     // Display name of equation is just the equations dataset selector. 
     if(this.object instanceof DatasetModifier) {
-      let eqn = this.object.selector;
+      base_name = this.object.selector;
       // If for this variable the `wildcard_index` property has been set,
       // this indicates that it is a Wildcard selector or a method, and
       // that the specified result vector should be used.
       if(this.wildcard_index !== false) {
-        eqn = eqn.replace('??', this.wildcard_index);
-      } else if(eqn.startsWith(':')) {
+        base_name = base_name.replace('??', this.wildcard_index);
+      } else if(base_name.startsWith(':')) {
         // For methods, use "entity name or prefix: method" as variable
         // name, so first get the method object prefix, expand it if
         // it identifies a specific model entity, and then append the
         // method name (leading colon replaced by the prefixer ": ").
-        eqn = this.chart.prefix + UI.PREFIXER + eqn.substring(1);
+        base_name = this.chart.prefix + UI.PREFIXER + base_name.substring(1);
       }
-      return bar + eqn + bar + sf;
-    }
+    } else if(this.object === MODEL.equations_dataset) {
     // NOTE: Same holds for "dummy variables" added for wildcard
     // dataset selectors.
-    if(this.object === MODEL.equations_dataset) {
-      let eqn = this.attribute;
+      base_name = this.attribute;
       if(this.wildcard_index !== false) {
-        eqn = eqn.replace('??', this.wildcard_index);
+        base_name = base_name.replace('??', this.wildcard_index);
       }
-      return bar + eqn + bar + sf;
+    } else {
+      // NOTE: Do not display the vertical bar if no attribute is specified.
+      base_name = this.object.displayName;
+      if(this.attribute) base_name += '|' + this.attribute;
     }
-    // NOTE: Do not display the vertical bar if no attribute is specified.
-    if(!this.attribute) {
-      return bar + this.object.displayName + bar + sf;
-    }
-    return bar + this.object.displayName + '|' + this.attribute + bar + sf;
+    this.display_name = bar + base_name + bar + sf;
+    return this.display_name;
   }
   
   get legendName() {
@@ -11732,7 +11737,22 @@ class ExperimentRun {
     this.steps = cv + oc + eq;
     // Keep track of progress.
     this.step = 0;
+    this.progress_step = 0;
     this.addChartResults(0);
+  }
+  
+  updateResultProgress(color) {
+    // Update progress bar in at most 50 steps, and return TRUE only
+    // when updating was needed.
+    const
+        prog = this.step / this.steps,
+        prog_step = Math.round(prog * 50);
+    if(prog === 1 || prog_step > this.progress_step) {
+      UI.setProgressNeedle(prog, color);
+      this.progress_step = prog_step;
+      return true;
+    }
+    return false;
   }
 
   addChartResults(vi) {
@@ -11741,8 +11761,12 @@ class ExperimentRun {
       this.results.push(
           new ExperimentRunResult(this, this.experiment.variables[vi]));
       this.step++;
-      UI.setProgressNeedle(this.step / this.steps);
-      setTimeout((x) => x.addChartResults(vi + 1), 0, this);
+      if(this.updateResultProgress('#500080')) {
+        // Make asynchronous call so the DOM progress bar element is updated.
+        setTimeout((x) => x.addChartResults(vi + 1), 0, this);
+      } else {
+        this.addChartResults(vi + 1);
+      }
     } else {
       this.addOutcomeResults(0);
     }
@@ -11754,8 +11778,11 @@ class ExperimentRun {
       // NOTE: This stores results only for "active" selectors (current run).
       this.results.push(new ExperimentRunResult(this, MODEL.outcomes[oi]));
       this.step++;
-      UI.setProgressNeedle(this.step / this.steps, '#d00080');
-      setTimeout((x) => x.addOutcomeResults(oi + 1), 0, this);
+      if(this.updateResultProgress('#d00080')) {
+        setTimeout((x) => x.addOutcomeResults(oi + 1), 0, this);
+      } else {
+        this.addOutcomeResults(oi + 1);
+      }
     } else {
       this.addEquationResults(0);
     }
@@ -11769,14 +11796,16 @@ class ExperimentRun {
       this.results.push(
           new ExperimentRunResult(this, MODEL.equations_dataset, k));      
       this.step++;
-      UI.setProgressNeedle(this.step / this.steps, '#2000d0');
-      setTimeout((x) => x.addEquationResults(ei + 1), 0, this);
+      if(this.updateResultProgress('#2000d0')) {
+        setTimeout((x) => x.addEquationResults(ei + 1), 0, this);
+      } else {
+        this.addEquationResults(ei + 1);
+      }
     } else {
       // Register when this result was stored.
       this.time_recorded = new Date().getTime();
       // Clear the progress needle.
       UI.setProgressNeedle(0);
-      UI.setMessage('');
       // Log the time it took to compute all results.
       VM.logMessage(VM.block_count - 1,
           `Processing run results took ${VM.elapsedTime} seconds.`);

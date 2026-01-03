@@ -519,11 +519,17 @@ class GUIDatasetManager extends DatasetManager {
       this.prefixed_count.style.display = (pdsl ? 'block' : 'none');
       UI.disableButtons(btns);
       if(this.selected_prefix_row) {
-        UI.enableButtons('ds-rename ds-delete');
-        this.rename_btn
-            .title = `Rename ${npds} by changing prefix "${this.selectedPrefix}"`;
+        UI.enableButtons('ds-delete');
         this.delete_btn
-            .title = `Delete ${npds} having prefix "${this.selectedPrefix}"`;        
+            .title = `Delete ${npds} having prefix "${this.selectedPrefix}"`;
+        // NOTE: Renaming is resource-intensive => limit to 100 datasets.
+        if(pdsl > 100) {
+          this.rename_btn.title = 'Renaming by prefix is limited to 100 datasets';
+        } else {
+          UI.enableButtons('ds-rename');
+          this.rename_btn
+              .title = `Rename ${npds} by changing prefix "${this.selectedPrefix}"`;
+        }
       }
     }
     this.updateModifiers();
@@ -744,7 +750,8 @@ class GUIDatasetManager extends DatasetManager {
   }
   
   promptForName(confirm=true) {
-    // Prompts the modeler for a new name for the selected dataset (if any)
+    // Prompts the modeler for a new name for the selected dataset (if any).
+    if(this.rename_btn.classList.contains('disab')) return;
     if(this.selected_dataset) {
       this.rename_modal.element('title').innerText = 'Rename dataset';
       this.rename_modal.element('name').value =

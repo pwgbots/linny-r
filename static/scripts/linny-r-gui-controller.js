@@ -999,7 +999,10 @@ class GUIController extends Controller {
           }
         });
     this.buttons.solve.addEventListener('click',
-        (event) => VM.solveModel(event.altKey));
+        (event) => {
+            UI.startSolving();
+            setTimeout((alt) => VM.solveModel(alt), 0, event.altKey);
+          });
     this.buttons.stop.addEventListener('click', () => VM.halt());
     this.buttons.reset.addEventListener('click', () => UI.resetModel());
 
@@ -1306,8 +1309,6 @@ class GUIController extends Controller {
     }
     this.updateScaleUnitList();
     this.drawDiagram(MODEL);
-    // Cursor may have been set to `waiting` when decrypting.
-    this.normalCursor();
     // Reset the Virtual Machine.
     VM.reset();
     this.updateIssuePanel();

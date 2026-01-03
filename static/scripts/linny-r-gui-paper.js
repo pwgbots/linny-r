@@ -1524,8 +1524,9 @@ class Paper {
       const ffill = {fill:'white', opacity:0.8};
       if(luc || mf[0] == 1) {
         // Draw flow data halfway the arrow only if calculated and non-zero.
-        // NOTE: Power flows are always absolute flows.
-        s = VM.sig4Dig(grid ? absf : af); 
+        // NOTE: Power flows are always absolute flows, as are flows along
+        // "regular" links (multiplier = VM.LM_LEVEL).
+        s = VM.sig4Dig(grid || (luc && luc.multiplier === VM.LM_LEVEL)? absf : af); 
         bb = this.numberSize(s, 10, 700);
         tw = bb.width/2;
         th = bb.height/2;
