@@ -214,9 +214,15 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
       }
       if(a) n += ` (${a})`;
       // NOTE: Names may contain ampersand as HTML entity.
-      UI.edited_object = MODEL.objectByName(n.replace('&amp;', '&'));
-      this.edited_input_id = UI.edited_object.type.toLowerCase() + '-' + ids[1];
-      this.edited_expression = UI.edited_object.attributeExpression(ids[1]);
+      n = n.replace('&amp;', '&');
+      UI.edited_object = MODEL.objectByName(n);
+      if(UI.edited_object) {
+        this.edited_input_id = UI.edited_object.type.toLowerCase() + '-' + ids[1];
+        this.edited_expression = UI.edited_object.attributeExpression(ids[1]);
+      } else {
+        UI.warn(`Unknown ${ids[0]} "${n}"`);
+        return;
+      }
     }
     const md = UI.modals.expression;
     this.property.innerHTML = prop;
