@@ -1315,6 +1315,8 @@ class ExperimentManager {
           n = x.combinations.length,
           p = Math.floor(ci * 100 / n),
           combi = x.combinations[ci];
+      // TRACE to diagnose intractable bug of "stalling" run.
+      console.log('NOTICE: selector combination', ci, combi.toString());
       let xr;
       if(x.single_run >= 0) {
         xr = x.runs[x.single_run];

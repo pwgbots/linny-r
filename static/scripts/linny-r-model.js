@@ -1136,7 +1136,7 @@ class LinnyRModel {
   }
   
   processSelectorList(sl) {
-    // Checke whether selector list `sl` constitutes a new dimension.
+    // Check whether selector list `sl` constitutes a new dimension.
     // Ignore lists of fewer than 2 "plain" selectors.
     if(sl.length > 1) {
       let newdim = true;
@@ -5790,7 +5790,7 @@ class NodeBox extends ObjectWithXYWH {
     super(cluster);
     this.name = name;
     this.actor = actor;
-    this.name_lines = nameToLines(name, actor.name);
+    this.name_lines = this.nameToLines(name, actor.name.length);
     this.comments = '';
     this.frame_width = 0;
     this.frame_height = 0;
@@ -5810,7 +5810,81 @@ class NodeBox extends ObjectWithXYWH {
     if(this.hasActor) return `${this.name} (${this.actor.name})`;
     return this.name;
   }
-  
+
+  nameToLines(name, limit) {
+    // Return the name of a Linny-R entity as a string-with-line-breaks
+    // that fits nicely in an oblong box. 
+    // NOTES:
+    // (1) Actor names are not split, so their length is passed as `limit`
+    //     on the initial call of this method. This may stretch the node box,
+    //     and even cause overruns for clusters, as these nodes are square
+    //     and hence have a max. width to prevent overly large shapes.
+    // (2) This method may call itself again with a higher limit to improve
+    //     the end result. The intermediate result `a` with the sub-strings
+    //     after splitting is then also passed for efficiency.
+    // (3) Strings shorter than 12 characters (about 50 pixels) are not split.
+    limit = Math.max(limit, 12);
+    if(name.length <= limit) return name;
+    // Split name at spaces, except spaces followed by a number or a single
+    // capital letter.
+    const a = name.split(/\s(?!\d+:|\d+$|[A-Z]\W)/);
+    // Join words that are numbers followed by a unit.
+    const units = ['yr', 'wk', 'd', 'h', 'm', 's'];
+    if(MODEL) units.push(...Object.keys(MODEL.scale_units));
+    for(let i = 0; i < a.length - 1; i++) {
+      if(/[\-]{0,1}\d+[0-9eE\.\,\+\-]*/.test(a[i]) &&
+          units.indexOf(a[i + 1]) >= 0) {
+        a[i] += ' ' + a.splice(i + 1, 1);
+      }
+    }
+    // For efficiency reasons, a fixed font width/height ratio of 0.5 is
+    // assumed. Then using 2 * sqrt(N) would result in a square. To favor
+    // rectangles, 2.25 produces quite acceptable results.
+    limit = Math.max(limit, Math.ceil(2.5 * Math.sqrt(name.length)));
+    // Split words at '-' when wider than limit.
+    for(let j = 0; j < a.length; j++) {
+      if(a[j].length > limit) {
+        const sw = a[j].split('-');
+        if(sw.length > 1) {
+          // Replace j-th word by last fragment of split string.
+          a[j] = sw.pop();
+          // Insert remaining fragments before.
+          while(sw.length > 0) a.splice(j, 0, sw.pop() + '-');
+        }
+      }
+    }
+    const
+        last = a.length - 1,
+        ww = [],
+        lines = [];
+    for(let i = 0; i <= last; i++) {
+      ww[i] = a[i].length;
+      limit = Math.max(limit, ww[i]);
+    }
+    let ai = 0,
+        l = '',
+        space;
+    // Actor cash flow indicators like $FLOW have their own line.
+    if(a[ai].startsWith('$')) {
+      lines.push(a[ai]);
+      ai++;
+    }
+    const
+        // Get best-fitting grouping of words.
+        bf = bestFit(ww, ai, limit, {a: [], p: 0});
+    while(bf.a.length > 0) {
+      const nw = bf.a.shift();
+      l = '';
+      for(let i = 0; i < nw; i++) {
+        space = (!l || l.endsWith('-') ? '' : ' ');
+        l += space + a[ai];
+        ai++;
+      }
+      lines.push(l);
+    }
+    return lines.join('\n');
+  }
+    
   get bindingsAsString() {
     if(!this.module) return '';
     const bk = Object.keys(this.module.bindings);
@@ -5988,7 +6062,7 @@ class NodeBox extends ObjectWithXYWH {
         ow = this.width,
         oh = this.height,
         an = (this.hasActor ? this.actor.name : '');
-    this.name_lines = nameToLines(this.name, an);
+    this.name_lines = this.nameToLines(this.name, an.length);
     this.bbox = UI.textSize(this.name_lines, this instanceof Cluster ? 12 : 10);
     let w = Math.max(40, this.bbox.width, UI.textSize(an).width);
     if(this instanceof Product) {

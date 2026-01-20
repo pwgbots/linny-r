@@ -841,7 +841,7 @@ module.exports = class MILPSolver {
         // Look in messages for solver status and solving time.
         for(const m of result.messages) {
           if(m.startsWith('SCIP Status')) {
-            if(m.indexOf('problem is solved') >= 0) {
+            if(m.indexOf('problem is solved') >= 0 || m.indexOf('gap limit reached') >= 0) {
               if(m.indexOf('infeasible') >= 0) {
                 result.status = (m.indexOf('unbounded') >= 0 ? 14 : 12);
               } else if(m.indexOf('unbounded') >= 0) {

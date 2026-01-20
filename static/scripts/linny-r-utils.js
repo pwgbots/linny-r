@@ -1182,58 +1182,39 @@ function safeDoubleQuotes(s) {
   return s;
 }
 
-function nameToLines(name, actor_name = '') {
-  // Return the name of a Linny-R entity as a string-with-line-breaks
-  // that fits nicely in an oblong box. For efficiency reasons, a fixed
-  // width/height ratio is assumed, as this produces quite acceptable
-  // results. Actor names are not split, so their length may stretch
-  // the node box.
-  let m = actor_name.length;
+function bestFit(list, start, fit, result) {
+  // Return result {a: (list), p: (penalty)} that best groups the integer
+  // numbers in `list`, starting at index `start`, such that each group
+  // totals `fit`.
+  if(start >= list.length) return result;
+  let nw = 0,
+      sum = 0,
+      best = null;
   const
-      d = Math.floor(Math.sqrt(0.25 * name.length)),
-      // Do not wrap strings shorter than 13 characters (about 50 pixels).
-      limit = Math.max(Math.ceil(name.length / d), m, 13),
-      // NOTE: Do not split on spaces followed by a number or a single
-      // capital letter.
-      a = name.split(/\s(?!\d+:|\d+$|[A-Z]\W)/);
-  // Split words at '-' when wider than limit.
-  for(let j = 0; j < a.length; j++) {
-    if(a[j].length > limit) {
-      const sw = a[j].split('-');
-      if(sw.length > 1) {
-        // Replace j-th word by last fragment of split string.
-        a[j] = sw.pop();
-        // Insert remaining fragments before.
-        while(sw.length > 0) a.splice(j, 0, sw.pop() + '-');
-      }
+      last = list.length - 1,
+      margin = 2;
+  for(let i = start; i <= last; i++) {
+    nw++;
+    sum += list[i] + 1;
+    if(sum < fit + margin + 1) {
+      const
+          // Consider groups smaller than desired when below fit - margin...
+          less = Math.max(0, fit - margin + 1 - sum),
+          // ... and larger than desired whem above fit.
+          more = Math.max(0, sum - 1 - fit),
+          // For last group, small groups are not so bad.
+          lw = (i === last ? -0.3 : 1.25),
+          r = {
+              a: result.a.slice(),
+              // Penalize harsher for more than for less.
+              p: result.p + Math.pow(1 + less/fit, lw) + Math.pow(1 + more/fit, 2) 
+            };
+      r.a.push(nw);
+      bf = bestFit(list, start + nw, fit, r);
+      if(!best || bf.p < best.p) best = bf;
     }
   }
-  const ww = [];
-  for(let i = 0; i < a.length; i++) {
-    ww[i] = a[i].length;
-    m = Math.max(m, ww[i]);
-  }
-  const lines = [a[0]];
-  let n = 0,
-      l = ww[n],
-      space;
-  // Actor cash flow indicators like $FLOW have their own line.
-  if(a[0].startsWith('$')) {
-    n++;
-    lines[n] = a[1];
-  }
-  for(let i = 1 + n; i < a.length; i++) {
-    if(l + ww[i] < limit) {
-      space = (lines[n].endsWith('-') ? '' : ' ');
-      lines[n] += space + a[i];
-      l += ww[i] + space.length;
-    } else {
-      n++;
-      lines[n] = a[i];
-      l = ww[i];
-    }
-  }
-  return lines.join('\n');
+  return best;
 }
 
 //
@@ -1415,7 +1396,7 @@ if(NODE) module.exports = {
   randomID: randomID,
   escapedSingleQuotes: escapedSingleQuotes,
   safeDoubleQuotes: safeDoubleQuotes,
-  nameToLines: nameToLines,
+  bestFit: bestFit,
   hexToFloat: hexToFloat,
   stringToFloatArray: stringToFloatArray,
   unpackFloat: unpackFloat,

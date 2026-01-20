@@ -402,7 +402,7 @@ const
       download: DOWNLOADS_DIRECTORY,
       autosave: WORKSPACE.autosave
     },
-    // NOTE: GitHUb root directory is added only when found, and then
+    // NOTE: GitHub root directory is added only when found, and then
     // it will have its full name.
     ROOT_NAMES = {
         home: 'Models in your workspace',
@@ -556,7 +556,15 @@ function fetchGitHubText(response) {
   if(response.ok) {
     if(response.headers.has('last-modified')) {
       // Store time last modified for this GitHub page.
-      const dlm = Date.parse(response.headers.get('last-modified'));
+      const
+          dlm = Date.parse(response.headers.get('last-modified')),
+          rate_limit = response.headers.get('X-RateLimit-Limit'),
+          rate_remaining = response.headers.get('X-RateLimit-Remaining'),
+          rate_used = response.headers.get('X-RateLimit-Used');
+      if(rate_limit) {
+        console.log('NOTICE: GitHub limits requests to', rate_limit, 'per day --',
+                      rate_used, 'used,', rate_remaining, 'remaining');
+      }
       GITHUB_LAST_MODIFIED = new Date(dlm - TIME_ZONE_OFFSET);
     }
     return response.text();
@@ -591,7 +599,28 @@ function parseGitHubDirContents(json) {
 }
 
 function fetchGitHubRoot(res) {
-  // Get only the top-level directory of the Linny-R models on GitHub.
+  // Get the directory contents identifying the Linny-R models on GitHub.
+  const gh_path = path.join(SETTINGS.user_dir, 'github.json');
+  // If cached GitHub dir info is less than 24 h old, use that info
+  // rather than contacting the GitHub site, which has a rate limit.
+  try {
+    const
+        now = new Date(),
+        fstat = fs.statSync(gh_path, {throwIfNoEntry: false});
+    if(fstat && now - fstat.mtimeMs < 24 * 3600000) {
+      const
+          data = fs.readFileSync(gh_path),
+          gh_dir = JSON.parse(data);
+      console.log('NOTICE: Using cached GitHub directory tree');
+      console.log(`${pluralS(countModels(gh_dir), 'model')} on GitHub`);
+      // Serve the cached dir info "as is".
+      serveJSON(res, gh_dir);
+      return;
+    }
+  } catch(err) {
+    console.log('WARNING: Problem while reading GitHub info file', err);
+  }
+  // If not recently cached,
   fetch(GITHUB_ROOT_URL)
     .then(fetchGitHubText)
     .then((json) => {
@@ -608,8 +637,8 @@ function fetchGitHubRoot(res) {
             dir.parent = null;
             fetchGitHubDirs(res, dir);
           } else {
-            // Serve the root dir "as is".
-            serveJSON(res, dir);
+            // Cache and then serve the root dir "as is".
+            serveGitHubDir(res, dir);
           }
         }
       })
@@ -622,6 +651,20 @@ function stripParents(dir) {
   // Traverse tree of directory content objects to delete the parent pointers.
   for(const sd of dir.subdirs) stripParents(sd);
   delete dir.parent;
+}
+
+function serveGitHubDir(res, dir) {
+  // Serve the GitHub directory information as JSON.
+  stripParents(dir);
+  console.log(`${pluralS(countModels(dir), 'model')} on GitHub`);
+  // Write full GitHub dir info to JSON file in user workspace.
+  try {
+    const gh_path = path.join(SETTINGS.user_dir, 'github.json');
+    fs.writeFileSync(gh_path, JSON.stringify(dir));
+  } catch(err) {
+    console.log('WARNING: Failed to write GitHub info to file', err);
+  }
+  serveJSON(res, dir);  
 }
 
 function fetchGitHubDirs(res, dir) {
@@ -639,10 +682,8 @@ function fetchGitHubDirs(res, dir) {
   if(!sub_name) {
     // All sub-directories have been fetched.
     if(!dir.parent) {
-      // Serve the complete directory tree.
-      stripParents(dir);
-      console.log(`${pluralS(countModels(dir), 'model')} on GitHub`);
-      serveJSON(res, dir);
+      // First cache and then serve the complete directory tree.
+      serveGitHubDir(res, dir);
     } else {
       // Continue with the parent directory.
       fetchGitHubDirs(res, dir.parent);
@@ -705,7 +746,7 @@ function browse(res, sp) {
   }
   if(action === 'github') {
     // Serve the GitHub directory tree as JSON.
-    logAction('Get directory tree from GitHub');
+    logAction('Get directory tree of models on GitHub');
     fetchGitHubRoot(res);
     return;
   }

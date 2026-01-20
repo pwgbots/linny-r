@@ -2817,6 +2817,14 @@ class GUIController extends Controller {
           if(mgr && 'upDownKey' in mgr) mgr.upDownKey(e.keyCode - 39);
         }
       }
+      // NOTE: Some dialogs respond to regular alphanumerig keys, but
+      // the long if-then-else-if... below must first check special cases.
+      let alpha_key = '';
+      if('0123456789-_()'.indexOf(e.key) >= 0) {
+        alpha_key = e.key;
+      } else if(code >= 'KeyA' && code <= 'KeyZ') {
+        alpha_key = code.substring(3).toLowerCase();
+      }
       // End, Home, and left and right arrow keys.
       if(code === 'End') {
         e.preventDefault();
@@ -2860,21 +2868,15 @@ class GUIController extends Controller {
         } else if(code === 'KeyP') {
           this.buttons.replace.dispatchEvent(be);
         }
-      } else if((topmod && topmod.id === 'browser-modal') ||
-          this.topManager === DATASET_MANAGER) {
-        // File browser responds to alphanumeric key press.
-        let alpha = '';
-        if('0123456789-_()'.indexOf(e.key) >= 0) {
-          alpha = e.key;
-        } else if(code >= 'KeyA' && code <= 'KeyZ') {
-          alpha = code.substring(3).toLowerCase();
-        }
-        if(alpha) {
+      } else if(((topmod && topmod.id === 'browser-modal') ||
+          this.topManager === DATASET_MANAGER) && alpha_key) {
+        // File browser and dataset manager respond to alphanumeric key press.
+        if(alpha_key) {
           e.preventDefault();
           if(topmod) {
-            FILE_MANAGER.alphanumericKey(alpha);
+            FILE_MANAGER.alphanumericKey(alpha_key);
           } else {
-            DATASET_MANAGER.alphanumericKey(alpha);
+            DATASET_MANAGER.alphanumericKey(alpha_key);
           }
         }
       } else if(!e.shiftKey && !alt && !topmod) {

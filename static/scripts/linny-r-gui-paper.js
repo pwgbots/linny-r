@@ -2480,6 +2480,8 @@ class Paper {
                 (lb < 0 ? this.palette.at_neg_lb_fill :
                     this.palette.at_zero_lb_fill));
             at_bound = true;
+            // NOTE: Stocks at level 0 should not be colored. 
+            if(prod.is_buffer) fill_color = 'white';
           } else {
             // Set "partial fill" flag if not at lower bound and UB < INF.
             pf = ub < VM.PLUS_INFINITY;
