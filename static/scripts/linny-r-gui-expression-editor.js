@@ -362,9 +362,9 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
   }  
   
   updateVariableBar(prefix='') {
-    // NOTE: this method is also called by the add-variable dialog of the
-    // Chart Manager AND of the Sensitivity Analysis; in these cases, `prefix`
-    // is passed to differentiate between the DOM elements to be used
+    // NOTE: This method is also called by the add-variable dialog of the
+    // Chart Manager AND of the Sensitivity Analysis. In these cases, `prefix`
+    // is passed to differentiate between the DOM elements to be used.
     const
         type = document.getElementById(prefix + 'variable-obj').value,
         n_list = this.namesByType(VM.object_types[type]).sort(
@@ -374,7 +374,9 @@ NOTE: Grouping groups results in a single group, e.g., (1;2);(3;4;5) evaluates a
     // Add "empty" as first and initial option, but disable it.
     options.push('<option selected disabled value="-1"></option>');
     if(VM.object_types[type] === 'Equation') {
-      // Hide the variable name, as this is the Equations Dataset
+      // NOTE: Select first item so the entity name is an empty string.
+      vn.selectedIndex = 0;
+      // Hide the variable name, as this is the Equations Dataset.
       vn.style.display = 'none';
     } else {
       for(let i = 0; i < n_list.length; i++) {

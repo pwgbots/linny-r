@@ -3180,7 +3180,8 @@ class GUIController extends Controller {
   }
   
   moveSelectionToParentCluster() {
-    if(MODEL.focal_cluster.cluster) {
+    if(MODEL.focal_cluster.cluster &&
+        !this.buttons.lift.classList.contains('disab')) {
       UNDO_STACK.push('lift', MODEL.focal_cluster.cluster);
       MODEL.focal_cluster.clearAllProcesses();
       MODEL.dropSelectionIntoCluster(MODEL.focal_cluster.cluster);

@@ -748,7 +748,8 @@ class GUIChartManager extends ChartManager {
 
   addVariable(eq='') {
     // Add the variable specified by the add-variable-dialog to the chart.
-    // NOTE: When defined, `eq` is the selector of the equation to be added.
+    // NOTE: When defined, `eq` is the selector of the equation to be added
+    // (in response to shift-click on (+) button of chart manager).
     if(this.chart_index >= 0) {
       let o = '',
           a = eq;

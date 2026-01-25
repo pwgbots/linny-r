@@ -75,8 +75,16 @@ var
       warning: new Audio('sounds/warning.wav'),
       error: new Audio('sounds/error.wav')
     };
-  
-  
+
+function sanitizeMail(ema) {
+  // Return email address `ema` when it complies with typical conventions
+  // (albeit a bit stricter than technically enforced). Otherwise, return an
+  // empty string. Not permitting characters like < and > reduces threat of
+  // script injection.
+  ema = ema.trim();
+  return (/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(ema) ? ema : '');
+}
+
 function loadLinnyR() {
   // Ensure that the Linny-R HTML and scripts will be the latest version
   // by reloading unless URL contains current time stamp truncated to 10 s.
@@ -87,13 +95,17 @@ function loadLinnyR() {
       url = window.location.href;
   if(url.indexOf('?x=' + t) < 0) {
     // Time stamp in URL is missing or not very recent => reload.
-    // NOTE: URL may contain user user ID (e-mail address).
-    const split = url.split('?u='),
-          base = split[0],
-          userid = (split.length > 1 ? '&u=' + split[1] : '');
+    // NOTE: When Linny-R is hosted on a production server, the URL may
+    // contain a parameter u that must be an e-mail address identifying
+    // a registered user. 
+    const
+        split = url.split('?u='),
+        base = split[0],
+        userid = (split.length > 1 ? sanitizeMail(split[1]) : ''),
+        userparam = (userid ? '&u=' + userid : '');
     // NOTE: Remove prior '?x=' cache buster if any, add new time stamp,
     // and then reload.
-    window.location.assign(base.split('?x=')[0] + '?x=' + t + userid);
+    window.location.assign(base.split('?x=')[0] + '?x=' + t + userparam);
   } else {
     // Load the style sheet.
     const link = document.createElement('link');

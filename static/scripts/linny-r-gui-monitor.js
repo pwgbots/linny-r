@@ -55,7 +55,7 @@ class GUIMonitor {
     this.equations_text = document.getElementById('monitor-eqs');
     this.progress_bar = document.getElementById('monitor-progress-bar');
 
-    // Make toolbar buttons responsive
+    // Make toolbar buttons responsive.
     this.close_btn.addEventListener(
         'click', (event) => UI.toggleDialog(event));
     this.messages_tab.addEventListener(
@@ -65,12 +65,12 @@ class GUIMonitor {
     this.equations_tab.addEventListener(
         'click', () => MONITOR.updateContent('eqs'));
 
-    // Make close button of call stack dialog responsive
+    // Make close button of call stack dialog responsive.
     document.getElementById('call-stack-close-btn').addEventListener(
       'click', () => MONITOR.hideCallStack());
     
     this.shown_block = 0;
-    // Initially show the messages textarea
+    // Initially show the messages textarea.
     this.tab = 'vbl';
     this.updateContent('msg');
   }
@@ -78,11 +78,11 @@ class GUIMonitor {
   reset() {
     this.shown_block = 0;
     this.last_message_block = 0;
-    // Clear monitor's text areas
+    // Clear monitor's text areas.
     this.messages_text.value = '';
     this.variables_text.value = '';
     this.equations_text.value = '';
-    // Clear the progress bar
+    // Clear the progress bar.
     while(this.progress_bar.firstChild) {
       this.progress_bar.removeChild(this.progress_bar.lastChild);
     }
@@ -90,37 +90,38 @@ class GUIMonitor {
   }
 
   updateMonitorTime() {
-    // Displays the elapsed time since last reset as (hrs:)mins:secs
-    let td = (new Date().getTime() - VM.reset_time) / 1000,
-        hrs = Math.floor(td / 3600);
+    // Display the elapsed time since last reset as (hrs:)mins:secs.
+    const
+        elapsed_sec = Math.round((new Date().getTime() - VM.reset_time) / 1000),
+        rem_sec = elapsed_sec % 3600;
+    let hrs = Math.round((elapsed_sec - rem_sec) / 3600);
     if(hrs > 0) {
-      td -= hrs * 3600;
       hrs += ':';
     } else {
       hrs = '';
     }
     const
-        min = Math.floor(td / 60),
-        sec = Math.round(td - 60*min),
-        t = ('0' + min).slice(-2) + ':' + ('0' + sec).slice(-2);
-    this.timer.textContent = hrs + t;
+        sec = rem_sec % 60,
+        min = Math.round((rem_sec - sec) / 60),
+        min_sec = ('0' + min).slice(-2) + ':' + ('0' + sec).slice(-2);
+    this.timer.textContent = hrs + min_sec;
   }
   
   updateBlockNumber(bwr) {
-    // Display progres as block number (with round) / number of blocks
+    // Display progres as block number (with round) / number of blocks.
     document.getElementById('monitor-blocks').innerText =
         bwr + '/' + VM.nr_of_blocks;
   }
   
   clearProgressBar() {
-    // Clear the progress bar
+    // Clear the progress bar.
     while(this.progress_bar.firstChild) {
       this.progress_bar.removeChild(this.progress_bar.lastChild);
     }
   }
 
   addProgressBlock(b, err, time) {
-    // Adds a block to the progress bar, and updates the relative block lengths
+    // Add a block to the progress bar, and update the relative block lengths.
     let total_time = 0;
     for(let i = 0; i < b; i++) total_time += VM.solver_times[i];
     const
@@ -167,22 +168,25 @@ class GUIMonitor {
   }
   
   updateContent(tab) {
-    // Get the block being computed
+    // Get the block being computed.
     this.block_count = VM.block_count;
-    // Shows the appropriate text in the monitor's textarea
+    // Shows the appropriate text in the monitor's textarea.
     let b = this.shown_block;
     // By default, show information on the block being calculated.
     if(b === 0) b = this.block_count;
     // Legend to variables is not block-dependent.
     this.variables_text.value = VM.variablesLegend();
     if(this.block_count === 0) {
-      this.messages_text.value = VM.no_messages;
-      this.equations_text.value = VM.no_equations;
+      this.messages_text.value = VM.NO_MESSAGES;
+      this.equations_text.value = VM.SELECT_BLOCK;
     } else if(b <= VM.messages.length) {
       this.messages_text.value = VM.messages[b - 1];
       let eqs = VM.equations[b - 1];
-      for(const k in VM.variables_dictionary) if(VM.variables_dictionary.hasOwnProperty(k)) {
-        eqs = eqs.replaceAll(k, VM.variables_dictionary[k]);
+      // NOTE: Set condition to TRUE to render Xnnn variables as model variable names.
+      if(true) {
+        for(const k in VM.variables_dictionary) if(VM.variables_dictionary.hasOwnProperty(k)) {
+          eqs = eqs.replaceAll(k, VM.variables_dictionary[k]);
+        }
       }
       this.equations_text.value = eqs;
     }

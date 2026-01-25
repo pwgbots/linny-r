@@ -300,7 +300,7 @@ class EquationManager {
   }
 
   modifyEquation(x) {
-    // Update and compile expression only if it has been changed
+    // Update and compile expression only if it has been changed.
     if(this.edited_expression && x != this.edited_expression.text) {
       this.edited_expression.text = x;
       this.edited_expression.compile();
@@ -310,7 +310,7 @@ class EquationManager {
     this.updateDialog();
     CHART_MANAGER.updateDialog();
     if(this.add_to_chart && CHART_MANAGER.chart_index >= 0) {
-      // Add selected modifier as new equation to chart
+      // Add selected modifier as new equation to chart.
       CHART_MANAGER.addVariable(this.selected_modifier.selector);
       this.add_to_chart = false;
     }

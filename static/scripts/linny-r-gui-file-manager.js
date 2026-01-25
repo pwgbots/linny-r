@@ -968,21 +968,16 @@ class GUIFileManager {
     UI.setMessage('Model file size: ' + UI.sizeInBytes(xml.length));
     const el = document.getElementById('xml-saver');
     el.href = 'data:attachment/text,' + encodeURI(xml);
-    console.log('Encoded file size:', el.href.length);
+    const urilen = el.href.length;
+    console.log('Encoded file size:', urilen);
     // Use sanitized model name as file name.
     el.download = (this.asFilePath(MODEL.name, true) || 'model') + '.lnr';
-    if(el.href.length > 25*1024*1024 &&
+    if(el.urilen > 25*1024*1024 &&
         navigator.userAgent.search('Chrome') <= 0) {
       UI.notify('Model file size exceeds 25 MB. ' +
           'If it does not download, store it via the file browser');
     }
     el.click();
-    // Clear the HREF after 300 msec (because it may use a lot of memory)
-    // and then also update the Downloads directory of the File manager.
-    setTimeout(() => {
-          document.getElementById('xml-saver').href = '';
-          FILE_MANAGER.getDirContents(FILE_MANAGER.root_dirs.download);
-        }, 300);
     this.download_via_browser = false;
   }
   

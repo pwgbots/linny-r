@@ -5056,7 +5056,7 @@ class PowerGrid {
     return ['<grid', p, '><id>', this.id,
         '</id><name>', xmlEncoded(this.name),
         '</name><notes>', xmlEncoded(this.comments),
-        '</notes><color>', xmlDecoded(this.color),
+        '</notes><color>', xmlEncoded(this.color),
         '</color><kilovolts>', this.kilovolts,
         '</kilovolts><power-unit>', this.power_unit,
         '</power-unit></grid>'].join('');
@@ -5152,9 +5152,9 @@ class Actor {
   }
   
   initFromXML(node) {
-    this.weight.text = xmlDecoded(nodeContentByTag(node, 'weight'));
+    this.weight.text = nodeContentByTag(node, 'weight');
     if(IO_CONTEXT) IO_CONTEXT.rewrite(this.weight);
-    this.comments = nodeContentByTag(node, 'notes');
+    this.comments = xmlDecoded(nodeContentByTag(node, 'notes'));
     this.round_flags = safeStrToInt(nodeParameterValue(node, 'round-flags'));
   }
   
@@ -7795,13 +7795,14 @@ class Node extends NodeBox {
     // Return TRUE if this node is a process that may potentially have
     // level < 0.
     if(this instanceof Product) return false;
+    if(this.grid) return true;
     const lbx = this.lower_bound;
     if(!lbx.defined || (lbx.isStatic && lbx.result(0) >= 0)) return false;
     return true;
   }
   
   get needsOnOffData() {
-    // Return TRUE if this node requires binary variables to establish
+    // Return TRUE if this node requires *binary* variables to establish
     // its Negative/Zero/Positive state.
     // This means that at least one output link must have the "positive",
     // "zero", "negative", "start-up", "shut-down", "spinning reserve" or
@@ -7811,8 +7812,12 @@ class Node extends NodeBox {
         return true;
       }
     }
-    // As of version 3.0, processes may also get NZP variables when they
-    // are potentially reversible.
+    return false;
+  }
+  
+  get needsNZP() {
+    // As of version 3.0, processes must have the *continuous* NZP variables
+    // when they are potentially reversible.
     if(this.reversible) {
       // NZP-partitioning is necessary only if the process can generate
       // a cash flow, or when it affects the level of a product that has
@@ -8309,8 +8314,8 @@ class Process extends Node {
     // power flow and transmission loss approximations in coordinated
     // capacity expansion problem. Applied Energy, 314: 118859.
     // https://doi.org/10.1016/j.apenergy.2022.118859
-    if(!(this.grid && this.grid.loss_approximation &&
-        !this.ignore_power_losses)) return [0];
+    if(MODEL.ignore_power_losses ||
+        !(this.grid && this.grid.loss_approximation)) return [0];
     let ub = this.upper_bound.result(t);
     if(ub >= VM.PLUS_INFINITY) {
       // When UB = +INF, this is interpreted as "unlimited", which is
@@ -8333,7 +8338,7 @@ class Process extends Node {
     // Return the actual loss rate, which depends on the power flow
     // and the max. power flow (process UB).
     const g = this.grid;
-    if(!g || this.ignore_power_losses) return 0;
+    if(!g || MODEL.ignore_power_losses) return 0;
     const
         lr = this.lossRates(t),
         apl = Math.abs(this.actualLevel(t)),

@@ -722,6 +722,11 @@ class GUISensitivityAnalysis extends SensitivityAnalysis {
   
   selectRun(n) {
     // Select run `n`, or toggles if already selected.
+    if(MODEL.running_experiment) {
+      // NOTE: do NOT do this while VM is solving, as this would interfere!
+      UI.notify('Run selection cannot be changed when an experiment is running');
+      return;
+    }
     for(const row of this.scroll_area.getElementsByClassName('sa-p-sel')) {
       row.classList.remove('sa-p-sel');
     }

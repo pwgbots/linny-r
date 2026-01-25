@@ -174,7 +174,7 @@ class Expression {
     this.wildcard_vector_index = false;
     this.method_object_list.length = 0;
     if(!isEmpty(this.cache)) {
-      console.log('Clearing cache', this.text, '\n', Object.keys(this.cache));
+      console.log('HERE Clearing cache', this.text, '\n', Object.keys(this.cache));
     }
     this.cache = {};
     this.compile(); // if(!this.compiled)  REMOVED to ensure correct isStatic!! 
@@ -2190,9 +2190,10 @@ class VirtualMachine {
     this.equations = [];
     
     // Default texts to display for (still) empty results.
-    this.no_messages = '(no messages)';
-    this.no_variables = '(no variables)';
-    this.no_equations = '(select block in progress bar)';
+    this.NO_MESSAGES = '(no messages)';
+    this.NO_VARIABLES = '(no variables)';
+    this.NO_EQUATIONS = '(no equations)';
+    this.SELECT_BLOCK = '(select block in progress bar)';
 
     // Floating-point constants used in calculations
     // Meaningful solver results are assumed to lie wihin reasonable bounds.
@@ -2221,7 +2222,8 @@ class VirtualMachine {
     this.DIAGNOSIS_UPPER_BOUND = 9.999999999e+9;
     // For processes representing grid elements, upper bounds of +INF are
     // "capped" to 9999 grid element capacity units (typically MW for
-    // high voltage grids). 
+    // high voltage grids). This is 100x lower than the "mega upper bound"
+    // that is considered the safety limit for "big M".
     this.UNLIMITED_POWER_FLOW = 9999;
     // NOTE: Below the "near zero" limit, a number is considered zero
     // (this is to timely detect division-by-zero errors).
@@ -2287,7 +2289,6 @@ class VirtualMachine {
     this.LM_MAX_DECREASE = 13; // Symbol: down-arrow with baseline
     this.LM_NEGATIVE = 14; // Symbol: - (minus sign)
     this.LM_CYCLE = 15; // Symbol: cycle arrow
-    this.LM_COSTPRICE = 16; // Symbol: cent 
 
     // List of link multipliers that require binary ON/OFF variables
     this.LM_NEEDING_ON_OFF = [5, 6, 7, 8, 9, 10, 14, 16];
@@ -2575,8 +2576,8 @@ class VirtualMachine {
     // can be stored asynchronously.
     for(let i = 0; i < this.nr_of_blocks; i++) {
       this.solver_times.push(0);
-      this.messages.push(this.no_messages);
-      this.equations.push(this.no_equations);
+      this.messages.push(this.NO_MESSAGES);
+      this.equations.push(this.SELECT_BLOCK);
     }
     // Reset the (graphical) controller.
     MONITOR.reset();
@@ -3010,7 +3011,7 @@ class VirtualMachine {
   logMessage(block, msg) {
     // Add a solver message to the list.
     // NOTE: block number minus 1, as array is zero-based.
-    if(this.messages[block - 1] === this.no_messages) {
+    if(this.messages[block - 1] === this.NO_MESSAGES) {
       this.messages[block - 1] = '';
     }
     this.messages[block - 1] += msg + '\n';
@@ -3046,8 +3047,7 @@ class VirtualMachine {
             bm.messages.indexOf(this.WARNING) >= 0);
         this.solver_times.push(bm.solver_time);
         this.messages.push(bm.messages);
-        this.variables.push(this.no_variables);
-        this.equations.push(this.no_equations);
+        this.equations.push(this.NO_EQUATIONS);
         this.nr_of_blocks++;
         this.block_count++;
         MONITOR.addProgressBlock(this.nr_of_blocks, err, bm.solver_time);
@@ -3130,7 +3130,7 @@ class VirtualMachine {
         down: [p.down_1_var_index + offset],
         down_on: [p.down_1_on_var_index + offset]
     };
-    if(p.up_2_var_index >= 0) {
+    if(p.up_2_var_index >= 0 && !MODEL.ignore_power_losses) {
       gpv.slopes++;
       gpv.up.push(p.up_2_var_index + offset);
       gpv.up_on.push(p.up_2_on_var_index + offset);
@@ -3203,40 +3203,44 @@ class VirtualMachine {
     }
     // Some "data-only" link multipliers require additional variables.
     // NOTE: As of version 2.0, power grid processes also need ON/OFF.
-    const nood = p.needsOnOffData;
-    if(nood || p.grid) {
-      // When ON/OFF is relevant, add 3 binary variables as explained
-      // some 1100 lines below (around line 4250)...
-      p.plus_var_index = this.addVariable('POS', p);
-      p.minus_var_index = this.addVariable('NEG', p);
-      p.is_zero_var_index = this.addVariable('IZ', p);
-      // ... and also add the level partitioning variables...
+    const
+        nood = p.needsOnOffData,
+        nnzp = nood || p.grid || p.needsNZP;
+    if(nnzp) {
+      // Add the continuous level partitioning variables.
       p.posl_var_index = this.addVariable('PSL', p);
       p.negl_var_index = this.addVariable('NGL', p);
-      // ... and the epsilon slack variable.
-      p.epsilon_var_index = this.addVariable('EPS', p);
-      // NOTE: Only record the IZ index in the list of NZP indices
-      // because IZ, PSL and NGL will allways have successive indices.
-      this.nzp_var_indices.push(p.is_zero_var_index);
-      // To detect startup, one more variable is needed
-      if(p.needsStartUpData) {
-        p.start_up_var_index = this.addVariable('SU', p);
-        // To detect first commit, three more variables are needed
-        if(p.needsFirstCommitData) {
-          // NOTE: First commit is trivial (always 0) when `p` has a non-zero
-          // level at t=0.
-          if(p.actualLevel(0)) {
-            UI.warn(`${p.type} <strong>${p.displayName}</strong> is already committed at t=0`);
-          } else {
-            p.start_up_count_var_index = this.addVariable('SC', p);
-            p.suc_on_var_index = this.addVariable('SO', p);
-            p.first_commit_var_index = this.addVariable('FC', p);
+      if(nood) {
+        // When ON/OFF is relevant, add 3 binary variables as explained
+        // some 1100 lines below (around line 4250)...
+        p.is_zero_var_index = this.addVariable('IZ', p);
+        // NOTE: Only record the IZ index in the list of NZP indices
+        // because PSL, NGL and IZ will allways have successive indices.
+        this.nzp_var_indices.push(p.is_zero_var_index);
+        p.plus_var_index = this.addVariable('POS', p);
+        p.minus_var_index = this.addVariable('NEG', p);
+        // ... and the epsilon slack variable.
+        p.epsilon_var_index = this.addVariable('EPS', p);
+        // To detect startup, one more variable is needed
+        if(p.needsStartUpData) {
+          p.start_up_var_index = this.addVariable('SU', p);
+          // To detect first commit, three more variables are needed
+          if(p.needsFirstCommitData) {
+            // NOTE: First commit is trivial (always 0) when `p` has a non-zero
+            // level at t=0.
+            if(p.actualLevel(0)) {
+              UI.warn(`${p.type} <strong>${p.displayName}</strong> is already committed at t=0`);
+            } else {
+              p.start_up_count_var_index = this.addVariable('SC', p);
+              p.suc_on_var_index = this.addVariable('SO', p);
+              p.first_commit_var_index = this.addVariable('FC', p);
+            }
           }
         }
-      }
-      // To detect shut-down, one more variable is needed
-      if(p.needsShutDownData) {
-        p.shut_down_var_index = this.addVariable('SD', p);
+        // To detect shut-down, one more variable is needed
+        if(p.needsShutDownData) {
+          p.shut_down_var_index = this.addVariable('SD', p);
+        }
       }
     }
     if(p.grid) {
@@ -3247,7 +3251,7 @@ class VirtualMachine {
       p.down_1_var_index = this.addVariable('D1', p);
       p.down_1_on_var_index = this.addVariable('DO1', p);
       // Additional UP and DOWN is needed for each additional loss slope.
-      if(p.grid.loss_approximation > 1) {
+      if(p.grid.loss_approximation > 1 && !MODEL.ignore_power_losses) {
         p.up_2_var_index = this.addVariable('U2', p);
         p.up_2_on_var_index = this.addVariable('UO2', p);
         p.down_2_var_index = this.addVariable('D2', p);
@@ -3318,7 +3322,7 @@ class VirtualMachine {
         vcnt = this.variables.length,
         z = vcnt.toString().length,
         dict_z = this.columnsInBlock.toString().length;
-    if(vcnt == 0) return '(no variables)';
+    if(!vcnt) return '(no variables)';
     let l = '';
     for(let i = 0; i < vcnt; i++) {
       const
@@ -3884,16 +3888,14 @@ class VirtualMachine {
         this.slack_variables[pen].push(
             p.stock_LE_slack_var_index, p.stock_GE_slack_var_index);
       }
-      if(p.epsilon_var_index >= 0 && !this.diagnose) {
+      if(p.epsilon_var_index >= 0) {
         this.slack_variables[3].push(p.epsilon_var_index);
       }
     }
-    if(!this.diagnose) {
-      for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
-        const p = MODEL.processes[k];
-        if(p.epsilon_var_index >= 0) {
-          this.slack_variables[3].push(p.epsilon_var_index);
-        }
+    for(const k of process_keys) if(!MODEL.ignored_entities[k]) {
+      const p = MODEL.processes[k];
+      if(p.epsilon_var_index >= 0) {
+        this.slack_variables[3].push(p.epsilon_var_index);
       }
     }
     
@@ -4167,23 +4169,14 @@ class VirtualMachine {
        By imposing a SOS1 constraint on the trio (NEGL, POSL, IZ), only one may
        be non-zero. When L = 0, *all* three may be zero, but the additional
        constraint IZ + POS + NEG = 1 will force the solver to choose.
-       To prevent that the solver then sets POS = 1 or NEG = 1 instead of
-       IZ = 1, one more constraint is added: POS
-       
        Thus, L will me "mapped" as follows:
        
-       L       NEGL  POSL  IZ  NEG  POS 
+        L      NEGL  POSL  IZ  NEG  POS 
        -3       3     0    0    1    0
         0       0     0    1    0    0 (SOS1 requires *at most* one non-zero )
-        3       0     3    0    3
+        3       0     3    0    0    1
 
-       EXTRA VARIABLES: To separate POS, NEG and (near) zero, two semi-continuous
-       variables POSL and NEGL are added having a near-zero lower bound "epsilon"
-       (say 1e-5) and their respective upper bounds equal to UB and LB of L, and
-       two normal variables PEP and NEP having LB = 0 and UB = "epsilon".
-       The three binary variables now are NEG (1 if NEGL >= epsilon), POS (1 if
-       POSL >= epsilon) and OFF (1 if PEP + NEP >= 0). The constraints to be
-       added are:
+       In sum, the constraints to be added are:
        
        (a) L = POSL - NEGL
        
@@ -4196,7 +4189,7 @@ class VirtualMachine {
        
        The following constraints make that when L = 0, IZ is set to 1
        (and not POS or NEG) using a small epsilon value (the ON/OFF threshold,
-       currently set at 1e-5): 
+       currently set at 1e-6): 
 
        (e1) epsilon*POS - POSL <= 0  (so POS cannot be 1 if POSL < epsilon)
        (e2) epsilon*NEG - NEGL <= 0  (so NEG cannot be 1 if NEGL < epsilon)
@@ -4275,11 +4268,14 @@ class VirtualMachine {
     }
 
     for(const p of pp_nodes) {
+      // NOTE: As of version 3.0 (November 2025) the VMI instructions for the
+      // NZP constraints simply take the node `p` as parameter.
+      if(p.posl_var_index >= 0) {
+        // Add code for getting the continuous NZP components.
+        this.code.push([VMI_add_NZP_continuous_constraints, p]);
+      }
       if(p.is_zero_var_index >= 0) {
-        // Add code for the four constraints that set the binaries.
-        // NOTE: As of version 3.0 (November 2025) this is done efficiently
-        // by the new VM instruction VMI_add_NZP_binary_constraints that
-        // simply takes the node `p` as parameter.
+        // Add code for the constraints that set the NZP binaries.
         this.code.push([VMI_add_NZP_binary_constraints, p]);
         // Also add constraints for start-up and first commit (if needed).
         if(p.start_up_var_index >= 0) {
@@ -4680,7 +4676,7 @@ class VirtualMachine {
       // Iterate over all time steps in this block.
       let j = -1;
       for(let i = 0; i < abl; i++) {
-        // Iterates over 3 types of slack variable.
+        // Iterates over 4 types of slack variable.
         for(const svi_list of this.slack_variables) {
           // Each list contains indices of slack variables
           for(const vi of svi_list) {
@@ -4689,7 +4685,7 @@ class VirtualMachine {
             let slack = parseFloat(x[vi + j]) * VM.SLACK_MULTIPLIER;
             // Epsilon constraint is also scaled by a multiplier.
             if(v[0] === 'EPS') slack /= VM.EPSILON_MULTIPLIER;
-            const absl = Math.abs(slack);
+            let absl = Math.abs(slack);
             if(absl > VM.NEAR_ZERO) {
               // NOTE: For constraints, add 'UB' or 'LB' to its vector for
               // the time step where slack was used.
@@ -5322,6 +5318,7 @@ class VirtualMachine {
     // Add (appropriately scaled!) slack penalties to the objective function
     // NOTE: penalties must become negative coefficients (solver MAXimizes!)
     let p = -1,
+        nsv = 0,
         hsp = 0;
     // Three types of slack variable: market demand (EQ),
     // LE and GE bound constraints and highest (data, composite constraints)
@@ -5330,6 +5327,7 @@ class VirtualMachine {
       for(const sv of svl) {
         for(let k = 0; k < abl; k++) {
           this.objective[sv + k*this.cols] = hsp;
+          nsv++;
         }
       }
       // For the next type of slack, double the penalty.
@@ -5337,7 +5335,8 @@ class VirtualMachine {
     }
     this.hideSetUpOrWriteProgress();
     const bc = this.block_count;
-    this.logMessage(bc, `Highest slack penalty =  ${this.sig4Dig(hsp)}`);
+    this.logMessage(bc, pluralS(nsv, 'slack variable') +
+        (nsv ? '. Highest slack penalty = ' + this.sig4Dig(hsp) : ''));
     this.logMessage(bc, 'Set-up ('+
         pluralS(this.code.length, 'VM instruction') + ') took ' +
         this.elapsedTime + ' seconds.');
@@ -5624,7 +5623,7 @@ class VirtualMachine {
           for(let i = 0; i < this.nzp_var_indices.length; i++) {
             const vi = this.nzp_var_indices[i] + j * this.cols;
             v_set.length = 0;
-            for(let k = 0; k < 3; k++) v_set.push(`${vbl(vi + k)}:${k}`);
+            for(let k = 0; k > -3; k--) v_set.push(`${vbl(vi + k)}:${1 - k}`);
             this.lines += ` nzp${i}_${j}: S1:: ${v_set.join(' ')}\n`;
           }
           // Then add SOS2 constraints for the piecewise linear constraints.
@@ -5666,7 +5665,7 @@ class VirtualMachine {
           for(let i = 0; i < this.nzp_var_indices.length; i++) {
             const vi = this.nzp_var_indices[i] + j * this.cols;
             v_set.length = 0;
-            for(let k = 0; k < 3; k++) v_set.push(`${vbl(vi + k)}`);
+            for(let k = 0; k > -3; k--) v_set.push(`${vbl(vi + k)}`);
             this.lines += ` nzp${i}_${j}: ${v_set.join(',')} <= 1;\n`;
           }
           // Then add SOS2 constraints for the piecewise linear constraints.
@@ -8321,20 +8320,29 @@ function VMI_set_bounds(args) {
     u = l;
     fixed = ' (FIXED ' + p.displayName + ')';
   } else {
-    // Set bounds as specified by the two arguments.
-    l = args[1];
-    u = args[2];
-    if(u instanceof Expression) u = u.result(VM.t);
-    u = Math.min(u, inf_val);
-    // When LB is passed as NULL, this indicates: LB = -UB.
-    if(l === null) {
-      l = -u;
-    } else { 
-      if(l instanceof Expression) l = l.result(VM.t);
-      if(l === VM.UNDEFINED) {
-        l = 0;
+    if(p.grid && MODEL.ignore_grid_capacity) {
+      // Set LB = -UB met UB = "unlimited power flow" (9999).
+      l = -VM.UNLIMITED_POWER_FLOW;
+      u = VM.UNLIMITED_POWER_FLOW;
+    } else {
+      // Set bounds as specified by the two arguments.
+      l = args[1];
+      u = args[2];
+      if(u instanceof Expression) u = u.result(VM.t);
+      if(u === VM.UNDEFINED) {
+        u = inf_val;
       } else {
-        l = Math.max(l, -inf_val);
+        u = Math.min(u, inf_val);
+      }
+      if(p.grid) {
+        l = -u;
+      } else { 
+        if(l instanceof Expression) l = l.result(VM.t);
+        if(l === VM.UNDEFINED || !l) {
+          l = 0;
+        } else {
+          l = Math.max(l, -inf_val);
+        }
       }
     }
     fixed = '';
@@ -8373,30 +8381,21 @@ function VMI_set_bounds(args) {
     // for the node level variable.
     if(p.level_var_index === vi) {
       // (1) If associated node must be NZP-partitioned, set bounds of its
-      // partitioning variables.
+      // continuous partitioning variables.
+      if(p.posl_var_index >= 0) {
+        // If UB > 0, the positive component must also have this UB > 0,
+        // and otherwise its UB = 0 (so the component is zero).
+        VM.upper_bounds[VM.offset + p.posl_var_index] = Math.max(u, 0);
+        // Similar reasoning for LB: negative component must be zero when
+        // LB >= 0, and otherwise be -LB.
+        VM.upper_bounds[VM.offset + p.negl_var_index] = Math.max(-l, 0);
+      }
       if(p.is_zero_var_index >= 0) {
-        // Set bounds on the NZP-partitioning variables.
-        // NOTE: To set bounds as tightly as possible, consider various cases.
-        if(u > 0) {
-          // If UB > 0, the positive components must also have UB > 0.
-          VM.upper_bounds[VM.offset + p.posl_var_index] = u;
-          VM.upper_bounds[VM.offset + p.plus_var_index] = 1;
-        } else {
-          // Otherwise, they must be 0, so their UB = 0.
-          VM.upper_bounds[VM.offset + p.posl_var_index] = 0;
-          VM.upper_bounds[VM.offset + p.plus_var_index] = 0;
-        }
-        // NOTE: When LB >= 0, NEG and NEGL all must be 0.
-        if(l >= 0) {
-          // When lower bound is non-negative, the negative components
-          // all must have UB = 0.
-          VM.upper_bounds[VM.offset + p.negl_var_index] = 0;
-          VM.upper_bounds[VM.offset + p.minus_var_index] = 0;
-        } else {
-          // When LB < 0, the negative components must have UB > 0.
-          VM.upper_bounds[VM.offset + p.negl_var_index] = -l;
-          VM.upper_bounds[VM.offset + p.minus_var_index] = 1;
-        }
+        // Set bounds on the *binary* NZP-partitioning variables.
+        // When UB > 0, the POS binary must have UB = 1, otherwise 0.
+        VM.upper_bounds[VM.offset + p.plus_var_index] = (u > 0 ? 1 : 0);
+        // When LB >= 0, the NEG binary must be 0.
+        VM.upper_bounds[VM.offset + p.minus_var_index] = (l < 0 ? 1 : 0);
       }
       // (2) If associated node is FROM-node of a "peak increase" link, then
       // the "peak increase" variables of this node must have the highest
@@ -8732,7 +8731,7 @@ function VMI_update_cash_coefficient(link) {
       return;
     }
     // When process is reversible, it should have NZP-partitioning.
-    if(tn.is_zero_var_index < 0) {
+    if(tn.posl_var_index < 0) {
       VM.logMessage(VM.block_count, VM.WARNING + 'Process ' + tn.displayName +
           ' has cash flow but no partitioned level');
       return;
@@ -8773,7 +8772,7 @@ function VMI_update_cash_coefficient(link) {
   if(!abs_pr) return;
 
   // NOTE: When reversible, process *must* have a NZP level partition.
-  if(reversible && fn.is_zero_var_index < 0) {
+  if(reversible && fn.posl_var_index < 0) {
     VM.logMessage(VM.block_count, VM.WARNING + 'Process ' + fn.displayName +
         ' has cash flow but no partitioned level');
     return;
@@ -8782,11 +8781,12 @@ function VMI_update_cash_coefficient(link) {
   // variable.
   const
       vi = fn.level_var_index,
-      posvi = fn.plus_var_index,
-      negvi = fn.minus_var_index,
       // NOTE: When not reversible, use the level index as "positive".
       poslvi = (reversible ? fn.posl_var_index : vi),
-      neglvi = (reversible ? fn.negl_var_index : vi);
+      neglvi = (reversible ? fn.negl_var_index : vi),
+      // NOTE: The binary POS and NEG indices may not be defined (index = -1).
+      posvi = fn.plus_var_index,
+      negvi = fn.minus_var_index;
 
   // SUM and MEAN may require iteration over multiple time steps.
   if(delay && lm === VM.LM_SUM || lm === VM.LM_MEAN) {
@@ -9221,6 +9221,22 @@ function VMI_add_semicontinuous_constraints(p) {
   }
 }
 
+function VMI_add_NZP_continuous_constraints(p) {
+  // Add constraints that sets the continuous parts NEGL and POSL.
+  if(DEBUGGING) {
+    console.log('add_NZP_continuous_constraints (t = ' + VM.t + ')');
+  }
+  if(!p || p.posl_var_index < 0) throw 'ANOMALY: No NZP variable indices';
+  const row = {};
+  // (a) L + NEGL - POSL = 0  (so POSL - NEGL = L).
+  row[VM.offset + p.level_var_index] = 1;
+  row[VM.offset + p.negl_var_index] = 1;
+  row[VM.offset + p.posl_var_index] = -1;
+  VM.matrix.push(row);
+  VM.right_hand_side.push(0);
+  VM.constraint_types.push(VM.EQ);
+}
+
 function VMI_add_NZP_binary_constraints(p) {
   // Add constraints that set correct values for binary variables
   // associated with process or product `p`.
@@ -9232,7 +9248,10 @@ function VMI_add_NZP_binary_constraints(p) {
   let lb = p.lower_bound.result(VM.t),
       ub = (p.equal_bounds ? lb : p.upper_bound.result(VM.t)),
       hub = ub;
-  if(ub > VM.MEGA_UPPER_BOUND) {
+  if(p.grid && MODEL.ignore_grid_capacity) {
+    ub = VM.UNLIMITED_POWER_FLOW;
+    lb = -ub;
+  } else if(ub > VM.MEGA_UPPER_BOUND) {
     hub = p.highestUpperBound([]);
     // If UB still very high, warn modeler on infoline and in monitor.
     if(hub > VM.MEGA_UPPER_BOUND) {
@@ -9240,16 +9259,15 @@ function VMI_add_NZP_binary_constraints(p) {
           VM.sig4Dig(hub) + ') for "' + p.displayName +
           '" will compromise computation of its binary variables');
     }
-  }
-  if(hub !== ub) {
-    ub = hub;
-    VM.logMessage(block,
-        `Inferred upper bound for ${p.displayName}: ${VM.sig4Dig(ub)}`);
+    if(hub !== ub) {
+      ub = hub;
+      VM.logMessage(block,
+          `Inferred upper bound for ${p.displayName}: ${VM.sig4Dig(ub)}`);
+    }
   }
   const
       big_M = Math.min(VM.MEGA_UPPER_BOUND,
           Math.max(Math.abs(lb), Math.abs(ub)) + 1),
-      l_index = VM.offset + p.level_var_index,
       pos_index = VM.offset + p.plus_var_index,
       neg_index = VM.offset + p.minus_var_index,
       off_index = VM.offset + p.is_zero_var_index,
@@ -9259,25 +9277,8 @@ function VMI_add_NZP_binary_constraints(p) {
   if(DEBUGGING) {
     console.log(p.type, p.displayName, 'big M =', VM.sig4Dig(big_M));
   }
-  // First "partition" the level into positive and negative parts.
-  // (a) L = POSL - NEGL
-  let row = {};
-  row[l_index] = 1;
-  row[negl_index] = 1;
-  row[posl_index] = -1;
-  VM.matrix.push(row);
-  VM.right_hand_side.push(0);
-  VM.constraint_types.push(VM.EQ);
-  // Note that ALL parts are non-negative values.
-  // (b) NEGL - M*NEG <= 0  (so NEG must be 1 when NEGL > 0)
-  row = {};
-  row[negl_index] = 1;
-  row[neg_index] = -big_M;
-  VM.matrix.push(row);
-  VM.right_hand_side.push(0);
-  VM.constraint_types.push(VM.LE);
   // (c) POSL - M*POS <= 0  (so POS must be 1 when POSL > 0)
-  row = {};
+  let row = {};
   row[posl_index] = 1;
   row[pos_index] = -big_M;
   VM.matrix.push(row);
@@ -9294,15 +9295,34 @@ function VMI_add_NZP_binary_constraints(p) {
   VM.matrix.push(row);
   VM.right_hand_side.push(0);
   VM.constraint_types.push(VM.LE);
-  // (e2') epsilon*NEG - NEGL <= 0  (so NEG must be 0 when NEGL = 0)
-  row = {};
-  row[neg_index] = VM.EPSILON_MULTIPLIER * VM.ON_OFF_THRESHOLD;
-  row[negl_index] = -VM.EPSILON_MULTIPLIER;
-  // Provide slack so the constraint can always be met, but at a significant cost.
-  row[eps_index] = -VM.SLACK_MULTIPLIER / VM.EPSILON_MULTIPLIER;
-  VM.matrix.push(row);
-  VM.right_hand_side.push(0);
-  VM.constraint_types.push(VM.LE);
+  // NOTE: This VMI is added when LB *may* become negative, so check
+  // whether now (at run time) LB >= 0, as then NZP partitioning is
+  // trivial and need not be done by the solver.
+  if(lb >= 0) {
+    // If L >= 0, NEG must be 0.
+    row = {};
+    row[neg_index] = 1;
+    VM.matrix.push(row);
+    VM.right_hand_side.push(0);
+    VM.constraint_types.push(VM.EQ);    
+  } else {
+    // (b) NEGL - M*NEG <= 0  (so NEG must be 1 when NEGL > 0)
+    row = {};
+    row[negl_index] = 1;
+    row[neg_index] = -big_M;
+    VM.matrix.push(row);
+    VM.right_hand_side.push(0);
+    VM.constraint_types.push(VM.LE);
+    // (e2') epsilon*NEG - NEGL <= 0  (so NEG must be 0 when NEGL = 0)
+    row = {};
+    row[neg_index] = VM.EPSILON_MULTIPLIER * VM.ON_OFF_THRESHOLD;
+    row[negl_index] = -VM.EPSILON_MULTIPLIER;
+    // Provide slack so the constraint can always be met, but at a significant cost.
+    row[eps_index] = -VM.SLACK_MULTIPLIER / VM.EPSILON_MULTIPLIER;
+    VM.matrix.push(row);
+    VM.right_hand_side.push(0);
+    VM.constraint_types.push(VM.LE);
+  }
   // Finally, ensure that the binaries add up to 1, because the level must be
   // either < 0, 0 or > 0.
   // (f) POS + NEG + OFF = 1
@@ -9581,7 +9601,7 @@ function VMI_add_grid_process_constraints(p) {
   // Now the variable index lists all contain 1, 2 or 3 indices,
   // depending on the loss approximation level.
   let ub = p.upper_bound.result(VM.t);
-  if(ub >= VM.PLUS_INFINITY) {
+  if(ub >= VM.PLUS_INFINITY || MODEL.ignore_grid_capacity) {
     // When UB = +INF, this is interpreted as "unlimited", which is
     // implemented as 99999 grid power units.
     ub = VM.UNLIMITED_POWER_FLOW;

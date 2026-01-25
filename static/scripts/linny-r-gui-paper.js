@@ -375,7 +375,7 @@ class Paper {
         // Standard arrow tips: solid triangle
         tri = 'M0,0 L10,5 L0,10 z',
         // Wedge arrow tips have no baseline
-        wedge = 'M0,0 L10,5 L0,10 L0,8.5 L8.5,5 L0,1.5 z',
+        wedge = 'M0,0 L10,5 L0,10 L0,8 L6,5 L0,2 z',
         // Constraint arrows have a flat, "chevron-style" tip
         chev = 'M0,0 L10,5 L0,10 L4,5 z',
         // Feedback arrows are hollow and have hole in their baseline
@@ -402,7 +402,7 @@ class Paper {
     this.addMarker(defs, id, tri, 8, this.palette.ignore);
     id = 'o_p_e_n__t_r_i_a_n_g_l_e__t_i_p__ID*';
     this.open_triangle = `url(#${id})`;
-    this.addMarker(defs, id, tri, 7.5, 'white');
+    this.addMarker(defs, id, wedge, 7.5, this.palette.node_rim);
     id = 's_e_l_e_c_t_e_d__t_r_i_a_n_g_l_e__t_i_p__ID*';
     this.selected_triangle = `url(#${id})`;
     this.addMarker(defs, id, tri, 7.5, this.palette.select);
@@ -1228,9 +1228,15 @@ class Paper {
       // NOTE: `luc` may also be a constraint!
       if(luc instanceof Link) {
         grid = proc.grid;
+        // NOTE: Feedback link style is deprecated.
         if(luc.is_feedback) {
           sda = UI.sda.long_dash_dot;
           arrow_end = this.feedback_triangle;
+        }
+        if(proc.lower_bound.defined && proc.lower_bound.result(MODEL.t) < 0) {
+          // Draw regular links that may be reversible (process LB < 0) with wedge
+          // as arrow head.
+          if(luc.multiplier === VM.LM_LEVEL) arrow_end = this.open_triangle;
         }
       }
       // Data link => dotted line.
