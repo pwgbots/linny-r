@@ -10290,7 +10290,8 @@ class Chart {
     this.legend_position = 'none';
     this.preferred_prefix = '';
     this.variables = [];
-    // SVG string to display the chart
+    this.run_index = -1;
+    // SVG string to display the chart.
     this.svg = '';
     // Properties of rectangular chart area 
     this.chart_rect = {top: 0, left: 0, height: 0, width: 0};
@@ -10514,6 +10515,8 @@ class Chart {
     // NOTE: Set the number of time steps to the simulation period, as this
     // property is used by chart variables to adjust their vector length.
     this.inferTimeScale();
+    // Prevent inadvertently using results of some prior run.
+    this.run_index = -1;
   }
   
   labelStep(range, max_labels, min_step) {
@@ -10770,6 +10773,8 @@ class Chart {
               maxv = Math.max(maxv, v.highestValueInVector);
             }
           }
+          // Reset to prevent using experiment outcomes when this is not intended.
+          this.run_index = -1;
         } else {
           this.run_index = -1;
           v.computeVector();
@@ -10835,6 +10840,8 @@ class Chart {
               v.tallyVector();
               maxv = Math.max(...v.bin_tallies);
             }
+            // Reset to prevent using experiment results when that is not intended.
+            this.run_index = -1;
           } else {
             this.run_index = -1;
             v.computeVector();
@@ -11145,7 +11152,7 @@ class Chart {
               // Always clear the line path string.
               v.line_path = '';
               if(v.visible && v.stacked) {
-                // For a single experiment run, recompute vector for that run
+                // For a single experiment run, recompute vector for that run.
                 if(runs.length === 1) {
                   this.run_index = runs[0];
                   v.computeVector();
@@ -11222,6 +11229,8 @@ class Chart {
           this.addSVG('</g>');
           this.addSVG(outlier_svg.join(''));
         }
+        // Reset run index to prevent unintended use of run results.
+        this.run_index = -1;
       }
     }
     // Add the SVG disclaimer.
