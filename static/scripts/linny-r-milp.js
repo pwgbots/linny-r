@@ -112,7 +112,11 @@ module.exports = class MILPSolver {
       match = p.match(/gurobi(\d+)/i);
       if(match) sp = p;
       // If so, ensure that it has a higher version number.
-      if(sp && parseInt(match[1]) > max_vn) {
+      // NOTE: gurobi_cl.exe version 12 and higher appears not to exit cleanly for
+      // some models (not clear when). To force using version 11 (if installed),
+      // remove "true ||" from line below.
+      const version_OK = true || !(match[1].startsWith('12') || match[1].startsWith('13'));
+      if(sp && parseInt(match[1]) > max_vn && version_OK) {
         // Check whether command line version is executable.
         sp = path.join(sp, 'gurobi_cl' + (windows ? '.exe' : ''));
         try {
