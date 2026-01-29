@@ -906,6 +906,7 @@ class GUIChartManager extends ChartManager {
   }
   
   toggleVariable(vi, event) {
+    // Toggle the "display this variable in the chart" (yes/no) property.
     window.event.stopPropagation();
     if(vi >= 0 && this.chart_index >= 0) {
       const v_list = MODEL.charts[this.chart_index].variables;
@@ -937,9 +938,9 @@ class GUIChartManager extends ChartManager {
           UI.setBox('v-box-' + vi, nv);
         }
       }
-      // redraw chart and table (with one variable more or less)
+      // Redraw chart and table (with one variable more or less).
       this.drawChart();
-      // Also update the experiment viewer (charts define the output variables)
+      // Also update the experiment viewer (charts define the output variables).
       if(EXPERIMENT_MANAGER.selected_experiment) {
         EXPERIMENT_MANAGER.updateDialog();
       }
@@ -947,6 +948,7 @@ class GUIChartManager extends ChartManager {
   }
   
   moveVariable(dir) {
+    // Move variable up or down in the chart variable list.
     if(this.chart_index >= 0 && this.variable_index >= 0) {
       const c = MODEL.charts[this.chart_index];
       let vi = this.variable_index;
@@ -961,6 +963,7 @@ class GUIChartManager extends ChartManager {
   }
   
   modifyVariable() {
+    // Update the properties of the variable being edited.
     if(this.variable_index >= 0) {
       const s = UI.validNumericInput('variable-scale', 'scale factor');
       if(!s) return;
@@ -978,16 +981,20 @@ class GUIChartManager extends ChartManager {
       cv.color = this.color_picker.color.hexString;
       // NOTE: Clear the vector so it will be recalculated.
       cv.vector.length = 0;
+      // Likewise clear the display name cache.
+      cv.display_name = '';
     }
     this.variable_modal.hide();
     this.updateDialog();
   }
   
   renameEquation() {
-    // Renames the selected variable (if it is an equation)
+    // Rename the selected variable (if it is an equation).
     if(this.chart_index >= 0 && this.variable_index >= 0) {
       const v = MODEL.charts[this.chart_index].variables[this.variable_index];
       if(v.object === MODEL.equations_dataset || v.object instanceof DatasetModifier) {
+        // Clear the display name cache (anticipating a name change).
+        v.display_name = '';
         const m = MODEL.equations_dataset.modifiers[UI.nameToID(v.attribute)];
         if(m instanceof DatasetModifier) {
           EQUATION_MANAGER.selected_modifier = m;
@@ -998,7 +1005,7 @@ class GUIChartManager extends ChartManager {
   }
   
   editEquation() {
-    // Opens the expression editor for the selected variable (if equation)
+    // Open the expression editor for the selected variable (if equation).
     if(this.chart_index >= 0 && this.variable_index >= 0) {
       const v = MODEL.charts[this.chart_index].variables[this.variable_index];
       if(v.object === MODEL.equations_dataset || v.object instanceof DatasetModifier) {
@@ -1012,7 +1019,7 @@ class GUIChartManager extends ChartManager {
   }
 
   deleteVariable() {
-    // Deletes the selected variable from the chart
+    // Delete the selected variable from the chart.
     if(this.variable_index >= 0) {
       MODEL.charts[this.chart_index].variables.splice(this.variable_index, 1);
       this.variable_index = -1;
@@ -1106,7 +1113,7 @@ class GUIChartManager extends ChartManager {
   
   stretchChart(delta) {
     this.stretch_factor = Math.max(1, Math.min(10, this.stretch_factor + delta));
-    // NOTE: do not use 'auto', as this produces poor results
+    // NOTE: Do not use 'auto', as this produces poor results.
     document.getElementById('chart-svg-scroller').style.overflowX =
         (this.stretch_factor === 1 ? 'hidden' : 'scroll');
     const csc = document.getElementById('chart-svg-container');
@@ -1157,7 +1164,7 @@ class GUIChartManager extends ChartManager {
   }
   
   downloadChart(shift) {
-    // Pushe the SVG of the selected chart as file to the browser.
+    // Push the SVG of the selected chart as file to the browser.
     if(this.chart_index >= 0) {
       const
           chart = MODEL.charts[this.chart_index],
@@ -1185,7 +1192,7 @@ class GUIChartManager extends ChartManager {
   }
   
   actuallyDrawChart() {
-    // Draw the chart, and reset the cursor when done
+    // Draw the chart, and reset the cursor when done.
     MODEL.charts[this.chart_index].draw();
     this.drawing_chart = false;
     this.drawTable();

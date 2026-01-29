@@ -10698,7 +10698,7 @@ class Chart {
       }
     }
 
-    // NOTE: chart may display experiment run results, rather than MODEL results
+    // NOTE: Chart may display experiment run results, rather than MODEL results.
     let runnrs = '';
     const runs = EXPERIMENT_MANAGER.selectedRuns(this);
     if(runs.length > 0) {
@@ -10739,6 +10739,8 @@ class Chart {
               const rri = selx.resultIndex(v.displayName);
               let bv;
               if(rri >= 0) {
+                // When run results are available, use their already
+                // computed statisitics.
                 const
                     r = selx.runs[this.run_index],
                     rr = r.results[rri];
@@ -10767,7 +10769,9 @@ class Chart {
                 minv = Math.min(minv, bv);
                 maxv = Math.max(maxv, bv);
               }
+              // ... otherwise, do not add data for the bar chart.
             } else {
+              // Regular line chart => compute vector for this run.
               v.computeVector();
               minv = Math.min(minv, v.lowestValueInVector);
               maxv = Math.max(maxv, v.highestValueInVector);
@@ -10776,6 +10780,7 @@ class Chart {
           // Reset to prevent using experiment outcomes when this is not intended.
           this.run_index = -1;
         } else {
+          // No experiment runs selected => compute vector as usual.
           this.run_index = -1;
           v.computeVector();
           minv = Math.min(minv, v.lowestValueInVector);
@@ -10787,6 +10792,7 @@ class Chart {
     // Now all vectors have been computed. If `display` is FALSE, this
     // indicates that data is used only to save model results.
     if(!display) return;
+
     // Define the bins when drawing as histogram.
     if(this.histogram) {
       this.value_range = maxv - minv;
