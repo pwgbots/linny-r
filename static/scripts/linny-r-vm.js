@@ -2304,7 +2304,7 @@ class VirtualMachine {
     // for the numerical stability. Meanwhile, the slack variables themselves
     // will have values 1/sm times the actual slack, so this needs to be
     // scaled back in solver messages.
-    this.SLACK_MULTIPLIER = 0.01;
+    this.SLACK_MULTIPLIER = 1;
     // The "epsilon multiplier" divides the ON/OFF threshold over the POS
     // and NEG binaries and the EPS slack variable to avoid high coefficients.
     this.EPSILON_MULTIPLIER = 1 / Math.sqrt(this.ON_OFF_THRESHOLD);
@@ -3622,6 +3622,7 @@ class VirtualMachine {
     // However, Linny-R does not prohibit negative bounds on processes, nor
     // negative rates on links. To be consistently permissive, cash IN and
     // cash OUT of all actors are both allowed to become negative.
+    /*
     for(const k of actor_keys) {
       const a = MODEL.actors[k];
       // NOTE: Add fourth parameter TRUE to signal that the SOLVER's
@@ -3635,7 +3636,7 @@ class VirtualMachine {
               VM.MINUS_INFINITY, VM.PLUS_INFINITY, true]]
       );
     }
-
+    */
     // NEXT: Define the bounds for all production level variables.
     // NOTE: The VM instructions check dynamically whether the variable
     // index is listed as "fixed" for the round that is being solved.
@@ -3669,7 +3670,7 @@ class VirtualMachine {
       if(rf != 0) {
         // Note: 32-bit integer `b` is used for bit-wise AND
         let b = 1;
-        for(j = 0; j < MODEL.rounds; j++) {
+        for(let j = 0; j < MODEL.rounds; j++) {
           if((rf & b) != 0) {
             this.fixed_var_indices[j][p.level_var_index] = true;
             // @@ TO DO: fixate associated binary variables if applicable!
@@ -4180,8 +4181,9 @@ class VirtualMachine {
        
        (a) L = POSL - NEGL
        
-       This "partitions" the level in two components. The following constraints
-       ensure a (functionally) unique partitioning:
+       This "partitions" the level in two components.
+       
+       The following constraints ensure a (functionally) unique partitioning:
        
        (b) NEGL - M*NEG <= 0  (so NEG=1 if NEGL > 0)
        (c) POSL - M*POS <= 0  (so POS=1 if POSL > 0)
@@ -4872,14 +4874,31 @@ class VirtualMachine {
             pl = this.keepException(pl, pl / count);
           }
         } else if(l.multiplier === VM.LM_THROUGHPUT) {
-          // NOTE: calculate throughput on basis of levels and rates,
-          // as not all actual flows may have been computed yet
+          // NOTE: Calculate throughput on basis of *process* levels and rates,
+          // as not all actual flows may have been computed yet.
           pl = 0;
-          for(const ll of p.inputs) {
+          for(const ll of p.inputs) if(ll.from_node instanceof Process) {
             const
-                ipl = ll.from_node.actualLevel(bt),
-                rr =  ll.relative_rate.result(bt); 
-            pl = this.severestIssue([pl, ipl, rr], pl + ipl * rr);
+                lld = ll.actualDelay(b),
+                ipl = ll.from_node.actualLevel(bt - lld),
+                rr =  ll.relative_rate.result(bt - lld),
+                flow = ipl * rr;
+            // NOTE: Only consider INflows, so flow must be > 0.
+            if(flow > 0) { 
+              pl = this.severestIssue([pl, ipl, rr], pl + flow);
+            }
+          }
+          // NOTE: Again, only consider processes.
+          for(const ll of p.outputs) if(ll.to_node instanceof Process) {
+            const
+                // NOTE: Links TO a process cannot have a delay.
+                opl = ll.to_node.actualLevel(bt),
+                rr =  ll.relative_rate.result(bt),
+                flow = opl * rr;
+            // NOTE: Only consider INflows, so now flow must be < 0.
+            if(flow < 0) {
+              pl = this.severestIssue([pl, opl, rr], pl - flow);
+            }
           }
         } else if(l.multiplier === VM.LM_PEAK_INC) {
           // Actual flow over "peak increase" link is zero unless...
@@ -5461,8 +5480,8 @@ class VirtualMachine {
         v,
         line = '';
     // NOTE: Iterate over ALL columns to maintain variable order.
-    let n = abl * this.cols + this.chunk_variables.length;
-    for(p = 1; p <= n; p++) {
+    let ncols = abl * this.cols + this.chunk_variables.length;
+    for(p = 1; p <= ncols; p++) {
       if(this.objective.hasOwnProperty(p)) {
         c = this.objective[p];
         // Check for numeric issues.
@@ -5486,8 +5505,8 @@ class VirtualMachine {
     } else {
       this.lines += '\n/* Constraints */\n';
     }
-    n = this.matrix.length;
-    for(let r = 0; r < n; r++) {
+    let nrows = this.matrix.length;
+    for(let r = 0; r < nrows; r++) {
       const row = this.matrix[r];
       if(named_constraints) line = `C${r + 1}: `;
       for(p in row) if (row.hasOwnProperty(p)) {
@@ -5521,8 +5540,7 @@ class VirtualMachine {
     } else {
       this.lines += '\n/* Variable bounds */\n';
     }
-    n = abl * this.cols;
-    for(p = 1; p <= n; p++) {
+    for(p = 1; p <= ncols; p++) {
       let lb = null,
           ub = null;
       if(this.lower_bounds.hasOwnProperty(p)) {
@@ -5658,7 +5676,7 @@ class VirtualMachine {
       for(let i in this.is_semi_continuous) if(Number(i)) v_set.push(vbl(i));
       if(v_set.length > 0) this.lines += 'sec ' + v_set.join(', ') + ';\n';
       // LP_solve supports SOS, so add the SOS section if needed.
-      if(this.nzp_var_indices.length ||this.sos_var_indices.length) {
+      if(this.nzp_var_indices.length || this.sos_var_indices.length) {
         this.lines += 'sos\n';
         for(let j = 0; j < abl; j++) {
           // First add the SOS1 constraints for NZP-partitioned levels.
@@ -6149,11 +6167,11 @@ Solver status = ${json.status}`);
     // Generate lines of code in format that should be accepted by solver.
     if(this.solver_id === 'gurobi') {
       this.writeLpFormat(true);
-    } else if(this.solver_id === 'mosek') {
+    } else if(this.solver_id === 'mosek' || this.solver_id === 'scip') {
       // NOTE: For MOSEK, constraints must be named, or variable names
-      // in solution file will not match.
+      // in solution file will not match. SCIP works, but generates warnings.
       this.writeLpFormat(true, true);
-    } else if(this.solver_id === 'cplex' || this.solver_id === 'scip') {
+    } else if(this.solver_id === 'cplex') {
       // NOTE: The more widely accepted CPLEX LP format differs from the
       // LP_solve format that was used by the first versions of Linny-R.
       // TRUE indicates "CPLEX format".
@@ -8329,7 +8347,7 @@ function VMI_set_bounds(args) {
       l = args[1];
       u = args[2];
       if(u instanceof Expression) u = u.result(VM.t);
-      if(u === VM.UNDEFINED) {
+      if(u === VM.UNDEFINED || u === VM.DIAGNOSIS_UPPER_BOUND) {
         u = inf_val;
       } else {
         u = Math.min(u, inf_val);
@@ -8340,6 +8358,8 @@ function VMI_set_bounds(args) {
         if(l instanceof Expression) l = l.result(VM.t);
         if(l === VM.UNDEFINED || !l) {
           l = 0;
+        } else if(l === -VM.DIAGNOSIS_UPPER_BOUND) {
+          l = -inf_val;
         } else {
           l = Math.max(l, -inf_val);
         }
@@ -8407,7 +8427,7 @@ function VMI_set_bounds(args) {
             cvi = VM.chunk_offset + p.peak_inc_var_index,
             // Check if peak UB already set for previous t
             piub = VM.upper_bounds[cvi];
-        // If so, use the highest value
+        // If so, use the highest value.
         if(piub) u = Math.max(piub, u);
         VM.upper_bounds[cvi] = u;
         VM.upper_bounds[cvi + 1] = u;
@@ -9123,7 +9143,10 @@ function VMI_set_objective() {
     for(let i = 0; i < VM.chunk_variables.length; i++) {
       const vn = VM.chunk_variables[i][0]; 
       if(vn.indexOf('peak') > 0) {
-        const pvp = VM.PEAK_VAR_PENALTY / VM.cash_scalar;
+        // NOTE: When prices in model are low, the cash scalar is small
+        // and then a peak variable penalty of 0.1 currency unit will
+        // significantly impact the tipping point for investment choices
+        const pvp = VM.PEAK_VAR_PENALTY / Math.max(VM.cash_scalar, 2000);
         // NOTE: Chunk offset takes into account that indices are 0-based.
         VM.objective[VM.chunk_offset + i] = -pvp;
         // Put higher penalty on "block peak" than on "look-ahead peak"
@@ -9210,7 +9233,7 @@ function VMI_add_semicontinuous_constraints(p) {
       // level - UB*binary <= 0
       row = {};
       row[l_index] = 1;
-      row[lb_index] = -ub;
+      row[lb_index] = -ub - 1;
       VM.matrix.push(row);
       VM.right_hand_side.push(0);
       VM.constraint_types.push(VM.LE);
@@ -9227,11 +9250,26 @@ function VMI_add_NZP_continuous_constraints(p) {
     console.log('add_NZP_continuous_constraints (t = ' + VM.t + ')');
   }
   if(!p || p.posl_var_index < 0) throw 'ANOMALY: No NZP variable indices';
-  const row = {};
-  // (a) L + NEGL - POSL = 0  (so POSL - NEGL = L).
-  row[VM.offset + p.level_var_index] = 1;
-  row[VM.offset + p.negl_var_index] = 1;
-  row[VM.offset + p.posl_var_index] = -1;
+  let row = {};
+  if(p.level_to_zero) {
+    // For semi-continuous processes, the level is always >= 0.
+    // To prevent issues with binaries, set POSL = L and NEGL = 0 to rule out
+    // the possibility of NEGL being used to compensate for a positive epsilon.
+    // (a1) L - POSL = 0.
+    row[VM.offset + p.level_var_index] = 1;
+    row[VM.offset + p.posl_var_index] = -1;
+    VM.matrix.push(row);
+    VM.right_hand_side.push(0);
+    VM.constraint_types.push(VM.EQ);
+    row = {};
+    // (a2) NEGL = 0.
+    row[VM.offset + p.negl_var_index] = 1;
+  } else {
+    // (a) L + NEGL - POSL = 0  (so POSL - NEGL = L).
+    row[VM.offset + p.level_var_index] = 1;
+    row[VM.offset + p.negl_var_index] = 1;
+    row[VM.offset + p.posl_var_index] = -1;
+  }
   VM.matrix.push(row);
   VM.right_hand_side.push(0);
   VM.constraint_types.push(VM.EQ);
@@ -9291,14 +9329,17 @@ function VMI_add_NZP_binary_constraints(p) {
   row[pos_index] = VM.EPSILON_MULTIPLIER * VM.ON_OFF_THRESHOLD;
   row[posl_index] = -VM.EPSILON_MULTIPLIER;
   // Provide slack so the constraint can always be met, but at a significant cost.
-  row[eps_index] = -VM.SLACK_MULTIPLIER / VM.EPSILON_MULTIPLIER;
+  // NOTE: Do *NOT* do this for semi-continuous processes.
+  if(!p.level_to_zero) {
+    row[eps_index] = -VM.SLACK_MULTIPLIER / VM.EPSILON_MULTIPLIER;
+  }
   VM.matrix.push(row);
   VM.right_hand_side.push(0);
   VM.constraint_types.push(VM.LE);
   // NOTE: This VMI is added when LB *may* become negative, so check
   // whether now (at run time) LB >= 0, as then NZP partitioning is
   // trivial and need not be done by the solver.
-  if(lb >= 0) {
+  if(lb >= 0 || p.level_to_zero) {
     // If L >= 0, NEG must be 0.
     row = {};
     row[neg_index] = 1;
@@ -9748,7 +9789,7 @@ function VMI_add_throughput_to_coefficients(link) {
     // Skip link when it has rate = 0.
     if(r2 === 0) continue;
     // By default, use the FROM node's level...
-    let vi = (lfn.is_zero_var_index < 0 ? lfn.level_var_index :
+    let vi = (lfn.posl_var_index < 0 ? lfn.level_var_index :
         // ... but differentiate when this level is NZP-partitioned.
         // Then use positive level component when rate > 0, and negative
         // level component when rate < 0, so throughput flow is always >= 0.
@@ -9807,7 +9848,7 @@ function VMI_add_throughput_to_coefficients(link) {
     if(r2 === 0) continue;
     // Also skip when level is not NZP-partitioned, as then an output-link
     // cannot contribute to the *inflow* of the process being "read".
-    if(ltn.is_zero_var_index < 0) continue;
+    if(ltn.posl_var_index < 0) continue;
     // Now use the negative level component when rate > 0, and positive
     // level component when rate < 0, so throughput flow is always >= 0.
     const

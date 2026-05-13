@@ -1026,7 +1026,8 @@ class GUIChartManager extends ChartManager {
       this.updateDialog();
       // Also update the experiment viewer (charts define the output variables)
       // and finder dialog.
-      if(EXPERIMENT_MANAGER.selected_experiment) UI.updateControllerDialogs('FX');
+      if(EXPERIMENT_MANAGER.selected_experiment) EXPERIMENT_MANAGER.updateDialog();
+      FINDER.updateDialog();
     }
     this.variable_modal.hide();
   }

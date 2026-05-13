@@ -104,30 +104,25 @@ module.exports = class MILPSolver {
     const
         windows = os.platform().startsWith('win'),
         path_list = process.env.PATH.split(path.delimiter);
-    // Iterate over all seprate paths in environment variable PATH. 
+    // Iterate over all separate paths in environment variable PATH.
+    // NOTE: gurobi_cl.exe version 12 and higher appears not to exit cleanly
+    // for some models (not clear when), so keep track of all Gurobi paths.
+    let gsp = {};
     for(const p of path_list) {
       // Assume that path is not a solver path.
       sp = '';
       // Check whether it is a Gurobi path.
       match = p.match(/gurobi(\d+)/i);
-      if(match) sp = p;
-      // If so, ensure that it has a higher version number.
-      // NOTE: gurobi_cl.exe version 12 and higher appears not to exit cleanly for
-      // some models (not clear when). To force using version 11 (if installed),
-      // remove "true ||" from line below.
-      const version_OK = true || !(match[1].startsWith('12') || match[1].startsWith('13'));
-      if(sp && parseInt(match[1]) > max_vn && version_OK) {
+      if(match) {
         // Check whether command line version is executable.
-        sp = path.join(sp, 'gurobi_cl' + (windows ? '.exe' : ''));
+        sp = path.join(p, 'gurobi_cl' + (windows ? '.exe' : ''));
         try {
           fs.accessSync(sp, fs.constants.X_OK);
-          console.log('Path to Gurobi:', sp);
-          this.solver_list.gurobi = {name: 'Gurobi', path: sp};
-          max_vn = parseInt(match[1]);
+          gsp[match[1]] = p;
         } catch(err) {
           console.log(err.message);
           console.log(
-              'WARNING: Failed to access the Gurobi command line application');
+              'WARNING: Failed to access the Gurobi command line application', sp);
         }
       }
       if(sp) continue;
@@ -190,6 +185,22 @@ module.exports = class MILPSolver {
         }
       }
       // NOTE: Order of paths is unknown, so keep iterating.
+    }
+    // Only now set the Gurobi path. To force using a version < 12 (if installed),
+    // set before_12 to TRUE.
+    const
+        before_12 = false,
+        gsp_keys = Object.keys(gsp).sort();
+    while(gsp_keys.length) {
+      const
+          k = gsp_keys.pop(),
+          version = Math.trunc(parseInt(k) / 100);
+      if(version < 12 || !before_12) {
+        this.solver_list.gurobi = {name: 'Gurobi',
+            path: path.join(gsp[k], 'gurobi_cl')};
+        console.log('Path to Gurobi:', this.solver_list.gurobi.path);
+        break;
+      }
     }
     // For macOS, look in applications directory if not found in PATH.
     if(!this.solver_list.gurobi && !windows) {

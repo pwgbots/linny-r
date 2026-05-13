@@ -2701,6 +2701,8 @@ class LinnyRModel {
         UNDO_STACK.addXML(a.asXML);
         this.removeImport(a);
         this.removeExport(a);
+        // Ensure that chart variables referencing this actor are removed.
+        this.removeActorChartVariables(a);
         delete this.actors[k];
       }
     }
@@ -2823,6 +2825,49 @@ class LinnyRModel {
     }
     return xl;
   }
+  
+  updateChartVariables(e) {
+    // Ensure that all chart variable names based on entity `e` will be
+    // displayed correctly the next time they are drawn.
+console.log('HERE e', e.displayName);
+    const sc = this.charts[CHART_MANAGER.chart_index];
+    let ucm = false;
+    for(const c of this.charts) {
+      for(const v of c.variables) {
+        console.log('HERE v', v.displayName);
+        if(v.object === e) {
+          v.display_name = '';
+          console.log('HERE v new', v.displayName);
+          ucm = ucm || c === sc;
+        }
+      }
+    }
+    if(ucm) CHART_MANAGER.updateDialog();
+  }
+
+  removeActorChartVariables(a) {
+    // Ensure that all chart variable names based on entity `e` or actor `a`
+    // will be displayed correctly the next time they are drawn.
+    const sc = this.charts[CHART_MANAGER.chart_index];
+    let ucm = false;
+    for(const c of this.charts) {
+      for(let vi = 0; vi < c.variables.length; vi++) {
+        if(c.variables[vi].object === a) {
+          c.variables.splice(vi, 1);
+          if(c === sc) {
+            ucm = true;
+            if(CHART_MANAGER.variable_index === vi) {
+              CHART_MANAGER.variable_index = -1;
+            }
+          }
+        }
+      }
+    }
+    // Update stay-on-top dialogs (if needed).
+    if(ucm) CHART_MANAGER.updateDialog();
+    if(EXPERIMENT_MANAGER.selected_experiment) EXPERIMENT_MANAGER.updateDialog();
+    FINDER.updateDialog();
+  }
 
   replaceEntityInExpressions(en1, en2, notify=true) {
     // Replace entity name `en1` by `en2` in all variables in all expressions
@@ -2853,12 +2898,6 @@ class LinnyRModel {
           pluralS(ioc.expression_count, 'expression');
       if(notify) UI.notify('Renamed ' + replace_msg);
     }
-    // Clear display name cache of potentially affected chart variables.
-    for(const c of this.charts) {
-      for(const v of c.variables) {
-        if(v.display_name.indexOf(en1) >= 0) v.display_name = '';
-      }
-    }    
     // Rename entities in parameters and outcomes of sensitivity analysis.
     for(let i = 0; i < this.sensitivity_parameters.length; i++) {
       const sp = this.sensitivity_parameters[i].split('|');
@@ -5181,6 +5220,8 @@ class Actor {
     MODEL.actors[a.identifier] = this;
     // Remove the old entry.
     delete MODEL.actors[old_id];
+    // Ensure that cached variable names are updated.
+    MODEL.updateChartVariables(this);
     MODEL.replaceEntityInExpressions(old_name, this.name);
     MODEL.inferIgnoredEntities();
   }
@@ -6042,6 +6083,8 @@ class NodeBox extends ObjectWithXYWH {
     }
     // Update actor list in case some actor name is no longer used.
     MODEL.cleanUpActors();
+    // Ensure that cached variable names are updated.
+    MODEL.updateChartVariables(this);
     // Update expression texts.
     MODEL.replaceEntityInExpressions(old_name, this.displayName);
     // NOTE: Renaming changes identifier that is used as index in
@@ -9747,6 +9790,8 @@ class Dataset {
     this.name = name;
     MODEL.datasets[new_id] = this;
     if(old_id !== new_id) delete MODEL.datasets[old_id];
+    // Ensure that cached variable names are updated.
+    MODEL.updateChartVariables(this);
     MODEL.replaceEntityInExpressions(old_name, name, notify);
     return MODEL.datasets[new_id];
   }

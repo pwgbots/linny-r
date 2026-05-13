@@ -554,7 +554,7 @@ class Finder {
         stack = UI.boxChecked('confirm-add-chart-variables-stacked'),
         equations = this.entities[0] instanceof DatasetModifier,
         enl = [];
-    for(const e of this.entities) enl.push(equations ? e.selector : e.name);
+    for(const e of this.entities) enl.push(equations ? e.selector : e.displayName);
     enl.sort((a, b) => UI.compareFullNames(a, b, true));
     for(const en of enl) {
       let vi = null;
