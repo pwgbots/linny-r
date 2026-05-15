@@ -173,9 +173,6 @@ class Expression {
     this.wildcard_vectors = {};
     this.wildcard_vector_index = false;
     this.method_object_list.length = 0;
-    if(!isEmpty(this.cache)) {
-      console.log('HERE Clearing cache', this.text, '\n', Object.keys(this.cache));
-    }
     this.cache = {};
     this.compile(); // if(!this.compiled)  REMOVED to ensure correct isStatic!! 
     // Static expressions only need a vector with one element (having index 0)
@@ -1223,26 +1220,24 @@ class ExpressionParser {
       if(!anchor1) anchor1 = 't';
       if(!anchor2) anchor2 = 't';
     }
-    // First handle this special case: no name or attribute. This is valid
-    // only for dataset modifier expressions (and hence also equations).
-    // Variables like [@t-1] are interpreted as a self-reference. This is
-    // meaningful when a *negative* offset is specified to denote "use the
-    // value of this expression for some earlier time step".
-    // NOTES:
-    // (1) This makes the expression dynamic.
-    // (2) It does not apply to array-type datasets, as these have no
-    //     time dimension.
-    if(!name && !attr && this.dataset && !this.dataset.array) {
+    // First handle this special case: an equation self-reference.
+    // Variables like [@t-1] are interpreted as an implicit self-reference.
+    // Self-references are meaningful when a *negative* offset is specified
+    // to denote "use the value of this expression for some earlier time step".
+    // NOTE: This makes the expression dynamic.
+    if(!attr && this.dataset === MODEL.equations_dataset &&
+        (!name || UI.nameToID(name) === UI.nameToID(this.attribute))) {
       this.is_static = false;
       this.log('dynamic because of self-reference');
-      if(('cips'.indexOf(anchor1) >= 0 || anchor1 === 't' && offset1 < 0) &&
-          ('cips'.indexOf(anchor2) >= 0 ||anchor2 === 't' && offset2 < 0)) {
+      if(('cfps'.indexOf(anchor1) >= 0 || anchor1 === 't' && offset1 < 0) &&
+          ('cfps'.indexOf(anchor2) >= 0 ||anchor2 === 't' && offset2 < 0)) {
         if(this.TRACE) console.log('TRACE: Variable is a self-reference.');
         // The `xv` attribute will be recognized by VMI_push_var to denote
         // "use the vector of the expression for which this VMI is code".
-        return [{xv: true, dv: this.dataset.defaultValue},
+        return [{xv: true, dv: VM.UNDEFINED},
             anchor1, offset1, anchor2, offset2];
       }
+      // Fall-through: invalid offset => warning.
       msg = 'Expression can reference only previous values of itself';
     }
     // A leading "!" denotes: pass variable reference instead of its value.
@@ -1531,8 +1526,12 @@ class ExpressionParser {
       let sel = '',
           xtype = '';
       if(obj instanceof DatasetModifier) {
-        sel = obj.selector;
-        xtype = 'Equation';
+        if(attr) {
+          msg = 'Equations have no attributes';
+        } else {
+          sel = obj.selector;
+          xtype = 'Equation';
+        }
       } else if(obj instanceof Dataset) {
         sel = attr;
         xtype = 'Dataset modifier expression';
@@ -3394,7 +3393,7 @@ class VirtualMachine {
       // If not a sink, UB is set to 0.
       if(notsnk) u = 0;
     }
-    
+
     // NOTE: Stock constraints must take into account extra inflows
     // (source) or outflows (sink).
     // Check for special case of equal bounds, as then one EQ constraint
@@ -3434,7 +3433,7 @@ class VirtualMachine {
         this.code.push(
           [l instanceof Expression? VMI_set_var_rhs : VMI_set_const_rhs, l],
           [VMI_add_constraint, VM.GE]
-        );          
+        );
       }
       // Add upper bound (LE) constraint unless product is a sink node
       if(notsnk) {
@@ -3448,7 +3447,7 @@ class VirtualMachine {
         this.code.push(
           [u instanceof Expression ? VMI_set_var_rhs : VMI_set_const_rhs, u],
           [VMI_add_constraint, VM.LE]
-        );          
+        );
       }
     }
   }
@@ -5079,7 +5078,7 @@ class VirtualMachine {
         MODEL.calculateCostPrices(b);
       }
     }
-
+/*
     // THEN: Reset all datasets that are outcomes or serve as "formulas".
     for(let k in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(k)) {
       const ds = MODEL.datasets[k];
@@ -5092,7 +5091,7 @@ class VirtualMachine {
         }
       }
     }
-
+*/
     // THEN: Reset the vectors of all chart variables.
     for(const c of MODEL.charts) c.resetVectors();
     
@@ -6743,7 +6742,12 @@ function VMI_push_var(x, args) {
     x.push(v);
   } else if(xv) {
     // Variable references an earlier value computed for this expression `x`.
-    x.push(t >= 0 && t < x.vector.length ? x.vector[t] : obj.dv);
+    // NOTE: When this value has NOT been computed yet, use the specified default.
+    if(t >= 0 && t < x.vector.length && x.vector[t] !== VM.NOT_COMPUTED) {
+      x.push(x.vector[t]);
+    } else {
+      x.push(obj.dv);
+    }
   } else if(obj.hasOwnProperty('c') && obj.hasOwnProperty('u')) {
     // Object holds link lists for cluster balance computation.
     x.push(MODEL.flowBalance(obj, t));
@@ -9179,15 +9183,14 @@ function VMI_add_constraint(ct) {
   for(let i in VM.coefficients) if(Number(i)) {
     // Do not add (near)zero coefficients to the matrix.
     const c = VM.coefficients[i];
-    if(Math.abs(c) >= VM.NEAR_ZERO) {
-      row[i] = c;
-    }
+    if(Math.abs(c) >= VM.NEAR_ZERO) row[i] = c;
   }
   // Special case: 
   if(ct === VM.ACTOR_CASH) {
     VM.actor_cash_constraints.push(VM.matrix.length);
     ct = VM.EQ;
   }
+
   let rhs = VM.rhs;
   // Check for <= (near) +infinity and >= (near) -infinity: such
   // constraints should not be added to the model.

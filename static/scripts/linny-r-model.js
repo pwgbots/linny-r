@@ -2829,15 +2829,12 @@ class LinnyRModel {
   updateChartVariables(e) {
     // Ensure that all chart variable names based on entity `e` will be
     // displayed correctly the next time they are drawn.
-console.log('HERE e', e.displayName);
     const sc = this.charts[CHART_MANAGER.chart_index];
     let ucm = false;
     for(const c of this.charts) {
       for(const v of c.variables) {
-        console.log('HERE v', v.displayName);
         if(v.object === e) {
           v.display_name = '';
-          console.log('HERE v new', v.displayName);
           ucm = ucm || c === sc;
         }
       }

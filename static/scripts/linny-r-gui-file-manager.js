@@ -314,10 +314,10 @@ class GUIFileManager {
       const mi = this.model_index;
       if(mi >= 0) {
         path += this.separator;
-        if(mi < sd.sdcount) {
+        if(mi < this.sd_count) {
           path += sd.subdirs[mi].name;
         } else {
-          path += sd.models[mi - sd.sdcount].name + '.lnr';
+          path += sd.models[mi - this.sd_count].name + '.lnr';
           this.new_window_btn.title =
               'Open selected model in new Linny-R tab in browser';
         }
@@ -1260,7 +1260,7 @@ class GUIFileManager {
       const
           mi = this.model_index,
           sd = this.selected_dir;
-      if(mi >= sd.sdcount) {
+      if(mi >= this.sd_count) {
         const mdl = sd.models[mi - this.sd_count];
         if(mdl) {
           window.localStorage.setItem('linny-r-model-file',
