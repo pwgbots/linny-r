@@ -8379,7 +8379,7 @@ function VMI_set_bounds(args) {
       VM.variables[vi - 1][0],'] t = ', VM.t, ' LB = ', VM.sig4Dig(l),
       ', UB = ', VM.sig4Dig(u), fixed].join(''), l, u, inf_val, 'args:', args);
     console.log(p);
-    throw "STOP";
+    if(!DEBUGGING) throw "STOP";
   } else if(u < l) {
     // Check the difference, as this may be negligible.
     if(u - l < VM.SIG_DIF_FROM_ZERO) {
@@ -9079,6 +9079,8 @@ function VMI_update_grid_process_cash_coefficients(p) {
   // VMI_update_cash_coefficient).
   let fn = null,
       tn = null;
+  // NOTE: Grid processes are assumed to connect exactly *two* products by
+  // regular links, so it suffices to find the *first* ingoing...
   for(const l of p.inputs) {
     if(l.multiplier === VM.LM_LEVEL &&
         !MODEL.ignored_entities[l.identifier]) {
@@ -9086,6 +9088,7 @@ function VMI_update_grid_process_cash_coefficients(p) {
       break;
     }
   }
+  // ... and the first outgoing regular link.
   for(const l of p.outputs) {
     if(l.multiplier === VM.LM_LEVEL &&
         !MODEL.ignored_entities[l.identifier]) {
@@ -9096,7 +9099,7 @@ function VMI_update_grid_process_cash_coefficients(p) {
   const
       fp = (fn && fn.price.defined ? fn.price.result(VM.t) : 0),
       tp = (tn && tn.price.defined ? tn.price.result(VM.t) : 0);
-  // Only proceed if process links to a product with a non-zero price.
+  // Only proceed if process links to at least one product with a non-zero price.
   if(fp || tp) {
     const
         gpv = VM.gridProcessVarIndices(p, VM.offset),
@@ -9105,30 +9108,30 @@ function VMI_update_grid_process_cash_coefficients(p) {
       // If FROM node has price > 0, then all UP flows generate cash OUT
       // *without* loss while all DOWN flows generate cash IN *with* loss.
       for(let i = 0; i < gpv.slopes; i++) {
-        addCashOut(gpv.up[i], -fp);
-        addCashIn(gpv.down[i], (1 - lr[i]) * -fp);
+        addCashOut(gpv.up[i], fp);
+        addCashIn(gpv.down[i], (1 - lr[i]) * fp);
       }
     } else if(fp < 0) {
       // If FROM node has price < 0, then all UP flows generate cash IN
       // *without* loss while all DOWN flows generate cash OUT *with* loss.
       for(let i = 0; i < gpv.slopes; i++) {
-        addCashIn(gpv.up[i], fp);
-        addCashOut(gpv.down[i], (1 - lr[i]) * fp);
+        addCashIn(gpv.up[i], -fp);
+        addCashOut(gpv.down[i], (1 - lr[i]) * -fp);
       }
     }
     if(tp > 0) {    
       // If TO node has price > 0, then all UP flows generate cash IN *with*
       // loss while all DOWN flows generate cash OUT *without* loss.
       for(let i = 0; i < gpv.slopes; i++) {
-        addCashIn(gpv.up[i], (1 - lr[i]) * -tp);
-        addCashOut(gpv.down[i], -tp);
+        addCashIn(gpv.up[i], (1 - lr[i]) * tp);
+        addCashOut(gpv.down[i], tp);
       }
     } else if(tp < 0) {
       // If TO node has price < 0, then all UP flows generate cash OUT
       // *with* loss while all DOWN flows generate cash IN *without* loss.
       for(let i = 0; i < gpv.slopes; i++) {
-        addCashOut(gpv.up[i], (1 - lr[i]) * tp);
-        addCashIn(gpv.down[i], tp);
+        addCashOut(gpv.up[i], (1 - lr[i]) * -tp);
+        addCashIn(gpv.down[i], -tp);
       }
     }
   }

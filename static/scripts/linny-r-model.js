@@ -1102,6 +1102,8 @@ class LinnyRModel {
   canLink(from, to) {
     // Return TRUE iff FROM-node can feature a "straight" link (i.e., a
     // product flow) to TO-node.
+    // FROM and TO *must* be different nodes.
+    if(from === to) return false;
     if(from.type === to.type) {
       // No "straight" link between nodes of same type (see canConstrain
       // for "curved" links) UNLESS TO-node is a data product.
@@ -1133,6 +1135,37 @@ class LinnyRModel {
     // Return the number of time steps to by computed for a simulation.
     // NOTE: This includes a final lookahead period.
     return this.end_period - this.start_period + 1 + this.look_ahead;
+  }
+  
+  revealOrphans() {
+    // Find all products that are *not* positioned in some cluster,
+    // position them in the focal cluster, and notify the user.
+    const orphans = [];
+    for(const k in this.products) if(this.products.hasOwnProperty(k)) {
+      const p = this.products[k];
+      if(p.isOrphan) orphans.push(p);
+    }
+    if(orphans.length) {
+      let x = 100,
+          y = 70,
+          n = 0;
+      const fc = this.focal_cluster;
+      for(const p of orphans) {
+        const pp = fc.addProductPosition(p, x, y);
+        if(pp) {
+          x += 90;
+          y += 45;
+          n++;
+        }
+      }
+      // Prepare focal cluster for redrawing.
+      fc.clearAllProcesses();
+      // Select the added product positions and redraw.
+      this.selectList(orphans);
+      UI.drawDiagram(this);
+      // Finally, notify the modeler.
+      UI.warn(pluralS(n, '"orphaned" product') + ' added to the focal cluster');
+    }
   }
   
   processSelectorList(sl) {
@@ -1675,6 +1708,12 @@ class LinnyRModel {
       if(node) l.initFromXML(node);
       return l;
     }
+    // FROM and TO nodes must be different. The UI should not permit
+    // drawing such nodes, but check nonetheless.
+    if(from === to) {
+      UI.warn(`${from.type} "${from.displayName}" cannot be linked to itself`);
+      return null;
+    }
     l = new Link(from, to);
     if(node) l.initFromXML(node);
     this.links[l.identifier] = l;
@@ -1704,6 +1743,12 @@ class LinnyRModel {
       if(IO_CONTEXT) IO_CONTEXT.supersede(c);
       if(node) c.initFromXML(node);
       return c;
+    }
+    // FROM and TO nodes must be different. The UI should not permit
+    // drawing such nodes, but check nonetheless.
+    if(from === to) {
+      UI.warn(`${from.type} "${from.displayName}" cannot constrain itself`);
+      return null;
     }
     c = new Constraint(from, to);
     if(node) c.initFromXML(node);
@@ -8821,6 +8866,11 @@ class Product extends Node {
       if(c.indexOfProduct(this) >= 0) ppc.push(c);
     }
     return ppc;
+  }
+  
+  get isOrphan() {
+    // Return TRUE if this product has no position in any cluster.
+    return this.productPositionClusters.length <= 0;
   }
   
   get toBeBlackBoxed() {

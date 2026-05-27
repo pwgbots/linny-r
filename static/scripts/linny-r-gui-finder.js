@@ -167,6 +167,8 @@ class Finder {
         enl = [],
         et = this.entity_types,
         fp = this.filter_pattern && this.filter_pattern.length > 0;
+    // Position "orphan" products (if any) in focal cluster and notify modeler.
+    MODEL.revealOrphans();
     let imgs = '';
     this.entities.length = 0;
     this.filtered_types.length = 0;
