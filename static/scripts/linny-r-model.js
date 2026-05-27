@@ -4125,8 +4125,8 @@ class LinnyRModel {
             }
             // All potential inflows known => CP proxy can be calculated.
             if(count === p.inputs.length) {
-              // Also consider output links to products having price < 0.
-              for(const l of p.outputs) {
+              // Also consider regular output links to products having price < 0.
+              for(const l of p.outputs) if(l.multiplier === VM.LM_LEVEL) {
                 // NOTE: Here, a delay may apply.
                 const
                     d = l.actualDelay(t),
