@@ -1480,8 +1480,9 @@ class PowerGridManager {
     // to add constraints that enforce Kirchhoff's voltage law.
     this.nodes = {};
     this.edges = {};
-    this.spanning_tree = [];
     this.tree_incidence = {};
+    this.node_sets = [];
+    this.spanning_edges = [];
     this.cycle_edges = [];
     this.cycle_basis = [];
     this.min_length = 0;
@@ -1599,33 +1600,68 @@ class PowerGridManager {
         grid.join(', ').toLowerCase());
   }
   
-  inferSpanningTree() {
+  nodeSetIndex(n) {
+    // Return index of node set containing `n`, or -1 if no such set exists.
+    for(let i = 0; i < this.node_sets.length; i++) {
+      if(this.node_sets[i][n]) return i;
+    }
+    return -1;    
+  }
+  
+  inferSpanningTrees() {
     // Use Kruksal's algorithm to build spanning tree.
     // NOTE: Tree needs not be minimal, so edges are not sorted.
-    this.spanning_tree.length = 0;
+    this.spanning_edges.length = 0;
     this.cycle_edges.length = 0;
     this.tree_incidence = {};
-    const node_set = {};
+    this.node_sets = [];
     for(let k in this.edges) if(this.edges.hasOwnProperty(k)) {
       const
           edge = this.edges[k],
           efn = edge.from_node,
           etn = edge.to_node,
           kvl = edge.process.grid.kirchhoff,
-          fn_in_tree = node_set.hasOwnProperty(efn),
-          tn_in_tree = node_set.hasOwnProperty(etn);
+          fn_set = this.nodeSetIndex(efn),
+          tn_set = this.nodeSetIndex(etn);
       // Only add edges of grids for which Kirchhoff's voltage law
       // has to be enforced.
       if(kvl) {
-        if(fn_in_tree && tn_in_tree) {
-          // Edge forms a cycle, so add it to the cycle edge list.
-          this.cycle_edges.push(edge);
+        if(fn_set === tn_set) {
+          if(fn_set < 0) {
+            // Edge disconnected from tree => add nodes as a new set.
+            const new_set = {};
+            new_set[efn] = true;
+            new_set[etn] = true;
+            this.node_sets.push(new_set);
+            this.spanning_edges.push(edge);
+          } else {
+            // Edge forms a cycle, so add it to the cycle edge list.
+            this.cycle_edges.push(edge);
+          }
         } else {
-          // Edge is not incident with *two* nodes already in the tree, so
-          // add it to the tree.
-          this.spanning_tree.push(edge);
-          node_set[efn] = true;
-          node_set[etn] = true;
+          // Edge is not incident with *two* nodes in same node set, so
+          // add it to the tree...
+          this.spanning_edges.push(edge);
+          if(fn_set < 0) {
+            // Add FROM node to the TO node set.
+            this.node_sets[tn_set][efn] = true;
+          } else if(tn_set < 0) {
+            // Add TO node to the FROM node set.
+            this.node_sets[fn_set][etn] = true;
+          } else {
+            // If both nodes are "known" but in diferent sets, then merge
+            // the sets into the one having the lowest index...
+            let
+                target = fn_set,
+                other = tn_set;
+            if(fn_set > tn_set) {
+              target = tn_set;
+              other = fn_set;
+            }
+            Object.assign(this.node_sets[target], this.node_sets[other]);
+            // ...  and delete the other set.
+            this.node_sets.splice(other, 1);
+          }
         }
         const ti = this.tree_incidence;
         // Always record that both its nodes are incident with it.
@@ -1643,19 +1679,27 @@ class PowerGridManager {
     }
   }
   
-  pathInSpanningTree(fn, tn, path) {
+  pathInSpanningTree(fn, tn, path, eop) {
     // Recursively constructs `path` as the list of edges forming the path
     // from `fn` to `tn` in the spanning tree of this grid.
     // If edge connects path with TO node, `path` is complete.
     if(fn === tn) return true;
+    // Consider all edges that connect with the FROM node.
     for(const e of this.tree_incidence[fn]) {
       // Ignore edges already in the path.
-      if(path.indexOf(e) < 0) {
+      if(eop.indexOf(e) < 0) {
         // NOTE: Edges are directed, but should not be considered as such.
-        const nn = (e.from_node === fn ? e.to_node : e.from_node);
-        path.push(e);
-        if(this.pathInSpanningTree(nn, tn, path)) return true;
+        let nn = e.to_node,
+            sign = 1;
+        if(e.from_node !== fn) {
+          nn = e.from_node;
+          sign = -1;
+        }
+        path.push({process: e.process, orientation: sign});
+        eop.push(e);
+        if(this.pathInSpanningTree(nn, tn, path, eop)) return true;
         path.pop();
+        eop.pop();
       }
     }
     return false;
@@ -1666,28 +1710,19 @@ class PowerGridManager {
     this.cycle_basis.length = 0;
     if(!(MODEL.with_power_flow && MODEL.powerGridsWithKVL.length)) return;
     this.inferNodesAndEdges();
-    this.inferSpanningTree();
+    this.inferSpanningTrees();
     for(const edge of this.cycle_edges) {
-      const path = [];
-      if(this.pathInSpanningTree(edge.from_node, edge.to_node, path)) {
-        // Add flags that indicate whether the edge on the path is reversed.
-        // The closing edge determines the orientation.
-        const cycle = [{process: edge.process, orientation: 1}];
-        let node = edge.to_node;
-        for(let i = path.length - 1; i >= 0; i--) {
-          const
-              pe = path[i],
-              ce = {process: pe.process};
-          if(pe.from_node === node) {
-            ce.orientation = 1;
-            node = pe.to_node;
-          } else {
-            ce.orientation = -1;
-            node = pe.from_node;
-          }
-          cycle.push(ce);
-        }
-        this.cycle_basis.push(cycle);
+      const
+          path = [],
+          // Path cannot include the closing edge.
+          eop = [edge];
+      if(this.pathInSpanningTree(edge.to_node, edge.from_node, path, eop)) {
+        // The closing edge has orientation +1.
+        path.push({process: edge.process, orientation: 1});
+        this.cycle_basis.push(path);
+      } else {
+        // Log that edge did not close a cycle.
+        console.log('ANOMALY: No path for edge', edge);
       }
     }
   }
