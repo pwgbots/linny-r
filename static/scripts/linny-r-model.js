@@ -1772,7 +1772,7 @@ class LinnyRModel {
     if(d && d !== this.equations_dataset) {
       // Preserve name uniqueness.
       if(d instanceof Dataset) {
-        if(IO_CONTEXT && IO_CONTEXT.isBound(name) === 2) {
+        if(IO_CONTEXT && !IO_CONTEXT.updating && IO_CONTEXT.isBound(name) === 2) {
           d.initFromXML(node);
           IO_CONTEXT.supersede(d);
         }
@@ -4662,6 +4662,7 @@ class IOContext {
   constructor(fname='', node=null) {
     // Get the import/export interface of the model to be included.
     this.prefix = '';
+    this.updating = false;
     this.bindings = {};
     // Keep track which entities are superseded by "exports"
     this.superseded = [];
