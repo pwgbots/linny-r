@@ -1002,6 +1002,8 @@ class SensitivityAnalysis {
     const paused = this.resumeButtons();
     if(!paused) {
       this.experiment.time_started = new Date().getTime();
+      // Anchor the time suffix of report file names to the sequence start.
+      this.experiment.report_time = this.experiment.time_started;
       this.experiment.active_combination_index = 0;
       // NOTE: Start with base case run, hence no active parameter yet.
       MODEL.running_experiment = this.experiment;
@@ -1289,14 +1291,21 @@ class ExperimentManager {
         UI.notify(UI.NOTICE.NO_CHARTS);
       }
       if(x.completed && n >= 0) {
-        x.single_run = n; 
+        x.single_run = n;
         x.active_combination_index = n;
+        // NOTE: Do NOT change `time_started` (the experiment metadata keeps
+        // its original sequence start time), but DO set a fresh report time
+        // so that the reports of this re-run get their own time suffix
+        // instead of overwriting the report files of the original experiment.
+        x.report_time = new Date().getTime();
         MODEL.running_experiment = x;
       } else if(!paused) {
         // Clear previous run results (if any) unless resuming.
         x.clearRuns();
         x.inferVariables();
         x.time_started = new Date().getTime();
+        // Anchor the time suffix of report file names to the sequence start.
+        x.report_time = x.time_started;
         x.active_combination_index = 0;
         MODEL.running_experiment = x;
       } else {

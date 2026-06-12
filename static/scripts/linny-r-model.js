@@ -12095,6 +12095,10 @@ class Experiment {
     this.completed = false;
     this.time_started = 0;
     this.time_stopped = 0;
+    // NOTE: `report_time` is runtime-only (not serialized). It anchors the
+    // time suffix of report file names: set on fresh experiment start AND
+    // on single re-runs, while `time_started` records the sequence start.
+    this.report_time = 0;
     this.active_combination_index = -1;
     this.chart_combinations.length = 0;
   }
