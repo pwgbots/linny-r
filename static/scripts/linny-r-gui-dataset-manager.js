@@ -55,6 +55,8 @@ class GUIDatasetManager extends DatasetManager {
         'click', () => DATASET_MANAGER.cloneDataset());
     document.getElementById('ds-load-btn').addEventListener(
         'click', () => DATASET_MANAGER.load_csv_modal.show());
+    document.getElementById('ds-save-csv-btn').addEventListener(
+        'click', () => DATASET_MANAGER.exportDatasetsToCSV());
     this.delete_btn = document.getElementById('ds-delete-btn');
     this.delete_btn.addEventListener(
         'click', () => DATASET_MANAGER.deleteDataset());
@@ -1402,5 +1404,76 @@ class GUIDatasetManager extends DatasetManager {
     this.updateDialog();
     return true;
   }
-  
+
+  allDatasetsAsCSV() {
+    // Return all datasets (except the equations dataset and black-boxed
+    // ones) as a CSV string in exactly the format that `readCSVData`
+    // accepts: row 1 = (quoted) dataset names, row 2 = default values,
+    // rows 3+ = `data` values column-wise (shorter columns padded with
+    // empty cells, which the importer skips). Re-importing this file into
+    // the same model is a structure-preserving round-trip, because
+    // `readCSVData` only updates `default_value` and `data` in place.
+    const
+        // Semicolon separator: auto-detected by `readCSVData`, and never
+        // occurs in display names (which use ': ' as prefix separator).
+        sep = ';',
+        keys = [];
+    for(let k in MODEL.datasets) if(MODEL.datasets.hasOwnProperty(k)) {
+      // Mirror the dialog's filter: skip black-boxed entities and the
+      // equations dataset.
+      if(!k.startsWith(UI.BLACK_BOX) &&
+          MODEL.datasets[k] !== MODEL.equations_dataset) keys.push(k);
+    }
+    // Sort by full name, like the dataset manager list.
+    keys.sort((a, b) => UI.compareFullNames(a, b, true));
+    if(keys.length === 0) return '';
+    // CSV-quote a field: wrap in double quotes, doubling internal quotes.
+    const q = (s) => '"' + String(s).replaceAll('"', '""') + '"';
+    const
+        names = [],
+        defaults = [],
+        ds_list = [];
+    let max_len = 0;
+    for(const k of keys) {
+      const ds = MODEL.datasets[k];
+      ds_list.push(ds);
+      names.push(q(ds.displayName));
+      // NOTE: empty default re-imports as 0 (documented fidelity limit).
+      defaults.push(ds.default_value);
+      max_len = Math.max(max_len, ds.data.length);
+    }
+    const rows = [names.join(sep), defaults.join(sep)];
+    for(let r = 0; r < max_len; r++) {
+      const row = [];
+      for(const ds of ds_list) {
+        row.push(r < ds.data.length ? ds.data[r] : '');
+      }
+      rows.push(row.join(sep));
+    }
+    return rows.join('\n');
+  }
+
+  exportDatasetsToCSV() {
+    // Download all datasets as a single CSV file via the browser, using
+    // the same anchor-blob pattern as `FILE_MANAGER.pushOutSVG`.
+    const csv = this.allDatasetsAsCSV();
+    if(!csv) {
+      UI.notify('No datasets to export');
+      return;
+    }
+    const
+        blob = new Blob([csv], {type: 'text/csv;charset=utf-8'}),
+        e = document.getElementById('csv-saver'),
+        d = new Date(),
+        p2 = (n) => n.toString().padStart(2, '0'),
+        ymd = [d.getFullYear(), p2(d.getMonth() + 1), p2(d.getDate())].join('-'),
+        hms = p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()),
+        stamp = ymd + '-' + hms;
+    e.download = (FILE_MANAGER.asFilePath(MODEL.name, true) || 'model') +
+        '-datasets_export_' + stamp + '.csv';
+    e.type = 'text/csv';
+    e.href = (window.URL || webkitURL).createObjectURL(blob);
+    e.click();
+  }
+
 } // END of class GUIDatasetManager
