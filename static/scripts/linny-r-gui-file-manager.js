@@ -1498,50 +1498,6 @@ class GUIFileManager {
     md.element('count').innerText = mcnt;
     md.element('count').title = cnlist.sort().join('\n');
     this.obsolete_items = [];
-    // Collect names of datasets, equations and charts that are (still)
-    // defined in the module file used for updating. Items that the module
-    // still defines must NOT be marked as obsolete, or they would be
-    // deleted by `performUpdate` and then recreated bare from the module
-    // XML, thereby losing the data, default values and modifiers they
-    // have in the current model.
-    const
-        mod_ds_names = [],
-        mod_eq_selectors = [],
-        mod_chart_titles = [];
-    let mdn = childNodeByTag(IO_CONTEXT.xml, 'datasets');
-    if(mdn) {
-      for(let ci = 0; ci < mdn.childNodes.length; ci++) {
-        const c = mdn.childNodes.item(ci);
-        if(c.nodeName === 'dataset') {
-          const dn = xmlDecoded(nodeContentByTag(c, 'name'));
-          if(dn === UI.EQUATIONS_DATASET_NAME) {
-            // Equations are merged into the model equations dataset
-            // with prefixed selectors => collect the selectors.
-            const dmn = childNodeByTag(c, 'modifiers');
-            if(dmn) {
-              for(let mi = 0; mi < dmn.childNodes.length; mi++) {
-                const m = dmn.childNodes.item(mi);
-                if(m.nodeName === 'modifier') {
-                  mod_eq_selectors.push(
-                      xmlDecoded(nodeContentByTag(m, 'selector')));
-                }
-              }
-            }
-          } else {
-            mod_ds_names.push(dn);
-          }
-        }
-      }
-    }
-    mdn = childNodeByTag(IO_CONTEXT.xml, 'charts');
-    if(mdn) {
-      for(let ci = 0; ci < mdn.childNodes.length; ci++) {
-        const c = mdn.childNodes.item(ci);
-        if(c.nodeName === 'chart') {
-          mod_chart_titles.push(xmlDecoded(nodeContentByTag(c, 'title')));
-        }
-      }
-    }
     // Check bindings of the included clusters.
     for(const im of iml) {
       const
@@ -1588,43 +1544,11 @@ class GUIFileManager {
           missing_params[m] = [cn];
         }
       }
-      // IDs of datasets that the module will (re)create for this cluster:
-      // its dataset names with the cluster name as prefix, plus the actual
-      // names of its bound parameters (these may differ from the prefixed
-      // formal name).
-      const keep_ds_ids = {};
-      for(const dn of mod_ds_names) {
-        keep_ds_ids[UI.nameToID(cn + UI.PREFIXER + dn)] = true;
-      }
-      for(const bid of bk) {
-        const an = iob[bid].actual_name;
-        if(an) keep_ds_ids[UI.nameToID(an)] = true;
-      }
       for(const k of MODEL.datasetKeysByPrefix(cn)) {
-        if(!keep_ds_ids[k]) this.obsolete_items.push(MODEL.datasets[k]);
+        this.obsolete_items.push(MODEL.datasets[k]);
       }
-      // Same logic for equations (selectors are prefixed on inclusion)...
-      const keep_eq_ids = {};
-      for(const s of mod_eq_selectors) {
-        // NOTE: Method equations (leading colon) are not prefixed.
-        if(!s.startsWith(':')) {
-          keep_eq_ids[UI.nameToID(cn + UI.PREFIXER + s)] = true;
-        }
-      }
-      for(const e of MODEL.equationsByPrefix(cn)) {
-        if(!keep_eq_ids[UI.nameToID(e.selector)]) this.obsolete_items.push(e);
-      }
-      // ... and for charts (titles are prefixed on inclusion).
-      for(const c of MODEL.chartsByPrefix(cn)) {
-        let keep = false;
-        for(const t of mod_chart_titles) {
-          if(ciCompare(c.title, cn + UI.PREFIXER + t) === 0) {
-            keep = true;
-            break;
-          }
-        }
-        if(!keep) this.obsolete_items.push(c);
-      }
+      for(const e of MODEL.equationsByPrefix(cn)) this.obsolete_items.push(e);
+      for(const c of MODEL.chartsByPrefix(cn)) this.obsolete_items.push(c);
     }
     for(const k of Object.keys(resolved)) {
       if(resolved[k].length >= missing_params[k].length) {
@@ -1762,7 +1686,6 @@ class GUIFileManager {
     MODEL.deleteCluster(c, false);
     // NOTE: Including may affect focal cluster, so store it...
     const fc = MODEL.focal_cluster;
-    IO_CONTEXT.updating = true;
     MODEL.initFromXML(IO_CONTEXT.xml);
     // ... and restore it afterwards.
     MODEL.focal_cluster = fc;
