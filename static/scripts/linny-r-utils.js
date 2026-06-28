@@ -353,9 +353,11 @@ function msecToTime(msec) {
   return hms + '.' + ms.slice(0, 1) + ' sec';
 }
 
-function compactClockTime() {
-  // Return current time (no date) in 6 digits hhmmss. 
-  const d = new Date();
+function compactClockTime(time=null) {
+  // Return time (no date) in 6 digits hhmmss. By default the current
+  // time; pass milliseconds-since-epoch (e.g., a stored start time)
+  // to format that moment instead.
+  const d = (time ? new Date(time) : new Date());
   return d.getHours().toString().padStart(2, '0') +
       d.getMinutes().toString().padStart(2, '0') +
       d.getSeconds().toString().padStart(2, '0');

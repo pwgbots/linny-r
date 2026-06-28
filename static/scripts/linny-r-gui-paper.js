@@ -907,11 +907,10 @@ class Paper {
     // near-zero; then it returns the absolute difference n1 - n2.
     const div = Math.abs(n2);
     // NOTE: Return 0 when n1 and n2 both are near-zero.
-    if(div < VM.ON_OFF_THRESHOLD && Math.abs(n1) < VM.ON_OFF_THRESHOLD) return 0;
-    if(div < VM.NEAR_ZERO) {
-      return n1 - n2;
-    }
-    return (n1 - n2) / div;
+    if(div < VM.SIG_DIF_FROM_ZERO && Math.abs(n1) < VM.SIG_DIF_FROM) return 0;
+    let diff = n1 - n2;
+    if(div > VM.SIG_DIF_FROM_ZERO) diff = (n1 - n2) / div;
+    return (Math.abs(diff) < VM.SIG_DIF_FROM_ZERO ? 0 : diff);
   }
   
   //
@@ -1420,7 +1419,7 @@ class Paper {
         // Some symbols do not center prettily => raise by 1 or 1.5 px
         const
             raise_1px = ([VM.LM_INCREASE, VM.LM_MEAN, VM.LM_STARTUP,
-                VM.LM_THROUGHPUT].indexOf(luc.multiplier) >= 0),
+                VM.LM_THROUGHPUT, VM.LM_ABS_LEVEL].indexOf(luc.multiplier) >= 0),
             raise = (raise_1px ? 1 :
                 (luc.multiplier === VM.LM_PEAK_INC ? 1.5 : 0));
         arrw.shape.addText(epx, epy - raise, VM.LM_SYMBOLS[luc.multiplier],

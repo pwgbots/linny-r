@@ -2288,13 +2288,17 @@ class VirtualMachine {
     this.LM_MAX_DECREASE = 13; // Symbol: down-arrow with baseline
     this.LM_NEGATIVE = 14; // Symbol: - (minus sign)
     this.LM_CYCLE = 15; // Symbol: cycle arrow
+    this.LM_POS_LEVEL = 16; // Symbol: greater than
+    this.LM_ABS_LEVEL = 17; // Symbol: double vertical bar
+    this.LM_NEG_LEVEL = 18; // Symbol: less than
+    
 
     // List of link multipliers that require binary ON/OFF variables
-    this.LM_NEEDING_ON_OFF = [5, 6, 7, 8, 9, 10, 14, 16];
+    this.LM_NEEDING_ON_OFF = [5, 6, 7, 8, 9, 10, 14, 16, 17, 18];
     this.LM_SYMBOLS = ['', '\u21C9', '\u0394', '\u03A3', '\u03BC', '\u25B2',
         '+', '0', '\u2934', '\u2732', '\u25BC', '\u2A39', '\u21A5', '\u21A7',
-        '\u2212', '\u27F3', '\u00A2'];
-    this.LM_LETTERS = ' TISMU+0RFDP><-C$';
+        '\u2212', '\u27F3', '>', '\u23F8', '<'];
+    this.LM_LETTERS = ' TISMU+0RFDP><-C[|]';
     
     // VM max. expression stack size.
     this.MAX_STACK = 200;
@@ -3978,6 +3982,11 @@ class VirtualMachine {
             vi = fn.is_zero_var_index;
           } else if (l.multiplier === VM.LM_NEGATIVE) {
             vi = fn.minus_var_index;
+          } else if (l.multiplier === VM.LM_POS_LEVEL || l.multiplier === VM.LM_ABS_LEVEL) {
+            vi = fn.posl_var_index;
+            // NOTE: for ABS_LEVEL, the coefficient for the negative part will also be set.
+          } else if (l.multiplier === VM.LM_NEG_LEVEL) {
+            vi = fn.negl_var_index;
           } else if(l.multiplier === VM.LM_STARTUP) {
             vi = fn.start_up_var_index;
           } else if(l.multiplier === VM.LM_FIRST_COMMIT) {
@@ -4046,6 +4055,10 @@ class VirtualMachine {
                 this.code.push([VMI_subtract_const_from_coefficient,
                     // NOTE: 4th argument indicates "delay + 1"
                     [vi, c, l.flow_delay, 1]]);
+              } else if(l.multiplier === VM.LM_ABS_LEVEL) {
+                // For ABS_LEVEL, the coefficient for the negative part will also be set.
+                this.code.push([VMI_add_const_to_coefficient,
+                    [fn.negl_var_index, c, l.flow_delay]]);
               }
             }
           } else {
@@ -4064,6 +4077,10 @@ class VirtualMachine {
                 this.code.push([VMI_subtract_var_from_coefficient,
                     // NOTE: 4th argument indicates "delay + 1"
                     [vi, rx, l.flow_delay, 1]]);
+              } else if(l.multiplier === VM.LM_ABS_LEVEL) {
+                // For ABS_LEVEL, the coefficient for the negative part will also be set.
+                this.code.push([VMI_add_var_to_coefficient,
+                    [fn.negl_var_index, rx, l.flow_delay]]);
               }
             }
           }
@@ -4817,6 +4834,12 @@ class VirtualMachine {
           pl = (pl ? 0 : 1);
         } else if(l.multiplier === VM.LM_NEGATIVE) {
           pl = (pl < 0 ? 1 : 0);
+        } else if(l.multiplier === VM.LM_POS_LEVEL) {
+          pl = (pl > 0 ? pl : 0);
+        } else if(l.multiplier === VM.LM_ABS_LEVEL) {
+          pl = Math.abs(pl);
+        } else if(l.multiplier === VM.LM_NEG_LEVEL) {
+          pl = (pl < 0 ? -pl : 0);
         } else if(l.multiplier === VM.LM_STARTUP) {
           // NOTE: For start-up, first commit and shut-down, the level
           // can be ignored, as it suffices to check whether time step
@@ -7679,7 +7702,8 @@ function VMI_negate(x) {
   const d = x.top();
   if(d !== false) {
     if(DEBUGGING) console.log('NEG ' + d);
-    x.retop(-d);
+    // NOTE: Prevent that JavaScript negates zero to -0. 
+    x.retop(Math.abs(d) < VM.NEAR_ZERO ? 0 : -d);
   }
 }
 
@@ -8716,7 +8740,6 @@ function addCashOut(index, value) {
 
 function VMI_update_cash_coefficient(link) {
   // Updates cash flow coefficients that are affected by the specified link.
-  // Simplest case: INPUT links. These must have a process as tail node.
   const t = VM.t;
   if(DEBUGGING) {
     console.log(`update_cash_coefficient: ${link.displayName} (t = ${t})`,
@@ -8725,6 +8748,7 @@ function VMI_update_cash_coefficient(link) {
   const
       tn = link.to_node,
       fn = link.from_node;
+  // Simplest case: INPUT links. These must have a process as tail node.
   if(tn instanceof Process) {
     // Input links have no delay or special link multipliers.
     const
@@ -9047,6 +9071,12 @@ function VMI_update_cash_coefficient(link) {
       bvi = fn.is_zero_var_index;
     } else if(lm === VM.LM_NEGATIVE) {
       bvi = fn.minus_var_index;
+    } else if(lm === VM.LM_POS_LEVEL || lm === VM.LM_ABS_LEVEL) {
+      // NOTE: For both POS and ABS, use the POSL index, and then later for ABS
+      // also the NEGL index.
+      bvi = fn.posl_var_index;
+    } else if(lm === VM.LM_NEG_LEVEL) {
+      bvi = fn.negl_var_index;
     } else if(lm === VM.LM_CYCLE) {
       bvi = fn.cycle_var_index;
     } else if(lm === VM.LM_FIRST_COMMIT) {
@@ -9070,6 +9100,25 @@ function VMI_update_cash_coefficient(link) {
     addCashIn(k, price_rate);
   } else if(price_rate < 0) {
     addCashOut(k, -price_rate);
+  }
+  if(lm === VM.LM_ABS_LEVEL) {
+    // For ABS, the POS level is already accounted for. The NEG level variable
+    // index is one higher, so increase `k`...
+    k++;
+    // ... and then repeat the operations performed for NEG, as both variables will
+    // always have a non-negative value.
+    if(k <= 0) {
+      const cf = knownValue(fn.negl_var_index, t - delay) * price_rate;
+      if(cf > 0) {
+        VM.cash_in_rhs -= cf;
+      } else if(cf < 0) {
+        VM.cash_out_rhs += cf;      
+      }
+    } else if(price_rate > 0) {
+      addCashIn(k, price_rate);
+    } else if(price_rate < 0) {
+      addCashOut(k, -price_rate);
+    }
   }
 }
 
