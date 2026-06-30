@@ -335,7 +335,7 @@ console.log('HERE attributes', jsr.attributes);
       // current clock time.
       const rx = MODEL.running_experiment;
       file = FILE_MANAGER.asFilePath(MODEL.name || 'model') +
-          '@-' + compactClockTime(rx ? rx.report_time : null) + '-';
+          '@-' + compactClockTime(rx ? rx.report_time : null);
     }
     // NOTE: When reporting while the receiver is not active, report the
     // results of the running experiment.
