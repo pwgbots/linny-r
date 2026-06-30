@@ -725,6 +725,24 @@ function fetchGitHubDirs(res, dir) {
 // Main function that carries out File browser actions.
 //
 
+function createPathInDir(dir_path, rel_path) {
+  // Create sub-directories of rela in specified directory.  
+  if(!fs.existsSync(dir_path)) return `ERROR: Path "${dir_path}" not found`;
+  // ... and the file name may specify sub-directories.
+  const parts = rel_path.split(path.sep);
+  while(parts.length > 1) {
+    try{
+      dir_path = path.join(dir_path, parts.shift());
+      if(!fs.existsSync(dir_path)) fs.mkdirSync(dir_path);
+    } catch(err) {
+      console.log(err);
+      return `ERROR: Failed to create sub-directory "${dir_path}"`;
+    }
+  }
+  // Empty string indicates success.
+  return '';
+}
+
 function browse(res, sp) {
   // Process any one of the file browser commands.
   const action = sp.get('action').trim();
@@ -811,23 +829,7 @@ function browse(res, sp) {
     // NOTE: When storing, the file name may be a path. In that case,
     // sub-directories may need to be created.
     if(action === 'store') {
-      // When storing, the relative path must exist...
-      if(!fs.existsSync(dir_path)) {
-        msg = `ERROR: Path "${dir_path}" not found`;
-      } else {
-        // ... and the file name may specify sub-directories.
-        const parts = file_name.split(path.sep);
-        while(parts.length > 1) {
-          try{
-            dir_path = path.join(dir_path, parts.shift());
-            if(!fs.existsSync(dir_path)) fs.mkdirSync(dir_path);
-          } catch(err) {
-            msg = `ERROR: Failed to create sub-directory "${dir_path}"`;
-            console.log(err);
-            break;
-          }
-        }
-      }
+      msg = createPathInDir(dir_path, file_name);
     } else if(!fs.existsSync(full_path)) {
       // For other actions, full path must be an existing file or directory.
       msg = `ERROR: Path "${full_path}" not found`;
@@ -1176,7 +1178,7 @@ console.log('HERE abort: path run', rpath, run);
 }
 
 function rcvrReport(res, rpath, rfile, run, data, stats, log) {
-  console.log('HERE report: path file run', rpath, rfile, run);
+  console.log(`HERE report: path=${rpath}, file=${rfile}, run=${run}`);
   // Always purge reports older than 24 hours from the user workspace.
   try {
     const
@@ -1213,6 +1215,13 @@ function rcvrReport(res, rpath, rfile, run, data, stats, log) {
     rfile += run;
   } else {
     rfile = rfile.replace('@', run);  
+  }
+  // Create sub-directory in reports directory if needed. 
+  msg = createPathInDir(rpath, rfile);
+  // If error, report and exit.
+  if(msg) {
+    servePlainText(res, msg);
+    return;
   }
   let fp,
       base = path.join(rpath, rfile);

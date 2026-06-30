@@ -327,7 +327,7 @@ console.log('HERE attributes', jsr.attributes);
       channel = '';
       // NOTE: The @ will be replaced by the run number, so that that
       // number precedes the clock time. The @ will be unique because
-      // `asFilePath(...)` replaces special characters by underscores.
+      // `asFilePath(...)` replaces special characters by underscores. 
       // NOTE: When an experiment is running, use its report time (set at
       // the start of the run sequence, or at a single re-run), so that
       // the reports (data, log, stats) of all runs of one sequence share
@@ -355,7 +355,7 @@ console.log('HERE attributes', jsr.attributes);
           run: run,
           data: od[0],
           stats: od[1],
-          log: RECEIVER.logReport
+          log: this.logReport
         };
     } else {
       if(!VM.halted && !this.error) {

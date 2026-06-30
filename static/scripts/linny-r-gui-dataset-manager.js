@@ -1040,15 +1040,21 @@ class GUIDatasetManager extends DatasetManager {
   deleteModifier() {
     // Delete modifier from selected dataset
     const m = this.selected_modifier;
+    let ds = false;
     if(m) {
       // If it was the dataset default modifier, clear the default
       if(m.selector === this.selected_dataset.default_selector) {
         this.selected_dataset.default_selector = '';
+        ds = true;
       }
       // Then simply remove the object
       delete this.selected_dataset.modifiers[UI.nameToID(m.selector)];
       this.selected_modifier = null;
-      this.updateModifiers();
+      if(ds) {
+        this.updateDialog();
+      } else {
+        this.updateModifiers();
+      }
       MODEL.updateDimensions();
     }
   }

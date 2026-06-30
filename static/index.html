@@ -1223,16 +1223,25 @@ NOTE: Products directly linked to such processes should have a proportional unit
                 &#x25B2; (start-up: 1 if X[t-1] = 0 &and; X[t] > 0, otherwise 0)
               </option>
               <option id="link-on" value="6">
-                &plus; (positive: 1 if X[t] > 0, otherwise 0)
+                &plus; (is positive: 1 if X[t] > 0, otherwise 0)
               </option>
               <option id="link-off" value="7">
                 0 (zero: 1 if X[t] = 0, otherwise 0)
               </option>
               <option id="link-minus" value="14">
-                &minus; (negative: 1 if X[t] < 0, otherwise 0)
+                &minus; (is negative: 1 if X[t] < 0, otherwise 0)
               </option>
               <option id="link-shutdown" value="10">
                 &#x25BC; (shut-down: 1 if X[t-1] > 0 &and; X[t] = 0, otherwise 0)
+              </option>
+              <option id="link-pos" value="16">
+                > (positive value: X[t] if X[t] > 0, otherwise 0)
+              </option>
+              <option id="link-abs" value="17">
+                &#x23F8; (absolute value: |X[t]|)
+              </option>
+              <option id="link-neg" value="18">
+                < (negative value: -X[t] if X[t] < 0, otherwise 0)
               </option>
               <option id="link-slack" value="12">
                 &#x21A5; (maximum ramp-up: UB - X[t])

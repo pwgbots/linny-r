@@ -7901,8 +7901,15 @@ class Node extends NodeBox {
   }
   
   get needsNZP() {
-    // As of version 3.0, processes must have the *continuous* NZP variables
-    // when they are potentially reversible.
+    // As of version 3.0, nodes must have the *continuous* NZP variables
+    // when they are potentially reversible processes, or if POS, ABS or
+    // NEG level data is read out.
+    for(const l of this.outputs) {
+      if(!MODEL.ignored_entities[l.identifier]) {
+        if(l.multiplier === VM.LM_POS_LEVEL || l.multiplier === VM.LM_ABS_LEVEL ||
+            l.multiplier === VM.LM_NEG_LEVEL) return true;
+      }
+    }
     if(this.reversible) {
       // NZP-partitioning is necessary only if the process can generate
       // a cash flow, or when it affects the level of a product that has
